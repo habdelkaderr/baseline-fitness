@@ -468,6 +468,21 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 }
 .wm-ex{font-size:27px;font-weight:850;letter-spacing:-.9px;line-height:1.14}
 .wm-sub{font-size:13px;color:var(--text-3);margin-top:7px;font-weight:600}
+/* what you did last time, shown while you are standing in front of the bar */
+.lastrow{
+  margin-top:14px;padding:11px 13px;border-radius:12px;
+  background:var(--surface-2);border-left:3px solid var(--cyan);
+}
+.lastrow.up{border-left-color:var(--green)}
+.lastrow.down{border-left-color:var(--orange)}
+.lastrow.none{border-left-color:var(--surface-3);color:var(--text-3);font-size:12.5px;font-weight:600}
+.lastrow .ll{font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--text-3)}
+.lastrow .ll i{font-style:normal;color:var(--text-2)}
+.lastrow .lv{font-size:15px;font-weight:750;margin-top:4px;letter-spacing:-.2px}
+.lastrow .lp{display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;margin-top:6px}
+.lastrow .lp.up{color:var(--green)}
+.lastrow .lp.down{color:var(--orange)}
+.lastrow .lp svg{width:13px;height:13px;stroke-width:2.8}
 .setlist{margin-top:18px}
 .setrow{
   display:flex;align-items:center;gap:10px;padding:12px;border-radius:var(--r-md);
@@ -832,7 +847,7 @@ const STORES={
   wImports  :{key:'at',   idx:[]}
 };
 /* singleton objects live in one keyed store */
-const KV_KEYS=['profile','settings','targets','baselines','plans','ui','meta'];
+const KV_KEYS=['profile','settings','targets','baselines','plans','decisions','ui','meta'];
 /* collections written on an ordinary save (WHOOP is large and rarely changes) */
 const LIGHT=['sessions','activities','checkins','exercises','workouts','tests','physique'];
 const HEAVY=['wCycles','wWorkouts','wJournal','wImports'];
@@ -2352,6 +2367,9 @@ function freshDB(){
       /* equipment tier: 0 minimal · 1 home · 2 full gym */
       tier:0, preferBest:true, gear:[], dbKg:null, equipNote:'',
       /* goals — arrays, with the first entry leading */
+      /* standing injuries: [{id, area, side, severity, until, note}] — these
+         persist and expire, unlike the one-day pain flag in the check-in */
+      limits:[],
       /* no sport is assumed before setup: 'general' gives balanced defaults */
       sports:['general'], sport:'general',
       physiques:['athletic'], physique:'athletic',
@@ -2369,6 +2387,9 @@ function freshDB(){
       autoAdjust:true, hardStrain:14, restTimerOn:true
     },
     plans:{},
+    /* what the engine advised each day, written on the day. Kept separate
+       from plans (which is your override) so adherence can be measured. */
+    decisions:{},
     baselines:Object.assign({},SEED_BASE,{computed:false,seeded:true}),
     whoop:{cycles:[],workouts:[],journal:[],imports:[]},
     checkins:{},
@@ -2723,6 +2744,214 @@ function sportWarmup(id){
           dur:Math.max(6,Math.min(12,3+items.length)), items};
 }
 
+/* =========================================================================
+   IS THE ADVICE ANY GOOD?
+   The engine scores options with hand-tuned weights and explains itself well,
+   which is not the same as being right. This compares days you followed the
+   recommendation against days you did not, using whatever outcome measure you
+   actually have — next-morning recovery if you wear something, next-morning
+   energy if you do not. It reports nothing until there is enough of both to
+   compare, and it never claims cause.
+   ====================================================================== */
+function whatHappened(date){
+  const sess=(DB.sessions||[]).filter(s=>s.done && s.date===date);
+  const acts=(DB.activities||[]).filter(a=>a.date===date);
+  if(!sess.length && !acts.length) return {kind:'nothing', cats:[]};
+  const cats=sess.map(s=>s.category||catOfWorkout(DB.workouts.find(w=>w.id===s.workoutId)))
+    .concat(acts.map(a=>ACT_CAT(a.type)));
+  return {kind:'trained', cats, sessions:sess, activities:acts};
+}
+/* did the day match what was advised? */
+function followedAdvice(date){
+  const dec=(DB.decisions||{})[date];
+  if(!dec) return null;
+  const did=whatHappened(date);
+  if(dec.id==='rest') return {followed: did.kind==='nothing', advised:dec.id, did};
+  if(dec.id==='mobility') return {followed: did.cats.indexOf('mobility')>=0, advised:dec.id, did};
+  /* the candidate ids map onto session categories */
+  const want={lower:'lower',upper:'upper',power:'power',core:'core',bike:'bike',
+              run_e:'run',run_q:'run',run_int:'run'}[dec.id]||dec.id;
+  return {followed: did.cats.indexOf(want)>=0, advised:dec.id, did};
+}
+/* the best outcome measure this user actually has for the morning after */
+function outcomeFor(date){
+  const next=addDays(date,1);
+  const cy=cycleByDate(next);
+  if(cy && cy.recovery!=null) return {v:cy.recovery, unit:'%', label:'next-day recovery'};
+  const ci=(DB.checkins||{})[next];
+  if(ci && ci.energy!=null) return {v:ci.energy*10, unit:'/100', label:'next-day energy'};
+  return null;
+}
+function adviceReview(){
+  const dec=DB.decisions||{};
+  const kept=[], ignored=[];
+  let restKept=[], restIgnored=[], nFollowed=0, nTotal=0;
+  Object.keys(dec).forEach(d=>{
+    const f=followedAdvice(d); if(!f) return;
+    /* adherence needs no outcome measure — it is simply whether you did the
+       thing. Only the comparison below needs a morning-after number. */
+    nTotal++; if(f.followed) nFollowed++;
+    const o=outcomeFor(d); if(!o) return;
+    (f.followed?kept:ignored).push({date:d, v:o.v, advised:f.advised, label:o.label});
+    if(f.advised==='rest'||f.advised==='mobility') (f.followed?restKept:restIgnored).push(o.v);
+  });
+  const MIN=5;                       // below this, any difference is noise
+  const label=(kept[0]||ignored[0]||{}).label||'next-day recovery';
+  const out={n:nTotal, nOutcome:kept.length+ignored.length,
+             nKept:kept.length, nIgnored:ignored.length,
+             min:MIN, label, ready:false};
+  if(kept.length>=MIN && ignored.length>=MIN){
+    out.ready=true;
+    out.keptAvg=mean(kept.map(x=>x.v));
+    out.ignoredAvg=mean(ignored.map(x=>x.v));
+    out.diff=rnd(out.keptAvg-out.ignoredAvg,1);
+  }
+  if(restKept.length>=MIN && restIgnored.length>=MIN){
+    out.restReady=true;
+    out.restKeptAvg=mean(restKept);
+    out.restIgnoredAvg=mean(restIgnored);
+    out.restDiff=rnd(out.restKeptAvg-out.restIgnoredAvg,1);
+  }
+  /* plain adherence is worth knowing on its own, long before the outcome is */
+  out.adherence = nTotal ? Math.round(nFollowed/nTotal*100) : null;
+  return out;
+}
+
+/* =========================================================================
+   INJURIES & LIMITATIONS
+   A sore knee is not a one-morning event. Pain in the daily check-in blocks
+   today and nothing more, which meant the only way to represent "my left knee
+   has been bad for a fortnight" was to re-report pain every day and accept a
+   blanket block. A limitation instead names a body area and an end date, and
+   the movement patterns that load it are avoided until it expires.
+
+   `avoid` is the list of movement patterns to drop entirely.
+   `caution` is patterns kept but capped, because total avoidance deconditions.
+   ====================================================================== */
+const BODY_AREAS=[
+  {id:'knee',     name:'Knee',              avoid:['jump','bound','land','sprint','cod','slsquat'],
+   caution:['squat','lunge'],  sys:['expl'],  hint:'Jumping, cutting and deep single-leg work'},
+  {id:'ankle',    name:'Ankle / foot',      avoid:['jump','bound','land','sprint','cod','calf'],
+   caution:['lunge','slsquat'],sys:['expl','run'], hint:'Impact, push-off and calf work'},
+  {id:'hamstring',name:'Hamstring',         avoid:['sprint','hamcurl','bound'],
+   caution:['hinge','lunge'],  sys:['expl','run'], hint:'Sprinting and lengthened hip-hinge work'},
+  {id:'groin',    name:'Groin / adductor',  avoid:['adduct','bound','cod'],
+   caution:['lunge','squat'],  sys:['expl'],  hint:'Lateral work and wide stances'},
+  {id:'hip',      name:'Hip',               avoid:['bound','cod'],
+   caution:['hinge','squat','lunge'], sys:['expl'], hint:'Deep flexion and rotation'},
+  {id:'calf',     name:'Calf / Achilles',   avoid:['jump','bound','sprint','calf','land'],
+   caution:['cod'],            sys:['expl','run'], hint:'Anything springy or fast'},
+  {id:'back',     name:'Lower back',        avoid:['hinge','rotate'],
+   caution:['squat','antiext','antilat'], sys:[], hint:'Loaded hinging and rotation'},
+  {id:'shoulder', name:'Shoulder',          avoid:['pushv','latraise'],
+   caution:['pushh','pullv','pullh'], sys:[], hint:'Overhead pressing and raises'},
+  {id:'elbow',    name:'Elbow / wrist',     avoid:['biceps','triceps'],
+   caution:['pushh','pullh','pullv'], sys:[], hint:'Direct arm work and heavy gripping'},
+  {id:'neck',     name:'Neck',              avoid:['pushv'],
+   caution:['pullv','antiext'],sys:[], hint:'Overhead loading'}
+];
+const areaOf = id => BODY_AREAS.find(a=>a.id===id)||null;
+/* limitations that have not expired, as of a given date */
+function activeLimits(date){
+  const d=date||todayISO();
+  return ((DB&&DB.profile&&DB.profile.limits)||[]).filter(l=>l&&l.area&&(!l.until||l.until>=d));
+}
+const hasLimits = date => activeLimits(date).length>0;
+/* movement patterns to drop, and those to keep but cap */
+function limitPatterns(date){
+  const avoid=[], caution=[];
+  activeLimits(date).forEach(l=>{
+    const a=areaOf(l.area); if(!a) return;
+    /* a limitation logged as severe removes the cautioned patterns too */
+    (a.avoid||[]).forEach(p=>{ if(avoid.indexOf(p)<0) avoid.push(p); });
+    (a.caution||[]).forEach(p=>{
+      if(l.severity==='high'){ if(avoid.indexOf(p)<0) avoid.push(p); }
+      else if(caution.indexOf(p)<0) caution.push(p);
+    });
+  });
+  return {avoid, caution:caution.filter(p=>avoid.indexOf(p)<0)};
+}
+/* training systems the engine should steer away from while limited */
+function limitSystems(date){
+  const out=[];
+  activeLimits(date).forEach(l=>{
+    const a=areaOf(l.area); if(!a) return;
+    (a.sys||[]).forEach(s=>{ if(out.indexOf(s)<0) out.push(s); });
+  });
+  return out;
+}
+/* is this exercise off-limits right now? */
+function limitBlocks(ex, date){
+  if(!ex) return false;
+  const pat=(EX_META[ex.id]||[])[0] || ex.pattern;
+  if(!pat) return false;
+  return limitPatterns(date).avoid.indexOf(pat)>=0;
+}
+const limitsText = date => activeLimits(date)
+  .map(l=>{ const a=areaOf(l.area); return a?(l.side?l.side+' ':'')+a.name.toLowerCase():l.area; })
+  .join(', ');
+
+/* =========================================================================
+   WHAT YOU DID LAST TIME
+   Every set's reps, weight and RPE is already recorded. Progressive overload
+   is the whole mechanism of getting stronger, and you cannot beat last week
+   if you cannot see last week — so the last performance of an exercise is
+   looked up and shown while you are standing in front of it.
+   ====================================================================== */
+function lastPerformance(exId, beforeDate, excludeSessionId){
+  if(!exId || !DB || !DB.sessions) return null;
+  const done=DB.sessions.filter(s=>s.done && s.id!==excludeSessionId &&
+    (!beforeDate || s.date<=beforeDate) && Array.isArray(s.entries));
+  /* newest first — date, then insertion order for two sessions in one day */
+  for(let i=done.length-1;i>=0;i--){
+    const s=done[i];
+    const en=s.entries.find(e=>e.exerciseId===exId && e.sets && e.sets.some(x=>x.done));
+    if(!en) continue;
+    const sets=en.sets.filter(x=>x.done);
+    const w=sets.map(x=>parseFloat(x.weight)).filter(v=>!isNaN(v));
+    const r=sets.map(x=>parseFloat(x.reps)).filter(v=>!isNaN(v));
+    const p=sets.map(x=>parseFloat(x.rpe)).filter(v=>!isNaN(v));
+    return {
+      date:s.date, sessionName:s.workoutName||'', sets,
+      topWeight: w.length?Math.max(...w):null,
+      topReps:   r.length?Math.max(...r):null,
+      bestRpe:   p.length?Math.max(...p):null,
+      /* load is the honest comparator: bodyweight work progresses by reps,
+         loaded work by weight, and volume covers both */
+      volume: sets.reduce((a,x)=>{
+        const rr=parseFloat(x.reps), ww=parseFloat(x.weight);
+        return a + (isNaN(rr)?0:rr)*(isNaN(ww)?1:Math.max(ww,1));
+      },0)
+    };
+  }
+  return null;
+}
+/* "3 × 10 @ 12 kg" from a set list, collapsing identical sets */
+function setsSummary(sets){
+  if(!sets||!sets.length) return '';
+  const parts=sets.map(s=>{
+    const r=s.reps||'—', w=(s.weight!==''&&s.weight!=null)?(' @ '+s.weight+' kg'):'';
+    return r+w;
+  });
+  const all=parts.every(x=>x===parts[0]);
+  return all ? `${parts.length} × ${parts[0]}` : parts.join(', ');
+}
+/* did this session beat the previous one on the same exercise? */
+function progressVs(prev, entry){
+  if(!prev || !entry) return null;
+  const done=entry.sets.filter(s=>s.done);
+  if(!done.length) return null;
+  const vol=done.reduce((a,x)=>{
+    const rr=parseFloat(x.reps), ww=parseFloat(x.weight);
+    return a + (isNaN(rr)?0:rr)*(isNaN(ww)?1:Math.max(ww,1));
+  },0);
+  if(!prev.volume) return null;
+  const pct=(vol-prev.volume)/prev.volume*100;
+  if(pct>=2)  return {up:true,  pct:Math.round(pct), vol};
+  if(pct<=-8) return {up:false, pct:Math.round(pct), vol};
+  return {up:null, pct:Math.round(pct), vol};
+}
+
 /* the tier implied by what is ticked — used only for labelling */
 function tierFromGear(){
   const have=gearList();
@@ -2966,14 +3195,30 @@ const userTier = ()=> (DB&&DB.profile&&DB.profile.tier!=null) ? DB.profile.tier 
    do. If they own more, offer the stronger option. Nothing is assumed. */
 function resolveExercise(exId){
   const e=exOf(exId); if(!e) return null;
+  /* An active limitation outranks equipment: there is no point picking the
+     best squat variation you own if your knee is the thing stopping you.
+     Route to a neighbouring pattern that the limitation does not touch. */
+  const lim=limitPatterns();
+  const blocked=p=>lim.avoid.indexOf(p)>=0;
+  if(blocked(e.pat)){
+    const swap=DB.exercises.filter(x=>canDo(x) && !blocked(x.pat) &&
+      (PAT_NEIGHBOURS[e.pat]||[]).indexOf(x.pat)>=0)
+      .sort((a,b)=>(PAT_NEIGHBOURS[e.pat].indexOf(a.pat)-PAT_NEIGHBOURS[e.pat].indexOf(b.pat))
+                   || ((a.tier||0)-(b.tier||0)))[0];
+    if(swap) return swap;
+    /* nothing neighbouring is safe either — fall through to mobility rather
+       than prescribing the thing that hurts */
+    const safe=DB.exercises.filter(x=>canDo(x) && x.cat==='mobility' && !blocked(x.pat))[0];
+    if(safe) return safe;
+  }
   if(canDo(e)){
     const up=(DB.profile.preferBest!==false) ? bestForPattern(e.pat, e) : null;
-    return up||e;
+    return (up && !blocked(up.pat)) ? up : e;
   }
   /* same movement pattern first, then same category, then anything that
      trains the same broad quality. There is always something you can do. */
   const alt=DB.exercises
-    .filter(x=>x.pat===e.pat && x.id!==e.id && canDo(x))
+    .filter(x=>x.pat===e.pat && x.id!==e.id && canDo(x) && !blocked(x.pat))
     .sort((a,b)=>(b.tier||0)-(a.tier||0))[0];
   return alt||fallbackFor(e)||e;
 }
@@ -3863,6 +4108,24 @@ function recommend(date, ci, rd){
     if(ci.pain==='Significant' && c.sys!=='rest' && c.sys!=='mobility') blocked='significant pain reported';
     if(ci.pain==='Moderate' && ['lower','expl','upper','run'].indexOf(c.sys)>=0) blocked='moderate pain reported';
 
+    /* ---- 2b. standing limitations ----
+       Unlike a pain flag, these persist until they expire, and they steer
+       rather than stop: the systems an injured area loads are pushed down,
+       everything else carries on so you do not decondition wholesale. */
+    const limSys=limitSystems(date);
+    if(limSys.length){
+      const names=limitsText(date);
+      if(limSys.indexOf(c.sys)>=0){
+        const severe=activeLimits(date).some(l=>l.severity==='high');
+        if(severe) blocked=`your ${names} is flagged as a significant limitation`;
+        else add(-40,`Your ${names} is flagged — this session loads exactly that.`,'warn');
+      } else if(c.sys==='mobility'){
+        add(+16,`Mobility is a productive way to train around your ${names}.`,'pos');
+      } else if(c.sys==='upper' && limSys.every(s=>s==='expl'||s==='run')){
+        add(+12,`Upper body is unaffected by your ${names}.`,'pos');
+      }
+    }
+
     /* ---- 3. system freshness — the core of the decision ---- */
     if(c.sys==='lower'){
       if(H.since.lower===1) add(-46,`Your legs were loaded yesterday (${esc(yName||'activity')}, lower-body demand ${yd.lower}).`,'neg');
@@ -4103,20 +4366,53 @@ function sessionBlocks(rec){
 /* backwards-compatible alias used by older call sites */
 function planFor(date, ci, rd){
   const r=recommend(date, ci, rd);
+  /* Record what was advised, on the day, before anything is known about what
+     happened. Re-deriving it later would be contaminated: the engine reads the
+     session history, so a recommendation recomputed after the fact already
+     knows the outcome. Today only, written once, never overwritten. */
+  if(DB.decisions && date===todayISO() && !DB.decisions[date]){
+    DB.decisions[date]={id:r.id, label:r.label, band:r.readiness?r.readiness.band:null,
+                        score:r.readiness?r.readiness.score:null, at:new Date().toISOString()};
+    save();
+  }
   return {workoutId:r.workoutId, variant:r.variant, est:r.est, notes:r.why,
           isSport:r.isSport, readiness:r.readiness, addCore:r.addCore, rec:r};
 }
 
+/* How many calendar weeks since the plan started actually contained training.
+   A week counts if it holds one completed session or one logged activity. */
+function trainedWeeks(fromISO,toISO){
+  if(!fromISO) return 0;
+  let n=0, cur=weekStartOf(fromISO);
+  const end=weekStartOf(toISO), guard=520;          // ten years is plenty
+  for(let i=0; cur<=end && i<guard; i++){
+    const wEnd=addDays(cur,6);
+    const trained =
+      (DB.sessions||[]).some(s=>s.done && s.date>=cur && s.date<=wEnd) ||
+      (DB.activities||[]).some(a=>a.date>=cur && a.date<=wEnd);
+    if(trained) n++;
+    cur=addDays(cur,7);
+  }
+  return n;
+}
 function currentPhase(){
   const p=DB.profile;
-  let wk;
+  let wk, elapsed=null, paused=0;
   if(p.planStart){
     const diff=daysBetween(p.planStart,todayISO());
-    wk = diff>=0 ? Math.floor(diff/7)+1 : 1;      // a future start date means week 1, never negative
+    elapsed = diff>=0 ? Math.floor(diff/7)+1 : 1;  // a future start means week 1, never negative
+    /* Progression is earned, not scheduled. The block advances on weeks you
+       actually trained, so illness or travel pauses the plan rather than
+       skipping you past the volume that makes a peak week make sense. It can
+       never run ahead of the calendar either. */
+    const done=trainedWeeks(p.planStart,todayISO());
+    wk = Math.min(elapsed, Math.max(1,done));
+    paused = Math.max(0, elapsed - wk);
   } else wk = p.planWeek||1;
   wk = Math.max(1, wk|0);
   const w = ((wk-1)%8+8)%8+1;                      // JS % is signed; force into 1–8
-  return Object.assign({}, PHASES[w-1]||PHASES[0], {w, block:Math.floor((wk-1)/8)+1, absWeek:wk});
+  return Object.assign({}, PHASES[w-1]||PHASES[0],
+    {w, block:Math.floor((wk-1)/8)+1, absWeek:wk, elapsedWeek:elapsed, pausedWeeks:paused});
 }
 
 /* =========================================================================
@@ -4420,6 +4716,7 @@ function viewToday(v){
         <span class="chip ${rd.band==='green'?'g':rd.band==='yellow'?'y':rd.band==='orange'?'o':'r'}">${B.label} · ${esc(pl.intensity||'')}</span>
         ${pl.est?`<span class="chip">${svg('timer')} ~${pl.est} min</span>`:''}
         ${pl.isSport?`<span class="chip g">${SPORT_EMOJI()} ${esc(pl.sportName||SPORT_LABEL())} today</span>`:''}
+        ${hasLimits(d)?`<span class="chip o" id="chipLim">Working around ${esc(limitsText(d))}</span>`:''}
         ${pl.overridden?'<span class="chip v">Your choice</span>':''}
       </div>
       ${wk?`<div style="font-size:13.5px;color:var(--text-2);margin-top:12px;font-weight:600">${esc(wk.name)}${pl.variant!=='full'?' · '+esc(pl.variant.toUpperCase()):''}</div>`:''}
@@ -4971,6 +5268,7 @@ function paneProgram(c){
         <div style="width:28px;font-size:12px;font-weight:800;color:${on?'var(--accent)':'var(--text-3)'}">W${p.w}</div>
         <div class="rt"><div class="rn" style="font-size:14px">${esc(p.name)}</div><div class="rs">${esc(p.goal)}</div></div>
         <div class="rv" style="font-size:11.5px;text-align:right">${Math.round(p.vol*100)}%<br><span style="color:var(--text-3);font-weight:600">RPE ${p.rpeCap}</span></div></div>`;}).join('')}
+    ${ph.pausedWeeks>0?`<div class="note warn" style="margin-top:12px">You are in <b>week ${ph.absWeek}</b>, not week ${ph.elapsedWeek}: ${ph.pausedWeeks} week${ph.pausedWeeks>1?'s':''} passed with nothing logged, and the plan waited rather than moving on without you. Progression is earned by the work, not by the calendar.</div>`:''}
     <div class="note acc" style="margin-top:12px">After week 8 the cycle repeats as <b>block ${ph.block+1}</b> — same structure, harder variations and higher benchmarks. Retest at the end of each block.</div>
   </div>
 
@@ -5993,7 +6291,27 @@ function panePhysique(c){
 /* ------------------------------------------------------------ LINKS */
 function paneLinks(c){
   const cors=correlations();
+  const rev=adviceReview();
   c.innerHTML=`
+   <div class="card" style="margin-bottom:14px;border-left:3px solid var(--violet)">
+     <div class="card-h"><div class="card-t accent">Is this engine's advice any good?</div>
+       ${rev.n?`<span class="tag">${rev.n} DAY${rev.n===1?'':'S'}</span>`:''}</div>
+     ${rev.n===0
+       ? `<div class="hint">Nothing to judge yet. From now on, each day's recommendation is recorded before you act on it, and once there are enough days where you followed it and enough where you did not, this will compare how the mornings after went.</div>`
+       : `<div class="kv"><span class="k">You followed the recommendation</span><span class="v">${rev.adherence}% of ${rev.n} days</span></div>
+          ${rev.ready
+            ? `<div class="kv"><span class="k">Average ${esc(rev.label)} when you followed it</span><span class="v">${rnd(rev.keptAvg,1)}</span></div>
+               <div class="kv"><span class="k">…and when you did not</span><span class="v">${rnd(rev.ignoredAvg,1)}</span></div>
+               <div class="kv"><span class="k">Difference</span><span class="v" style="color:${rev.diff>1?'var(--green)':rev.diff<-1?'var(--red)':'var(--text-2)'}">${rev.diff>0?'+':''}${rev.diff}</span></div>
+               <div class="note ${Math.abs(rev.diff)<=1?'':'acc'}" style="margin-top:11px">${
+                 Math.abs(rev.diff)<=1
+                   ? 'No meaningful difference so far. That is a real result: on your data this engine is not yet demonstrably better than your own judgement.'
+                   : rev.diff>0
+                     ? `Days you followed it were followed by <b>${rev.diff}</b> better ${esc(rev.label)} on average. Suggestive, not proof — you probably also felt better on the days you agreed with it.`
+                     : `Days you followed it came out <b>${Math.abs(rev.diff)}</b> worse on average. Worth treating the recommendation more sceptically, and worth telling me so the weights can be looked at.`}</div>`
+            : `<div class="hint" style="margin-top:8px">Not enough yet to compare: ${rev.nKept} day${rev.nKept===1?'':'s'} following it and ${rev.nIgnored} not, against a minimum of ${rev.min} each. Until both sides reach that, any difference would be noise and nothing is claimed.</div>`}
+          ${rev.restReady?`<div class="note" style="margin-top:10px">When it specifically said <b>rest or mobility</b>: ${rnd(rev.restKeptAvg,1)} when you took it, ${rnd(rev.restIgnoredAvg,1)} when you trained anyway (${rev.restDiff>0?'+':''}${rev.restDiff}).</div>`:''}`}
+   </div>
    <div class="note red" style="margin-bottom:14px"><b>These are correlations, not causes.</b> A relationship here means two things moved together in your data — it does not establish that one produced the other. Confounders (a busy week, illness, travel, poor sleep and hard training arriving together) are common. Treat every line below as a hypothesis worth testing deliberately, not as a finding.</div>
    ${cors.length? cors.map(x=>{
      const a=Math.abs(x.r), cls=a<0.2?'':a<0.35?'c':a<0.5?'o':'a';
@@ -6016,6 +6334,74 @@ function paneLinks(c){
      <div class="kv"><span class="k">Above 0.5</span><span class="v">Strong — still not causal</span></div>
      <div class="hint" style="margin-top:9px">With many relationships tested at once, some will look meaningful by chance alone. Treat everything here as a hypothesis worth testing deliberately, not as a finding — a single strong-looking correlation in a few months of data usually does not survive correction for multiple comparisons.</div>
    </div>`:''}`;
+}
+
+/* =========================================================================
+   INJURY SHEET
+   Naming the area and an end date is the whole interaction. Everything else —
+   which exercises disappear, which sessions get pushed down — follows from
+   BODY_AREAS, so the user is never asked to translate a sore knee into
+   movement patterns themselves.
+   ====================================================================== */
+function limitSheet(id){
+  const P=DB.profile;
+  if(!Array.isArray(P.limits)) P.limits=[];
+  const ex=id?P.limits.find(l=>l.id===id):null;
+  const d=ex||{id:'lim'+uid(),area:null,side:'',severity:'mod',
+               until:addDays(todayISO(),14),note:''};
+  const draw=()=>{
+    const a=d.area?areaOf(d.area):null;
+    const body=`
+     <p class="hint" style="margin-bottom:14px">Tell the app what is bothering you and until when. It drops the movements that load it and keeps the rest, so you keep training around it. This is not medical advice — persistent pain belongs with a physio or doctor.</p>
+     <div class="field"><label>Where</label>
+       <div class="hint" style="margin-bottom:9px">Pick the closest area.</div>
+       ${BODY_AREAS.map(x=>`<button class="card tight limArea ${d.area===x.id?'on':''}" data-v="${x.id}"
+           style="display:block;width:100%;text-align:left;margin-bottom:7px">
+           <div style="font-weight:750;font-size:14.5px">${esc(x.name)}</div>
+           <div style="font-size:11.5px;color:var(--text-3);margin-top:3px">${esc(x.hint)} would be avoided</div>
+         </button>`).join('')}
+     </div>
+     ${a?`
+     <div class="field"><label>Side</label>
+       <div class="pills" id="limSide">${['','Left','Right','Both'].map(s=>
+         `<button data-v="${s}" class="${(d.side||'')===s?'on':''}">${s||'Not specific'}</button>`).join('')}</div></div>
+     <div class="field"><label>How limiting is it?</label>
+       <div class="pills" id="limSev">
+         <button data-v="mod" class="${d.severity!=='high'?'on':''}">Managing it</button>
+         <button data-v="high" class="${d.severity==='high'?'on':''}">Significant</button>
+       </div>
+       <div class="hint">“Managing it” drops the worst movements and keeps the rest at lower volume. “Significant” also blocks the sessions built around that area.</div></div>
+     <div class="field"><label>Until</label>
+       <input class="inp" type="date" id="limUntil" value="${esc(d.until||'')}">
+       <div class="hint">It expires on its own — you are not asked to remember. Mark it better sooner from Settings if it clears up.</div></div>
+     <div class="field"><label>Note (optional)</label>
+       <input class="inp" id="limNote" value="${esc(d.note||'')}" placeholder="e.g. physio said avoid deep flexion"></div>
+     <div class="note warn">While this is active: <b>${esc((a.avoid||[]).map(p=>PATTERNS[p]||p).join(', '))}</b> is dropped${
+        (a.caution||[]).length?`, and <b>${esc(a.caution.map(p=>PATTERNS[p]||p).join(', '))}</b> ${d.severity==='high'?'is dropped too':'is kept but capped'}`:''}.</div>
+     `:''}`;
+    const foot=`<div class="btn-row">
+      ${ex?`<button class="btn ghost" id="limDel">Remove</button>`:''}
+      <button class="btn primary" id="limSave" style="flex:2">${ex?'Save':'Add limitation'}</button></div>`;
+    if($('#sheet').classList.contains('on')) updateSheet(ex?'Edit limitation':'Add a limitation', body, foot);
+    else openSheet(ex?'Edit limitation':'Add a limitation', body, foot);
+
+    $$('.limArea').forEach(b=>b.onclick=()=>{ d.area=b.dataset.v; haptic(); draw(); });
+    const pill=(sel,k)=>{ const el=$(sel); if(!el)return;
+      $$(sel+' button').forEach(b=>b.onclick=()=>{ d[k]=b.dataset.v; haptic(); draw(); }); };
+    pill('#limSide','side'); pill('#limSev','severity');
+    const del=$('#limDel');
+    if(del) del.onclick=()=>{ DB.profile.limits=P.limits.filter(l=>l.id!==d.id);
+      save(true); closeSheet(); toast('Limitation removed'); setTimeout(render,240); };
+    $('#limSave').onclick=()=>{
+      if(!d.area){ toast('Pick an area first','err'); return; }
+      const u=$('#limUntil'); if(u) d.until=u.value||null;
+      const n=$('#limNote'); if(n) d.note=n.value.trim();
+      if(!ex) P.limits.push(d);
+      save(true); closeSheet(); toast('Saved — sessions will route around it','ok');
+      setTimeout(render,240);
+    };
+  };
+  draw();
 }
 
 /* =========================================================================
@@ -6432,6 +6818,26 @@ function viewSettings(v){
    </div>
 
    <div class="card">
+     <div class="card-h"><div class="card-t accent">Injuries &amp; limitations</div>
+       <button class="btn xs ghost" id="limAdd">${svg('plus')} Add</button></div>
+     ${(() => { const act=activeLimits(), past=(P.limits||[]).filter(l=>act.indexOf(l)<0);
+       if(!act.length) return `<div class="hint">Nothing flagged. If something is bothering you, add it here and the engine routes around it until the date you set — rather than you re-reporting pain every morning.</div>`;
+       return act.map(l=>{ const a=areaOf(l.area)||{name:l.area,hint:''};
+         const left=l.until?daysBetween(todayISO(),l.until):null;
+         return `<div class="row" style="padding:12px 0">
+           <div class="rt"><div class="rn">${esc((l.side?l.side+' ':'')+a.name)}
+             <span class="tag ${l.severity==='high'?'r':'o'}" style="margin-left:6px">${l.severity==='high'?'SIGNIFICANT':'MANAGING'}</span></div>
+             <div class="rs">${esc(a.hint)} avoided${left!=null?` · ${left<=0?'expires today':left+' day'+(left>1?'s':'')+' left'}`:' · no end date'}</div>
+             ${l.note?`<div class="rs" style="color:var(--text-2)">${esc(l.note)}</div>`:''}</div>
+           <button class="btn xs ghost" data-limed="${esc(l.id)}">Edit</button>
+           <button class="btn xs ghost" data-limrm="${esc(l.id)}">${svg('check')} Better</button>
+         </div>`;}).join('')
+         + `<div class="hint" style="margin-top:8px">The engine drops the movement patterns these load and keeps everything else, so you carry on training around it instead of stopping.</div>`
+         + (past.length?`<div class="hint" style="margin-top:6px">${past.length} expired limitation${past.length>1?'s':''} kept in your history.</div>`:'');
+     })()}
+   </div>
+
+   <div class="card">
      <div class="card-t accent" style="margin-bottom:6px">What you are training for</div>
      <div class="hint" style="margin-bottom:11px">Sets the priority order the daily engine uses. Your first pick leads.</div>
      ${chipPicker({id:'sportPick', lead:true,
@@ -6603,6 +7009,16 @@ function viewSettings(v){
     $$(sel+' button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); cb&&cb(b.dataset.v); });
   pill('#sDur'); pill('#sUnits'); pill('#sDays');
   $('#sWizard').onclick=()=>{ persist(); startSetup(true); };
+  /* injuries: add, edit, and mark recovered */
+  const limAdd=$('#limAdd'); if(limAdd) limAdd.onclick=()=>limitSheet(null);
+  $$('[data-limed]').forEach(b=>b.onclick=()=>limitSheet(b.dataset.limed));
+  $$('[data-limrm]').forEach(b=>b.onclick=()=>{
+    const l=(P.limits||[]).find(x=>x.id===b.dataset.limrm); if(!l)return;
+    const a=areaOf(l.area)||{name:l.area};
+    confirmSheet('Recovered?',
+      `The ${esc(a.name.toLowerCase())} limitation will end today and those movements come back into your sessions. Nothing about your history changes.`,
+      'Mark recovered',()=>{ l.until=addDays(todayISO(),-1); save(true); toast('Good news','ok'); render(); });
+  });
   /* Equipment: the blocks you chose, plus "+" for the rest of the list.
      Removing the last one is allowed — bodyweight only is a real setup. */
   wirePicker('gearPick', (P.gear||[]),
@@ -6788,6 +7204,17 @@ function drawExercise(en,i,total){
   $('#wmBody').innerHTML=`
     <div class="wm-ex">${esc(en.name)}</div>
     <div class="wm-sub">${en.plannedSets} sets × ${esc(en.plannedReps)} · ${esc(en.plannedRpe||'')} · rest ${esc(en.plannedRest||'—')}${en.tempo?' · tempo '+esc(en.tempo):''}</div>
+    ${(()=>{ /* what you did last time — the thing you are trying to beat */
+      const prev=lastPerformance(en.exerciseId, null, W.id);
+      if(!prev) return `<div class="lastrow none">First time doing this — today's numbers become the target to beat.</div>`;
+      const ago=daysBetween(prev.date, W.date);
+      const p=progressVs(prev, en);
+      return `<div class="lastrow${p&&p.up===true?' up':p&&p.up===false?' down':''}">
+        <div class="ll">Last time <i>${ago<=0?'today':ago===1?'yesterday':ago+' days ago'}</i></div>
+        <div class="lv">${esc(setsSummary(prev.sets))}${prev.bestRpe?` · RPE ${prev.bestRpe}`:''}</div>
+        ${p&&p.up===true?`<div class="lp up">${svg('up')} ${p.pct}% more volume so far</div>`:''}
+        ${p&&p.up===false?`<div class="lp down">${svg('down2')} ${Math.abs(p.pct)}% below last time — fine on a low-readiness day</div>`:''}
+      </div>`;})()}
     ${en.cue?`<div class="note acc" style="margin-top:14px"><b>Cue:</b> ${esc(en.cue)}</div>`:''}
     ${en.blockNote?`<div class="note warn" style="margin-top:9px">${esc(en.blockNote)}</div>`:''}
     <div class="setlist">
@@ -6798,7 +7225,13 @@ function drawExercise(en,i,total){
             <div class="sfield"><div class="sl">Reps</div>
               <input class="wmIn" data-s="${n}" data-k="reps" type="number" inputmode="numeric" value="${esc(s.reps)}" placeholder="${esc(String(en.plannedReps).replace(/[^0-9–\-]/g,'').split(/[–\-]/)[0]||'')}"></div>
             <div class="sfield"><div class="sl">kg</div>
-              <input class="wmIn" data-s="${n}" data-k="weight" type="number" inputmode="decimal" step="0.5" value="${esc(s.weight)}" placeholder="—"></div>
+              <input class="wmIn" data-s="${n}" data-k="weight" type="number" inputmode="decimal" step="0.5" value="${esc(s.weight)}" placeholder="${(()=>{
+                /* last time's weight as the placeholder: a starting point you
+                   can accept or beat, never a value silently recorded */
+                const pv=lastPerformance(en.exerciseId,null,W.id);
+                if(!pv) return '—';
+                const m=pv.sets[Math.min(n,pv.sets.length-1)];
+                return (m&&m.weight!==''&&m.weight!=null)?esc(m.weight):'—';})()}"></div>
             <div class="sfield"><div class="sl">RPE</div>
               <input class="wmIn" data-s="${n}" data-k="rpe" type="number" inputmode="numeric" min="1" max="10" value="${esc(s.rpe)}" placeholder="—"></div>
           </div>
@@ -7066,6 +7499,9 @@ function migrate(d){
       : (((out.whoop&&out.whoop.cycles)?out.whoop.cycles.length:0)>=14 ? 'whoop' : 'none');
   } else out.profile.source=inP.source;
   out.profile.sourceFields = Array.isArray(inP.sourceFields)?inP.sourceFields.slice():null;
+  /* standing limitations are new; an older install simply has none */
+  out.profile.limits = Array.isArray(inP.limits)
+    ? inP.limits.filter(l=>l&&l.area&&areaOf(l.area)) : [];
   out.profile.mode = out.profile.source==='none' ? 'manual'
                    : out.profile.source==='whoop' ? 'whoop' : 'device';
   /* Single sport/physique became multi-select. Trust the arrays only if the
