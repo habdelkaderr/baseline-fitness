@@ -83,6 +83,10 @@ input,textarea,select{-webkit-appearance:none;appearance:none}
 /* native pickers and the caret should match the dark UI */
 input[type=date],input[type=time]{color-scheme:dark}
 ::selection{background:rgba(195,245,60,.28)}
+/* Every inline icon is a 24-unit viewBox. Give them a sane default size so an
+   icon dropped somewhere without a specific rule can never render full-page.
+   Equal specificity to the rules below, so source order lets those win. */
+svg[viewBox="0 0 24 24"]{width:16px;height:16px;flex:0 0 auto;vertical-align:middle}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms !important;transition-duration:.01ms !important}
 }
@@ -134,6 +138,26 @@ a{color:var(--accent);text-decoration:none}
   background:var(--surface);border:1px solid var(--border-soft);
   border-radius:var(--r-lg);padding:16px;margin-bottom:12px;
 }
+/* selectable option cards — selection must be unmistakable */
+button.card{position:relative;transition:border-color .14s,background .14s,transform .1s}
+button.card:active{transform:scale(.99)}
+button.card.on{
+  border-color:var(--accent);
+  background:linear-gradient(160deg,rgba(195,245,60,.10),rgba(195,245,60,.03));
+  box-shadow:0 0 0 1px var(--accent);
+}
+button.card.on::after{
+  content:'';position:absolute;top:13px;right:13px;width:22px;height:22px;border-radius:50%;
+  background:var(--accent) no-repeat center/13px 13px;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230A0B0D' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'><path d='M20 6L9 17l-5-5'/></svg>");
+}
+button.card.on .opt-t{color:var(--accent)}
+button.card{padding-right:46px}      /* room for the tick */
+.multi-hint{
+  font-size:11px;font-weight:750;letter-spacing:.6px;text-transform:uppercase;
+  color:var(--accent);margin-bottom:9px;display:flex;align-items:center;gap:7px;
+}
+.multi-hint svg{width:14px;height:14px;flex:0 0 14px;stroke-width:3}
 .card.tight{padding:13px}
 .card.flush{padding:0;overflow:hidden}
 .card-h{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
@@ -331,6 +355,14 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
   box-shadow:var(--shadow-lg);
 }
 .sheet.on{transform:none}
+/* keyboard open: shrink the sheet to the space left above it so the footer
+   button and the focused field both stay reachable */
+.sheet.kb-open{
+  max-height:calc(100dvh - var(--kb,0px) - 8px);
+  bottom:var(--kb,0px);
+}
+.sheet.kb-open .sheet-b{padding-bottom:18px}
+.sheet.kb-open .sheet-f{padding-bottom:12px}
 .sheet-h{
   padding:16px var(--gut-r) 12px var(--gut-l);border-bottom:1px solid var(--border-soft);
   display:flex;align-items:center;justify-content:space-between;gap:12px;flex:0 0 auto;position:relative;
@@ -578,6 +610,8 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
     max-height:86vh;transition:transform .2s ease,opacity .2s ease;
   }
   .sheet.on{transform:translate(-50%,-50%) scale(1);opacity:1}
+  /* desktop has no on-screen keyboard to dodge */
+  .sheet.kb-open{max-height:86vh;bottom:auto}
   .sheet-h::before{display:none}
   .sheet-h{padding-top:18px}
   #toast{bottom:28px;left:calc(50% + var(--nav-w)/2)}
@@ -2270,8 +2304,10 @@ function freshDB(){
       age:null, sex:null, heightCm:null, weightKg:null,
       /* equipment tier: 0 minimal · 1 home · 2 full gym */
       tier:0, preferBest:true,
-      /* goals */
-      sport:'tennis', physique:'athletic', daysPerWeek:4
+      /* goals — arrays, with the first entry leading */
+      sports:['tennis'], sport:'tennis',
+      physiques:['athletic'], physique:'athletic',
+      daysPerWeek:4
     },
     meta:{ created:new Date().toISOString(), schema:SCHEMA_VERSION, lastBackup:null, lastBackupCount:null },
     /* Weekly GUIDELINES, not quotas. The daily engine decides the order and
@@ -3633,8 +3669,53 @@ function confirmSheet(title,msg,okLabel,onOk,danger){
   $('#cfOk').onclick=()=>{ closeSheet(); setTimeout(onOk,240); };
 }
 
+/* =========================================================================
+   KEYBOARD HANDLING
+   On phones the on-screen keyboard covers the lower half of the screen. The
+   visualViewport API reports the space actually left, so the sheet is shrunk
+   to fit and the focused field scrolled into the visible part.
+   ====================================================================== */
+function bindKeyboard(){
+  const vv=window.visualViewport;
+  const sheet=document.getElementById('sheet');
+  if(!sheet) return;
+  const apply=()=>{
+    if(!vv) return;
+    /* how much of the window the keyboard is covering */
+    const covered=Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    if(covered>90){
+      sheet.style.setProperty('--kb', covered+'px');
+      sheet.classList.add('kb-open');
+    } else {
+      sheet.style.removeProperty('--kb');
+      sheet.classList.remove('kb-open');
+    }
+  };
+  if(vv && !bindKeyboard._wired){
+    vv.addEventListener('resize',apply);
+    vv.addEventListener('scroll',apply);
+    bindKeyboard._wired=true;
+  }
+  bindKeyboard.apply=apply;
+}
+/* keep the focused field above the keyboard */
+function wireFocusScroll(root){
+  $$('input, textarea, select', root).forEach(el2=>{
+    if(el2.dataset.kbWired) return;
+    el2.dataset.kbWired='1';
+    el2.addEventListener('focus',()=>{
+      if(bindKeyboard.apply) setTimeout(bindKeyboard.apply,120);
+      /* two passes: once immediately, once after the keyboard animates in */
+      const bring=()=>{ try{ el2.scrollIntoView({block:'center',behavior:'smooth'}); }catch(e){ el2.scrollIntoView(false); } };
+      setTimeout(bring,180);
+      setTimeout(bring,420);
+    });
+  });
+}
+
 /* range slider fill + live value */
 function bindInputs(root){
+  bindKeyboard(); wireFocusScroll(root);
   $$('input[type=range]',root).forEach(r=>{
     const upd=()=>{
       const mn=+r.min||0,mx=+r.max||100;
@@ -5613,8 +5694,10 @@ function viewSettings(v){
    <div class="card">
      <div class="card-h"><div class="card-t accent">Your setup</div>
        <button class="btn xs ghost" id="sWizard">Re-run setup</button></div>
-     <div class="kv"><span class="k">Training for</span><span class="v">${esc(((typeof SPORTS!=='undefined'&&SPORTS.find(x=>x.id===P.sport))||{name:'—'}).name)}</span></div>
-     <div class="kv"><span class="k">Physique goal</span><span class="v">${esc(((typeof PHYSIQUES!=='undefined'&&PHYSIQUES.find(x=>x.id===P.physique))||{name:'—'}).name)}</span></div>
+     <div class="kv"><span class="k">Training for</span><span class="v">${esc(
+        ((P.sports&&P.sports.length)?P.sports:[P.sport]).map(id=>(SPORTS.find(x=>x.id===id)||{}).name).filter(Boolean).join(', ')||'—')}</span></div>
+     <div class="kv"><span class="k">Goals</span><span class="v">${esc(
+        ((P.physiques&&P.physiques.length)?P.physiques:[P.physique]).map(id=>(PHYSIQUES.find(x=>x.id===id)||{}).name).filter(Boolean).join(', ')||'—')}</span></div>
      <div class="kv"><span class="k">Equipment</span><span class="v">${esc((TIERS[P.tier||0]||TIERS[0]).name)}</span></div>
      <div class="kv"><span class="k">Exercises available</span><span class="v">${DB.exercises.filter(e=>(e.tier||0)<=(P.tier||0)).length} of ${DB.exercises.length}</span></div>
      <div class="kv"><span class="k">Schedule</span><span class="v">${P.daysPerWeek||4} days × ${P.sessionMin} min</span></div>
@@ -6179,6 +6262,16 @@ function migrate(d){
        fresh defaults would otherwise mask it. */
     if(!d.profile || d.profile.onboarded===undefined) out.profile.onboarded=true;
   }
+  /* Single sport/physique became multi-select. Trust the arrays only if the
+     SAVED data had them — otherwise the fresh defaults would mask the user's
+     real single value and silently reset everyone to tennis. */
+  const inP=d.profile||{};
+  out.profile.sports = (Array.isArray(inP.sports)&&inP.sports.length)
+    ? inP.sports.slice() : [inP.sport||out.profile.sport||'tennis'];
+  out.profile.physiques = (Array.isArray(inP.physiques)&&inP.physiques.length)
+    ? inP.physiques.slice() : [inP.physique||out.profile.physique||'athletic'];
+  out.profile.sport=out.profile.sports[0];
+  out.profile.physique=out.profile.physiques[0];
   out.meta.schema=SCHEMA_VERSION;
   // legacy: fold old separate tennis/cardio logs into the unified activity log
   if(Array.isArray(d.tennis)) d.tennis.forEach(t=>out.activities.push({
@@ -6347,9 +6440,10 @@ function startSetup(fromSettings){
     mode:DB.profile.mode, age:DB.profile.age, sex:DB.profile.sex,
     heightCm:DB.profile.heightCm, weightKg:DB.profile.weightKg,
     tier:DB.profile.tier==null?0:DB.profile.tier,
-    sport:DB.profile.sport||'tennis', physique:DB.profile.physique||'athletic',
+    sports:(DB.profile.sports&&DB.profile.sports.length)?DB.profile.sports.slice():[DB.profile.sport||'tennis'],
+    physiques:(DB.profile.physiques&&DB.profile.physiques.length)?DB.profile.physiques.slice():[DB.profile.physique||'athletic'],
     daysPerWeek:DB.profile.daysPerWeek||4, sessionMin:DB.profile.sessionMin||50,
-    units:DB.profile.units||'metric'
+    units:DB.profile.units||'metric', equipNote:DB.profile.equipNote||''
   }};
   drawSetup();
 }
@@ -6426,26 +6520,33 @@ function drawSetup(){
     title='What are you training for?';
     body=head+`
      <p style="font-size:13.5px;line-height:1.6;color:var(--text-2)">This sets the priority order the daily engine uses when it chooses between strength, power, conditioning and recovery.</p>
-     <div style="margin-top:16px">
-       ${SPORTS.map(x=>`
-       <button class="card tight setOpt ${d.sport===x.id?'on':''}" data-k="sport" data-v="${x.id}" style="display:block;width:100%;text-align:left;margin-bottom:8px">
-         <div style="font-weight:800;font-size:14.5px">${x.emoji} ${esc(x.name)}</div>
+     <div class="multi-hint" style="margin-top:16px">${svg('check')} Pick as many as you like — the first one you choose leads</div>
+     <div>
+       ${SPORTS.map(x=>{ const i=d.sports.indexOf(x.id);
+       return `<button class="card tight setMulti ${i>=0?'on':''}" data-k="sports" data-v="${x.id}" style="display:block;width:100%;text-align:left;margin-bottom:8px">
+         <div class="opt-t" style="font-weight:800;font-size:14.5px">${x.emoji} ${esc(x.name)}${i===0?' <span class="tag a" style="margin-left:6px">PRIMARY</span>':''}</div>
          <div style="font-size:12px;color:var(--text-3);margin-top:4px;line-height:1.5">${esc(x.focus)}</div>
-       </button>`).join('')}
-     </div>`;
+       </button>`;}).join('')}
+     </div>
+     ${d.sports.length>1?`<div class="note acc">Training for several sports at once means shared qualities get priority — leg strength, core and conditioning — and sport-specific work is spread thinner. <b>${esc((SPORTS.find(x=>x.id===d.sports[0])||{}).name)}</b> leads.</div>`:''}`;
   }
   /* ---------------- 4 · physique ---------------- */
   if(s===4){
-    title='And how you want to look';
+    title='And what you want from it';
     body=head+`
-     <p style="font-size:13.5px;line-height:1.6;color:var(--text-2)">A secondary goal. It adjusts how much upper-body and conditioning volume you get, without compromising the sport work.</p>
-     <div style="margin-top:16px">
-       ${PHYSIQUES.map(x=>`
-       <button class="card tight setOpt ${d.physique===x.id?'on':''}" data-k="physique" data-v="${x.id}" style="display:block;width:100%;text-align:left;margin-bottom:8px">
-         <div style="font-weight:800;font-size:14.5px">${esc(x.name)}</div>
+     <p style="font-size:13.5px;line-height:1.6;color:var(--text-2)">Secondary goals. These adjust how much upper-body and conditioning volume you get, without compromising the sport work.</p>
+     <div class="multi-hint" style="margin-top:16px">${svg('check')} Pick as many as apply</div>
+     <div>
+       ${PHYSIQUES.map(x=>{ const on=d.physiques.indexOf(x.id)>=0;
+       return `<button class="card tight setMulti ${on?'on':''}" data-k="physiques" data-v="${x.id}" style="display:block;width:100%;text-align:left;margin-bottom:8px">
+         <div class="opt-t" style="font-weight:800;font-size:14.5px">${esc(x.name)}</div>
          <div style="font-size:12px;color:var(--text-3);margin-top:4px;line-height:1.5">${esc(x.desc)}</div>
-       </button>`).join('')}
-     </div>`;
+       </button>`;}).join('')}
+     </div>
+     ${d.physiques.indexOf('muscle')>=0&&d.physiques.indexOf('lean')>=0
+       ? `<div class="note warn">Building muscle and getting leaner pull in opposite directions. You can chase both, but progress on each will be slower than picking one. The program will keep upper-body volume up and add conditioning.</div>`:''}
+     ${d.physiques.indexOf('perform')>=0&&d.physiques.length>1
+       ? `<div class="note">You have picked "performance only" alongside an appearance goal. Performance will win where they conflict.</div>`:''}`;
   }
   /* ---------------- 5 · schedule ---------------- */
   if(s===5){
@@ -6464,8 +6565,8 @@ function drawSetup(){
        <div class="kv"><span class="k">Data source</span><span class="v">${d.mode==='whoop'?'WHOOP + manual logs':'Manual logs only'}</span></div>
        <div class="kv"><span class="k">Equipment</span><span class="v">${esc((TIERS.find(t=>t.id===d.tier)||TIERS[0]).name)}</span></div>
        <div class="kv"><span class="k">Exercises available</span><span class="v">${DB.exercises.filter(e=>(e.tier||0)<=d.tier).length}</span></div>
-       <div class="kv"><span class="k">Training for</span><span class="v">${esc((SPORTS.find(x=>x.id===d.sport)||SPORTS[0]).name)}</span></div>
-       <div class="kv"><span class="k">Physique goal</span><span class="v">${esc((PHYSIQUES.find(x=>x.id===d.physique)||PHYSIQUES[0]).name)}</span></div>
+       <div class="kv"><span class="k">Training for</span><span class="v">${esc(d.sports.map(id=>(SPORTS.find(x=>x.id===id)||{}).name).filter(Boolean).join(', '))}</span></div>
+       <div class="kv"><span class="k">Goals</span><span class="v">${esc(d.physiques.map(id=>(PHYSIQUES.find(x=>x.id===id)||{}).name).filter(Boolean).join(', '))}</span></div>
        <div class="kv"><span class="k">Schedule</span><span class="v">${d.daysPerWeek} days × ${d.sessionMin} min</span></div>
        ${d.age?`<div class="kv"><span class="k">Age / height / weight</span><span class="v">${d.age} · ${d.heightCm||'—'} cm · ${d.weightKg||'—'} kg</span></div>`:''}
      </div>`;
@@ -6479,11 +6580,21 @@ function drawSetup(){
     `<div class="btn-row">${back}<button class="btn primary" id="setNext" style="flex:2">${nextLabel}</button></div>`,
     ()=>{ if(!DB.profile.onboarded){ try{ render(); toast('Setup unfinished — finish it from the card on Today'); }catch(e){} } });
 
-  /* option cards */
+  /* single-choice cards */
   $$('.setOpt').forEach(b=>b.onclick=()=>{
     const k=b.dataset.k; let v=b.dataset.v;
     if(k==='tier') v=+v;
     SETUP.draft[k]=v; haptic(); drawSetup();
+  });
+  /* multi-choice cards — toggle, first pick leads, never allow empty */
+  $$('.setMulti').forEach(b=>b.onclick=()=>{
+    const k=b.dataset.k, v=b.dataset.v, arr=SETUP.draft[k];
+    const i=arr.indexOf(v);
+    if(i>=0){
+      if(arr.length===1){ toast('Keep at least one'); return; }
+      arr.splice(i,1);
+    } else arr.push(v);
+    haptic(); drawSetup();
   });
   /* free fields */
   $$('.setF').forEach(i=>i.oninput=()=>{
@@ -6508,12 +6619,14 @@ function drawSetup(){
 function finishSetup(){
   const d=SETUP.draft, P=DB.profile;
   P.mode=d.mode; P.age=d.age; P.sex=d.sex; P.heightCm=d.heightCm; P.weightKg=d.weightKg;
-  P.tier=d.tier; P.sport=d.sport; P.physique=d.physique;
+  P.tier=d.tier;
+  P.sports=d.sports.slice(); P.sport=d.sports[0];          // sport = the leading one
+  P.physiques=d.physiques.slice(); P.physique=d.physiques[0];
   P.daysPerWeek=d.daysPerWeek; P.sessionMin=d.sessionMin; P.units=d.units;
   if(d.equipNote) P.equipNote=d.equipNote;
   P.equipment=equipmentList(d.tier, d.equipNote);
-  P.goalPrimary=goalTextFor(d.sport);
-  P.goalSecondary=(PHYSIQUES.find(x=>x.id===d.physique)||PHYSIQUES[0]).desc;
+  P.goalPrimary=goalTextFor(d.sports);
+  P.goalSecondary=d.physiques.map(id=>(PHYSIQUES.find(x=>x.id===id)||{}).desc).filter(Boolean).join(' ');
   P.onboarded=true;
   applyGoalTargets();
   save(true); closeSheet(); renderNav();
@@ -6532,26 +6645,48 @@ function equipmentList(tier, note){
   if(note) base.push(note);
   return base;
 }
-function goalTextFor(sportId){
-  const s=SPORTS.find(x=>x.id===sportId)||SPORTS[0];
-  return s.id==='general'
-    ? 'Build balanced strength, conditioning and movement quality.'
-    : `Improve ${s.name.toLowerCase()} performance. ${s.focus}`;
+function goalTextFor(sportIds){
+  const ids=Array.isArray(sportIds)?sportIds:[sportIds];
+  const list=ids.map(id=>SPORTS.find(x=>x.id===id)).filter(Boolean);
+  if(!list.length) return 'Build balanced strength, conditioning and movement quality.';
+  if(list.length===1){
+    return list[0].id==='general'
+      ? 'Build balanced strength, conditioning and movement quality.'
+      : `Improve ${list[0].name.toLowerCase()} performance. ${list[0].focus}`;
+  }
+  const names=list.map(s=>s.name.toLowerCase());
+  return `Improve performance across ${names.slice(0,-1).join(', ')} and ${names[names.length-1]}, `+
+         `led by ${names[0]}. ${list[0].focus}`;
 }
-/* the goal shapes the weekly targets the engine aims at */
+/* Goals shape the weekly targets. With several sports selected the shared
+   qualities (legs, core, conditioning) take priority and sport-specific work
+   is spread thinner — the leading sport still decides ties. */
 function applyGoalTargets(){
   const P=DB.profile, days=P.daysPerWeek||4, T=DB.targets;
+  const sports=(P.sports&&P.sports.length)?P.sports:[P.sport||'tennis'];
+  const goals =(P.physiques&&P.physiques.length)?P.physiques:[P.physique||'athletic'];
+  const has=x=>sports.indexOf(x)>=0;
+  const wants=x=>goals.indexOf(x)>=0;
+
   const lower = days<=3?1:2;
   const upper = days<=3?1:2;
   T.lower=lower; T.upper=upper;
-  T.power = (['tennis','football','basketball','racquet'].indexOf(P.sport)>=0 && days>=4) ? 1 : (days>=5?1:0);
+  /* explosive sports need power work; more of them does not mean more sessions */
+  const explosive = has('tennis')||has('football')||has('basketball')||has('racquet');
+  T.power = explosive && days>=4 ? 1 : (days>=5?1:0);
   T.core  = Math.min(4, Math.max(2, days-1));
-  T.run   = P.sport==='running' ? Math.min(4,days-1) : (P.sport==='cycling'?0:(days>=4?2:1));
-  T.bike  = P.sport==='cycling' ? Math.min(4,days-1) : (days>=4?2:1);
+  T.run   = has('running') ? Math.min(4,days-1)
+          : (sports.length===1&&has('cycling')) ? 0
+          : (days>=4?2:1);
+  T.bike  = has('cycling') ? Math.min(4,days-1) : (days>=4?2:1);
   T.mobility = Math.max(2, days-1);
-  if(P.physique==='muscle'){ T.upper=Math.min(3,upper+1); T.run=Math.max(0,T.run-1); }
-  if(P.physique==='lean'){ T.run=T.run+1; T.bike=T.bike+1; }
-  if(P.physique==='perform'){ T.upper=Math.max(1,upper-0); }
+
+  if(wants('muscle')){ T.upper=Math.min(3,T.upper+1); if(!wants('lean')) T.run=Math.max(0,T.run-1); }
+  if(wants('lean')){ T.run=T.run+1; T.bike=T.bike+1; }
+  if(wants('perform')&&!wants('muscle')) T.upper=Math.max(1,T.upper);
+
+  /* more sports than training days means something has to give */
+  if(sports.length>=3&&days<=3){ T.power=0; T.upper=1; }
 }
 
 function welcome(){
