@@ -4799,21 +4799,26 @@ function bindInputs(root){
 /* =========================================================================
    NAVIGATION
    ====================================================================== */
-const TABS=[
-  {id:'today',  label:'TODAY',   icon:'today'},
-  {id:'workouts',label:'TRAIN',  icon:'dumbbell'},
-  {id:'tennis', label:'ACTIVITY',icon:'tennis'},
-  {id:'progress',label:'PROGRESS',icon:'chart'},
-  {id:'whoop',  label:'WHOOP',   icon:'pulse'},
-  {id:'settings',label:'SETTINGS',icon:'gear'}
-];
+/* The metrics tab is named for what it holds, not for whose device filled it.
+   A label that changes per user makes the nav width jump about and reads
+   oddly for anyone whose device is not the one it was named after; "Metrics"
+   covers trends, sleep, baselines and import whatever you wear, or none. */
+function tabs(){ return [
+  {id:'today',  label:'Today',   icon:'today'},
+  {id:'workouts',label:'Train',  icon:'dumbbell'},
+  {id:'tennis', label:'Activity',icon:'tennis'},
+  {id:'progress',label:'Progress',icon:'chart'},
+  {id:'whoop',  label:'Metrics', icon:'pulse'},
+  {id:'settings',label:'Settings',icon:'gear'}
+];}
 let TAB='today';
 function renderNav(){
-  const mode = usesDevice() ? SRC_NAME() : 'Manual logging';
+  /* the brand is app identity, not a status readout — whichever device you
+     wear is shown on the Metrics screen and in Settings, not here */
   $('#nav').innerHTML=
-    `<div class="nav-brand"><i>${svg('tennis')}</i><div>Baseline<span>${esc(mode)}</span></div></div>`+
-    TABS.map(t=>
-      `<button data-tab="${t.id}" class="${TAB===t.id?'on':''}" aria-current="${TAB===t.id?'page':'false'}">${svg(t.icon)}<span>${t.label}</span></button>`).join('')+
+    `<div class="nav-brand"><i>${svg('tennis')}</i><div>Baseline<span>Adaptive training</span></div></div>`+
+    tabs().map(t=>
+      `<button data-tab="${t.id}" class="${TAB===t.id?'on':''}" aria-current="${TAB===t.id?'page':'false'}">${svg(t.icon)}<span>${esc(t.label)}</span></button>`).join('')+
     `<div class="nav-foot">All data stays on this device.<br>No account, no server, no tracking.</div>`;
   $$('#nav button').forEach(b=>b.onclick=()=>{ haptic(); go(b.dataset.tab); });
 }
@@ -6566,8 +6571,12 @@ function limitSheet(id){
 let HTAB='trends';
 function viewWhoop(v){
   const n=DB.whoop.cycles.length;
-  appbar(usesDevice()?SRC_NAME():'Metrics',
-    n? `${n} days · ${DB.whoop.cycles[0].date} → ${DB.whoop.cycles[n-1].date}` : 'No data imported yet');
+  /* generic heading; the device's name belongs in the subtitle, where it is
+     context rather than a label that changes shape per user */
+  appbar('Metrics',
+    n ? `${esc(usesDevice()?SRC_NAME():'Manual')} · ${n} days · ${DB.whoop.cycles[0].date} → ${DB.whoop.cycles[n-1].date}`
+      : (usesDevice() ? `${esc(SRC_NAME())} · nothing imported yet`
+                      : 'No wearable — running from your check-ins'));
   v.innerHTML=`<div class="seg acc" id="hSeg" style="margin-bottom:14px">
       <button data-t="trends">Trends</button><button data-t="sleep">Sleep</button>
       <button data-t="baselines">Baselines</button><button data-t="import">Import</button>
@@ -7778,7 +7787,7 @@ async function boot(){
   else if(!raw) save(true,true);
   if(DB.whoop.cycles.length>=14) recomputeBaselines();
   TAB = (DB.ui&&DB.ui.tab)||'today';
-  if(!TABS.some(t=>t.id===TAB)) TAB='today';
+  if(!tabs().some(t=>t.id===TAB)) TAB='today';
   renderNav(); render(); updateBanner();
 
   // recover an interrupted workout
