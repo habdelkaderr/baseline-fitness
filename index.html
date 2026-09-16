@@ -650,6 +650,10 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
     max-height:86vh;transition:transform .2s ease,opacity .2s ease;
   }
   .sheet.on{transform:translate(-50%,-50%) scale(1);opacity:1}
+  /* A centred modal grows and shrinks with its content, which on a multi-step
+     form makes the footer buttons walk up and down the screen between steps.
+     A fixed height pins them: short steps get space below, long ones scroll. */
+  .sheet.steps{height:min(86vh,620px)}
   /* desktop has no on-screen keyboard to dodge */
   .sheet.kb-open{max-height:86vh;bottom:auto}
   .sheet-h::before{display:none}
@@ -1066,7 +1070,7 @@ const SEED_BASE = {
 };
 /* does THIS device actually hold WHOOP data? */
 const hasWhoop  = ()=> !!(DB&&DB.whoop&&DB.whoop.cycles&&DB.whoop.cycles.length>=7);
-const whoopMode = ()=> !!(DB&&DB.profile.mode==='whoop');
+const whoopMode = ()=> !!(DB&&DB.profile&&DB.profile.source&&DB.profile.source!=='none');
 
 /* =========================================================================
    EXERCISE LIBRARY
@@ -2339,9 +2343,10 @@ function freshDB(){
       equipment:['Bodyweight'],
       units:'metric',
       sessionMin:50, startDate:todayISO(), planWeek:1, planStart:todayISO(),
-      /* 'whoop' | 'manual' | null (null = first run, ask) — WHOOP is an
-         optional enhancement, never a prerequisite. */
-      mode:null, onboarded:false,
+      /* Which wearable, if any. null = first run, ask. See SOURCES: a device
+         is described by the fields it provides, and no device is privileged.
+         `mode` is kept in sync only so older saved data keeps working. */
+      source:null, sourceFields:null, mode:null, onboarded:false,
       /* about you — all optional, used only for context and never required */
       age:null, sex:null, heightCm:null, weightKg:null,
       /* equipment tier: 0 minimal · 1 home · 2 full gym */
@@ -2452,6 +2457,89 @@ function canDo(e){
     return have.indexOf(x)>=0;
   });
 }
+/* =========================================================================
+   DATA SOURCES (WEARABLES)
+   A device is described by the numbers it can actually give you. Everything
+   downstream is driven by this table — what the morning check-in asks for,
+   what the readiness score is allowed to use, what the metrics tab is called —
+   so WHOOP is one row here, not a special case in the code.
+
+   Field names are canonical: every device's "recovery score", "readiness
+   score", "Body Battery" and "Energy Score" land in the same `recovery` slot,
+   with `labels` giving each device its own wording. That is what lets the
+   engine work identically whatever you wear.
+   ====================================================================== */
+const DATA_FIELDS={
+  recovery :{name:'Recovery',        unit:'%',  lo:0,  hi:100, hint:'A 0–100 daily readiness score'},
+  hrv      :{name:'HRV',             unit:'ms', lo:5,  hi:250, hint:'Overnight heart-rate variability'},
+  rhr      :{name:'Resting HR',      unit:'bpm',lo:25, hi:120, hint:'Overnight resting heart rate'},
+  sleep    :{name:'Sleep',           unit:'h',  lo:0,  hi:16,  hint:'Time actually asleep'},
+  sleepNeed:{name:'Sleep need',      unit:'h',  lo:4,  hi:14,  hint:'What your device says you needed'},
+  strain   :{name:'Strain / load',   unit:'',   lo:0,  hi:21,  hint:"Yesterday's cardiovascular load"},
+  resp     :{name:'Respiratory rate',unit:'rpm',lo:6,  hi:30},
+  spo2     :{name:'Blood oxygen',    unit:'%',  lo:70, hi:100},
+  temp     :{name:'Skin temp change',unit:'°C', lo:-5, hi:5},
+  steps    :{name:'Steps',           unit:'',   lo:0,  hi:80000}
+};
+/* `importer`: 'whoop' = the built-in CSV parser for WHOOP's export format;
+   'csv' = the generic column-mapping importer; null = type it in each day. */
+const SOURCES=[
+  {id:'whoop', name:'WHOOP', emoji:'🟣', importer:'whoop',
+   fields:['recovery','hrv','rhr','sleep','sleepNeed','strain','resp','spo2','temp'],
+   how:'WHOOP app → More → Data Export. You are emailed a ZIP of CSV files; import physiological_cycles.csv and workouts.csv here.'},
+  {id:'garmin', name:'Garmin', emoji:'🔵', importer:'csv',
+   fields:['recovery','hrv','rhr','sleep','strain','steps'],
+   labels:{recovery:'Body Battery / Training Readiness', strain:'Training Load'},
+   how:'Garmin Connect on the web → Reports → export CSV. Or just type the numbers in each morning.'},
+  {id:'oura', name:'Oura Ring', emoji:'💍', importer:'csv',
+   fields:['recovery','hrv','rhr','sleep','temp'],
+   labels:{recovery:'Readiness Score', temp:'Temperature deviation'},
+   how:'Oura web dashboard → Account → Export Data. Or type the numbers in each morning.'},
+  {id:'fitbit', name:'Fitbit', emoji:'🟩', importer:'csv',
+   fields:['recovery','hrv','rhr','sleep','spo2','steps'],
+   labels:{recovery:'Daily Readiness Score'},
+   how:'Google Takeout → Fitbit. Or type the numbers in each morning.'},
+  {id:'apple', name:'Apple Watch', emoji:'⌚', importer:'csv',
+   fields:['hrv','rhr','sleep','spo2','steps'],
+   how:'Health app → your profile → Export All Health Data. Apple gives no recovery score, so readiness is built from HRV, resting HR and sleep instead — which is what the score is made of anyway.'},
+  {id:'samsung', name:'Samsung Galaxy Watch', emoji:'⌚', importer:'csv',
+   fields:['recovery','hrv','rhr','sleep','steps'],
+   labels:{recovery:'Energy Score'},
+   how:'Samsung Health → Settings → Download personal data.'},
+  {id:'polar', name:'Polar', emoji:'🔴', importer:'csv',
+   fields:['recovery','hrv','rhr','sleep','strain'],
+   labels:{recovery:'Nightly Recharge', strain:'Cardio Load'},
+   how:'Polar Flow → Settings → Export your data.'},
+  {id:'coros', name:'COROS', emoji:'⌚', importer:'csv',
+   fields:['hrv','rhr','sleep','strain'],
+   labels:{strain:'Training Load'},
+   how:'COROS web → Profile → Data export.'},
+  {id:'other', name:'Another wearable', emoji:'⌚', importer:'csv', pickFields:true,
+   fields:['recovery','hrv','rhr','sleep','sleepNeed','strain','resp','spo2','temp','steps'],
+   how:'Tick the numbers your device actually shows you. Anything you do not tick is never asked for and never assumed.'},
+  {id:'none', name:'No wearable', emoji:'✍️', importer:null, fields:[],
+   how:'Everything runs from what you log plus a short daily check-in: energy, soreness, stress, motivation and sleep. That is enough for the engine to work.'}
+];
+const sourceOf = id => SOURCES.find(s=>s.id===(id!=null?id:(DB&&DB.profile&&DB.profile.source)))||SOURCES[SOURCES.length-1];
+/* the fields actually in play: what the device offers, narrowed to what the
+   user confirmed if they picked their own */
+function srcFields(id){
+  const s=sourceOf(id);
+  const chosen=(DB&&DB.profile&&Array.isArray(DB.profile.sourceFields))?DB.profile.sourceFields:null;
+  if(s.pickFields&&chosen) return s.fields.filter(f=>chosen.indexOf(f)>=0);
+  return s.fields.slice();
+}
+const hasField  = f => srcFields().indexOf(f)>=0;
+const fieldLabel= (f,id)=> (sourceOf(id).labels||{})[f] || (DATA_FIELDS[f]||{name:f}).name;
+const fieldUnit = f => (DATA_FIELDS[f]||{}).unit||'';
+const SRC_NAME  = ()=> sourceOf().name;
+const usesDevice= ()=> srcFields().length>0;
+/* the label on the last step of the wizard */
+function finishLabel(d){
+  const s=sourceOf(d&&d.source);
+  return s.importer ? `Finish & import ${s.name}` : 'Finish setup';
+}
+
 /* =========================================================================
    SPORT PROFILES
    Everything sport-specific is derived from here, so choosing football or
@@ -2995,6 +3083,17 @@ function isoOf(v){
   return null;
 }
 
+
+/* Vendors disagree on sleep units: WHOOP and Fitbit give minutes, Oura and
+   Garmin often give seconds, some exports give decimal hours. Pick by
+   magnitude — nobody sleeps 30000 minutes, and nobody sleeps 7 minutes. */
+function sleepMinutes(v){
+  const n=numOr(v);
+  if(n==null) return null;
+  if(n>3000) return Math.round(n/60);   // seconds
+  if(n<=24)  return Math.round(n*60);   // decimal hours
+  return Math.round(n);                 // already minutes
+}
 /* =========================================================================
    WHOOP IMPORT
    ====================================================================== */
@@ -3004,6 +3103,12 @@ function detectKind(head){
   if(h.includes('activity name')||h.includes('activity strain')) return 'workouts';
   if(h.includes('day strain')||h.includes('recovery score')) return 'cycles';
   if(h.includes('sleep onset')||h.includes('nap')) return 'sleeps';
+  /* Any other vendor's daily export: a date column plus at least one metric we
+     understand is enough. This is what lets Garmin, Oura, Fitbit, Polar,
+     Samsung and Apple Health exports come in through the same door. */
+  const hasDate = /date|day|timestamp|start/.test(h);
+  const hasMetric = /recovery|readiness|body ?battery|energy score|hrv|heart rate variability|resting|rhr|sleep|strain|load/.test(h);
+  if(hasDate && hasMetric) return 'cycles';
   return null;
 }
 function importWhoopFile(name,text){
@@ -3011,25 +3116,37 @@ function importWhoopFile(name,text){
   if(rows.length<2) return {file:name,kind:null,added:0,dupes:0,error:'File is empty or has no data rows'};
   const {head,data}=toObjects(rows);
   const kind=detectKind(head);
-  if(!kind) return {file:name,kind:null,added:0,dupes:0,error:'Unrecognised WHOOP file — headers did not match cycles, sleeps, workouts or journal'};
+  if(!kind) return {file:name,kind:null,added:0,dupes:0,
+    error:'Unrecognised file — no date column, or no column that looks like recovery, HRV, resting heart rate, sleep or load'};
 
   let added=0,dupes=0,bad=0,merged=0,naps=0;
   if(kind==='cycles'||kind==='sleeps'){
     const idx={}; DB.whoop.cycles.forEach((c,i)=>idx[c.date]=i);
     data.forEach(r=>{
-      const date=isoOf(col(r,'Cycle start time','Sleep onset','Cycle start'));
+      const date=isoOf(col(r,'Cycle start time','Sleep onset','Cycle start',
+                           'Date','Day','Calendar date','Timestamp','Start time','Summary date'));
       if(!date){bad++;return;}
       const rec={
         date,
-        recovery: numOr(col(r,'Recovery score %','Recovery score')),
-        hrv:      numOr(col(r,'Heart rate variability (ms)','Heart rate variability')),
-        rhr:      numOr(col(r,'Resting heart rate (bpm)','Resting heart rate')),
+        /* every vendor's daily score lands in the same slot: WHOOP recovery,
+           Garmin Body Battery / Training Readiness, Oura & Fitbit readiness,
+           Samsung energy, Polar Nightly Recharge */
+        recovery: numOr(col(r,'Recovery score %','Recovery score','Readiness score',
+                            'Daily readiness score','Body battery','Body battery max',
+                            'Training readiness','Energy score','Nightly recharge','Readiness')),
+        hrv:      numOr(col(r,'Heart rate variability (ms)','Heart rate variability',
+                            'HRV','Average HRV','HRV (ms)','Overnight HRV','Rmssd','Average hrv')),
+        rhr:      numOr(col(r,'Resting heart rate (bpm)','Resting heart rate',
+                            'RHR','Lowest resting heart rate','Average resting heart rate')),
         resp:     numOr(col(r,'Respiratory rate (rpm)','Respiratory rate')),
         skinTemp: numOr(col(r,'Skin temp (celsius)','Skin temp')),
         spo2:     numOr(col(r,'Blood oxygen %','Blood oxygen')),
-        strain:   numOr(col(r,'Day Strain','Day strain')),
+        strain:   numOr(col(r,'Day Strain','Day strain','Training load','Cardio load',
+                            'Activity load','Exertion','Strain')),
         kcal:     numOr(col(r,'Energy burned (cal)','Energy burned')),
-        sleepMin: numOr(col(r,'Asleep duration (min)','Asleep duration')),
+        sleepMin: sleepMinutes(col(r,'Asleep duration (min)','Asleep duration',
+                            'Total sleep duration','Sleep duration','Total sleep',
+                            'Time asleep','Minutes asleep','Sleep (h)')),
         inBed:    numOr(col(r,'In bed duration (min)')),
         sleepPerf:numOr(col(r,'Sleep performance %','Sleep performance')),
         sleepNeed:numOr(col(r,'Sleep need (min)','Sleep need')),
@@ -4240,7 +4357,7 @@ const TABS=[
 ];
 let TAB='today';
 function renderNav(){
-  const mode = DB&&DB.profile.mode==='whoop' ? 'WHOOP connected' : 'Manual logging';
+  const mode = usesDevice() ? SRC_NAME() : 'Manual logging';
   $('#nav').innerHTML=
     `<div class="nav-brand"><i>${svg('tennis')}</i><div>Baseline<span>${esc(mode)}</span></div></div>`+
     TABS.map(t=>
@@ -4310,7 +4427,7 @@ function viewToday(v){
         <div class="card-t" style="margin-bottom:8px">Why today</div>
         <ul>${pl.why.map(w=>`<li class="${w.k}"><span class="dot"></span><span>${w.t}</span></li>`).join('')}</ul>
         <div style="font-size:11.5px;color:var(--text-3);margin-top:10px;line-height:1.5">
-          Based on ${esc(rd.sources.label)} · ${esc(rd.sources.confidence)} confidence${hasWhoop()?'':' · WHOOP not connected'}
+          Based on ${esc(rd.sources.label)} · ${esc(rd.sources.confidence)} confidence${(usesDevice()&&!hasWhoop())?' · '+esc(SRC_NAME())+' not connected':''}
         </div>
       </div>
       ${pl.goalNote?`<div class="note acc" style="margin-top:12px"><b>How this serves your goals:</b> ${esc(pl.goalNote)}</div>`:''}
@@ -4378,13 +4495,17 @@ function viewToday(v){
     ${statTile('Yesterday load',rnd(dayDemand(addDays(d,-1)).load,1),'', (()=>{const v=dayDemand(addDays(d,-1)).load; return v>=12?'r':v>=7?'y':'g';})(),'from your log')}
     ${statTile('7d load',rd.acwr.ratio!=null?rnd(rd.acwr.ratio,2):null,'×', rd.acwr.ratio==null?'':rd.acwr.ratio>1.4?'o':rd.acwr.ratio<0.8?'c':'g','acute:chronic')}
   </div>
-  <div class="card tight" style="margin-top:9px;border-left:3px solid var(--cyan)">
-    <div style="font-size:13px;font-weight:700;margin-bottom:4px">${hasWhoop()?'No WHOOP data for today':'WHOOP not connected'}</div>
+  ${usesDevice()?`<div class="card tight" style="margin-top:9px;border-left:3px solid var(--cyan)">
+    <div style="font-size:13px;font-weight:700;margin-bottom:4px">${hasWhoop()?`No ${esc(SRC_NAME())} data for today`:`${esc(SRC_NAME())} not connected yet`}</div>
     <div style="font-size:12.5px;color:var(--text-2);line-height:1.5">${hasWhoop()
-      ? `Your import covers up to ${esc(DB.whoop.cycles[DB.whoop.cycles.length-1].date)}. Today's recommendation is based on how you feel and your training history instead — re-import a fresh export to bring the physiology back in.`
-      : 'Recommendations are based on how you feel and your training history. No recovery, HRV or resting-HR figures are shown because none exist — the app will not invent them.'}</div>
-    <button class="btn xs ghost" id="btnAddWhoop" style="margin-top:10px">${hasWhoop()?'Re-import WHOOP':'Import WHOOP data'}</button>
-  </div>`}
+      ? `Your import covers up to ${esc(DB.whoop.cycles[DB.whoop.cycles.length-1].date)}. Today's recommendation is based on how you feel and your training history instead — import a fresh export, or type this morning's numbers into the check-in.`
+      : `Recommendations are based on how you feel and your training history. No ${esc(srcFields().slice(0,3).map(f=>fieldLabel(f).toLowerCase()).join(', '))} figures are shown because none exist yet — the app will not invent them.`}</div>
+    <button class="btn xs ghost" id="btnAddWhoop" style="margin-top:10px">${hasWhoop()?`Re-import ${esc(SRC_NAME())}`:`Import ${esc(SRC_NAME())} data`}</button>
+  </div>`:`<div class="card tight" style="margin-top:9px;border-left:3px solid var(--violet)">
+    <div style="font-size:13px;font-weight:700;margin-bottom:4px">No wearable — and none needed</div>
+    <div style="font-size:12.5px;color:var(--text-2);line-height:1.5">Today's call comes from how you said you feel, your sleep, and what your training history already shows. No recovery or HRV figures appear because none exist, and the app will not invent them.</div>
+    <button class="btn xs ghost" id="btnAddWhoop" style="margin-top:10px">Add a wearable</button>
+  </div>`}`}
 
   <div class="card acc" id="accReady" style="padding:0;overflow:hidden">
     <div class="acc-h" id="accReadyH">
@@ -4592,7 +4713,7 @@ function wireToday(d){
   on('btnPrep',()=>previewWorkout('w_prep','full'));
   on('btnQuickLog',()=>activitySheet(null,d));
   on('btnQuickLog2',()=>activitySheet(null,d));
-  on('btnAddWhoop',()=>{ HTAB='import'; go('whoop'); });
+  on('btnAddWhoop',()=>{ if(usesDevice()){ HTAB='import'; go('whoop'); } else startSetup(true); });
   on('setupGo',()=>startSetup());
   on('setupDismiss',()=>{
     DB.profile.onboarded=true; save(true); renderNav(); render();
@@ -4670,22 +4791,27 @@ function openCheckin(d){
   const ex=DB.checkins[d]||{};
   const g=(k,f)=> ex[k]!=null?ex[k] : (cy&&cy[f]!=null?cy[f]:'');
   const prevStrain = ex.prevStrain!=null?ex.prevStrain : (prev&&prev.strain!=null?prev.strain:'');
-  const src = cy? '<span class="src whoop">from whoop</span>' : '<span class="src you">enter manually</span>';
   const dow=dowOf(d);
   const loggedTen = DB.activities.some(a=>a.date===d&&isMainSportAct(a.type));
 
-  /* Three cases, and only one of them asks you to type WHOOP numbers:
-       a) WHOOP data covers this date  -> filled in automatically, read-only
-       b) WHOOP user, date not covered -> optional, collapsed, clearly skippable
-       c) no WHOOP at all              -> never mentioned                      */
+  /* Three cases, and only one of them asks you to type device numbers:
+       a) imported data covers this date -> filled in automatically, read-only
+       b) device user, date not covered  -> asks for exactly what it provides
+       c) no device at all               -> never mentioned                    */
   const autoWhoop = !!cy;
-  const askWhoop  = !autoWhoop && whoopMode();
+  const SRC = sourceOf();
+  /* the engine only consumes these four; asking for numbers it would ignore
+     would be padding, so a device that reports more is not asked for more */
+  const ENTRY=[['recovery','ciRec',0,100,'1'],['hrv','ciHrv',0,300,'1'],
+               ['rhr','ciRhr',20,120,'1'],['strain','ciPs',0,21,'0.1']]
+    .filter(([f])=>hasField(f));
+  const askWhoop  = !autoWhoop && ENTRY.length>0;
   const B2 = DB.baselines;
   openSheet('Daily check-in · '+fmtDate(d),`
    ${autoWhoop?`
    <div class="card tight" style="border-color:rgba(94,200,242,.3);background:rgba(94,200,242,.05)">
      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-       <div class="card-t" style="color:var(--cyan)">From your WHOOP data</div>
+       <div class="card-t" style="color:var(--cyan)">From your ${esc(SRC.name)} data</div>
        <span class="tag c">AUTOMATIC</span>
      </div>
      <div class="stats">
@@ -4701,14 +4827,18 @@ function openCheckin(d){
      <input type="hidden" id="ciPs"  value="${prev&&prev.strain!=null?prev.strain:''}">
    </div>`:''}
    ${askWhoop?`
-   <div class="card-t" style="margin-bottom:4px">This morning's WHOOP numbers</div>
-   <div class="hint" style="margin-bottom:12px">Copy them from the WHOOP app. They are compared against the baselines your
-     import established${B2.computed?` — HRV <b>${rnd(B2.hrv,0)} ms</b>, resting HR <b>${rnd(B2.rhr,0)}</b>, typical recovery <b>${rnd(B2.recovery,0)}%</b>`:''}.</div>
+   <div class="card-t" style="margin-bottom:4px">This morning's ${esc(SRC.name)} numbers</div>
+   <div class="hint" style="margin-bottom:12px">Only what your ${esc(SRC.name)} actually reports is asked for here.${
+     B2.computed?` They are compared against your own baselines — HRV <b>${rnd(B2.hrv,0)} ms</b>, resting HR <b>${rnd(B2.rhr,0)}</b>, typical recovery <b>${rnd(B2.recovery,0)}%</b>.`
+     :' Once you have a couple of weeks logged, they get compared against your own baselines rather than general ranges.'}</div>
    <div class="grid2">
-     <div class="field"><label>Recovery %</label><input class="inp num" type="number" inputmode="numeric" id="ciRec" min="0" max="100" value="${g('recovery','recovery')}" placeholder="—"></div>
-     <div class="field"><label>HRV (ms)</label><input class="inp num" type="number" inputmode="numeric" id="ciHrv" min="0" max="300" value="${g('hrv','hrv')}" placeholder="—"></div>
-     <div class="field"><label>Resting HR</label><input class="inp num" type="number" inputmode="numeric" id="ciRhr" min="20" max="120" value="${g('rhr','rhr')}" placeholder="—"></div>
-     <div class="field"><label>Yesterday's strain</label><input class="inp num" type="number" inputmode="decimal" step="0.1" id="ciPs" min="0" max="21" value="${prevStrain}" placeholder="—"></div>
+     ${ENTRY.map(([f,id,lo,hi,step])=>{
+       const val = f==='strain' ? prevStrain : g(f,f);
+       const lbl = f==='strain' ? `Yesterday's ${fieldLabel(f).toLowerCase()}` : fieldLabel(f);
+       const unit= fieldUnit(f);
+       return `<div class="field"><label>${esc(lbl)}${unit?' ('+esc(unit)+')':''}</label>
+         <input class="inp num" type="number" inputmode="${step==='1'?'numeric':'decimal'}" step="${step}"
+                id="${id}" min="${lo}" max="${hi}" value="${val}" placeholder="—"></div>`;}).join('')}
    </div>
    <div class="note" style="margin-bottom:16px">Leave any of these blank and the engine simply weighs them out — it will not guess a value.</div>`:''}
    ${(!autoWhoop&&!askWhoop)?`<div class="note" style="margin-bottom:16px">The questions below are all it needs. Your answers plus your training history drive the recommendation.</div>`:''}
@@ -5875,7 +6005,9 @@ function paneLinks(c){
        </div>
        <div class="bar ${cls}" style="margin-top:8px"><i style="width:${clamp(a*100,3,100)}%"></i></div>
      </div>`;}).join('')
-    :'<div class="empty"><div class="ei">🔗</div><h4>Not enough data yet</h4><p>Import your WHOOP export and log 2–3 weeks of activity, then relationships appear here.</p></div>'}
+    :`<div class="empty"><div class="ei">🔗</div><h4>Not enough data yet</h4><p>${usesDevice()
+        ? `Import your ${esc(SRC_NAME())} history, or log a few weeks of daily numbers, and log 2–3 weeks of activity — then relationships appear here.`
+        : 'These relationships are drawn between a wearable\'s overnight metrics and what you did the day before. Without a wearable there is nothing to correlate, so this stays empty rather than showing you something invented.'}</p></div>`}
    ${cors.length?`<div class="card">
      <div class="card-t" style="margin-bottom:9px">How to read these</div>
      <div class="kv"><span class="k">|r| below 0.2</span><span class="v">Negligible — ignore</span></div>
@@ -5887,12 +6019,13 @@ function paneLinks(c){
 }
 
 /* =========================================================================
-   VIEW: WHOOP  (import · baselines · trends · sleep)
+   VIEW: METRICS  (import · baselines · trends · sleep)
    ====================================================================== */
 let HTAB='trends';
 function viewWhoop(v){
   const n=DB.whoop.cycles.length;
-  appbar('WHOOP', n? `${n} cycles · ${DB.whoop.cycles[0].date} → ${DB.whoop.cycles[n-1].date}` : 'No data imported yet');
+  appbar(usesDevice()?SRC_NAME():'Metrics',
+    n? `${n} days · ${DB.whoop.cycles[0].date} → ${DB.whoop.cycles[n-1].date}` : 'No data imported yet');
   v.innerHTML=`<div class="seg acc" id="hSeg" style="margin-bottom:14px">
       <button data-t="trends">Trends</button><button data-t="sleep">Sleep</button>
       <button data-t="baselines">Baselines</button><button data-t="import">Import</button>
@@ -5903,10 +6036,14 @@ function viewWhoop(v){
   bindInputs(v);
 }
 function needImport(c){
-  c.innerHTML=`<div class="empty"><div class="ei">📊</div><h4>No WHOOP data yet</h4>
-    <p>Import your WHOOP CSV export to unlock trends, baselines and correlations.</p>
-    <button class="btn primary" id="niGo" style="margin-top:16px">Go to import</button></div>`;
-  $('#niGo').onclick=()=>{ HTAB='import'; viewWhoop($('#view')); };
+  c.innerHTML=usesDevice()
+    ? `<div class="empty"><div class="ei">📊</div><h4>No ${esc(SRC_NAME())} data yet</h4>
+       <p>Import an export from ${esc(SRC_NAME())} to unlock trends, baselines and correlations — or type this morning's numbers into the daily check-in.</p>
+       <button class="btn primary" id="niGo" style="margin-top:16px">Go to import</button></div>`
+    : `<div class="empty"><div class="ei">✍️</div><h4>No wearable connected</h4>
+       <p>Trends here are built from a device's overnight metrics. You told setup you do not use one, so there is nothing to chart — the daily engine runs from your check-ins and training log instead.</p>
+       <button class="btn primary" id="niGo" style="margin-top:16px">Add a wearable</button></div>`;
+  $('#niGo').onclick=()=>{ if(usesDevice()){ HTAB='import'; viewWhoop($('#view')); } else startSetup(true); };
 }
 function paneTrends(c){
   const C=DB.whoop.cycles; if(!C.length) return needImport(c);
@@ -6041,8 +6178,8 @@ function paneBaselines(c){
    </div>
    <div class="card">
      <div class="card-t" style="margin-bottom:10px">Data inventory</div>
-     <div class="kv"><span class="k">WHOOP cycles</span><span class="v">${DB.whoop.cycles.length}</span></div>
-     <div class="kv"><span class="k">WHOOP workouts</span><span class="v">${DB.whoop.workouts.length}</span></div>
+     <div class="kv"><span class="k">Days imported</span><span class="v">${DB.whoop.cycles.length}</span></div>
+     <div class="kv"><span class="k">Workouts imported</span><span class="v">${DB.whoop.workouts.length}</span></div>
      <div class="kv"><span class="k">Journal entries</span><span class="v">${DB.whoop.journal.length}</span></div>
      <div class="kv"><span class="k">Your check-ins</span><span class="v">${Object.keys(DB.checkins).length}</span></div>
      <div class="kv"><span class="k">Your completed sessions</span><span class="v">${DB.sessions.filter(s=>s.done).length}</span></div>
@@ -6074,15 +6211,20 @@ function paneImport(c){
   const im=DB.whoop.imports.slice().reverse();
   c.innerHTML=`
    <div class="card">
-     <div class="card-t accent" style="margin-bottom:10px">Import your WHOOP export</div>
-     <p style="font-size:13.5px;line-height:1.6;color:var(--text-2)">In the WHOOP app: <b>Profile → Settings → Data Export</b>. You will be emailed a ZIP. Unzip it and select the CSV files here — you can pick several at once.</p>
-     <div style="margin-top:12px">
+     <div class="card-t accent" style="margin-bottom:10px">Import your ${esc(SRC_NAME())} export</div>
+     <p style="font-size:13.5px;line-height:1.6;color:var(--text-2)">${esc(sourceOf().how)}</p>
+     ${sourceOf().id==='whoop'?`<div style="margin-top:12px">
        ${[['physiological_cycles.csv','Recovery, HRV, RHR, strain, sleep — the main file'],
           ['sleeps.csv','Sleep detail and naps'],
           ['workouts.csv','Individual activities and their strain'],
           ['journal_entries.csv','Behaviour log']].map(([f,d])=>
          `<div class="kv"><span class="k mono">${f}</span><span class="v" style="font-weight:600;font-size:11.5px;color:var(--text-3);max-width:52%">${d}</span></div>`).join('')}
-     </div>
+     </div>`:`<div class="note acc" style="margin-top:12px">
+       The importer reads any daily CSV that has a date column plus columns it recognises —
+       ${esc(srcFields().map(f=>fieldLabel(f).toLowerCase()).join(', '))}.
+       It matches headers loosely, so ${esc(SRC_NAME())}'s own wording should resolve.
+       If a column does not come through, the daily check-in still takes those numbers by hand.
+     </div>`}
      <button class="btn primary big block" id="impGo" style="margin-top:14px">${svg('ul')} Choose CSV files</button>
      <div class="hint" style="margin-top:9px">Files are read in your browser only. Nothing is uploaded anywhere. Re-importing the same export is safe — duplicates are detected and skipped.</div>
    </div>
@@ -6101,7 +6243,7 @@ function paneImport(c){
      <div class="card-t" style="margin-bottom:9px">Safety rules this importer follows</div>
      <ul class="why" style="border:none;padding:0;margin:0">
        <li class="pos"><span class="dot"></span><span>File type is detected from the <b>headers</b>, not the filename — renamed files still work.</span></li>
-       <li class="pos"><span class="dot"></span><span>Column names are matched loosely, so a changed WHOOP header still resolves instead of silently producing blanks.</span></li>
+       <li class="pos"><span class="dot"></span><span>Column names are matched loosely and against several vendors' wording, so a renamed header still resolves instead of silently producing blanks.</span></li>
        <li class="pos"><span class="dot"></span><span>Cycles are keyed by date, workouts by start time + activity, journal rows by date + question — re-importing never duplicates.</span></li>
        <li class="pos"><span class="dot"></span><span>Existing values are never overwritten; a re-import only fills gaps.</span></li>
        <li class="pos"><span class="dot"></span><span>Naps are skipped so they cannot overwrite a main sleep.</span></li>
@@ -6373,17 +6515,21 @@ function viewSettings(v){
 
    <div class="card">
      <div class="card-h"><div class="card-t accent">Data source</div>
-       <span class="tag ${hasWhoop()?'g':'c'}">${hasWhoop()?'WHOOP CONNECTED':'MANUAL ONLY'}</span></div>
-     <div class="kv"><span class="k">Mode</span><span class="v">${P.mode==='whoop'?'WHOOP + manual logging':'Manual logging'}</span></div>
-     <div class="kv"><span class="k">WHOOP days on this device</span><span class="v">${DB.whoop.cycles.length}</span></div>
+       <span class="tag ${hasWhoop()?'g':'c'}">${hasWhoop()?esc(SRC_NAME().toUpperCase())+' CONNECTED':(usesDevice()?'NOT IMPORTED YET':'MANUAL ONLY')}</span></div>
+     <div class="kv"><span class="k">Wearable</span><span class="v">${esc(sourceOf().name)}</span></div>
+     ${srcFields().length?`<div class="kv"><span class="k">Numbers it provides</span><span class="v">${
+        esc(srcFields().map(f=>fieldLabel(f)).join(' · '))}</span></div>`:''}
+     <div class="kv"><span class="k">Days on this device</span><span class="v">${DB.whoop.cycles.length}</span></div>
      <div class="kv"><span class="k">Baselines</span><span class="v">${DB.baselines.computed?'Computed from your data':'Not established'}</span></div>
      <div class="btn-row" style="margin-top:13px">
-       <button class="btn ghost sm" id="sImpWhoop">${svg('ul')} Import WHOOP CSV</button>
-       ${DB.whoop.cycles.length?`<button class="btn ghost sm" id="sDelWhoop">Remove WHOOP data</button>`:''}
+       <button class="btn ghost sm" id="sImpWhoop">${svg('ul')} ${usesDevice()?'Import '+esc(SRC_NAME())+' CSV':'Add a wearable'}</button>
+       ${DB.whoop.cycles.length?`<button class="btn ghost sm" id="sDelWhoop">Remove imported data</button>`:''}
      </div>
      <div class="hint" style="margin-top:9px">${hasWhoop()
-       ? 'The engine uses your WHOOP baselines alongside everything you log. Remove it and the app carries on from your logs alone.'
-       : 'The app works fully without WHOOP. Import it any time to add HRV, resting-HR and sleep-need signals to the daily recommendation.'}</div>
+       ? `The engine uses the baselines computed from your ${esc(SRC_NAME())} data alongside everything you log. Remove it and the app carries on from your logs alone.`
+       : usesDevice()
+         ? `The app works fully without importing anything — you can type this morning's numbers into the check-in instead. Importing adds history, so your baselines are yours rather than general ranges.`
+         : 'The app is running entirely from your check-ins and training log, which is enough. Add a wearable any time and its numbers join the daily decision.'}</div>
    </div>
 
    <div class="card">
@@ -6399,7 +6545,7 @@ function viewSettings(v){
      <div class="btn-row" style="margin-top:9px">
        <button class="btn ghost sm" id="expCsvS">Sessions CSV</button>
        <button class="btn ghost sm" id="expCsvA">Activities CSV</button>
-       ${DB.whoop.cycles.length?`<button class="btn ghost sm" id="expCsvW">WHOOP CSV</button>`:''}
+       ${DB.whoop.cycles.length?`<button class="btn ghost sm" id="expCsvW">Metrics CSV</button>`:''}
      </div>
      <div class="note warn" style="margin-top:13px"><b>Your data is stored locally on this device.</b> If you clear browser data or change devices, restore your backup to recover it. Clearing website data erases everything instantly, and no copy exists anywhere else.</div>
    </div>
@@ -6416,7 +6562,7 @@ function viewSettings(v){
      <ul class="why" style="border:none;padding:0;margin:0">
        <li class="pos"><span class="dot"></span><span>No analytics, no tracking, no advertising, no external services.</span></li>
        <li class="pos"><span class="dot"></span><span>No network requests of any kind — the app works fully offline.</span></li>
-       <li class="pos"><span class="dot"></span><span>WHOOP CSVs are parsed in your browser; the files never leave your device.</span></li>
+       <li class="pos"><span class="dot"></span><span>CSV exports are parsed in your browser; the files never leave your device.</span></li>
        <li class="pos"><span class="dot"></span><span>All data sits in <span class="mono">localStorage</span> (mirrored to <span class="mono">IndexedDB</span>) under the key <span class="mono">baseline.tps.v1</span>.</span></li>
      </ul>
    </div>
@@ -6437,20 +6583,20 @@ function viewSettings(v){
    </div>`;
 
   try{ const c=Store.counts();
-    $('#sSize').textContent=`${c.sessions} sessions · ${c.activities} activities · ${c.cycles} WHOOP days`;
+    $('#sSize').textContent=`${c.sessions} sessions · ${c.activities} activities · ${c.cycles} device days`;
     Store.estimate().then(e=>{ if(e&&e.usage&&$('#sSize')) $('#sSize').textContent=
-      `${Math.round(e.usage/1024)} KB · ${c.sessions} sessions · ${c.activities} activities · ${c.cycles} WHOOP days`; });
+      `${Math.round(e.usage/1024)} KB · ${c.sessions} sessions · ${c.activities} activities · ${c.cycles} device days`; });
   }catch(e){}
   $('#sSetup').onclick=()=>openSetup();
-  $('#sImpWhoop').onclick=()=>{ HTAB='import'; go('whoop'); };
+  $('#sImpWhoop').onclick=()=>{ if(usesDevice()){ HTAB='import'; go('whoop'); } else startSetup(true); };
   const dw=$('#sDelWhoop');
-  if(dw) dw.onclick=()=>confirmSheet('Remove WHOOP data?',
-    `All <b>${DB.whoop.cycles.length}</b> imported WHOOP days, workouts and journal entries will be deleted from this device. Your own sessions, activities, check-ins and settings are kept, and the app carries on using them.`,
-    'Remove WHOOP data',()=>{
+  if(dw) dw.onclick=()=>confirmSheet('Remove imported data?',
+    `All <b>${DB.whoop.cycles.length}</b> imported days, workouts and journal entries will be deleted from this device. Your own sessions, activities, check-ins and settings are kept, and the app carries on using them.`,
+    'Remove imported data',()=>{
       DB.whoop={cycles:[],workouts:[],journal:[],imports:[]};
       DB.baselines=Object.assign({},SEED_BASE);
       DB.profile.mode='manual';
-      saveWhoop(); toast('WHOOP data removed'); renderNav(); render();
+      saveWhoop(); toast('Imported data removed'); renderNav(); render();
     },true);
   const ew=$('#expCsvW'); if(ew) ew.onclick=exportWhoopCSV;
   const pill=(sel,cb)=>$$(sel+' button').forEach(b=>b.onclick=()=>{
@@ -6910,10 +7056,21 @@ function migrate(d){
        fresh defaults would otherwise mask it. */
     if(!d.profile || d.profile.onboarded===undefined) out.profile.onboarded=true;
   }
+  const inP=d.profile||{};
+  /* The binary WHOOP/manual switch became a list of wearables. Read the
+     INCOMING profile so fresh defaults cannot mask what the user chose:
+     someone who had WHOOP keeps WHOOP, everyone else lands on no wearable. */
+  if(!inP.source){
+    out.profile.source = (inP.mode==='whoop') ? 'whoop'
+      : (inP.mode==='manual') ? 'none'
+      : (((out.whoop&&out.whoop.cycles)?out.whoop.cycles.length:0)>=14 ? 'whoop' : 'none');
+  } else out.profile.source=inP.source;
+  out.profile.sourceFields = Array.isArray(inP.sourceFields)?inP.sourceFields.slice():null;
+  out.profile.mode = out.profile.source==='none' ? 'manual'
+                   : out.profile.source==='whoop' ? 'whoop' : 'device';
   /* Single sport/physique became multi-select. Trust the arrays only if the
      SAVED data had them — otherwise the fresh defaults would mask the user's
-     real single value and silently reset everyone to tennis. */
-  const inP=d.profile||{};
+     real single value and silently reset everyone to one sport. */
   out.profile.sports = (Array.isArray(inP.sports)&&inP.sports.length)
     ? inP.sports.slice() : [inP.sport||out.profile.sport||'general'];
   out.profile.physiques = (Array.isArray(inP.physiques)&&inP.physiques.length)
@@ -7097,7 +7254,8 @@ const PHYSIQUES=[
 let SETUP={step:0, draft:null};
 function startSetup(fromSettings){
   SETUP={step:0, fromSettings:!!fromSettings, draft:{
-    mode:DB.profile.mode, age:DB.profile.age, sex:DB.profile.sex,
+    source:DB.profile.source, sourceFields:Array.isArray(DB.profile.sourceFields)?DB.profile.sourceFields.slice():null,
+    age:DB.profile.age, sex:DB.profile.sex,
     heightCm:DB.profile.heightCm, weightKg:DB.profile.weightKg,
     gear:Array.isArray(DB.profile.gear)?DB.profile.gear.slice():[],
     dbKg:DB.profile.dbKg||null,
@@ -7127,18 +7285,33 @@ function drawSetup(){
   /* ---------------- 0 · data source ---------------- */
   if(s===0){
     title='Welcome to Baseline';
+    const src=d.source?sourceOf(d.source):null;
     body=head+`
      <p style="font-size:14.5px;line-height:1.6;color:var(--text-2)">A training system that decides what you should do each day, from your recovery and what you have actually been doing.</p>
-     <div class="field" style="margin-top:18px"><label>Do you use WHOOP?</label>
-       <button class="card tight setOpt ${d.mode==='whoop'?'on':''}" data-k="mode" data-v="whoop" style="display:block;width:100%;text-align:left;margin-bottom:9px">
-         <div style="font-weight:800;font-size:15px">📊 Yes — I'll import my WHOOP data</div>
-         <div style="font-size:12.5px;color:var(--text-3);margin-top:5px;line-height:1.5">Adds your own HRV, resting-HR and sleep baselines to the daily decision. You can import at the end of setup or any time later.</div>
-       </button>
-       <button class="card tight setOpt ${d.mode==='manual'?'on':''}" data-k="mode" data-v="manual" style="display:block;width:100%;text-align:left">
-         <div style="font-weight:800;font-size:15px">✍️ No — manual logging only</div>
-         <div style="font-size:12.5px;color:var(--text-3);margin-top:5px;line-height:1.5">Everything runs from what you log plus a 60-second daily check-in. No recovery or HRV figures are shown, because there would be none to show.</div>
-       </button>
+     <div class="field" style="margin-top:18px"><label>Do you wear anything that tracks recovery or sleep?</label>
+       <div class="hint" style="margin-bottom:10px">Pick your device and the app asks only for the numbers it actually gives you. No device is required — the engine works without one.</div>
+       ${SOURCES.map(o=>`
+         <button class="card tight setOpt ${d.source===o.id?'on':''}" data-k="source" data-v="${o.id}"
+                 style="display:block;width:100%;text-align:left;margin-bottom:8px">
+           <div style="font-weight:800;font-size:15px">${o.emoji} ${esc(o.name)}</div>
+           <div style="font-size:11.5px;color:var(--text-3);margin-top:5px;line-height:1.5">${
+             o.fields.length
+               ? 'Gives: '+esc(o.fields.slice(0,5).map(f=>fieldLabel(f,o.id)).join(' · '))+(o.fields.length>5?' …':'')
+               : 'Energy, soreness, stress, motivation and sleep, typed in each morning.'}</div>
+         </button>`).join('')}
      </div>
+     ${src?`<div class="note acc">${esc(src.how)}</div>`:''}
+     ${src&&src.pickFields?`
+       <div class="field" style="margin-top:14px"><label>Which numbers does it give you?</label>
+       <div class="hint" style="margin-bottom:9px">Tick only what you can actually read off the device. Nothing unticked is ever asked for or assumed.</div>
+       ${src.fields.map(fid=>{ const on=(d.sourceFields||src.fields).indexOf(fid)>=0;
+         return `<button class="card tight setField ${on?'on':''}" data-v="${fid}"
+                   style="display:block;width:100%;text-align:left;margin-bottom:7px">
+           <div style="font-weight:750;font-size:14px">${esc(DATA_FIELDS[fid].name)}${
+             DATA_FIELDS[fid].unit?` <span style="color:var(--text-3);font-weight:600">(${esc(DATA_FIELDS[fid].unit)})</span>`:''}</div>
+           ${DATA_FIELDS[fid].hint?`<div style="font-size:11.5px;color:var(--text-3);margin-top:3px">${esc(DATA_FIELDS[fid].hint)}</div>`:''}
+         </button>`;}).join('')}
+       </div>`:''}
      <div class="note acc" style="margin-top:16px"><b>Your data never leaves this device.</b> No account, no server, no tracking — it lives in this browser only.</div>`;
   }
   /* ---------------- 1 · about you ---------------- */
@@ -7238,7 +7411,9 @@ function drawSetup(){
      <div class="divider"></div>
      <div class="card tight">
        <div class="card-t accent" style="margin-bottom:10px">Your setup</div>
-       <div class="kv"><span class="k">Data source</span><span class="v">${d.mode==='whoop'?'WHOOP + manual logs':'Manual logs only'}</span></div>
+       <div class="kv"><span class="k">Data source</span><span class="v">${esc(sourceOf(d.source).name)}</span></div>
+       ${srcFields(d.source).length?`<div class="kv"><span class="k">Numbers it provides</span><span class="v">${
+          esc(srcFields(d.source).map(f=>fieldLabel(f,d.source)).join(' · '))}</span></div>`:''}
        <div class="kv"><span class="k">Equipment</span><span class="v">${d.gear.length
           ? esc(d.gear.map(id=>(EQUIP_ITEMS.find(x=>x.id===id)||{}).name).filter(Boolean).join(', '))
           : 'Bodyweight only'}</span></div>
@@ -7250,20 +7425,39 @@ function drawSetup(){
      </div>`;
   }
 
-  const back = s>0 ? `<button class="btn ghost" id="setBack">Back</button>` : '';
-  const nextLabel = s===SETUP_STEPS.length-1 ? (d.mode==='whoop'?'Finish & import WHOOP':'Finish setup') : 'Continue';
-  const foot=`<div class="btn-row">${back}<button class="btn primary" id="setNext" style="flex:2">${nextLabel}</button></div>`;
+  /* The footer must be geometrically identical on every step. Previously the
+     Back button only existed from step 2 onwards, so Continue went from full
+     width to two-thirds width and jumped sideways on the first tap — which is
+     what read as the button glitching. The left slot is now always occupied:
+     on the first step it closes the wizard instead of going back. */
+  const backLabel = s>0 ? 'Back' : 'Close';
+  const back = `<button class="btn ghost" id="setBack" style="flex:1">${backLabel}</button>`;
+  const nextLabel = s===SETUP_STEPS.length-1 ? finishLabel(d) : 'Continue';
+  const foot=`<div class="btn-row setup-foot">${back}<button class="btn primary" id="setNext" style="flex:2">${esc(nextLabel)}</button></div>`;
   /* Patch the open sheet in place. Re-opening it on every tap restarted the
-     slide-in animation and made the footer button jump. */
+     slide-in animation and made the footer button jump. `steps` holds a floor
+     height so the footer does not walk up and down as each step's content
+     changes length — on desktop the sheet is a centred modal, so without it
+     the buttons move with every step. */
+  $('#sheet').classList.add('steps');
   if($('#sheet').classList.contains('on')) updateSheet(title, body, foot);
   else openSheet(title, body, foot,
-    ()=>{ if(!DB.profile.onboarded){ try{ render(); toast('Setup unfinished — finish it from the card on Today'); }catch(e){} } });
+    ()=>{ $('#sheet').classList.remove('steps');
+          if(!DB.profile.onboarded){ try{ render(); toast('Setup unfinished — finish it from the card on Today'); }catch(e){} } });
 
   /* single-choice cards */
   $$('.setOpt').forEach(b=>b.onclick=()=>{
     const k=b.dataset.k; let v=b.dataset.v;
     if(k==='tier') v=+v;
     SETUP.draft[k]=v; haptic(); drawSetup();
+  });
+  /* which numbers a non-listed wearable actually provides */
+  $$('.setField').forEach(b=>b.onclick=()=>{
+    const src=sourceOf(SETUP.draft.source);
+    if(!Array.isArray(SETUP.draft.sourceFields)) SETUP.draft.sourceFields=src.fields.slice();
+    const arr=SETUP.draft.sourceFields, v=b.dataset.v, i=arr.indexOf(v);
+    if(i>=0) arr.splice(i,1); else arr.push(v);
+    haptic(); drawSetup();
   });
   /* equipment ticks — may legitimately be empty (bodyweight only) */
   $$('.setGear').forEach(b=>b.onclick=()=>{
@@ -7293,9 +7487,10 @@ function drawSetup(){
   pill('#setSex','sex'); pill('#setUnits','units');
   pill('#setDays','daysPerWeek',true); pill('#setMin','sessionMin',true);
 
-  const bk=$('#setBack'); if(bk) bk.onclick=()=>{ SETUP.step--; drawSetup(); };
+  const bk=$('#setBack');
+  if(bk) bk.onclick=()=>{ if(SETUP.step>0){ SETUP.step--; drawSetup(); } else closeSheet(); };
   $('#setNext').onclick=()=>{
-    if(SETUP.step===0 && !SETUP.draft.mode){ toast('Pick one to continue','err'); return; }
+    if(SETUP.step===0 && !SETUP.draft.source){ toast('Pick one to continue','err'); return; }
     if(SETUP.step<SETUP_STEPS.length-1){ SETUP.step++; drawSetup(); return; }
     finishSetup();
   };
@@ -7303,7 +7498,13 @@ function drawSetup(){
 
 function finishSetup(){
   const d=SETUP.draft, P=DB.profile;
-  P.mode=d.mode; P.age=d.age; P.sex=d.sex; P.heightCm=d.heightCm; P.weightKg=d.weightKg;
+  P.source=d.source;
+  P.sourceFields=sourceOf(d.source).pickFields
+    ? (Array.isArray(d.sourceFields)?d.sourceFields.slice():sourceOf(d.source).fields.slice())
+    : null;
+  /* kept only so data saved by older versions still reads correctly */
+  P.mode = d.source==='none' ? 'manual' : d.source==='whoop' ? 'whoop' : 'device';
+  P.age=d.age; P.sex=d.sex; P.heightCm=d.heightCm; P.weightKg=d.weightKg;
   P.gear=d.gear.slice(); P.dbKg=d.dbKg||null;
   P.tier=tierOf(d.gear);                                   // derived, not chosen
   P.sports=d.sports.slice(); P.sport=d.sports[0];          // sport = the leading one
@@ -7318,9 +7519,10 @@ function finishSetup(){
   save(true); closeSheet(); renderNav();
   const wasSettings=SETUP.fromSettings;
   setTimeout(()=>{
-    if(d.mode==='whoop' && !hasWhoop()){ HTAB='import'; go('whoop'); toast('Import your WHOOP CSVs to finish'); }
+    const src=sourceOf(d.source);
+    if(src.importer && !hasWhoop()){ HTAB='import'; go('whoop'); toast(`Import your ${src.name} data to finish`); }
     else { go('today'); toast('Setup complete','ok'); }
-    if(!wasSettings && d.mode!=='whoop') setTimeout(welcome,400);
+    if(!wasSettings && !sourceOf(d.source).importer) setTimeout(welcome,400);
   },240);
 }
 /* built strictly from what was ticked — nothing inferred */
