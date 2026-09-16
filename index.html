@@ -11,8 +11,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Baseline">
-<meta name="theme-color" content="#0A0B0D">
-<meta name="color-scheme" content="dark">
+<!-- kept in step with the active theme at runtime by applyTheme() -->
+<meta name="theme-color" content="#FBFBF9">
+<meta name="color-scheme" content="light dark">
 <meta name="format-detection" content="telephone=no">
 <title>Baseline — Adaptive Training System</title>
 <!-- A real manifest file, not a data: URL. Safari will not install a data:-URL
@@ -27,27 +28,64 @@
    Design tokens
    ============================================================ */
 :root{
-  --bg:#0A0B0D;
-  --bg-elev:#101216;
-  --surface:#15181D;
-  --surface-2:#1C2027;
-  --surface-3:#242933;
-  --border:#282D36;
-  --border-soft:#1E222A;
-  --text:#F4F6F8;
-  --text-2:#AEB6C2;
-  --text-3:#767E8B;
-  --accent:#C3F53C;
-  --accent-dim:#8FB52A;
-  --accent-ink:#0A0B0D;
-  --cyan:#5EC8F2;
-  --violet:#A78BFA;
-  --green:#3DDC97;
-  --yellow:#FBC02D;
-  --orange:#FB8C3C;
-  --red:#F2635F;
-  --pink:#F472B6;
-  --r-sm:10px; --r-md:14px; --r-lg:20px; --r-xl:26px;
+  /* ---------------------------------------------------------------------
+     LIGHT IS THE DEFAULT, DARK FOLLOWS THE SYSTEM
+     Every colour in the app resolves through these names. Nothing downstream
+     hardcodes a hex, which is what lets one media query flip the whole UI.
+     A manual override lives on <html data-theme="light|dark">; "auto" simply
+     removes the attribute and lets the system decide.
+     --------------------------------------------------------------------- */
+  --bg:#FBFBF9;
+  --bg-elev:#FFFFFF;
+  --surface:#FFFFFF;
+  --surface-2:#F3F3F0;
+  --surface-3:#E7E7E3;
+  --border:#E3E3DE;
+  --border-soft:#EDEDE9;
+  --text:#16181A;
+  --text-2:#474D57;
+  --text-3:#5F6672;
+
+  /* one calm green, dark enough to carry white text on paper */
+  --accent:#1B7A4B;
+  --accent-dim:#14603A;
+  --accent-ink:#FFFFFF;
+
+  --cyan:#17769E;
+  --violet:#6446C8;
+  --green:#1C8455;
+  --yellow:#966A0E;
+  --orange:#B35A0C;
+  --red:#C03A31;
+  --pink:#B83A71;
+
+  /* tints: backgrounds and hairlines derived from the hues above */
+  --accent-wash:rgba(27,122,75,.08);
+  --accent-line:rgba(27,122,75,.28);
+  --cyan-wash:rgba(23,118,158,.08);
+  --violet-wash:rgba(100,70,200,.08);
+  --green-wash:rgba(28,132,85,.08);
+  --yellow-wash:rgba(150,106,14,.10);
+  --orange-wash:rgba(179,90,12,.09);
+  --orange-line:rgba(179,90,12,.32);
+  --red-wash:rgba(192,58,49,.08);
+  --red-line:rgba(192,58,49,.30);
+  --pink-wash:rgba(184,58,113,.08);
+  --green-line:rgba(28,132,85,.28);
+  --cyan-line:rgba(23,118,158,.28);
+  --yellow-line:rgba(150,106,14,.30);
+  --violet-line:rgba(100,70,200,.28);
+
+  /* text that sits on top of a saturated band */
+  --on-band:#FFFFFF;
+  --scrim:rgba(20,22,25,.34);
+  --chrome:rgba(251,251,249,.86);       /* translucent app bar / nav */
+  --press:rgba(0,0,0,.05);
+  --shadow:0 1px 2px rgba(16,18,20,.06),0 4px 14px rgba(16,18,20,.05);
+  --shadow-lg:0 12px 44px rgba(16,18,20,.16);
+  --ring:rgba(27,122,75,.30);
+
+  --r-sm:8px; --r-md:11px; --r-lg:14px; --r-xl:18px;
   --sp:16px;
   --nav-h:58px;
   /* safe areas — left/right matter in landscape, where the Dynamic Island
@@ -58,13 +96,87 @@
   --sa-r:env(safe-area-inset-right,0px);
   --gut-l:max(var(--sp),var(--sa-l));
   --gut-r:max(var(--sp),var(--sa-r));
-  color-scheme:dark;
+  color-scheme:light;
   --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  --shadow:0 2px 12px rgba(0,0,0,.45);
-  --shadow-lg:0 12px 40px rgba(0,0,0,.6);
 }
+/* the same names, restated for dark — system preference, unless the user has
+   explicitly pinned light */
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0B0C0E;
+    --bg-elev:#121419;
+    --surface:#16181D;
+    --surface-2:#1D2026;
+    --surface-3:#262A32;
+    --border:#2A2F38;
+    --border-soft:#1F232A;
+    --text:#F2F4F6;
+    --text-2:#B3BAC5;
+    --text-3:#8A929F;
+
+    --accent:#5FD39A;
+    --accent-dim:#3FAE7B;
+    --accent-ink:#06130C;
+
+    --cyan:#5EC8F2;
+    --violet:#A78BFA;
+    --green:#4ADE9E;
+    --yellow:#F2C14E;
+    --orange:#F59544;
+    --red:#F26B67;
+    --pink:#F472B6;
+
+    --accent-wash:rgba(95,211,154,.12);
+    --accent-line:rgba(95,211,154,.34);
+    --cyan-wash:rgba(94,200,242,.12);
+    --violet-wash:rgba(167,139,250,.12);
+    --green-wash:rgba(74,222,158,.12);
+    --yellow-wash:rgba(242,193,78,.13);
+    --orange-wash:rgba(245,149,68,.12);
+    --orange-line:rgba(245,149,68,.38);
+    --red-wash:rgba(242,107,103,.12);
+    --red-line:rgba(242,107,103,.36);
+    --pink-wash:rgba(244,114,182,.12);
+    --green-line:rgba(74,222,158,.32);
+    --cyan-line:rgba(94,200,242,.32);
+    --yellow-line:rgba(242,193,78,.34);
+    --violet-line:rgba(167,139,250,.32);
+
+    --on-band:#06130C;
+    --scrim:rgba(0,0,0,.58);
+    --chrome:rgba(11,12,14,.88);
+    --press:rgba(255,255,255,.06);
+    --shadow:0 2px 12px rgba(0,0,0,.45);
+    --shadow-lg:0 12px 40px rgba(0,0,0,.6);
+    --ring:rgba(95,211,154,.34);
+    color-scheme:dark;
+  }
+}
+/* manual override — Settings writes data-theme onto <html> */
+:root[data-theme="dark"]{
+  --bg:#0B0C0E; --bg-elev:#121419; --surface:#16181D; --surface-2:#1D2026;
+  --surface-3:#262A32; --border:#2A2F38; --border-soft:#1F232A;
+  --text:#F2F4F6; --text-2:#B3BAC5; --text-3:#8A929F;
+  --accent:#5FD39A; --accent-dim:#3FAE7B; --accent-ink:#06130C;
+  --cyan:#5EC8F2; --violet:#A78BFA; --green:#4ADE9E; --yellow:#F2C14E;
+  --orange:#F59544; --red:#F26B67; --pink:#F472B6;
+  --accent-wash:rgba(95,211,154,.12); --accent-line:rgba(95,211,154,.34);
+  --cyan-wash:rgba(94,200,242,.12); --violet-wash:rgba(167,139,250,.12);
+  --green-wash:rgba(74,222,158,.12); --yellow-wash:rgba(242,193,78,.13);
+  --orange-wash:rgba(245,149,68,.12); --orange-line:rgba(245,149,68,.38);
+  --red-wash:rgba(242,107,103,.12); --red-line:rgba(242,107,103,.36);
+  --pink-wash:rgba(244,114,182,.12);
+  --green-line:rgba(74,222,158,.32); --cyan-line:rgba(94,200,242,.32);
+  --yellow-line:rgba(242,193,78,.34); --violet-line:rgba(167,139,250,.32);
+  --on-band:#06130C; --scrim:rgba(0,0,0,.58); --chrome:rgba(11,12,14,.88);
+  --press:rgba(255,255,255,.06);
+  --shadow:0 2px 12px rgba(0,0,0,.45); --shadow-lg:0 12px 40px rgba(0,0,0,.6);
+  --ring:rgba(95,211,154,.34);
+  color-scheme:dark;
+}
+
 *,*::before,*::after{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html{-webkit-text-size-adjust:100%;background:var(--bg);color-scheme:dark}
+html{-webkit-text-size-adjust:100%;background:var(--bg)}
 body{
   margin:0;background:var(--bg);color:var(--text);
   font-family:var(--font);font-size:15px;line-height:1.45;
@@ -80,8 +192,8 @@ input,textarea,select{font-size:16px}
 button{cursor:pointer;border:none;background:none;padding:0;margin:0;
   -webkit-user-select:none;user-select:none}
 input,textarea,select{-webkit-appearance:none;appearance:none}
-/* native pickers and the caret should match the dark UI */
-input[type=date],input[type=time]{color-scheme:dark}
+/* native pickers follow whichever theme is active */
+input[type=date],input[type=time]{color-scheme:inherit}
 ::selection{background:rgba(195,245,60,.28)}
 /* Every inline icon is a 24-unit viewBox. Give them a sane default size so an
    icon dropped somewhere without a specific rule can never render full-page.
@@ -101,7 +213,7 @@ a{color:var(--accent);text-decoration:none}
 .appbar{
   position:sticky;top:0;z-index:40;
   padding:calc(var(--sa-t) + 12px) var(--gut-r) 10px var(--gut-l);
-  background:linear-gradient(180deg,rgba(10,11,13,.97) 60%,rgba(10,11,13,0));
+  background:linear-gradient(180deg,var(--chrome) 60%,transparent);
   backdrop-filter:saturate(160%) blur(16px);
   -webkit-backdrop-filter:saturate(160%) blur(16px);
   display:flex;align-items:flex-end;justify-content:space-between;gap:12px;
@@ -115,7 +227,7 @@ a{color:var(--accent);text-decoration:none}
 /* ---------- Bottom nav ---------- */
 .nav{
   position:fixed;left:0;right:0;bottom:0;z-index:60;
-  background:rgba(16,18,22,.92);
+  background:var(--chrome);
   backdrop-filter:saturate(180%) blur(22px);
   -webkit-backdrop-filter:saturate(180%) blur(22px);
   border-top:1px solid var(--border-soft);
@@ -131,19 +243,25 @@ a{color:var(--accent);text-decoration:none}
 .nav button svg{width:21px;height:21px;stroke-width:1.9}
 .nav button.on{color:var(--accent)}
 .nav button.on svg{stroke-width:2.3}
-.nav button:active{background:rgba(255,255,255,.04)}
+.nav button:active{background:var(--press)}
 
 /* ---------- Cards ---------- */
 .card{
   background:var(--surface);border:1px solid var(--border-soft);
-  border-radius:var(--r-lg);padding:16px;margin-bottom:12px;
+  border-radius:var(--r-lg);padding:17px 16px;margin-bottom:10px;
 }
+/* a card sitting directly on the page reads as one plane; a card nested
+   inside another should not draw a second box around itself */
+.card .card,.card .stat{background:transparent;border-color:transparent;padding-left:0;padding-right:0}
 /* selectable option cards — selection must be unmistakable */
-button.card{position:relative;transition:border-color .14s,background .14s,transform .1s}
+button.card{position:relative;transition:border-color .14s,background .14s,transform .1s;
+  white-space:normal;overflow-wrap:anywhere;word-break:normal}
+/* an option card's own text must wrap inside it, whatever its length */
+button.card>*{min-width:0;white-space:normal;overflow-wrap:anywhere}
 button.card:active{transform:scale(.99)}
 button.card.on{
   border-color:var(--accent);
-  background:linear-gradient(160deg,rgba(195,245,60,.10),rgba(195,245,60,.03));
+  background:linear-gradient(160deg,var(--accent-wash),transparent);
   box-shadow:0 0 0 1px var(--accent);
 }
 button.card.on::after{
@@ -167,7 +285,7 @@ button.card{padding-right:46px}      /* room for the tick */
   background:var(--surface-2);border:1px solid var(--border);
   font-size:13.5px;font-weight:650;color:var(--text);
 }
-.chipblk.lead{border-color:var(--accent);background:rgba(195,245,60,.10)}
+.chipblk.lead{border-color:var(--accent);background:var(--accent-wash)}
 .chipblk .lead-t{
   font-style:normal;font-size:8.5px;font-weight:850;letter-spacing:.6px;
   color:var(--accent-ink);background:var(--accent);padding:2px 5px;border-radius:4px;margin-left:2px;
@@ -191,9 +309,9 @@ button.card{padding-right:46px}      /* room for the tick */
 .card.tight{padding:13px}
 .card.flush{padding:0;overflow:hidden}
 .card-h{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
-.card-t{font-size:11px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase;color:var(--text-3)}
+.card-t{font-size:13px;font-weight:600;letter-spacing:-.1px;color:var(--text-2)}
 .card-t.accent{color:var(--accent)}
-.sec-t{font-size:11px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase;color:var(--text-3);margin:22px 2px 10px}
+.sec-t{font-size:13px;font-weight:600;letter-spacing:-.1px;color:var(--text-2);margin:26px 2px 10px}
 .sec-t:first-child{margin-top:4px}
 
 /* ---------- Buttons ---------- */
@@ -201,17 +319,17 @@ button.card{padding-right:46px}      /* room for the tick */
   display:inline-flex;align-items:center;justify-content:center;gap:7px;
   min-height:48px;padding:0 18px;border-radius:var(--r-md);
   background:var(--surface-2);color:var(--text);
-  font-size:15px;font-weight:650;letter-spacing:-.1px;
+  font-size:15px;font-weight:550;letter-spacing:-.1px;
   border:1px solid var(--border);transition:transform .1s,background .15s;
 }
 .btn:active{transform:scale(.975)}
-.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:750}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
 .btn.ghost{background:transparent;border-color:var(--border)}
-.btn.danger{background:rgba(242,99,95,.12);color:var(--red);border-color:rgba(242,99,95,.3)}
+.btn.danger{background:var(--red-wash);color:var(--red);border-color:var(--red-line)}
 .btn.block{display:flex;width:100%}
 .btn.sm{min-height:38px;padding:0 13px;font-size:13.5px;border-radius:10px}
 .btn.xs{min-height:32px;padding:0 10px;font-size:12.5px;border-radius:9px;font-weight:600}
-.btn.big{min-height:58px;font-size:17px;border-radius:var(--r-lg);font-weight:800;letter-spacing:.2px}
+.btn.big{min-height:56px;font-size:16.5px;border-radius:var(--r-lg);font-weight:650;letter-spacing:0}
 .btn:disabled{opacity:.4}
 .btn svg{width:18px;height:18px;flex:0 0 auto;stroke-width:2.2}
 .btn.big svg{width:20px;height:20px}
@@ -232,11 +350,11 @@ button.card{padding-right:46px}      /* room for the tick */
 .stats.c4{grid-template-columns:repeat(4,1fr)}
 .stat{
   background:var(--surface);border:1px solid var(--border-soft);
-  border-radius:var(--r-md);padding:12px 11px;min-height:78px;
+  border-radius:var(--r-md);padding:13px 12px;min-height:76px;
   display:flex;flex-direction:column;justify-content:space-between;
 }
-.stat .lab{font-size:9.5px;font-weight:750;letter-spacing:.7px;text-transform:uppercase;color:var(--text-3)}
-.stat .val{font-size:25px;font-weight:800;letter-spacing:-1px;line-height:1.05;margin-top:6px}
+.stat .lab{font-size:11.5px;font-weight:550;letter-spacing:0;color:var(--text-3)}
+.stat .val{font-size:26px;font-weight:600;letter-spacing:-.9px;line-height:1.05;margin-top:6px}
 .stat .val small{font-size:12px;font-weight:650;color:var(--text-3);letter-spacing:0;margin-left:1px}
 .stat .dlt{font-size:10.5px;font-weight:700;margin-top:3px;color:var(--text-3)}
 .stat.g .val{color:var(--green)} .stat.y .val{color:var(--yellow)}
@@ -249,11 +367,11 @@ button.card{padding-right:46px}      /* room for the tick */
   border-radius:var(--r-xl);padding:20px;margin-bottom:12px;position:relative;overflow:hidden;
   border:1px solid var(--border);background:var(--surface);
 }
-.hero::before{content:'';position:absolute;inset:0;opacity:.14;pointer-events:none;
+.hero::before{content:'';position:absolute;inset:0;opacity:.06;pointer-events:none;
   background:radial-gradient(120% 100% at 100% 0%,var(--hc,var(--accent)) 0%,transparent 62%)}
 .hero-top{display:flex;align-items:center;justify-content:space-between;gap:14px;position:relative}
-.hero-band{font-size:30px;font-weight:900;letter-spacing:-1.2px;color:var(--hc,var(--accent));line-height:1}
-.hero-lab{font-size:10px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-3);margin-bottom:5px}
+.hero-band{font-size:30px;font-weight:650;letter-spacing:-1.1px;color:var(--hc,var(--accent));line-height:1}
+.hero-lab{font-size:11.5px;font-weight:600;letter-spacing:0;color:var(--text-3);margin-bottom:5px}
 .ring{position:relative;width:76px;height:76px;flex:0 0 76px}
 .ring svg{transform:rotate(-90deg);width:76px;height:76px}
 .ring .rv{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
@@ -272,21 +390,21 @@ button.card{padding-right:46px}      /* room for the tick */
 }
 /* a chip that is actually tappable needs a real touch target */
 button.chip{min-height:40px;padding:8px 14px;font-size:12px}
-.chip.a{background:rgba(195,245,60,.11);color:var(--accent);border-color:rgba(195,245,60,.26)}
-.chip.g{background:rgba(61,220,151,.11);color:var(--green);border-color:rgba(61,220,151,.26)}
-.chip.y{background:rgba(251,192,45,.11);color:var(--yellow);border-color:rgba(251,192,45,.26)}
-.chip.o{background:rgba(251,140,60,.11);color:var(--orange);border-color:rgba(251,140,60,.26)}
-.chip.r{background:rgba(242,99,95,.11);color:var(--red);border-color:rgba(242,99,95,.26)}
-.chip.c{background:rgba(94,200,242,.11);color:var(--cyan);border-color:rgba(94,200,242,.26)}
-.chip.v{background:rgba(167,139,250,.11);color:var(--violet);border-color:rgba(167,139,250,.26)}
-.tag{font-size:9.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;padding:3px 7px;border-radius:6px;background:var(--surface-3);color:var(--text-3)}
-.tag.a{background:rgba(195,245,60,.14);color:var(--accent)}
-.tag.c{background:rgba(94,200,242,.14);color:var(--cyan)}
-.tag.v{background:rgba(167,139,250,.14);color:var(--violet)}
-.tag.g{background:rgba(61,220,151,.14);color:var(--green)}
-.tag.r{background:rgba(242,99,95,.14);color:var(--red)}
-.tag.o{background:rgba(251,140,60,.14);color:var(--orange)}
-.tag.pk{background:rgba(244,114,182,.14);color:var(--pink)}
+.chip.a{background:var(--accent-wash);color:var(--accent);border-color:var(--accent-line)}
+.chip.g{background:var(--green-wash);color:var(--green);border-color:var(--green-line)}
+.chip.y{background:var(--yellow-wash);color:var(--yellow);border-color:var(--yellow-line)}
+.chip.o{background:var(--orange-wash);color:var(--orange);border-color:var(--orange-line)}
+.chip.r{background:var(--red-wash);color:var(--red);border-color:var(--red-line)}
+.chip.c{background:var(--cyan-wash);color:var(--cyan);border-color:var(--cyan-line)}
+.chip.v{background:var(--violet-wash);color:var(--violet);border-color:var(--violet-line)}
+.tag{font-size:11px;font-weight:600;letter-spacing:0;padding:3px 8px;border-radius:6px;background:var(--surface-2);color:var(--text-3);border:1px solid var(--border-soft)}
+.tag.a{background:var(--accent-wash);color:var(--accent)}
+.tag.c{background:var(--cyan-wash);color:var(--cyan)}
+.tag.v{background:var(--violet-wash);color:var(--violet)}
+.tag.g{background:var(--green-wash);color:var(--green)}
+.tag.r{background:var(--red-wash);color:var(--red)}
+.tag.o{background:var(--orange-wash);color:var(--orange)}
+.tag.pk{background:var(--pink-wash);color:var(--pink)}
 
 /* ---------- Why list ---------- */
 .why{margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft);position:relative}
@@ -314,13 +432,13 @@ input[type=range]::-webkit-slider-thumb{
   -webkit-appearance:none;width:30px;height:30px;border-radius:50%;
   background:#fff no-repeat center/9px 11px;
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='9' height='11'><g fill='%230A0B0D'><rect x='0' y='0' width='1.6' height='11' rx='.8'/><rect x='3.7' y='0' width='1.6' height='11' rx='.8'/><rect x='7.4' y='0' width='1.6' height='11' rx='.8'/></g></svg>");
-  margin-top:-11px;box-shadow:0 2px 10px rgba(0,0,0,.55);
+  margin-top:-11px;box-shadow:0 2px 10px var(--scrim);
   border:2px solid var(--accent);cursor:grab;
 }
 input[type=range]:active::-webkit-slider-thumb{transform:scale(1.14);cursor:grabbing}
 input[type=range]::-moz-range-thumb{
   width:28px;height:28px;border-radius:50%;background:#fff;
-  border:2px solid var(--accent);box-shadow:0 2px 10px rgba(0,0,0,.55);cursor:grab;
+  border:2px solid var(--accent);box-shadow:0 2px 10px var(--scrim);cursor:grab;
 }
 input[type=range]::-moz-range-track{height:8px;border-radius:99px;background:var(--surface-3)}
 input[type=range]::-moz-range-progress{height:8px;border-radius:99px;background:var(--accent)}
@@ -333,7 +451,7 @@ input[type=range]::-moz-range-progress{height:8px;border-radius:99px;background:
   flex:1;min-height:40px;border-radius:10px;font-size:13px;font-weight:700;color:var(--text-3);
   transition:background .16s,color .16s;padding:0 6px;white-space:nowrap;
 }
-.seg button.on{background:var(--surface-3);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.seg button.on{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
 .seg.acc button.on{background:var(--accent);color:var(--accent-ink)}
 .seg.sm button{min-height:34px;font-size:12px}
 
@@ -348,7 +466,7 @@ input[type=range]::-moz-range-progress{height:8px;border-radius:99px;background:
 
 /* ---------- Forms ---------- */
 .field{margin-bottom:14px}
-.field label{display:block;font-size:11px;font-weight:750;letter-spacing:.7px;text-transform:uppercase;color:var(--text-3);margin-bottom:7px}
+.field label{display:block;font-size:12.5px;font-weight:550;letter-spacing:0;color:var(--text-3);margin-bottom:7px}
 .inp{
   width:100%;min-width:0;min-height:48px;padding:12px 14px;border-radius:var(--r-md);
   background:var(--surface-2);border:1px solid var(--border);color:var(--text);
@@ -371,7 +489,7 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 }
 .row:last-child{border-bottom:none}
 .row .rt{flex:1;min-width:0}
-.row .rn{font-size:15px;font-weight:650;letter-spacing:-.15px}
+.row .rn{font-size:15px;font-weight:550;letter-spacing:-.15px}
 .row .rs{font-size:12px;color:var(--text-3);margin-top:2px;line-height:1.4}
 .row .rv{font-size:14px;font-weight:750;color:var(--text-2);white-space:nowrap}
 .row.tap:active{background:var(--surface-2)}
@@ -380,7 +498,7 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 
 /* ---------- Sheet / modal ---------- */
 .scrim{
-  position:fixed;inset:0;background:rgba(0,0,0,.66);z-index:200;
+  position:fixed;inset:0;background:var(--scrim);z-index:200;
   backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
   opacity:0;pointer-events:none;transition:opacity .22s;
 }
@@ -424,8 +542,8 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
   max-width:88vw;text-align:center;
 }
 #toast.on{opacity:1;transform:translate(-50%,0)}
-#toast.err{border-color:rgba(242,99,95,.5);color:#FFD9D8}
-#toast.ok{border-color:rgba(195,245,60,.4)}
+#toast.err{border-color:var(--red-line);color:var(--red)}
+#toast.ok{border-color:var(--accent-line)}
 
 /* ---------- Progress bars ---------- */
 .bar{height:7px;border-radius:99px;background:var(--surface-3);overflow:hidden}
@@ -476,7 +594,7 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .lastrow.up{border-left-color:var(--green)}
 .lastrow.down{border-left-color:var(--orange)}
 .lastrow.none{border-left-color:var(--surface-3);color:var(--text-3);font-size:12.5px;font-weight:600}
-.lastrow .ll{font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--text-3)}
+.lastrow .ll{font-size:11.5px;font-weight:600;letter-spacing:0;color:var(--text-3)}
 .lastrow .ll i{font-style:normal;color:var(--text-2)}
 .lastrow .lv{font-size:15px;font-weight:750;margin-top:4px;letter-spacing:-.2px}
 .lastrow .lp{display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;margin-top:6px}
@@ -488,7 +606,7 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
   display:flex;align-items:center;gap:10px;padding:12px;border-radius:var(--r-md);
   background:var(--surface);border:1px solid var(--border-soft);margin-bottom:8px;
 }
-.setrow.done{border-color:rgba(195,245,60,.32);background:rgba(195,245,60,.055)}
+.setrow.done{border-color:var(--accent-line);background:var(--accent-wash)}
 .setrow.cur{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .setrow .sn{
   width:32px;height:32px;border-radius:9px;background:var(--surface-3);flex:0 0 32px;
@@ -518,7 +636,7 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
   background:var(--surface-2);border-top:1px solid var(--accent);
   padding:14px var(--gut-r) calc(14px + var(--sa-b)) var(--gut-l);
   display:none;align-items:center;gap:14px;
-  box-shadow:0 -8px 32px rgba(0,0,0,.5);
+  box-shadow:0 -8px 32px var(--scrim);
 }
 .rest.on{display:flex}
 .rest .rt{font-size:30px;font-weight:850;color:var(--accent);letter-spacing:-1px;min-width:78px}
@@ -528,7 +646,7 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .kv{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--border-soft);font-size:13.5px}
 .kv:last-child{border-bottom:none}
 .kv .k{color:var(--text-3);font-weight:600}
-.kv .v{font-weight:700;text-align:right}
+.kv .v{font-weight:600;text-align:right}
 .note{
   background:var(--surface-2);border:1px solid var(--border);border-left:3px solid var(--cyan);
   border-radius:10px;padding:12px 14px;font-size:12.5px;color:var(--text-2);line-height:1.55;
@@ -552,10 +670,10 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
   min-width:19px;height:19px;padding:0 5px;border-radius:99px;background:var(--accent);color:var(--accent-ink);
   font-size:10.5px;font-weight:850;display:inline-flex;align-items:center;justify-content:center;
 }
-.src{font-size:9.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding:2px 6px;border-radius:5px}
-.src.whoop{background:rgba(94,200,242,.14);color:var(--cyan)}
-.src.you{background:rgba(167,139,250,.14);color:var(--violet)}
-.src.prog{background:rgba(195,245,60,.14);color:var(--accent)}
+.src{font-size:11px;font-weight:600;letter-spacing:0;padding:2px 6px;border-radius:5px}
+.src.whoop{background:var(--cyan-wash);color:var(--cyan)}
+.src.you{background:var(--violet-wash);color:var(--violet)}
+.src.prog{background:var(--accent-wash);color:var(--accent)}
 .strike{text-decoration:line-through;opacity:.45}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
@@ -616,7 +734,7 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
     top:0;bottom:0;left:0;right:auto;width:var(--nav-w);
     border-top:none;border-right:1px solid var(--border-soft);
     padding:0 0 var(--sa-b);padding-left:var(--sa-l);
-    background:rgba(13,15,18,.96);
+    background:var(--chrome);
   }
   .nav-inner{
     display:flex;flex-direction:column;height:100%;max-width:none;
@@ -639,7 +757,7 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
   }
   .nav button svg{width:19px;height:19px;flex:0 0 19px}
   .nav button:hover{background:var(--surface-2);color:var(--text-2)}
-  .nav button.on{background:rgba(195,245,60,.12);color:var(--accent)}
+  .nav button.on{background:var(--accent-wash);color:var(--accent)}
   .nav-foot{
     margin-top:auto;padding:12px;font-size:10.5px;line-height:1.5;color:var(--text-3);
     border-top:1px solid var(--border-soft);
@@ -695,14 +813,14 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
   position:sticky;top:0;z-index:70;display:none;
   margin:0 calc(-1 * var(--gut-l)) 12px calc(-1 * var(--gut-r));
   padding:11px var(--gut-r) 11px var(--gut-l);
-  background:rgba(242,99,95,.14);border-bottom:1px solid rgba(242,99,95,.4);
-  font-size:12.5px;line-height:1.45;color:#FFD9D8;font-weight:600;
+  background:var(--red-wash);border-bottom:1px solid var(--red-line);
+  font-size:12.5px;line-height:1.45;color:var(--red);font-weight:600;
 }
 #sbanner.on{display:block}
 #sbanner b{color:#fff}
 #sbanner button{
   margin-top:8px;min-height:38px;padding:0 13px;border-radius:10px;font-size:12.5px;font-weight:700;
-  background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25);
+  background:var(--press);color:var(--text);border:1px solid var(--border);
 }
 </style>
 </head>
@@ -848,6 +966,44 @@ const STORES={
 };
 /* singleton objects live in one keyed store */
 const KV_KEYS=['profile','settings','targets','baselines','plans','decisions','ui','meta'];
+/* =========================================================================
+   THEME
+   Light by default, dark when the system asks for it, and an explicit
+   override if the user would rather pin one. Stored in localStorage rather
+   than the main record so it can be applied before the database has opened —
+   otherwise the app flashes the wrong theme on every launch.
+   ====================================================================== */
+const THEMES=[{id:'auto',name:'Match system'},{id:'light',name:'Light'},{id:'dark',name:'Dark'}];
+function themePref(){
+  try{ return localStorage.getItem('baseline.theme')||'auto'; }catch(e){ return 'auto'; }
+}
+function systemIsDark(){
+  return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme:dark)').matches);
+}
+function applyTheme(mode){
+  const m=mode||themePref();
+  const r=document.documentElement;
+  if(m==='auto') r.removeAttribute('data-theme');
+  else r.setAttribute('data-theme',m);
+  /* keep the browser chrome — status bar, form controls — in step */
+  const dark = m==='dark' || (m==='auto' && systemIsDark());
+  const meta=document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.setAttribute('content', dark?'#0B0C0E':'#FBFBF9');
+  return m;
+}
+function setTheme(mode){
+  try{ localStorage.setItem('baseline.theme',mode); }catch(e){}
+  applyTheme(mode);
+}
+applyTheme();
+/* follow the system live while set to auto */
+if(window.matchMedia){
+  const mq=window.matchMedia('(prefers-color-scheme:dark)');
+  const onChange=()=>{ if(themePref()==='auto') applyTheme('auto'); };
+  if(mq.addEventListener) mq.addEventListener('change',onChange);
+  else if(mq.addListener) mq.addListener(onChange);
+}
+
 /* collections written on an ordinary save (WHOOP is large and rarely changes) */
 const LIGHT=['sessions','activities','checkins','exercises','workouts','tests','physique'];
 const HEAVY=['wCycles','wWorkouts','wJournal','wImports'];
@@ -4731,7 +4887,7 @@ function viewToday(v){
     </div>
   </div>
 
-  ${done?`<div class="card" style="border-color:rgba(195,245,60,.3);background:rgba(195,245,60,.05)">
+  ${done?`<div class="card" style="border-color:var(--accent-line);background:var(--accent-wash)">
      <div style="display:flex;align-items:center;gap:11px">
        <div style="width:38px;height:38px;border-radius:11px;background:var(--accent);color:var(--accent-ink);display:flex;align-items:center;justify-content:center">${svg('check')}</div>
        <div style="flex:1"><div style="font-weight:750;font-size:15px">Session complete</div>
@@ -4895,7 +5051,7 @@ function weekStrip(d){
     if(ten) tag=SPORT_EMOJI();
     else if(sess) tag=TAGS[sess.category||catOfWorkout(DB.workouts.find(w=>w.id===sess.workoutId))]||'Train';
     else if(acts.length) tag=(ACT_TYPES[acts[0].type]||ACT_TYPES.other).emoji;
-    h+=`<div style="padding:11px 2px;text-align:center;border-right:${i<6?'1px solid var(--border-soft)':'none'};${isT?'background:rgba(195,245,60,.07)':''}">
+    h+=`<div style="padding:11px 2px;text-align:center;border-right:${i<6?'1px solid var(--border-soft)':'none'};${isT?'background:var(--accent-wash)':''}">
       <div style="font-size:9.5px;font-weight:800;color:${isT?'var(--accent)':'var(--text-3)'};letter-spacing:.5px">${DOW_NAME[dow].toUpperCase()}</div>
       <div style="font-size:14px;font-weight:750;margin:3px 0 6px;color:${isT?'var(--text)':'var(--text-2)'}">${new Date(day+'T12:00:00').getDate()}</div>
       <div style="width:7px;height:7px;border-radius:50%;background:${col};margin:0 auto"></div>
@@ -4911,7 +5067,7 @@ function todayNoCheckin(d){
   const cy=cycleByDate(d);
   const P=weekProgress(d), H=systemHistory(d), T=DB.targets;
   return `
-  <div class="card" style="border-color:rgba(195,245,60,.3);background:linear-gradient(160deg,rgba(195,245,60,.07),transparent)">
+  <div class="card" style="border-color:var(--accent-line);background:linear-gradient(160deg,var(--accent-wash),transparent)">
     <div class="card-t accent">Start here</div>
     <div style="font-size:21px;font-weight:800;letter-spacing:-.5px;margin:8px 0 8px">What should I do today?</div>
     <p style="font-size:14px;color:var(--text-2);line-height:1.55">The engine picks one session for you — but it needs this morning's numbers first. About 60 seconds.</p>
@@ -4938,7 +5094,7 @@ function todayNoCheckin(d){
 function setupPrompt(){
   if(DB.profile.onboarded) return '';
   const t=TIERS[DB.profile.tier||0]||TIERS[0];
-  return `<div class="card wide" id="setupCard" style="border-color:rgba(251,140,60,.45);background:linear-gradient(160deg,rgba(251,140,60,.09),transparent)">
+  return `<div class="card wide" id="setupCard" style="border-color:var(--orange-line);background:linear-gradient(160deg,var(--orange-wash),transparent)">
     <div class="card-t" style="color:var(--orange)">Setup not finished</div>
     <div style="font-size:15px;font-weight:750;letter-spacing:-.2px;margin:7px 0 7px">The program is running on defaults</div>
     <p style="font-size:13px;color:var(--text-2);line-height:1.55">Right now it assumes <b>${esc(t.name.toLowerCase())}</b> equipment and <b>${esc(sportsText())}</b> as your sport. If either is wrong you are being given the wrong exercises.</p>
@@ -5106,7 +5262,7 @@ function openCheckin(d){
   const B2 = DB.baselines;
   openSheet('Daily check-in · '+fmtDate(d),`
    ${autoWhoop?`
-   <div class="card tight" style="border-color:rgba(94,200,242,.3);background:rgba(94,200,242,.05)">
+   <div class="card tight" style="border-color:var(--cyan-line);background:var(--cyan-wash)">
      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
        <div class="card-t" style="color:var(--cyan)">From your ${esc(SRC.name)} data</div>
        <span class="tag c">AUTOMATIC</span>
@@ -5264,7 +5420,7 @@ function paneProgram(c){
   <div class="card">
     <div class="card-h"><div class="card-t">8-week progression plan</div><span class="tag v">Now: week ${ph.absWeek}</span></div>
     ${PHASES.map(p=>{ const on=p.w===ph.w;
-      return `<div class="row" style="padding:11px 0;${on?'background:rgba(195,245,60,.06);margin:0 -16px;padding-left:16px;padding-right:16px':''}">
+      return `<div class="row" style="padding:11px 0;${on?'background:var(--accent-wash);margin:0 -16px;padding-left:16px;padding-right:16px':''}">
         <div style="width:28px;font-size:12px;font-weight:800;color:${on?'var(--accent)':'var(--text-3)'}">W${p.w}</div>
         <div class="rt"><div class="rn" style="font-size:14px">${esc(p.name)}</div><div class="rs">${esc(p.goal)}</div></div>
         <div class="rv" style="font-size:11.5px;text-align:right">${Math.round(p.vol*100)}%<br><span style="color:var(--text-3);font-weight:600">RPE ${p.rpeCap}</span></div></div>`;}).join('')}
@@ -6663,7 +6819,7 @@ $('#fileIn').addEventListener('change',async e=>{
       ${r.days?`<div class="kv"><span class="k">Total days now held</span><span class="v">${r.days}</span></div>`:''}
     </div>`).join('')}
     ${ok.some(r=>r.merged)?`<div class="note" style="margin-top:10px">WHOOP sometimes records two physiological cycles inside one calendar day. This app is day-keyed — one readiness decision per day — so those rows were <b>merged</b>, with the row carrying the recovery score taking precedence. That is why the day count can be lower than the row count.</div>`:''}
-    ${bad.map(r=>`<div class="card tight" style="border-color:rgba(242,99,95,.35)">
+    ${bad.map(r=>`<div class="card tight" style="border-color:var(--red-line)">
       <div style="font-weight:750;font-size:14px">${esc(r.file)}</div>
       <div class="note red" style="margin-top:8px">${esc(r.error)}</div></div>`).join('')}
     <div class="note acc" style="margin-top:12px"><b>${added}</b> new rows imported, <b>${dup}</b> duplicates skipped. Baselines have been recalculated from your most recent 90 cycles.</div>
@@ -6743,7 +6899,7 @@ function openSetup(auto){
      <div class="note acc" style="margin-top:12px">Launch it from the Home Screen icon from then on. Data is shared with this tab as long as the URL is the same.</div>
    </div>`:''}
 
-   ${sa?`<div class="card" style="border-color:rgba(61,220,151,.3);background:rgba(61,220,151,.05)">
+   ${sa?`<div class="card" style="border-color:var(--green-line);background:var(--green-wash)">
      <div style="font-weight:750;font-size:15px">Installed and storing correctly</div>
      <div style="font-size:13px;color:var(--text-2);margin-top:6px;line-height:1.55">Running standalone from your Home Screen with working storage. Nothing else to do — just export a JSON backup now and then.</div>
    </div>`:''}
@@ -6815,6 +6971,10 @@ function viewSettings(v){
      <div class="field"><label>Units</label>
        <div class="seg acc" id="sUnits"><button data-v="metric" class="${P.units==='metric'?'on':''}">Metric (kg/km)</button>
        <button data-v="imperial" class="${P.units==='imperial'?'on':''}">Imperial (lb/mi)</button></div></div>
+     <div class="field"><label>Appearance</label>
+       <div class="seg acc" id="sTheme">${THEMES.map(x=>
+         `<button data-v="${x.id}" class="${themePref()===x.id?'on':''}">${esc(x.name)}</button>`).join('')}</div>
+       <div class="hint">Matching the system is the default. Pin one if you would rather it stayed put.</div></div>
    </div>
 
    <div class="card">
@@ -6863,10 +7023,10 @@ function viewSettings(v){
      <div class="hint" style="margin-bottom:14px">Each morning you get a readiness score out of 100. These sliders decide which band that score falls into, and the band decides what you are told to do.</div>
 
      <div style="display:flex;height:26px;border-radius:8px;overflow:hidden;margin-bottom:6px;font-size:9.5px;font-weight:800;letter-spacing:.4px">
-       <div style="width:${S.bands.orange}%;background:var(--red);display:flex;align-items:center;justify-content:center;color:#3a0f0f">RED</div>
-       <div style="width:${S.bands.yellow-S.bands.orange}%;background:var(--orange);display:flex;align-items:center;justify-content:center;color:#3a1f0a">ORANGE</div>
-       <div style="width:${S.bands.green-S.bands.yellow}%;background:var(--yellow);display:flex;align-items:center;justify-content:center;color:#3a300a">YELLOW</div>
-       <div style="width:${100-S.bands.green}%;background:var(--green);display:flex;align-items:center;justify-content:center;color:#08301d">GREEN</div>
+       <div style="width:${S.bands.orange}%;background:var(--red);display:flex;align-items:center;justify-content:center;color:var(--on-band)">RED</div>
+       <div style="width:${S.bands.yellow-S.bands.orange}%;background:var(--orange);display:flex;align-items:center;justify-content:center;color:var(--on-band)">ORANGE</div>
+       <div style="width:${S.bands.green-S.bands.yellow}%;background:var(--yellow);display:flex;align-items:center;justify-content:center;color:var(--on-band)">YELLOW</div>
+       <div style="width:${100-S.bands.green}%;background:var(--green);display:flex;align-items:center;justify-content:center;color:var(--on-band)">GREEN</div>
      </div>
      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-3);font-weight:700;margin-bottom:16px">
        <span>0</span><span>${S.bands.orange}</span><span>${S.bands.yellow}</span><span>${S.bands.green}</span><span>100</span>
@@ -6909,7 +7069,7 @@ function viewSettings(v){
        Rest timer in workout mode</label></div>
    </div>
 
-   <div class="card" style="${Store.durable?'':'border-color:rgba(242,99,95,.4)'}">
+   <div class="card" style="${Store.durable?'':'border-color:var(--red-line)'}">
      <div class="card-h"><div class="card-t accent">Setup &amp; install</div>
        <span class="tag ${Store.durable?'g':'r'}">${Store.durable?'STORING OK':'NOT STORING'}</span></div>
      <div class="kv"><span class="k">Storage</span><span class="v">${esc(Store.mode)}</span></div>
@@ -7008,6 +7168,8 @@ function viewSettings(v){
   const pill=(sel,cb)=>$$(sel+' button').forEach(b=>b.onclick=()=>{
     $$(sel+' button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); cb&&cb(b.dataset.v); });
   pill('#sDur'); pill('#sUnits'); pill('#sDays');
+  /* theme is applied immediately: a preference you cannot see is useless */
+  pill('#sTheme', v=>{ setTheme(v); haptic(); });
   $('#sWizard').onclick=()=>{ persist(); startSetup(true); };
   /* injuries: add, edit, and mark recovered */
   const limAdd=$('#limAdd'); if(limAdd) limAdd.onclick=()=>limitSheet(null);
@@ -7792,7 +7954,7 @@ function drawSetup(){
      <div class="field"><label>Anything else <span style="text-transform:none;font-weight:600">(optional)</span></label>
        <input class="inp setF" data-k="equipNote" value="${esc(d.equipNote||'')}" placeholder="e.g. TRX, rowing machine — for your own reference">
      </div>
-     <div class="card tight" style="border-color:rgba(195,245,60,.3)">
+     <div class="card tight" style="border-color:var(--accent-line)">
        <div style="display:flex;justify-content:space-between;align-items:center">
          <div><div style="font-weight:750;font-size:14px">${n} exercises available</div>
          <div style="font-size:12px;color:var(--text-3);margin-top:3px">out of ${DB.exercises.length} in the library</div></div>
