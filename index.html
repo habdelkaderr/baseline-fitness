@@ -3695,7 +3695,7 @@ function viewToday(v){
     `<button class="icon-btn" id="tbCheck">${svg('edit')}</button>`);
   setTimeout(()=>{ const b=$('#tbCheck'); if(b)b.onclick=()=>openCheckin(d); },0);
 
-  if(!ci){ v.innerHTML=todayNoCheckin(d); wireToday(d); return; }
+  if(!ci){ v.innerHTML=setupPrompt()+todayNoCheckin(d); wireToday(d); return; }
 
   const rd=readiness(d,ci), B=BAND[rd.band];
   const ovr=DB.plans[d];
@@ -3707,7 +3707,7 @@ function viewToday(v){
   const done=DB.sessions.find(s=>s.date===d&&s.done);
   const P=rec.week, T=DB.targets;
 
-  v.innerHTML=`
+  v.innerHTML=setupPrompt()+`
   <div class="hero" style="--hc:${B.color}">
     <div class="hero-top">
       <div>
@@ -3918,15 +3918,44 @@ function todayNoCheckin(d){
   </div>
   <div class="sec-t">What the engine already knows</div>
   <div class="card">
-    <div class="kv"><span class="k">Legs last loaded</span><span class="v">${H.since.lower===99?'over 2 weeks ago':H.since.lower===1?'yesterday':H.since.lower+' days ago'}</span></div>
-    <div class="kv"><span class="k">Upper body last trained</span><span class="v">${H.since.upper===99?'over 2 weeks ago':H.since.upper===1?'yesterday':H.since.upper+' days ago'}</span></div>
-    <div class="kv"><span class="k">Explosive work</span><span class="v">${H.since.expl===99?'over 2 weeks ago':H.since.expl===1?'yesterday':H.since.expl+' days ago'}</span></div>
-    <div class="kv"><span class="k">Last tennis</span><span class="v">${H.since.tennis===99?'not logged recently':H.since.tennis===1?'yesterday':H.since.tennis+' days ago'}</span></div>
+    <div class="kv"><span class="k">Legs last loaded</span><span class="v">${sinceText(H.since.lower)}</span></div>
+    <div class="kv"><span class="k">Upper body last trained</span><span class="v">${sinceText(H.since.upper)}</span></div>
+    <div class="kv"><span class="k">Explosive work</span><span class="v">${sinceText(H.since.expl)}</span></div>
+    <div class="kv"><span class="k">Last tennis</span><span class="v">${sinceText(H.since.tennis)}</span></div>
     <div class="kv"><span class="k">This week</span><span class="v">${P.lower+P.upper+P.power} strength · ${P.run} run · ${P.bike} bike · ${P.tennis} tennis</span></div>
     <div class="kv"><span class="k">Program week</span><span class="v">${ph.absWeek} — ${esc(ph.name)}</span></div>
-    <div class="note warn" style="margin-top:12px">There is <b>no fixed schedule</b>. Today's session is chosen after your check-in from readiness, recent load and what the week already contains.</div>
+    ${hasHistory()
+      ? `<div class="note warn" style="margin-top:12px">There is <b>no fixed schedule</b>. Today's session is chosen after your check-in from readiness, recent load and what the week already contains.</div>`
+      : `<div class="note" style="margin-top:12px">Nothing logged yet — that is not a problem. The engine will start from your check-in, and every session or activity you record from here makes the next recommendation sharper.</div>`}
   </div>
   ${weekStrip(d)}`;
+}
+/* Setup can be dismissed, but it must never disappear silently — an
+   unfinished setup means the program is running on defaults that may be
+   wrong for this user (equipment above all). Say so, persistently. */
+function setupPrompt(){
+  if(DB.profile.onboarded) return '';
+  const t=TIERS[DB.profile.tier||0]||TIERS[0];
+  return `<div class="card wide" id="setupCard" style="border-color:rgba(251,140,60,.45);background:linear-gradient(160deg,rgba(251,140,60,.09),transparent)">
+    <div class="card-t" style="color:var(--orange)">Setup not finished</div>
+    <div style="font-size:15px;font-weight:750;letter-spacing:-.2px;margin:7px 0 7px">The program is running on defaults</div>
+    <p style="font-size:13px;color:var(--text-2);line-height:1.55">Right now it assumes <b>${esc(t.name.toLowerCase())}</b> equipment and <b>tennis</b> as your sport. If either is wrong you are being given the wrong exercises.</p>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn primary sm" id="setupGo">Finish setup — 2 min</button>
+      <button class="btn ghost sm" id="setupDismiss">Defaults are fine</button>
+    </div>
+  </div>`;
+}
+/* has this device recorded anything at all? */
+function hasHistory(){
+  return (DB.sessions||[]).some(s=>s.done) || (DB.activities||[]).length>0 || DB.whoop.cycles.length>0;
+}
+/* honest wording: "never logged" is not the same as "over 2 weeks ago" */
+function sinceText(n){
+  if(!hasHistory()) return 'never logged';
+  if(n===99) return 'over 2 weeks ago';
+  if(n===1) return 'yesterday';
+  return n+' days ago';
 }
 
 /* ---- daily activity summary + tomorrow implication ---- */
@@ -3979,6 +4008,11 @@ function wireToday(d){
   on('btnPrep',()=>previewWorkout('w_prep','full'));
   on('btnQuickLog',()=>activitySheet(null,d));
   on('btnQuickLog2',()=>activitySheet(null,d));
+  on('setupGo',()=>startSetup());
+  on('setupDismiss',()=>{
+    DB.profile.onboarded=true; save(true); renderNav(); render();
+    toast('Using defaults — change them any time in Settings');
+  });
   ['accReady','accOpts'].forEach(id=>{
     const h=$('#'+id+'H'); if(h) h.onclick=()=>$('#'+id).classList.toggle('open');
   });
@@ -6439,8 +6473,11 @@ function drawSetup(){
 
   const back = s>0 ? `<button class="btn ghost" id="setBack">Back</button>` : '';
   const nextLabel = s===SETUP_STEPS.length-1 ? (d.mode==='whoop'?'Finish & import WHOOP':'Finish setup') : 'Continue';
+  /* closing the wizard leaves the program on defaults — say so rather than
+     letting it vanish and quietly prescribe the wrong exercises */
   openSheet(title, body,
-    `<div class="btn-row">${back}<button class="btn primary" id="setNext" style="flex:2">${nextLabel}</button></div>`);
+    `<div class="btn-row">${back}<button class="btn primary" id="setNext" style="flex:2">${nextLabel}</button></div>`,
+    ()=>{ if(!DB.profile.onboarded){ try{ render(); toast('Setup unfinished — finish it from the card on Today'); }catch(e){} } });
 
   /* option cards */
   $$('.setOpt').forEach(b=>b.onclick=()=>{
