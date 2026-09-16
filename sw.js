@@ -2,7 +2,7 @@
    No user data passes through here. WHOOP files are parsed in the page and
    training data lives in IndexedDB, neither of which the Cache API can see.
    Nothing is ever sent anywhere: there is no server to send it to. */
-const CACHE = 'baseline-v3';
+const CACHE = 'baseline-v4';
 const SHELL = [
   './',
   './index.html',

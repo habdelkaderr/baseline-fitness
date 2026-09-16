@@ -14,7 +14,7 @@
 <meta name="theme-color" content="#0A0B0D">
 <meta name="color-scheme" content="dark">
 <meta name="format-detection" content="telephone=no">
-<title>Baseline — Tennis Performance System</title>
+<title>Baseline — Adaptive Training System</title>
 <!-- A real manifest file, not a data: URL. Safari will not install a data:-URL
      manifest, and the file is only fetched when deployed over https, where it
      works. Its absence is harmless: the app still runs, it just cannot install. -->
@@ -23,7 +23,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
 <style>
 /* ============================================================
-   BASELINE — Tennis Performance System
+   BASELINE — Adaptive Training System
    Design tokens
    ============================================================ */
 :root{
@@ -158,6 +158,36 @@ button.card{padding-right:46px}      /* room for the tick */
   color:var(--accent);margin-bottom:9px;display:flex;align-items:center;gap:7px;
 }
 .multi-hint svg{width:14px;height:14px;flex:0 0 14px;stroke-width:3}
+
+/* ---------- chip picker: chosen items as blocks, "+" to add ---------- */
+.chipset{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.chipblk{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:6px 5px 6px 13px;border-radius:12px;min-height:44px;
+  background:var(--surface-2);border:1px solid var(--border);
+  font-size:13.5px;font-weight:650;color:var(--text);
+}
+.chipblk.lead{border-color:var(--accent);background:rgba(195,245,60,.10)}
+.chipblk .lead-t{
+  font-style:normal;font-size:8.5px;font-weight:850;letter-spacing:.6px;
+  color:var(--accent-ink);background:var(--accent);padding:2px 5px;border-radius:4px;margin-left:2px;
+}
+/* 32px so it clears the 30px minimum touch target; the icon stays small */
+.chipx{
+  width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  color:var(--text-3);flex:0 0 32px;
+}
+.chipx:active{background:var(--surface-3)}
+.chipx svg{width:13px;height:13px;stroke-width:2.6}
+.chipadd{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:0 14px;min-height:42px;border-radius:12px;
+  background:transparent;border:1px dashed var(--border);
+  font-size:13px;font-weight:700;color:var(--accent);
+}
+.chipadd:active{background:var(--surface-2)}
+.chipadd svg{width:15px;height:15px;stroke-width:2.6}
+.chipnone{font-size:12.5px;color:var(--text-3);font-weight:600;padding:0 2px}
 .card.tight{padding:13px}
 .card.flush{padding:0;overflow:hidden}
 .card-h{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
@@ -689,11 +719,10 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 <div id="toast"></div>
 <input type="file" id="fileIn" accept=".csv,text/csv" multiple style="display:none">
 <input type="file" id="jsonIn" accept=".json,application/json" style="display:none">
-
 <script>
 "use strict";
 /* ============================================================================
-   BASELINE — Tennis Performance System
+   BASELINE — Adaptive Training System
    Single-file, offline-first. All data stays in this browser (localStorage).
    Private, local-first, no server. Works with or without WHOOP.
    ========================================================================= */
@@ -1041,16 +1070,16 @@ const whoopMode = ()=> !!(DB&&DB.profile.mode==='whoop');
 
 /* =========================================================================
    EXERCISE LIBRARY
-   Every exercise is executable with: bodyweight · 2 × 5 kg dumbbells ·
+   Every exercise declares the equipment it needs; you are only ever shown
    1 resistance band · bicycle · running · open space. Nothing else.
    ====================================================================== */
-const EQ = {BW:'Bodyweight', DB:'2×5 kg dumbbells', BAND:'Resistance band', WALL:'Wall', FLOOR:'Floor',
+const EQ = {BW:'Bodyweight', DB:'Dumbbells', BAND:'Resistance band', WALL:'Wall', FLOOR:'Floor',
             CHAIR:'Chair/step (check stability)', BIKE:'Bicycle', RUN:'Open ground', TOWEL:'Towel/sliders'};
 
 function seedExercises(){ return [
 /* ---------------- LOWER BODY — STRENGTH ---------------- */
 {id:'lx01',name:'Tempo Goblet Squat',cat:'lower',muscles:'Quads, glutes, core',equip:'DB',sets:4,reps:'8–12',rpe:'RPE 8 (2 RIR)',rest:'90s',tempo:'4-1-1-0',
- how:'Hold one 5 kg dumbbell vertically at chest height. Feet shoulder-width, toes slightly out. Lower over 4 seconds, pause 1 second at the bottom, stand normally.',
+ how:'Hold one dumbbell vertically at chest height. Feet shoulder-width, toes slightly out. Lower over 4 seconds, pause 1 second at the bottom, stand normally.',
  cue:'Knees track over the middle toes. Chest tall, ribs down. Push the floor away.',
  prog:'Add 1 rep per set each week. At 4×12 move to 5-second eccentric, then to 3-second pause, then progress to Bulgarian Split Squat.',
  reg:'Bodyweight squat with the same tempo, or reduce depth to a comfortable range.',
@@ -1823,7 +1852,7 @@ function seedExercises(){ return [
  prog:'—',
  reg:'—',
  subs:'Recovery Spin',
- notes:'Your data shows walking days carry almost no recovery cost.'},
+ notes:'Walking carries almost no recovery cost — it is the safest thing to add on a low day.'},
 
 {id:'cd08',name:'Tempo Run',cat:'cardio',muscles:'Aerobic power, running economy',equip:'RUN',sets:1,reps:'15–25 min at tempo',rpe:'RPE 6–7',rest:'—',tempo:'Comfortably hard',
  how:'Warm up 10 min easy, then run 15–25 minutes at a pace you could hold for about an hour — breathing is controlled but conversation is limited to short phrases. Cool down 5–10 min easy.',
@@ -1841,7 +1870,6 @@ function seedExercises(){ return [
  subs:'Tennis Interval Run',
  notes:'Use instead of running intervals when the legs are beaten up from tennis.'}
 ];}
-
 
 /* =========================================================================
    WARM-UP LIBRARY
@@ -1939,7 +1967,7 @@ function seedWorkouts(){ return [
 {id:'w_lowerA',name:'Lower A — Max Force & Single-Leg',short:'Lower A',type:'strength',accent:'accent',
  focus:'Quads, glutes, single-leg strength, knee & ankle resilience',
  warm:'lower',cool:'lower',est:{full:52,reduced:34,recovery:20},
- desc:'Your heaviest leg day. Slow eccentrics and pauses replace the barbell you do not have. This is the session that builds the base under your split step and first step.',
+ desc:'Your heaviest leg day. Where no barbell is available, slow eccentrics and pauses do the same job. This is the session that builds the base under every push-off and first step.',
  blocks:{
   full:[
    {ex:'pl01',sets:2,reps:'20',rest:'45s',rpe:'RPE 5',note:'Primer only — wakes the tendons before strength work.'},
@@ -1970,7 +1998,7 @@ function seedWorkouts(){ return [
 {id:'w_upperA',name:'Upper A — Push, Delts & V-Taper',short:'Upper A',type:'strength',accent:'cyan',
  focus:'Shoulders, chest, triceps — the width and definition half of your physique goal',
  warm:'upper',cool:'upper',est:{full:46,reduced:30,recovery:18},
- desc:'Deltoid-led pressing. With 5 kg dumbbells your growth driver is proximity to failure plus slow eccentrics — the lateral raises here are the single biggest lever on shoulder width.',
+ desc:'Deltoid-led pressing. With light dumbbells the growth driver is proximity to failure plus slow eccentrics rather than load — the lateral raises here are the single biggest lever on shoulder width.',
  blocks:{
   full:[
    {ex:'up05',sets:4,reps:'6–14',rest:'75s',rpe:'RPE 8',tempo:'3-1-1-0',note:'Primary vertical press — hips stacked high.'},
@@ -2000,7 +2028,7 @@ function seedWorkouts(){ return [
 {id:'w_power',name:'Power & Movement',short:'Power',type:'power',accent:'violet',
  focus:'Explosive power, acceleration, deceleration, change of direction, serve jump',
  warm:'power',cool:'power',est:{full:48,reduced:32,recovery:18},
- desc:'The most tennis-specific session of the week. Everything here is quality-limited: if output drops, the set is over. Never chase fatigue on a power day.',
+ desc:'The most sport-specific session of the week. Everything here is quality-limited: if output drops, the set is over. Never chase fatigue on a power day.',
  blocks:{
   full:[
    {ex:'pl01',sets:3,reps:'25',rest:'45s',rpe:'RPE 6'},
@@ -2062,11 +2090,11 @@ function seedWorkouts(){ return [
 {id:'w_lowerB',name:'Lower B — Posterior Chain & Ankles',short:'Lower B',type:'strength',accent:'accent',
  focus:'Hamstrings, glutes, calves, adductors — injury-proofing and push-off power',
  warm:'lower',cool:'lower',est:{full:46,reduced:30,recovery:18},
- desc:'The protective session. Hamstring and groin strength are the two biggest insurance policies in tennis, and strong calves feed directly into serve drive and repeated push-off.',
+ desc:'The protective session. Hamstring and groin strength are the biggest insurance policies in any sport with sprinting or cutting, and strong calves feed every push-off.',
  blocks:{
   full:[
    {ex:'lx10',sets:4,reps:'12–18',rest:'75s',rpe:'RPE 8',tempo:'4-1-1-0'},
-   {ex:'lx11',sets:3,reps:'4–6',rest:'90s',rpe:'RPE 9',tempo:'5s eccentric',note:'Brutal soreness for 3–4 days. Never within 48h of tennis.'},
+   {ex:'lx11',sets:3,reps:'4–6',rest:'90s',rpe:'RPE 9',tempo:'5s eccentric',note:'Brutal soreness for 3–4 days. Never within 48h of your sport.'},
    {ex:'lx05',sets:3,reps:'8–10 / side',rest:'60s',rpe:'RPE 7'},
    {ex:'lx19',sets:3,reps:'15–40s / side',rest:'45s',rpe:'RPE 8',note:'Top groin-injury prevention exercise. Build the time slowly.'},
    {ex:'lx16',sets:4,reps:'15–25',rest:'45s',rpe:'RPE 8',tempo:'2-1-1-2'},
@@ -2089,10 +2117,12 @@ function seedWorkouts(){ return [
    {ex:'mo11',sets:2,reps:'40s / side',rest:'—',rpe:'Easy'}
   ]}},
 
-{id:'w_prep',name:'Tennis Day — Prep & Maintain',short:'Tennis Prep',type:'tennis',accent:'green',
- focus:'Pre-court activation, serve-jump priming, shoulder health, post-court maintenance',
- warm:'tennis',cool:'easy',est:{full:22,reduced:14,recovery:10},
- desc:'Short work built AROUND tennis, not competing with it. Offered whenever you tell the app you are playing today. Your data shows tennis already costs about 11 recovery points — this adds priming and protection without adding meaningful load.',
+{id:'w_prep',name:'Sport Day — Prep & Maintain',short:'Sport Prep',type:'tennis',accent:'green',
+ focus:'Activation before you play, joint maintenance after',
+ /* warm:'sport' resolves through warmupFor() to a warm-up assembled for
+    whichever sports the profile names — see sportWarmup() */
+ warm:'sport',cool:'easy',est:{full:22,reduced:14,recovery:10},
+ desc:'Short work built AROUND your sport, not competing with it. Offered whenever you log your sport for today. It adds priming and protection without adding meaningful load.',
  blocks:{
   full:[
    {ex:'pl01',sets:2,reps:'20',rest:'40s',rpe:'RPE 5',note:'Before court — primes ankle stiffness for the split step.'},
@@ -2195,7 +2225,7 @@ function seedWorkouts(){ return [
 {id:'w_runQuality',name:'Tempo Run',short:'Tempo Run',type:'cardio',accent:'orange',
  focus:'Aerobic power and running economy',
  warm:'easy',cool:'easy',est:{full:42,reduced:30,recovery:22},
- desc:'Comfortably hard continuous running. Used sparingly — tennis already gives you plenty of high-intensity work, so this is here to raise the aerobic ceiling, not to make you tired.',
+ desc:'Comfortably hard continuous running. Used sparingly — if your sport already gives you high-intensity work, this is here to raise the aerobic ceiling, not to make you tired.',
  blocks:{
   full:[
    {ex:'cd08',sets:1,reps:'18–25 min at tempo',rest:'—',rpe:'RPE 6–7',note:'10 min easy in, 5–10 min easy out.'},
@@ -2210,10 +2240,10 @@ function seedWorkouts(){ return [
    {ex:'cd01',sets:1,reps:'25 min',rest:'—',rpe:'RPE 4',note:'Drop the tempo work — easy running only today.'}
   ]}},
 
-{id:'w_runInt',name:'Tennis Conditioning — Intervals',short:'Intervals',type:'cardio',accent:'orange',
- focus:'Repeat-sprint ability using tennis work:rest structure',
+{id:'w_runInt',name:'Repeat-Sprint Conditioning',short:'Intervals',type:'cardio',accent:'orange',
+ focus:'Repeat-sprint ability using a 20s:40s work:rest structure',
  warm:'power',cool:'power',est:{full:38,reduced:26,recovery:18},
- desc:'Built on the 20s work / 40s rest structure that mirrors real tennis points. Genuinely hard — the engine will only offer this on a green day when your legs are fresh.',
+ desc:'Built on a 20s work / 40s rest structure that mirrors the stop-start demands of most field and court sports. Genuinely hard — the engine only offers this on a green day when your legs are fresh.',
  blocks:{
   full:[
    {ex:'cd03',sets:10,reps:'20s hard / 40s easy',rest:'Built in',rpe:'RPE 8'},
@@ -2231,7 +2261,7 @@ function seedWorkouts(){ return [
 {id:'w_bike',name:'Zone 2 Bike',short:'Bike',type:'cardio',accent:'cyan',
  focus:'Aerobic base with almost no impact cost',
  warm:'easy',cool:'easy',est:{full:50,reduced:35,recovery:25},
- desc:'Your low-impact aerobic option. When the legs are beaten up from tennis or running but your recovery is fine, this buys aerobic fitness without adding pounding.',
+ desc:'Your low-impact aerobic option. When the legs are beaten up but your recovery is fine, this buys aerobic fitness without adding pounding.',
  blocks:{
   full:[
    {ex:'cd02',sets:1,reps:'40–55 min',rest:'—',rpe:'RPE 4–5',note:'Cadence above 80 rpm, effort genuinely conversational.'},
@@ -2302,8 +2332,10 @@ function freshDB(){
     version:1, created:new Date().toISOString(),
     profile:{
       name:'', age:null, heightCm:null,
-      goalPrimary:'Improve tennis performance — leg strength, core strength, explosive power, serve jump, lateral movement, acceleration, deceleration, change of direction, single-leg strength, balance and tennis-specific conditioning.',
-      goalSecondary:'Build an athletic, lean, well-proportioned physique — deltoid width, upper back, defined chest, stronger arms, better posture and a V-taper, without compromising tennis performance.',
+      /* written by the setup wizard from what you actually choose — these
+         placeholders only ever show if setup has not been completed */
+      goalPrimary:'Not set yet — finish setup and this is written from your sports and goals.',
+      goalSecondary:'',
       equipment:['Bodyweight'],
       units:'metric',
       sessionMin:50, startDate:todayISO(), planWeek:1, planStart:todayISO(),
@@ -2315,14 +2347,18 @@ function freshDB(){
       /* equipment tier: 0 minimal · 1 home · 2 full gym */
       tier:0, preferBest:true, gear:[], dbKg:null, equipNote:'',
       /* goals — arrays, with the first entry leading */
-      sports:['tennis'], sport:'tennis',
+      /* no sport is assumed before setup: 'general' gives balanced defaults */
+      sports:['general'], sport:'general',
       physiques:['athletic'], physique:'athletic',
       daysPerWeek:4
     },
     meta:{ created:new Date().toISOString(), schema:SCHEMA_VERSION, lastBackup:null, lastBackupCount:null },
     /* Weekly GUIDELINES, not quotas. The daily engine decides the order and
        will happily miss a target rather than train you into the ground. */
-    targets:{lower:2, upper:2, power:1, core:3, run:2, bike:2, mobility:3},
+    /* conservative pre-setup defaults: only what bodyweight and a floor allow.
+       Finishing setup replaces these with targets derived from your sports,
+       goals, training days and equipment (see applyGoalTargets). */
+    targets:{lower:2, upper:2, core:3, mobility:3},
     settings:{
       bands:{green:72,yellow:56,orange:42},
       autoAdjust:true, hardStrain:14, restTimerOn:true
@@ -2340,7 +2376,6 @@ function freshDB(){
     ui:{tab:'today'}
   };
 }
-
 
 /* =========================================================================
    EQUIPMENT TIERS & MOVEMENT PATTERNS
@@ -2401,6 +2436,13 @@ function gearList(){
   const g=(DB&&DB.profile&&Array.isArray(DB.profile.gear))?DB.profile.gear:[];
   return g;
 }
+/* "dumbbells, a band and a bicycle" — written from what is actually ticked */
+function gearNames(){
+  const n=gearList().map(id=>(EQUIP_ITEMS.find(x=>x.id===id)||{name:id}).name.toLowerCase());
+  if(!n.length) return 'bodyweight only';
+  if(n.length===1) return 'bodyweight and '+n[0];
+  return 'bodyweight, '+n.slice(0,-1).join(', ')+' and '+n[n.length-1];
+}
 function canDo(e){
   const needs=e.needs||[];
   if(!needs.length) return true;                 // bodyweight only
@@ -2410,6 +2452,189 @@ function canDo(e){
     return have.indexOf(x)>=0;
   });
 }
+/* =========================================================================
+   SPORT PROFILES
+   Everything sport-specific is derived from here, so choosing football or
+   swimming reshapes the warm-ups, weekly targets and priorities exactly the
+   way tennis does. Nothing about tennis is special in the code.
+   ====================================================================== */
+const SPORT_PROFILES={
+  tennis:    {act:['tennis','padel','squash'], explosive:true, impact:'high', overhead:true,
+              prep:['lateral','rotation','shoulder','reactive'],
+              focus:['jump','lateral','accel','decel','cod','sleg','core','shoulder','protect','cond'],
+              qualities:'lateral movement, rotational power and repeated change of direction'},
+  padel:     {act:['padel','tennis','squash'], explosive:true, impact:'high', overhead:true,
+              prep:['lateral','rotation','shoulder','reactive'],
+              focus:['lateral','accel','decel','cod','sleg','core','shoulder','protect','cond'],
+              qualities:'lateral movement, rotation and quick reactions'},
+  racquet:   {act:['tennis','padel','squash'], explosive:true, impact:'high', overhead:true,
+              prep:['lateral','rotation','shoulder','reactive'],
+              focus:['jump','lateral','accel','decel','cod','sleg','core','shoulder','protect','cond'],
+              qualities:'lateral movement, rotational power and shoulder durability'},
+  football:  {act:['football'], explosive:true, impact:'high', overhead:false,
+              prep:['sprint','lateral','hamstring','reactive'],
+              focus:['accel','decel','cod','sleg','core','protect','calf','cond'],
+              qualities:'repeated sprinting, acceleration and hamstring resilience'},
+  basketball:{act:['basketball'], explosive:true, impact:'high', overhead:true,
+              prep:['jump','lateral','landing','reactive'],
+              focus:['jump','landing','lateral','accel','decel','cod','sleg','core','shoulder','cond'],
+              qualities:'jump power, landing mechanics and lateral movement'},
+  running:   {act:['running'], explosive:false, impact:'high', overhead:false,
+              prep:['sprint','hamstring','calf'],
+              focus:['sleg','protect','calf','core','aerobic','mob'],
+              qualities:'aerobic base, running economy and tendon resilience'},
+  cycling:   {act:['cycling'], explosive:false, impact:'low', overhead:false,
+              prep:['hip','calf'],
+              focus:['legend','sleg','core','aerobic','mob'],
+              qualities:'aerobic base and leg strength endurance'},
+  general:   {act:[], explosive:false, impact:'mixed', overhead:false,
+              prep:['hip','shoulder'],
+              focus:['sleg','core','aerobic','mob'],
+              qualities:'balanced strength, conditioning and movement quality'}
+};
+const sportsOf   = ()=> (DB&&DB.profile&&DB.profile.sports&&DB.profile.sports.length)
+                        ? DB.profile.sports : [(DB&&DB.profile&&DB.profile.sport)||'general'];
+const mainSport  = ()=> sportsOf()[0];
+const sportProf  = id => SPORT_PROFILES[id||mainSport()]||SPORT_PROFILES.general;
+const SPORT_LABEL= ()=> (SPORTS.find(s=>s.id===mainSport())||{name:'Your sport'}).name;
+/* activity types that count as "your sport" for the engine's guards */
+function mainSportActs(){
+  const set=[];
+  sportsOf().forEach(id=>(sportProf(id).act||[]).forEach(a=>{ if(set.indexOf(a)<0) set.push(a); }));
+  return set.length?set:['tennis','padel','squash','football','basketball'];
+}
+const isMainSportAct = t => mainSportActs().indexOf(t)>=0;
+/* does any chosen sport have this property? */
+const anySport = f => sportsOf().some(id=>f(sportProf(id)));
+/* -------------------------------------------------------------------------
+   Derived prose. Every sentence the UI would otherwise hardcode is built
+   here from the sports the user actually chose, so nothing in the interface
+   claims to know something the setup did not tell it.
+   --------------------------------------------------------------------- */
+const sportLC    = ()=> SPORT_LABEL().toLowerCase();
+const SPORT_EMOJI= ()=> (SPORTS.find(s=>s.id===mainSport())||{emoji:'🏅'}).emoji||'🏅';
+/* target keys in the order they should be shown, filtered to what exists */
+const TARGET_ORDER=['lower','upper','power','core','run','bike','mobility'];
+const TARGET_BAR={lower:'a',upper:'c',power:'o',core:'v',run:'g',bike:'c',mobility:'g'};
+/* slider bounds for the target editor */
+const TARGET_MAX={lower:5,upper:5,power:3,core:6,run:5,bike:6,mobility:7};
+function targetKeys(){
+  const T=(DB&&DB.targets)||{};
+  const inOrder=TARGET_ORDER.filter(k=>T[k]>0);
+  Object.keys(T).forEach(k=>{ if(T[k]>0&&inOrder.indexOf(k)<0) inOrder.push(k); });
+  return inOrder;
+}
+/* "tennis", or "tennis and football", or "tennis, football and swimming" */
+function sportsText(){
+  const n=sportsOf().map(id=>(SPORTS.find(s=>s.id===id)||{name:id}).name.toLowerCase());
+  if(n.length<=1) return n[0]||'your sport';
+  return n.slice(0,-1).join(', ')+' and '+n[n.length-1];
+}
+const hasSportChosen = ()=> mainSport()!=='general' && mainSportActs().length>0;
+/* why a given training system matters, phrased for the chosen sport */
+function sysGoalText(sys){
+  const p=sportProf(), sp=sportLC(), q=p.qualities;
+  const gen=!hasSportChosen();
+  switch(sys){
+    case 'lower':  return gen ? 'Lower-body strength is the base everything else is built on.'
+      : `Leg strength sits directly under ${sp} — it underpins every push-off, first step and landing.`;
+    case 'expl':   return gen ? 'Explosive work keeps you fast and springy rather than only strong.'
+      : `Builds the explosive qualities ${sp} runs on: ${q}.`;
+    case 'core':   return gen ? 'Core strength transfers force between your legs and upper body.'
+      : `Core strength transfers leg drive into the rest of the body and stabilises ${sp} positions.`;
+    case 'upper':  return (anySport(x=>x.overhead)
+      ? 'Keeps the overhead shoulder durable and '
+      : 'Balances the strength work and ')+'drives the physique side of your goals.';
+    case 'run':    return gen ? 'Builds the aerobic base that makes everything else easier.'
+      : `Aerobic base so your level holds late in ${sp}.`;
+    case 'bike':   return 'Aerobic fitness with almost no impact cost — the right call when legs are loaded but you are recovered.';
+    case 'mobility':return 'Protects the hard days. Movement quality without adding fatigue.';
+    default: return '';
+  }
+}
+/* the decision priority list, ordered by what this user said they want */
+function priorityList(){
+  const goals=(DB&&DB.profile&&DB.profile.physiques)||[];
+  const L=['Safety and recovery'];
+  if(hasSportChosen()) L.push(SPORT_LABEL()+' performance');
+  L.push('Leg strength','Core strength');
+  if(anySport(x=>x.explosive)) L.push('Explosive power');
+  L.push('Appropriate conditioning');
+  L.push(goals.indexOf('muscle')>=0 ? 'Upper body / muscle' : 'Upper body / physique');
+  L.push('Weekly completion');
+  return L;
+}
+
+/* =========================================================================
+   SPORT-SPECIFIC WARM-UP
+   Assembled from the prep qualities the chosen sport actually needs, rather
+   than a fixed tennis routine. A footballer gets sprint and hamstring prep;
+   a swimmer gets shoulders; a cyclist gets hips.
+   ====================================================================== */
+const PREP_BLOCKS={
+  lateral:   [{n:'Lateral shuffle + crossover',d:'2 × 10 m each way'},
+              {n:'90/90 hip switch',d:'8 each side'}],
+  rotation:  [{n:'Thoracic rotation (open book)',d:'8 each side'},
+              {n:'Shadow swings / rotational throws',d:'10 building to 80%'}],
+  shoulder:  [{n:'Band pull-apart',d:'20'},
+              {n:'Band face pull',d:'15'},
+              {n:'Shoulder CARs',d:'3 each side, slow'}],
+  reactive:  [{n:'Split step + first step',d:'6 reactions'},
+              {n:'Build-up sprints',d:'3 × 10 m'}],
+  sprint:    [{n:'A-skips',d:'2 × 15 m'},
+              {n:'High knees',d:'2 × 15 m'},
+              {n:'Build-up runs',d:'3 × 20 m at 60/75/85%'}],
+  hamstring: [{n:'Leg swings front/back',d:'12 each leg'},
+              {n:'Single-leg RDL (bodyweight)',d:'8 each side, slow'}],
+  jump:      [{n:'Pogo hops',d:'2 × 20'},
+              {n:'Countermovement jumps',d:'3 sub-maximal'}],
+  landing:   [{n:'Drop and stick',d:'4 reps, silent landings'}],
+  calf:      [{n:'Calf raises',d:'15 slow'},
+              {n:'Ankle dorsiflexion rock',d:'10 each side'}],
+  hip:       [{n:'Hip circles + leg swings',d:'10 each'},
+              {n:"World's greatest stretch",d:'4 each side'}]
+};
+/* =========================================================================
+   WHAT EACH SPORT NEEDS FROM THE PROGRAM
+   The Activity tab shows "how your training serves your sport". The rows are
+   assembled from these blocks according to the chosen sport, so a footballer
+   sees sprinting and hamstrings where a basketballer sees jumping and landing.
+   ====================================================================== */
+const FOCUS_BLOCKS={
+  jump:    ['Jump power','Countermovement Jump, Squat Jump, Single-Leg Calf Raise','w_power'],
+  lateral: ['Lateral movement','Lateral Bound, Lateral Lunge, Cossack Squat, Lateral Shuffle','w_power'],
+  accel:   ['Acceleration','Acceleration Sprints, Crossover Step Start, Split-Step Reaction','w_power'],
+  decel:   ['Deceleration','Deceleration Drill, Depth Drop & Stick, Tibialis Raise','w_power'],
+  cod:     ['Change of direction','5-10-5 Pro Agility, Spider Drill','w_power'],
+  landing: ['Landing mechanics','Depth Drop & Stick, Skater Squat','w_power'],
+  sleg:    ['Single-leg strength','Bulgarian Split Squat, Skater Squat, Single-Leg RDL','w_lowerA'],
+  core:    ['Core force transfer','Pallof Press, Band Rotational Press, Suitcase Carry','w_core'],
+  shoulder:['Shoulder durability','Band Face Pull, Pull-Apart, Prone Y-T-W','w_upperB'],
+  protect: ['Groin & hamstring protection','Copenhagen Plank, Nordic Curl, Single-Leg RDL','w_lowerB'],
+  calf:    ['Calf & tendon resilience','Single-Leg Calf Raise, Tibialis Raise, Pogo Hops','w_lowerB'],
+  legend:  ['Leg strength endurance','Goblet Squat, Step-Up, Wall Sit','w_lowerA'],
+  cond:    ['Conditioning','Interval running (20s/40s), Zone 2','w_runInt'],
+  aerobic: ['Aerobic base','Zone 2 runs and rides','w_runEasy'],
+  mob:     ['Movement quality','Mobility & recovery session','w_recovery']
+};
+function sportFocus(){
+  const seen=[], out=[];
+  sportsOf().forEach(id=>((SPORT_PROFILES[id]||{}).focus||[]).forEach(k=>{
+    if(FOCUS_BLOCKS[k]&&seen.indexOf(k)<0){ seen.push(k); out.push(FOCUS_BLOCKS[k]); }
+  }));
+  if(!out.length) ['sleg','core','aerobic','mob'].forEach(k=>out.push(FOCUS_BLOCKS[k]));
+  return out;
+}
+function sportWarmup(id){
+  const p=sportProf(id), s=SPORTS.find(x=>x.id===(id||mainSport()));
+  const items=[{n:'Easy jog, spin or brisk walk',d:'3 min — raise temperature'}];
+  (p.prep||[]).forEach(k=>(PREP_BLOCKS[k]||[]).forEach(it=>{
+    if(!items.some(x=>x.n===it.n)) items.push(it);
+  }));
+  return {name:`Pre-${(s&&s.name.split(' ')[0].toLowerCase())||'session'} prep`,
+          dur:Math.max(6,Math.min(12,3+items.length)), items};
+}
+
 /* the tier implied by what is ticked — used only for labelling */
 function tierFromGear(){
   const have=gearList();
@@ -2702,6 +2927,14 @@ function bodyweightFallback(e){
   return DB.exercises.find(x=>x.cat===e.cat && (!x.needs||!x.needs.length) && x.id!==e.id)||null;
 }
 
+/* a workout's warm-up: sport-specific when the workout is sport prep */
+function warmupFor(w){
+  if(!w) return WARMUPS.easy;
+  /* 'sport' (and the legacy 'tennis' key from older saved workouts) means
+     "build one for whatever this user actually plays" */
+  if(w.warm==='sport'||w.warm==='tennis') return sportWarmup();
+  return WARMUPS[w.warm]||WARMUPS.easy;
+}
 
 /* =========================================================================
    CSV PARSING  (RFC4180-tolerant)
@@ -3089,13 +3322,13 @@ function correlations(){
   push("Yesterday's strain → Recovery", prev, rec);
   push("Yesterday's strain → HRV", prev, hrv);
   push("Yesterday's strain → Resting HR", prev, rhr);
-  // tennis effect (WHOOP workouts + your own activity log)
+  // main-sport effect (WHOOP workouts + your own activity log)
   const tset=new Set([
-    ...DB.whoop.workouts.filter(w=>/tennis|padel|squash/i.test(w.activity)).map(w=>w.date),
-    ...DB.activities.filter(a=>['tennis','padel','squash'].includes(a.type)).map(a=>a.date)]);
+    ...DB.whoop.workouts.filter(w=>mainSportActs().some(a=>new RegExp(a,'i').test(w.activity))).map(w=>w.date),
+    ...DB.activities.filter(a=>isMainSportAct(a.type)).map(a=>a.date)]);
   if(tset.size>=6){
     const tsub=c.map((x,i)=> i>0 ? (tset.has(c[i-1].date)?1:0) : null);
-    push('Tennis yesterday (1/0) → Recovery', tsub, rec);
+    push(SPORT_LABEL()+' yesterday (1/0) → Recovery', tsub, rec);
   }
   // own logged sessions
   const sset=new Set(DB.sessions.filter(s=>s.done).map(s=>s.date));
@@ -3331,10 +3564,9 @@ const BAND = {
    loaded, what the week already contains, the goal hierarchy, and the time
    available — then returns ONE recommendation with its reasoning.
 
-   Goal hierarchy (highest first):
-     1. Safety & recovery      2. Tennis performance   3. Leg strength
-     4. Core strength          5. Explosive power      6. Conditioning
-     7. Upper body / physique  8. Weekly completion
+   Goal hierarchy: built by priorityList() from the sports and outcomes
+   chosen in setup — nothing in it is fixed to a particular sport.
+
    ====================================================================== */
 
 /* ---------- week accounting (Monday start) ---------- */
@@ -3351,15 +3583,19 @@ function catOfWorkout(w){
   if(w.type==='cardio') return 'run';
   return 'strength';
 }
-const ACT_CAT = t => ['tennis','padel','squash'].includes(t) ? 'tennis'
-  : t==='running' ? 'run' : t==='cycling' ? 'bike' : t==='walking' ? 'walk'
-  : t==='yoga' ? 'mobility' : t==='strength' ? 'strength' : 'sport';
+/* `sport` means "one of the sports this user chose in setup" — the set comes
+   from their profile, never from a hardcoded list. Anything else athletic
+   falls into `otherSport`. */
+const ACT_CAT = t =>
+    t==='running' ? 'run' : t==='cycling' ? 'bike' : t==='walking' ? 'walk'
+  : t==='yoga' ? 'mobility' : t==='strength' ? 'strength'
+  : isMainSportAct(t) ? 'sport' : 'otherSport';
 
 function weekProgress(date){
   const start=weekStartOf(date), days=[];
   for(let i=0;i<7;i++){ const d=addDays(start,i); if(d<=date) days.push(d); }
-  const p={lower:0,upper:0,power:0,core:0,run:0,bike:0,mobility:0,tennis:0,sport:0,strength:0,
-           runMin:0,bikeMin:0,tennisMin:0,load:0,start,days,elapsed:days.length};
+  const p={lower:0,upper:0,power:0,core:0,run:0,bike:0,mobility:0,sport:0,otherSport:0,strength:0,
+           runMin:0,bikeMin:0,sportMin:0,load:0,start,days,elapsed:days.length};
   DB.sessions.filter(s=>s.done&&days.indexOf(s.date)>=0).forEach(s=>{
     const cat=s.category||catOfWorkout(DB.workouts.find(w=>w.id===s.workoutId));
     if(p[cat]!=null) p[cat]++;
@@ -3373,7 +3609,9 @@ function weekProgress(date){
     if(p[c]!=null) p[c]++;
     if(c==='run') p.runMin+=a.min||0;
     if(c==='bike') p.bikeMin+=a.min||0;
-    if(c==='tennis') p.tennisMin+=a.min||0;
+    /* "your sport" is whatever the profile says it is — a runner's runs count
+       here too, even though they are categorised as conditioning. */
+    if(isMainSportAct(a.type)){ p.sportMin+=a.min||0; if(c!=='sport') p.sport++; }
   });
   days.forEach(d=>{ p.load+=dayDemand(d).load; });
   p.load=rnd(p.load,1);
@@ -3384,10 +3622,10 @@ function weekProgress(date){
 function systemHistory(date){
   /* `lower`/`expl` are LOAD-based — anything that loaded the legs counts,
      because that is what matters when deciding whether legs are ready.
-     `upper` is TRAINING-based — a tennis serve is shoulder fatigue, not an
+     `upper` is TRAINING-based — an overhead serve is shoulder fatigue, not an
      upper-body session, and must not block upper-body work. */
-  const h={lower:99,upper:99,expl:99,core:99,run:99,bike:99,tennis:99,mobility:99,anyHard:99};
-  const load={lower3:0,upper3:0,expl3:0,impact3:0,lower7:0,upper7:0,expl7:0,run7:0,tennis7:0,
+  const h={lower:99,upper:99,expl:99,core:99,run:99,bike:99,sport:99,mobility:99,anyHard:99};
+  const load={lower3:0,upper3:0,expl3:0,impact3:0,lower7:0,upper7:0,expl7:0,run7:0,sport7:0,
               load3:0,load7:0,shoulder3:0};
   const UPPER_SPORT={swimming:1,climbing:1,rowing:1,martial:1,volleyball:1,strength:1};
   for(let i=1;i<=14;i++){
@@ -3411,7 +3649,7 @@ function systemHistory(date){
       const c=ACT_CAT(a.type), T=ACT_TYPES[a.type]||ACT_TYPES.other;
       if(c==='run'){ if(h.run===99)h.run=i; if(i<=7)load.run7+=a.min||0; }
       if(c==='bike'&&h.bike===99) h.bike=i;
-      if(c==='tennis'){ if(h.tennis===99)h.tennis=i; if(i<=7)load.tennis7+=a.min||0; }
+      if(isMainSportAct(a.type)){ if(h.sport===99)h.sport=i; if(i<=7)load.sport7+=a.min||0; }
       if(c==='mobility'&&h.mobility===99) h.mobility=i;
       if(UPPER_SPORT[a.type]&&h.upper===99) h.upper=i;
       if(i<=3&&T.shoulder) load.shoulder3+=activityLoad(a)*T.shoulder;
@@ -3433,28 +3671,38 @@ function alternate(idA,idB){
 }
 
 /* ---------- the candidate set ---------- */
-function candidates(){ return [
+function candidates(){
+ const T=DB.targets||{};
+ const gear=(DB.profile&&DB.profile.gear)||[];
+ const canRun = gear.indexOf('run')>=0 || T.run>0 || sportsOf().indexOf('running')>=0;
+ const canBike= gear.indexOf('bike')>=0 || T.bike>0 || sportsOf().indexOf('cycling')>=0;
+ const wantsPower = anySport(x=>x.explosive) || T.power>0;
+ const list=[
  {id:'lower',  emoji:'🏠', label:'Lower Body Strength', base:100, minBand:'yellow', sys:'lower',
-  pick:()=>alternate('w_lowerA','w_lowerB'), canCore:true, goal:'Leg strength is your #2 priority behind tennis itself — it underpins the split step, first step and every push-off.'},
+  pick:()=>alternate('w_lowerA','w_lowerB'), canCore:true, goal:sysGoalText('lower')},
  {id:'power',  emoji:'⚡', label:'Power & Plyometrics', base:88, minBand:'green', sys:'expl',
-  pick:()=>'w_power', canCore:true, goal:'Directly builds serve jump, acceleration, deceleration and change of direction — the qualities that separate movement on court.'},
+  pick:()=>'w_power', canCore:true, goal:sysGoalText('expl'), need:wantsPower},
  {id:'core',   emoji:'🧠', label:'Core & Anti-Rotation', base:84, minBand:'orange', sys:'core',
-  pick:()=>'w_core', canCore:false, goal:'Core strength is one of your primary goals — it transfers leg drive into the racquet and stabilises open-stance hitting.'},
+  pick:()=>'w_core', canCore:false, goal:sysGoalText('core')},
  {id:'upper',  emoji:'🏠', label:'Upper Body Strength', base:78, minBand:'yellow', sys:'upper',
-  pick:()=>alternate('w_upperA','w_upperB'), canCore:true, goal:'Drives the physique goal — deltoid width, upper back and V-taper — and keeps the serving shoulder durable.'},
+  pick:()=>alternate('w_upperA','w_upperB'), canCore:true, goal:sysGoalText('upper')},
  {id:'run_int',emoji:'🏃', label:'Interval Run', base:66, minBand:'green', sys:'run',
-  pick:()=>'w_runInt', canCore:false, goal:'Repeat-sprint ability using tennis work:rest structure.'},
+  pick:()=>'w_runInt', canCore:false, goal:'Repeat-sprint ability — hard efforts with short recoveries.', need:canRun},
  {id:'run_q',  emoji:'🏃', label:'Tempo Run', base:62, minBand:'green', sys:'run',
-  pick:()=>'w_runQuality', canCore:false, goal:'Raises the aerobic ceiling so your level holds into a third set.'},
+  pick:()=>'w_runQuality', canCore:false, goal:'Raises the aerobic ceiling so your level holds when it gets long.', need:canRun},
  {id:'run_e',  emoji:'🏃', label:'Easy Aerobic Run', base:60, minBand:'yellow', sys:'run',
-  pick:()=>'w_runEasy', canCore:true, goal:'Builds the aerobic base that lets you recover between points, with low muscular cost.'},
+  pick:()=>'w_runEasy', canCore:true, goal:sysGoalText('run'), need:canRun},
  {id:'bike',   emoji:'🚴', label:'Zone 2 Bike', base:52, minBand:'orange', sys:'bike',
-  pick:()=>'w_bike', canCore:true, goal:'Aerobic fitness with almost no impact cost — the right call when legs are loaded but you are recovered.'},
+  pick:()=>'w_bike', canCore:true, goal:sysGoalText('bike'), need:canBike},
  {id:'mobility',emoji:'🧘',label:'Mobility & Recovery', base:44, minBand:'red', sys:'mobility',
-  pick:()=>'w_recovery', canCore:false, goal:'Protects the hard days. Your best 14-day recovery block of the last six months was your lowest-training one.'},
+  pick:()=>'w_recovery', canCore:false, goal:sysGoalText('mobility')},
  {id:'rest',   emoji:'😴', label:'Rest', base:30, minBand:'red', sys:'rest',
   pick:()=>null, canCore:false, goal:'Training today would cost more than it returns.'}
-];}
+ ];
+ /* drop options the user has no equipment or reason for; never drop them all */
+ const kept=list.filter(c=>c.need!==false);
+ return kept.length>=3?kept:list;
+}
 
 const BAND_RANK={red:0,orange:1,yellow:2,green:3};
 
@@ -3469,8 +3717,11 @@ function recommend(date, ci, rd){
   const sore=ci.soreness!=null?ci.soreness:3;
   const time=ci.availTime||DB.profile.sessionMin||50;
   const yd=dayDemand(addDays(date,-1));
-  const tennisToday = ci.tennisToday===true;
-  const loggedTennis = DB.activities.some(a=>a.date===date&&['tennis','padel','squash'].includes(a.type));
+  /* `sportToday` is the modern field; `tennisToday` is read only so old
+     check-ins saved before the rename still behave the same way. */
+  const flagSport  = ci.sportToday===true || ci.tennisToday===true;
+  const loggedSport= DB.activities.some(a=>a.date===date&&isMainSportAct(a.type));
+  const SPN = SPORT_LABEL();
   const yTop=yd.items.slice().sort((a,b)=>(b.load||0)-(a.load||0))[0];
   const yName=yTop ? (yTop.kind==='activity' ? (ACT_TYPES[yTop.type]||ACT_TYPES.other).name.toLowerCase() : 'your strength session') : null;
 
@@ -3503,7 +3754,7 @@ function recommend(date, ci, rd){
       if(H.load.lower3>=18) add(-24,`Lower-body demand over 3 days is ${H.load.lower3} — high.`,'neg');
       if(sore>=7) blocked=`leg soreness ${sore}/10`;
       else if(sore>=5) add(-18,`Leg soreness ${sore}/10.`,'warn');
-      if(H.since.tennis===1) add(-20,'Tennis yesterday already put real load through the legs.','warn');
+      if(H.since.sport===1) add(-20,SPN+' yesterday already put real load through the legs.','warn');
     }
     if(c.sys==='expl'){
       /* plyometrics need fresh LEGS, not just an absence of recent jumping */
@@ -3516,7 +3767,7 @@ function recommend(date, ci, rd){
       else if(H.since.expl>=4&&H.since.lower>=3) add(+20,'Legs are fresh and there has been no explosive work for days.','pos');
       if(H.load.expl3>=14) add(-30,`Explosive demand over 3 days is ${H.load.expl3} — plyometrics on top of that is where soft-tissue injuries happen.`,'neg');
       if(sore>=5) blocked=`soreness ${sore}/10 — jump quality and landing control would be compromised`;
-      if(H.since.tennis<=1) add(-22,'Tennis in the last 24 hours already loaded jumping, cutting and landing.','warn');
+      if(H.since.sport<=1) add(-22,SPN+' in the last 24 hours already loaded jumping, cutting and landing.','warn');
       if(ph.plyo==='minimal'||ph.plyo==='test only') add(-20,`Week ${ph.absWeek} is ${ph.name} — plyometric volume is deliberately low.`,'info');
       if(rd.score>=80) add(+8,'Readiness is high — a good day for power work.','pos');
     }
@@ -3528,10 +3779,10 @@ function recommend(date, ci, rd){
       /* the key asymmetry, and the finding from your own data: legs being
          loaded does NOT block upper work — lifting cost you nothing on
          next-day recovery, while a second hard leg day cost you 11 points. */
-      if(H.since.lower<=1||H.since.tennis<=1)
+      if(H.since.lower<=1||H.since.sport<=1)
         add(+26,`Yesterday's ${esc(yName||'session')} went through your legs, so upper body is the productive choice that costs them nothing.`,'pos');
-      if(H.load.shoulder3>=14) add(-14,`Serving has loaded the shoulder recently (${H.load.shoulder3}) — pressing volume kept sensible.`,'warn');
-      else if(H.since.tennis<=1) add(-8,'Serving loaded the shoulder yesterday — pressing volume kept sensible.','info');
+      if(H.load.shoulder3>=14) add(-14,`Your sport has loaded the shoulder recently (${H.load.shoulder3}) — pressing volume kept sensible.`,'warn');
+      else if(H.since.sport<=1&&anySport(x=>x.overhead)) add(-8,'Overhead work loaded the shoulder yesterday — pressing volume kept sensible.','info');
       if(sore>=8) add(-14,'General soreness is high.','warn');
     }
     if(c.sys==='core'){
@@ -3542,16 +3793,16 @@ function recommend(date, ci, rd){
     if(c.sys==='run'){
       if(H.since.run<=1) add(-34,'You ran yesterday.','neg');
       else if(H.since.run>=4) add(+14,'No running for several days.','pos');
-      if(H.since.tennis<=1) add(-30,'Tennis yesterday already covered the running stimulus — adding a run would be duplicate leg load.','neg');
+      if(H.since.sport<=1) add(-30,SPN+' yesterday already covered the running stimulus — adding a run would be duplicate leg load.','neg');
       if(H.load.impact3>=18) add(-24,`Accumulated impact over 3 days is ${H.load.impact3} — more pounding is not the useful stimulus.`,'neg');
       /* rolling 7 days, not the calendar week, so a Monday is not blind */
-      if(H.load.tennis7>=180) add(-26,`You have played ${Math.round(H.load.tennis7)} minutes of tennis in the last 7 days — your running conditioning is already well covered.`,'warn');
-      else if(H.load.tennis7>=100) add(-14,`${Math.round(H.load.tennis7)} minutes of tennis in the last 7 days already supplies running volume.`,'warn');
+      if(H.load.sport7>=180) add(-26,`You have done ${Math.round(H.load.sport7)} minutes of ${SPN.toLowerCase()} in the last 7 days — your running conditioning is already well covered.`,'warn');
+      else if(H.load.sport7>=100) add(-14,`${Math.round(H.load.sport7)} minutes of ${SPN.toLowerCase()} in the last 7 days already supplies running volume.`,'warn');
       if(sore>=6) add(-20,`Leg soreness ${sore}/10.`,'warn');
       /* interference: do not blunt higher-priority leg work with a run */
       if(H.since.lower>=3 && rank>=3) add(-16,'Legs are fresh — that freshness is worth more spent on strength or power than on a run.','info');
       if(c.id==='run_int'){
-        if(H.load.tennis7>=100) add(-24,'Tennis already supplies repeated high-intensity running this week.','warn');
+        if(H.load.sport7>=100) add(-24,SPN+' already supplies repeated high-intensity running this week.','warn');
         if(H.load.expl3>=10) add(-18,'Recent explosive load makes intervals a poor addition.','warn');
       }
       if(c.id==='run_e' && H.load.load3>=26) add(+8,'An easy aerobic session is the low-cost way to keep training on a loaded week.','pos');
@@ -3560,7 +3811,7 @@ function recommend(date, ci, rd){
       if(H.since.bike<=1) add(-26,'You rode yesterday.','neg');
       if(H.load.impact3>=16) add(+22,`Impact load is high (${H.load.impact3}) — the bike gives you aerobic work with none of the pounding.`,'pos');
       if(sore>=6) add(+14,`Soreness ${sore}/10 — cycling is the low-cost aerobic option.`,'pos');
-      if(H.since.tennis<=1) add(+8,'Good active-recovery choice the day after tennis.','pos');
+      if(H.since.sport<=1) add(+8,'Good active-recovery choice the day after '+SPN.toLowerCase()+'.','pos');
       if(rank>=3 && H.since.lower>=3) add(-20,'You are green with fresh legs — a bike ride under-uses the day.','info');
     }
     if(c.sys==='mobility'){
@@ -3574,13 +3825,14 @@ function recommend(date, ci, rd){
       if(H.load.load7>=70) add(+14,`Weekly load of ${H.load.load7} is high.`,'warn');
     }
 
-    /* ---- 4. tennis today ---- */
-    if(tennisToday||loggedTennis){
-      if(c.sys==='lower') blocked='you are playing tennis today — heavy legs before or after court work is the pattern that costs you most';
-      if(c.sys==='expl') blocked='you are playing tennis today — court work already supplies explosive load';
-      if(c.sys==='run') blocked='you are playing tennis today';
-      if(c.sys==='upper') add(+18,'Tennis today — upper body is the one strength session that does not compete with it.','pos');
-      if(c.sys==='core') add(+14,'Core work sits comfortably alongside a tennis day.','pos');
+    /* ---- 4. your sport today (logged, or flagged on an older check-in) ---- */
+    if(flagSport||loggedSport){
+      const lc=SPN.toLowerCase();
+      if(c.sys==='lower') blocked=`you are doing ${lc} today — heavy legs before or after it is the pattern that costs you most`;
+      if(c.sys==='expl') blocked=`you are doing ${lc} today — it already supplies explosive load`;
+      if(c.sys==='run') blocked=`you are doing ${lc} today`;
+      if(c.sys==='upper') add(+18,`${SPN} today — upper body is the one strength session that does not compete with it.`,'pos');
+      if(c.sys==='core') add(+14,`Core work sits comfortably alongside a ${lc} day.`,'pos');
       if(c.sys==='mobility') add(+10,null);
       if(c.sys==='bike') add(-16,null);
     }
@@ -3592,11 +3844,11 @@ function recommend(date, ci, rd){
       const done=P[key]||0, target=T[key];
       const pace=P.elapsed/7;
       if(done>=target){
-        add(-20, `You have already done ${done} of ${target} ${key} session${target>1?'s':''} this week — no need to force more.`,'info');
+        add(-20, `You have already done ${done} of ${target} ${(targetMeta()[key]||[key])[0].toLowerCase()} this week — no need to force more.`,'info');
       } else {
         const gap=(target-done)/target;
         const behind=done < target*pace - 0.35;
-        add(Math.round(gap*16), behind?`You are behind on ${key} this week (${done} of ${target}).`:null,'info');
+        add(Math.round(gap*16), behind?`You are behind on ${(targetMeta()[key]||[key])[0].toLowerCase()} this week (${done} of ${target}).`:null,'info');
         if(behind) add(6,null);
       }
     }
@@ -3644,9 +3896,9 @@ function recommend(date, ci, rd){
     else trimNotes.push({t:`This needs about ${est} min and you have ${time}. Work down the list in order and stop when time runs out — exercises are ordered by priority.`,k:'info'}); }
   if(wk) est=(wk.est[variant]||wk.est.full)+(addCore?12:0);
 
-  /* ---- pre-tennis prep when playing today ---- */
+  /* ---- pre-sport prep when you are playing today ---- */
   let prep=null;
-  if((tennisToday||loggedTennis)) prep='w_prep';
+  if((flagSport||loggedSport)) prep='w_prep';
 
   /* ---- intensity label ---- */
   const intensity = win.c.sys==='rest' ? 'None'
@@ -3695,7 +3947,7 @@ function recommend(date, ci, rd){
   return {
     id:win.c.id, label:win.c.label, emoji:win.c.emoji, goalNote:win.c.goal,
     workoutId:win.wid, variant, addCore, est, intensity, prep,
-    isTennis:tennisToday||loggedTennis, readiness:rd, why,
+    isSport:flagSport||loggedSport, sportName:SPN, readiness:rd, why,
     scored, week:P, history:H, phase:ph, notes:why
   };
 }
@@ -3735,7 +3987,7 @@ function sessionBlocks(rec){
 function planFor(date, ci, rd){
   const r=recommend(date, ci, rd);
   return {workoutId:r.workoutId, variant:r.variant, est:r.est, notes:r.why,
-          isTennis:r.isTennis, readiness:r.readiness, addCore:r.addCore, rec:r};
+          isSport:r.isSport, readiness:r.readiness, addCore:r.addCore, rec:r};
 }
 
 function currentPhase(){
@@ -3749,7 +4001,6 @@ function currentPhase(){
   const w = ((wk-1)%8+8)%8+1;                      // JS % is signed; force into 1–8
   return Object.assign({}, PHASES[w-1]||PHASES[0], {w, block:Math.floor((wk-1)/8)+1, absWeek:wk});
 }
-
 
 /* =========================================================================
    CHARTS (inline SVG, no libraries)
@@ -3840,6 +4091,22 @@ function openSheet(title,html,footHtml,onClose){
   sheetOnClose=onClose||null;
   bindInputs($('#sheet'));
 }
+/* Re-render an already-open sheet WITHOUT restarting its open animation.
+   Calling openSheet() again on every tap made the panel slide and the footer
+   button jump — which is what made multi-step forms feel broken. */
+function updateSheet(title,html,footHtml){
+  const s=$('#sheet');
+  if(!s.classList.contains('on')) return openSheet(title,html,footHtml);
+  const body=$('#sheetBody');
+  const y=body.scrollTop;                       // keep the reading position
+  if(title!=null) $('#sheetTitle').textContent=title;
+  body.innerHTML=html;
+  const f=$('#sheetFoot');
+  if(footHtml){ f.innerHTML=footHtml; f.classList.remove('hide'); }
+  else { f.innerHTML=''; f.classList.add('hide'); }
+  body.scrollTop=y;
+  bindInputs(s);
+}
 function closeSheet(){
   $('#scrim').classList.remove('on'); $('#sheet').classList.remove('on');
   if(sheetOnClose){ const f=sheetOnClose; sheetOnClose=null; setTimeout(f,220); }
@@ -3896,6 +4163,54 @@ function wireFocusScroll(root){
       setTimeout(bring,420);
     });
   });
+}
+
+/* =========================================================================
+   CHIP PICKER
+   Shows only what you have chosen, as removable blocks, plus a "+" that opens
+   the full list. Long option sets stay out of the way until you want them.
+   ====================================================================== */
+function chipPicker(opts){
+  // opts: {id, chosen:[ids], all:[{id,name,emoji,hint}], lead:bool, allowEmpty:bool}
+  const {id, chosen, all, lead, allowEmpty} = opts;
+  const pick=x=>all.find(o=>o.id===x)||{id:x,name:x};
+  return `<div class="chipset" id="${id}">
+    ${(!chosen.length&&allowEmpty)?'<span class="chipnone">Nothing added yet</span>':''}
+    ${chosen.map((cid,i)=>{ const o=pick(cid);
+      return `<span class="chipblk${lead&&i===0?' lead':''}" data-v="${esc(cid)}">
+        ${o.emoji?o.emoji+' ':''}${esc(o.name)}${lead&&i===0?'<i class="lead-t">MAIN</i>':''}
+        <button class="chipx" data-rm="${esc(cid)}" aria-label="Remove">${svg('x')}</button>
+      </span>`;}).join('')}
+    <button class="chipadd" data-add="${id}">${svg('plus')} Add</button>
+  </div>`;
+}
+/* wire a chip picker: cb(newChosenArray).
+   allowEmpty is for sets that can legitimately be empty — equipment, where
+   "bodyweight only" is a real answer — unlike sports or goals. */
+function wirePicker(id, chosen, all, cb, title, allowEmpty){
+  const root=$('#'+id); if(!root) return;
+  $$('#'+id+' [data-rm]').forEach(b=>b.onclick=ev=>{
+    ev.stopPropagation();
+    if(chosen.length<=1 && !allowEmpty){ toast('Keep at least one'); return; }
+    cb(chosen.filter(x=>x!==b.dataset.rm)); haptic();
+  });
+  const add=$('#'+id+' [data-add]');
+  if(add) add.onclick=()=>{
+    const left=all.filter(o=>chosen.indexOf(o.id)<0);
+    if(!left.length){ toast('Nothing left to add'); return; }
+    openSheet(title||'Add',
+      `<div>${left.map(o=>`<button class="row tap pickrow" data-v="${esc(o.id)}"
+         style="display:flex;width:100%;text-align:left;background:var(--surface);border-radius:12px;margin-bottom:7px;border:1px solid var(--border-soft)">
+         <div class="rt"><div class="rn">${o.emoji?o.emoji+' ':''}${esc(o.name)}</div>
+         ${o.hint?`<div class="rs">${esc(o.hint)}</div>`:''}</div>
+         <span class="chev">${svg('plus')}</span></button>`).join('')}</div>`);
+    /* apply immediately — the sheet closes over the top, which reads as
+       responsive, and a deferred write can be lost if the view changes first */
+    $$('.pickrow').forEach(b=>b.onclick=()=>{
+      closeSheet(); haptic();
+      cb(chosen.concat([b.dataset.v]));
+    });
+  };
 }
 
 /* range slider fill + live value */
@@ -3987,7 +4302,7 @@ function viewToday(v){
       <div class="hero-meta" style="margin-top:0">
         <span class="chip ${rd.band==='green'?'g':rd.band==='yellow'?'y':rd.band==='orange'?'o':'r'}">${B.label} · ${esc(pl.intensity||'')}</span>
         ${pl.est?`<span class="chip">${svg('timer')} ~${pl.est} min</span>`:''}
-        ${pl.isTennis?'<span class="chip g">🎾 Tennis today</span>':''}
+        ${pl.isSport?`<span class="chip g">${SPORT_EMOJI()} ${esc(pl.sportName||SPORT_LABEL())} today</span>`:''}
         ${pl.overridden?'<span class="chip v">Your choice</span>':''}
       </div>
       ${wk?`<div style="font-size:13.5px;color:var(--text-2);margin-top:12px;font-weight:600">${esc(wk.name)}${pl.variant!=='full'?' · '+esc(pl.variant.toUpperCase()):''}</div>`:''}
@@ -4022,22 +4337,23 @@ function viewToday(v){
 
   ${pl.prep&&!done?`<div class="card tight" style="border-left:3px solid var(--green)">
      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-       <div style="flex:1"><div style="font-weight:700;font-size:14px">🎾 Pre-court activation</div>
-       <div style="font-size:11.5px;color:var(--text-3);margin-top:3px">10 min before you play + shoulder maintenance after</div></div>
+       <div style="flex:1"><div style="font-weight:700;font-size:14px">${SPORT_EMOJI()} Pre-${esc(sportLC())} activation</div>
+       <div style="font-size:11.5px;color:var(--text-3);margin-top:3px">${sportWarmup().dur} min before you play + maintenance after</div></div>
        <button class="btn xs ghost" id="btnPrep">Open</button></div></div>`:''}
 
   <div class="sec-t">This week so far</div>
   <div class="card">
-    ${[['lower','Lower body','a'],['upper','Upper body','c'],['power','Power','o'],['core','Core','v'],
-       ['run','Runs','g'],['bike','Rides','c'],['mobility','Mobility','g']].map(([k,l,cl])=>{
+    ${targetKeys().map(k=>{
+      const meta=targetMeta()[k]||[k,''], cl=TARGET_BAR[k]||'a';
       const done_=P[k]||0, t=T[k]||0; if(!t) return '';
       return `<div style="margin-bottom:10px">
         <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px">
-          <span style="color:var(--text-2);font-weight:600">${l}</span>
+          <span style="color:var(--text-2);font-weight:600">${esc(meta[0])}</span>
           <span class="num" style="font-weight:750;color:${done_>=t?'var(--green)':'var(--text-2)'}">${done_} / ${t}</span></div>
-        <div class="bar ${done_>=t?'g':cl}"><i style="width:${clamp(done_/t*100,0,100)}%"></i></div></div>`;}).join('')}
-    ${P.tennis?`<div class="kv" style="margin-top:4px"><span class="k">🎾 Tennis (unplanned by design)</span><span class="v">${P.tennis} × · ${Math.round(P.tennisMin)} min</span></div>`:''}
-    ${P.sport?`<div class="kv"><span class="k">Other sport</span><span class="v">${P.sport} ×</span></div>`:''}
+        <div class="bar ${done_>=t?'g':cl}"><i style="width:${clamp(done_/t*100,0,100)}%"></i></div></div>`;}).join('')
+      ||'<div class="hint">No weekly targets yet — finish setup and the engine will build them from your sports, goals and equipment.</div>'}
+    ${P.sport?`<div class="kv" style="margin-top:4px"><span class="k">${SPORT_EMOJI()} ${esc(SPORT_LABEL())} (never scheduled — logged when you play)</span><span class="v">${P.sport} × · ${Math.round(P.sportMin)} min</span></div>`:''}
+    ${P.otherSport?`<div class="kv"><span class="k">Other activity</span><span class="v">${P.otherSport} ×</span></div>`:''}
     <div class="hint" style="margin-top:8px">Targets are guidelines the engine weighs, never quotas it will chase at the cost of your recovery.</div>
   </div>
 
@@ -4154,11 +4470,11 @@ function weekStrip(d){
     const dow=dowOf(day);
     const sess=DB.sessions.find(s=>s.date===day&&s.done);
     const acts=DB.activities.filter(a=>a.date===day);
-    const ten=acts.some(a=>['tennis','padel','squash'].includes(a.type))||DB.whoop.workouts.some(w=>w.date===day&&/tennis/i.test(w.activity));
+    const ten=acts.some(a=>isMainSportAct(a.type))||DB.whoop.workouts.some(w=>w.date===day&&mainSportActs().some(x=>new RegExp(x,'i').test(w.activity)));
     const cy=cycleByDate(day);
     const col = sess?'var(--accent)': ten?'var(--green)': acts.length?'var(--cyan)':'var(--surface-3)';
     let tag='';
-    if(ten) tag='🎾';
+    if(ten) tag=SPORT_EMOJI();
     else if(sess) tag=TAGS[sess.category||catOfWorkout(DB.workouts.find(w=>w.id===sess.workoutId))]||'Train';
     else if(acts.length) tag=(ACT_TYPES[acts[0].type]||ACT_TYPES.other).emoji;
     h+=`<div style="padding:11px 2px;text-align:center;border-right:${i<6?'1px solid var(--border-soft)':'none'};${isT?'background:rgba(195,245,60,.07)':''}">
@@ -4189,8 +4505,8 @@ function todayNoCheckin(d){
     <div class="kv"><span class="k">Legs last loaded</span><span class="v">${sinceText(H.since.lower)}</span></div>
     <div class="kv"><span class="k">Upper body last trained</span><span class="v">${sinceText(H.since.upper)}</span></div>
     <div class="kv"><span class="k">Explosive work</span><span class="v">${sinceText(H.since.expl)}</span></div>
-    <div class="kv"><span class="k">Last tennis</span><span class="v">${sinceText(H.since.tennis)}</span></div>
-    <div class="kv"><span class="k">This week</span><span class="v">${P.lower+P.upper+P.power} strength · ${P.run} run · ${P.bike} bike · ${P.tennis} tennis</span></div>
+    ${hasSportChosen()?`<div class="kv"><span class="k">Last ${esc(sportLC())}</span><span class="v">${sinceText(H.since.sport)}</span></div>`:''}
+    <div class="kv"><span class="k">This week</span><span class="v">${[(P.lower+P.upper+P.power)+' strength', T.run?P.run+' run':null, T.bike?P.bike+' bike':null, P.sport?P.sport+' '+esc(sportLC()):null].filter(Boolean).join(' · ')}</span></div>
     <div class="kv"><span class="k">Program week</span><span class="v">${ph.absWeek} — ${esc(ph.name)}</span></div>
     ${hasHistory()
       ? `<div class="note warn" style="margin-top:12px">There is <b>no fixed schedule</b>. Today's session is chosen after your check-in from readiness, recent load and what the week already contains.</div>`
@@ -4207,7 +4523,7 @@ function setupPrompt(){
   return `<div class="card wide" id="setupCard" style="border-color:rgba(251,140,60,.45);background:linear-gradient(160deg,rgba(251,140,60,.09),transparent)">
     <div class="card-t" style="color:var(--orange)">Setup not finished</div>
     <div style="font-size:15px;font-weight:750;letter-spacing:-.2px;margin:7px 0 7px">The program is running on defaults</div>
-    <p style="font-size:13px;color:var(--text-2);line-height:1.55">Right now it assumes <b>${esc(t.name.toLowerCase())}</b> equipment and <b>tennis</b> as your sport. If either is wrong you are being given the wrong exercises.</p>
+    <p style="font-size:13px;color:var(--text-2);line-height:1.55">Right now it assumes <b>${esc(t.name.toLowerCase())}</b> equipment and <b>${esc(sportsText())}</b> as your sport. If either is wrong you are being given the wrong exercises.</p>
     <div class="btn-row" style="margin-top:12px">
       <button class="btn primary sm" id="setupGo">Finish setup — 2 min</button>
       <button class="btn ghost sm" id="setupDismiss">Defaults are fine</button>
@@ -4356,8 +4672,7 @@ function openCheckin(d){
   const prevStrain = ex.prevStrain!=null?ex.prevStrain : (prev&&prev.strain!=null?prev.strain:'');
   const src = cy? '<span class="src whoop">from whoop</span>' : '<span class="src you">enter manually</span>';
   const dow=dowOf(d);
-  const loggedTen = DB.activities.some(a=>a.date===d&&['tennis','padel','squash'].includes(a.type));
-  const tenDef = ex.tennisToday!=null ? ex.tennisToday : loggedTen;
+  const loggedTen = DB.activities.some(a=>a.date===d&&isMainSportAct(a.type));
 
   /* Three cases, and only one of them asks you to type WHOOP numbers:
        a) WHOOP data covers this date  -> filled in automatically, read-only
@@ -4421,12 +4736,8 @@ function openCheckin(d){
      </div>
      <div class="hint">Moderate or significant pain automatically removes loaded training. Persistent pain should be assessed by a qualified healthcare professional.</div></div>
 
-   <div class="field"><label>Playing tennis today?</label>
-     <div class="seg acc" id="ciTen">
-       <button data-v="1" class="${tenDef?'on':''}">Yes</button>
-       <button data-v="0" class="${!tenDef?'on':''}">No</button>
-     </div>
-     <div class="hint">Tennis is never scheduled. Saying yes here makes the engine avoid heavy legs, running and plyometrics today and offer pre-court activation instead.</div></div>
+   ${loggedTen?`<div class="note acc" style="margin-bottom:16px">
+     ${esc(SPORT_LABEL())} already logged for today — the engine has taken it into account and will keep heavy legs, running and plyometrics off the menu.</div>`:''}
 
    <div class="field"><label>Time available for training</label>
      <div class="pills" id="ciTime">
@@ -4439,14 +4750,13 @@ function openCheckin(d){
 
   const aw=$('#accWH'); if(aw) aw.onclick=()=>$('#accW').classList.toggle('open');
   $$('#ciPain button').forEach(b=>b.onclick=()=>{ $$('#ciPain button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); haptic(); });
-  $$('#ciTen button').forEach(b=>b.onclick=()=>{ $$('#ciTen button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); haptic(); });
   $$('#ciTime button').forEach(b=>b.onclick=()=>{ $$('#ciTime button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); haptic(); });
 
   $('#ciSave').onclick=()=>{
     const nv=id=>{ const e=$(id); if(!e||e.value==='')return null; const n=parseFloat(e.value); return isNaN(n)?null:n; };
     const h=nv('#ciSh'), m=nv('#ciSm');
     const sleepMin = (h==null&&m==null)?null:((h||0)*60+(m||0));
-    const painB=$('#ciPain button.on'), tenB=$('#ciTen button.on'), timB=$('#ciTime button.on');
+    const painB=$('#ciPain button.on'), timB=$('#ciTime button.on');
     /* WHOOP fields are absent from the DOM unless they apply — nv() returns
        null for a missing element, so nothing is ever invented */
     const est=dayDemand(addDays(d,-1)).load;
@@ -4464,7 +4774,8 @@ function openCheckin(d){
       energy:+$('#ciEn').value, soreness:+$('#ciSo').value,
       stress:+$('#ciSt').value, motivation:+$('#ciMo').value,
       pain:painB?painB.dataset.v:'None',
-      tennisToday: tenB? tenB.dataset.v==='1' : null,
+      /* no toggle any more: whether you played is read from the activity log */
+      sportToday: DB.activities.some(a=>a.date===d&&isMainSportAct(a.type)) || null,
       availTime: timB? +timB.dataset.v : null,
       notes:$('#ciNotes').value.trim(),
       at:new Date().toISOString()
@@ -4479,7 +4790,6 @@ function sliderHTML(id,label,val,lo,hi){
     <input type="range" id="${id}" min="1" max="10" step="1" value="${val}" data-out="${id}_o">
     <div class="scale"><span>${esc(lo)}</span><span>${esc(hi)}</span></div></div>`;
 }
-
 
 /* =========================================================================
    VIEW: WORKOUTS  (program · builder · exercise library · warm-ups)
@@ -4501,28 +4811,25 @@ function viewWorkouts(v){
 function paneProgram(c){
   const ph=currentPhase(), P=weekProgress(todayISO()), T=DB.targets;
   c.innerHTML=`
-  <div class="note acc" style="margin-bottom:14px">There is <b>no fixed weekly schedule</b>. These are the targets the engine weighs when it chooses each day's session — guidelines, never quotas. Tennis is deliberately absent: it is never scheduled, only logged when you actually play.</div>
+  <div class="note acc" style="margin-bottom:14px">There is <b>no fixed weekly schedule</b>. These are the targets the engine weighs when it chooses each day's session — guidelines, never quotas.${hasSportChosen()?` ${esc(sportsText().charAt(0).toUpperCase()+sportsText().slice(1))} ${sportsOf().length>1?'are':'is'} deliberately absent: never scheduled, only logged when you actually play.`:''}</div>
   <div class="card">
     <div class="card-h"><div class="card-t accent">Weekly targets</div>
       <button class="btn xs ghost" id="edSched">${svg('edit')} Edit</button></div>
-    ${[['lower','Lower body strength','Legs are your #2 priority behind tennis'],
-       ['upper','Upper body strength','Physique goal + serving-shoulder durability'],
-       ['power','Power / plyometrics','Serve jump, acceleration, change of direction'],
-       ['core','Core','Force transfer — a primary tennis goal'],
-       ['run','Runs','Aerobic base; suppressed when tennis already covers it'],
-       ['bike','Rides','Low-impact aerobic work'],
-       ['mobility','Mobility sessions','Protects the hard days']].map(([k,l,d])=>{
+    ${(()=>{ const M=targetMeta(), ks=targetKeys();
+      if(!ks.length) return '<div class="hint">No targets yet — they are built from the sports, goals, days and equipment you enter in setup.</div>';
+      return ks.map(k=>{
+      const meta=M[k]||[k,''];
       const done=P[k]||0, t=T[k]||0;
       return `<div class="row" style="padding:12px 0">
-        <div class="rt"><div class="rn">${esc(l)}</div><div class="rs">${esc(d)}</div></div>
+        <div class="rt"><div class="rn">${esc(meta[0])}</div><div class="rs">${esc(meta[1])}</div></div>
         <div class="rv" style="text-align:right"><span style="color:${done>=t?'var(--green)':'var(--text-2)'}">${done}</span>
-          <span style="color:var(--text-3)"> / ${t}</span><div style="font-size:10px;color:var(--text-3);font-weight:650">this week</div></div></div>`;}).join('')}
+          <span style="color:var(--text-3)"> / ${t}</span><div style="font-size:10px;color:var(--text-3);font-weight:650">this week</div></div></div>`;}).join(''); })()}
+    <div class="hint" style="margin-top:8px">Derived from ${esc(sportsText())}, your goals, ${DB.profile.daysPerWeek||4} training days a week and the equipment you own. Change any of those in Settings and these move with them.</div>
   </div>
 
   <div class="card">
     <div class="card-t accent" style="margin-bottom:11px">Decision priority</div>
-    ${['Safety and recovery','Tennis performance','Leg strength','Core strength',
-       'Explosive power / serve jump','Appropriate conditioning','Upper body / physique','Weekly completion']
+    ${priorityList()
       .map((x,i)=>`<div class="kv"><span class="k"><b style="color:var(--accent)">${i+1}.</b> ${esc(x)}</span></div>`).join('')}
     <div class="hint" style="margin-top:9px">Applied in order. Recovery is never sacrificed to complete a weekly target, and conditioning is never recommended just because it is available.</div>
   </div>
@@ -4578,20 +4885,32 @@ function paneProgram(c){
 }
 
 function editSchedule(){
-  const T=DB.targets;
-  const F=[['lower','Lower body strength',0,5],['upper','Upper body strength',0,5],
-           ['power','Power / plyometrics',0,3],['core','Core',0,6],
-           ['run','Runs',0,5],['bike','Rides',0,6],['mobility','Mobility sessions',0,7]];
+  const T=DB.targets, M=targetMeta();
+  /* every category you could reasonably have, so you can add one back, but
+     ordered and labelled from your own setup */
+  const gear=DB.profile.gear||[];
+  const F=TARGET_ORDER.filter(k=>{
+    if(T[k]>0) return true;                                   // already yours
+    if(k==='bike') return gear.indexOf('bike')>=0||sportsOf().indexOf('cycling')>=0;
+    if(k==='run')  return gear.indexOf('run')>=0 ||sportsOf().indexOf('running')>=0;
+    return true;                                              // bodyweight-able
+  });
   openSheet('Weekly targets',`
-   <p class="hint" style="margin-bottom:16px">How many of each the engine should aim for in a week. It uses these as one input among many — being behind raises a session's score, being ahead lowers it, and neither will override your recovery.</p>
-   ${F.map(([k,l,mn,mx])=>`<div class="slider-row">
-     <div class="slider-top"><span class="l">${esc(l)}</span><span class="v num" id="tg_${k}_o">${T[k]||0}</span></div>
-     <input type="range" id="tg_${k}" min="${mn}" max="${mx}" step="1" value="${T[k]||0}" data-out="tg_${k}_o">
-     <div class="scale"><span>${mn}</span><span>${mx} / week</span></div></div>`).join('')}
-   <div class="note warn">Tennis has no target and is never scheduled. Log it when you play and the engine adapts everything around it.</div>
+   <p class="hint" style="margin-bottom:16px">How many of each the engine should aim for in a week. It uses these as one input among many — being behind raises a session's score, being ahead lowers it, and neither will override your recovery. Set one to 0 to remove it entirely.</p>
+   ${F.map(k=>{ const mx=TARGET_MAX[k]||6, meta=M[k]||[k,''];
+     return `<div class="slider-row">
+     <div class="slider-top"><span class="l">${esc(meta[0])}</span><span class="v num" id="tg_${k}_o">${T[k]||0}</span></div>
+     <input type="range" id="tg_${k}" min="0" max="${mx}" step="1" value="${T[k]||0}" data-out="tg_${k}_o">
+     <div class="scale"><span>0</span><span>${mx} / week</span></div></div>`;}).join('')}
+   ${hasSportChosen()?`<div class="note warn">${esc(SPORT_LABEL())} has no target and is never scheduled. Log it when you play and the engine adapts everything around it.</div>`:''}
+   <button class="btn ghost block" id="schAuto" style="margin-top:12px">${svg('target')} Rebuild from my setup</button>
   `,`<button class="btn primary big block" id="schSave">Save targets</button>`);
+  $('#schAuto').onclick=()=>{ applyGoalTargets(); save(true); closeSheet();
+    toast('Targets rebuilt from your setup','ok'); setTimeout(()=>viewWorkouts($('#view')),240); };
   $('#schSave').onclick=()=>{
-    F.forEach(([k])=>{ DB.targets[k]=+$('#tg_'+k).value; });
+    const T2={};
+    F.forEach(k=>{ const v=+$('#tg_'+k).value; if(v>0) T2[k]=v; });
+    DB.targets=T2;
     save(true); closeSheet(); toast('Targets saved','ok'); setTimeout(()=>viewWorkouts($('#view')),240);
   };
 }
@@ -4604,7 +4923,7 @@ function previewWorkout(wid,variant,rec){
   /* always resolve through sessionBlocks so the preview shows the exercises
      the user will actually be given for their equipment */
   const blocks = sessionBlocks(Object.assign({addCore:false},rec||{},{workoutId:wid,variant:V}));
-  const wu=WARMUPS[w.warm]||WARMUPS.easy, cd=COOLDOWNS[w.cool]||COOLDOWNS.easy;
+  const wu=warmupFor(w), cd=COOLDOWNS[w.cool]||COOLDOWNS.easy;
   openSheet(w.name,`
    <div class="seg sm" id="pvSeg" style="margin-bottom:14px">
      ${['full','reduced','recovery'].map(x=>`<button data-v="${x}" class="${x===V?'on':''}">${x.toUpperCase()}</button>`).join('')}
@@ -4892,11 +5211,16 @@ function exerciseSheet(id,editMode){
 function paneWarmups(c){
   c.innerHTML=`
    <div class="note acc" style="margin-bottom:14px">Every session in this app attaches one of these automatically. They are built to raise temperature, mobilise the joints you are about to load, and prime the nervous system — in that order.</div>
-   ${Object.entries(WARMUPS).map(([k,w])=>`
+   ${(()=>{ /* the sport warm-up is generated from the sports you chose, so it
+        replaces the built-in one rather than sitting next to it */
+     const gen=sportsOf().filter(id=>SPORT_PROFILES[id]).map(id=>({k:'sport:'+id,w:sportWarmup(id),gen:true}));
+     const fixed=Object.keys(WARMUPS).filter(k=>k!=='tennis').map(k=>({k,w:WARMUPS[k]}));
+     return gen.concat(fixed).map(({w,gen})=>`
      <div class="card">
-       <div class="card-h"><div class="card-t accent">${esc(w.name)}</div><span class="tag">~${w.dur} MIN</span></div>
+       <div class="card-h"><div class="card-t accent">${esc(w.name)}</div>
+         <div style="display:flex;gap:6px;align-items:center">${gen?'<span class="tag a">YOUR SPORT</span>':''}<span class="tag">~${w.dur} MIN</span></div></div>
        ${w.items.map((i,n)=>`<div class="kv"><span class="k">${n+1}. ${esc(i.n)}</span><span class="v">${esc(i.d)}</span></div>`).join('')}
-     </div>`).join('')}
+     </div>`).join(''); })()}
    <div class="sec-t">Cool-downs</div>
    ${Object.entries(COOLDOWNS).map(([k,w])=>`
      <div class="card">
@@ -4951,9 +5275,8 @@ function sessionDetail(sid){
     DB.sessions=DB.sessions.filter(x=>x.id!==sid); save(true); toast('Deleted'); render(); },true);
 }
 
-
 /* =========================================================================
-   VIEW: ACTIVITY  (log anything · tennis detail · timeline · history)
+   VIEW: ACTIVITY  (log anything · your-sport detail · timeline · history)
    ====================================================================== */
 let ATAB='timeline', AFILTER='';
 function viewTennis(v){
@@ -4961,7 +5284,7 @@ function viewTennis(v){
   v.innerHTML=`
     <button class="btn primary big block" id="aAdd" style="margin-bottom:13px">${svg('plus')} Log an activity</button>
     <div class="seg acc" id="aSeg" style="margin-bottom:14px">
-      <button data-t="timeline">Timeline</button><button data-t="tennis">Tennis</button>
+      <button data-t="timeline">Timeline</button><button data-t="tennis">${esc(SPORT_LABEL())}</button>
       <button data-t="history">History</button><button data-t="totals">Totals</button>
     </div><div id="aBody"></div>`;
   $('#aAdd').onclick=()=>activitySheet(null,todayISO());
@@ -5024,13 +5347,14 @@ function paneTimeline(c){
   $$('[data-aid]',c).forEach(r=>r.onclick=()=>activitySheet(r.dataset.aid));
 }
 
-/* ---------------------------------------------------------- TENNIS pane */
+/* ------------------------------------------------------- YOUR SPORT pane */
 function paneTennis(c){
-  const T=DB.activities.filter(a=>['tennis','padel','squash'].includes(a.type)).slice().reverse();
-  const wT=DB.whoop.workouts.filter(w=>/tennis|padel|squash/i.test(w.activity));
+  const SPN=SPORT_LABEL(), SLC=sportLC(), SEM=SPORT_EMOJI();
+  const T=DB.activities.filter(a=>isMainSportAct(a.type)).slice().reverse();
+  const wT=DB.whoop.workouts.filter(w=>mainSportActs().some(x=>new RegExp(x,'i').test(w.activity)));
   const last30=T.filter(t=>daysBetween(t.date,todayISO())<=30);
   const mins=sum(T.map(t=>t.min)), avg=mean(T.map(t=>t.min));
-  // next-day recovery after tennis
+  // next-day recovery after your sport
   const after=[];
   [...new Set([...T.map(t=>t.date),...wT.map(w=>w.date)])].forEach(d=>{
     const n=cycleByDate(addDays(d,1)), s=cycleByDate(d);
@@ -5044,29 +5368,20 @@ function paneTennis(c){
      ${statTile('Avg length',avg?Math.round(avg):null,'m','c')}
    </div>
    ${after.length>=5?`<div class="card">
-     <div class="card-h"><div class="card-t">Recovery cost of tennis</div><span class="tag">${after.length} PAIRS</span></div>
-     <div class="kv"><span class="k">Average recovery the day after tennis</span><span class="v">${rnd(nextAvg,1)}%</span></div>
+     <div class="card-h"><div class="card-t">Recovery cost of ${esc(SLC)}</div><span class="tag">${after.length} PAIRS</span></div>
+     <div class="kv"><span class="k">Average recovery the day after ${esc(SLC)}</span><span class="v">${rnd(nextAvg,1)}%</span></div>
      <div class="kv"><span class="k">Your overall average recovery</span><span class="v">${rnd(baseAvg,1)}%</span></div>
      <div class="kv"><span class="k">Difference</span><span class="v" style="color:${nextAvg<baseAvg?'var(--red)':'var(--green)'}">${nextAvg>baseAvg?'+':''}${rnd(nextAvg-baseAvg,1)} points</span></div>
-     <div class="note warn" style="margin-top:11px">Observation, not proof of cause. Your original 181-day export showed tennis days landing about <b>11 recovery points</b> lower the next morning, while lifting days landed slightly higher — which is why the engine protects the day after tennis.</div>
-   </div>`:''}
+     <div class="note warn" style="margin-top:11px">Observation, not proof of cause — it is your own data, ${after.length} day-pairs of it, and plenty else changes between days. ${(baseAvg!=null&&nextAvg<baseAvg-3)?`A drop this size is why the engine keeps heavy legs off the day after ${esc(SLC)}.`:'No meaningful drop so far.'}</div>
+   </div>`:`<div class="note" style="margin-bottom:12px">Once you have five ${esc(SLC)} sessions followed by a WHOOP recovery score, this pane will show what ${esc(SLC)} actually costs <b>you</b>. Nothing is assumed before then.</div>`}
    <div class="card">
-     <div class="card-t" style="margin-bottom:11px">Tennis-specific training in your program</div>
-     ${[['Serve jump','Countermovement Jump, Serve-Jump Simulation, Single-Leg Calf Raise','w_power'],
-        ['Lateral movement','Lateral Bound, Lateral Lunge, Cossack Squat, Lateral Shuffle','w_power'],
-        ['Acceleration','Acceleration Sprints, Crossover Step Start, Split-Step Reaction','w_power'],
-        ['Deceleration','Deceleration Drill, Depth Drop & Stick, Tibialis Raise','w_power'],
-        ['Change of direction','5-10-5 Pro Agility, Spider Drill','w_power'],
-        ['Single-leg strength','Bulgarian Split Squat, Skater Squat, Single-Leg RDL','w_lowerA'],
-        ['Core force transfer','Pallof Press, Band Rotational Press, Suitcase Carry','w_core'],
-        ['Shoulder durability','Band Face Pull, Pull-Apart, Prone Y-T-W','w_upperB'],
-        ['Groin & hamstring protection','Copenhagen Plank, Nordic Curl, Single-Leg RDL','w_lowerB'],
-        ['Conditioning','Tennis Interval Run (20s/40s), Zone 2','w_runInt']].map(([k,vv,wid])=>
+     <div class="card-t" style="margin-bottom:11px">How your training serves ${esc(SLC)}</div>
+     ${sportFocus().map(([k,vv,wid])=>
        `<div class="row tap" data-w="${wid}" style="padding:11px 0">
           <div class="rt"><div class="rn" style="font-size:13.5px">${esc(k)}</div><div class="rs">${esc(vv)}</div></div>
           <span class="chev">${svg('chev')}</span></div>`).join('')}
    </div>
-   <div class="sec-t">Tennis sessions</div>
+   <div class="sec-t">${esc(SPN)} sessions</div>
    ${T.length? T.map(t=>`
      <div class="card tight" data-aid="${t.id}">
        <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
@@ -5080,8 +5395,8 @@ function paneTennis(c){
        </div>
        ${t.notes?`<div class="note" style="margin-top:9px;font-size:11.5px">${esc(t.notes)}</div>`:''}
      </div>`).join('')
-    :`<div class="empty"><div class="ei">🎾</div><h4>No tennis logged yet</h4><p>Log a session and the engine will start protecting the day after it.</p></div>`}
-   ${wT.length?`<div class="note" style="margin-top:10px">Plus <b>${wT.length}</b> tennis/racquet sessions imported from WHOOP.</div>`:''}`;
+    :`<div class="empty"><div class="ei">\${SEM}</div><h4>No \${esc(SLC)} logged yet</h4><p>Log a session and the engine will start protecting the day after it.</p></div>`}
+   ${wT.length?`<div class="note" style="margin-top:10px">Plus <b>${wT.length}</b> matching sessions imported from WHOOP.</div>`:''}`;
   $$('[data-w]',c).forEach(b=>b.onclick=()=>previewWorkout(b.dataset.w,'full'));
   $$('[data-aid]',c).forEach(b=>b.onclick=()=>activitySheet(b.dataset.aid));
 }
@@ -5176,7 +5491,7 @@ function paneTotals(c){
 /* ---------------------------------------------------------- ENTRY SHEET */
 function activitySheet(id,defDate){
   const ex = id? DB.activities.find(a=>a.id===id) : null;
-  let type = ex? ex.type : 'tennis';
+  let type = ex? ex.type : (mainSportActs()[0]||'other');
   const draw=()=>{
     const T=ACT_TYPES[type];
     const a = ex || {};
@@ -5280,7 +5595,6 @@ function activitySheet(id,defDate){
   draw();
 }
 
-
 /* =========================================================================
    VIEW: PROGRESS  (week review · strength · tests · physique · correlations)
    ====================================================================== */
@@ -5312,7 +5626,7 @@ function paneWeek(c){
     return {
       rec:mean(cy.map(x=>x.recovery)), hrv:mean(cy.map(x=>x.hrv)), rhr:mean(cy.map(x=>x.rhr)),
       sleep:mean(cy.map(x=>x.sleepMin)), strain:mean(cy.map(x=>x.strain)), debt:mean(cy.map(x=>x.sleepDebt)),
-      sessions:ss.length, acts:ac.length, tennis:ac.filter(a=>['tennis','padel','squash'].includes(a.type)).length,
+      sessions:ss.length, acts:ac.length, sport:ac.filter(a=>isMainSportAct(a.type)).length,
       min:sum(ss.map(s=>s.durationMin))+sum(ac.map(a=>a.min)),
       vol:sum(ss.map(s=>s.volume)), sets:sum(ss.map(s=>s.setsDone)),
       load:rnd(load,1), lower:rnd(lower,1), expl:rnd(expl,1),
@@ -5325,29 +5639,34 @@ function paneWeek(c){
     return `<span class="${d>0?'up':d<0?'down':'flat'}">${d>0?'▲':d<0?'▼':'–'} ${Math.abs(rnd(d,dp||0))}</span>`; };
 
   // target attainment across the whole week, plus genuinely blank days
-  const T=DB.targets, WP=weekProgress(today);
-  const tgtTotal=['lower','upper','power','core','run','bike','mobility'].reduce((s,k)=>s+(T[k]||0),0);
-  const tgtDone =['lower','upper','power','core','run','bike','mobility'].reduce((s,k)=>s+Math.min(T[k]||0,WP[k]||0),0);
+  const T=DB.targets, WP=weekProgress(today), TK=targetKeys();
+  const tgtTotal=TK.reduce((s,k)=>s+(T[k]||0),0);
+  const tgtDone =TK.reduce((s,k)=>s+Math.min(T[k]||0,WP[k]||0),0);
+  /* the strength target this user actually set, not a fixed number */
+  const strTgt=(T.lower||0)+(T.upper||0)+(T.power||0);
+  const sleepNeed=DB.baselines.sleepNeed||480;
+  const genericSleep=!!DB.baselines.sleepNeedGeneric;
   const compl=A.sessions;
   const missed=wk.filter(d=>d<today&&!DB.sessions.some(s=>s.date===d&&s.done)&&!DB.activities.some(a=>a.date===d));
 
   // narrative
   const good=[],attn=[];
-  if(A.sessions>=3) good.push(`${A.sessions} strength sessions completed — at or above the 3/week target that your data supports.`);
+  if(strTgt&&A.sessions>=strTgt) good.push(`${A.sessions} session${A.sessions===1?'':'s'} completed — at or above the ${strTgt}/week your targets ask for.`);
+  else if(!strTgt&&A.sessions>=3) good.push(`${A.sessions} sessions completed this week.`);
   if(A.rec!=null&&P.rec!=null&&A.rec>P.rec+3) good.push(`Average recovery is up ${rnd(A.rec-P.rec,1)} points on last week.`);
-  if(A.sleep!=null&&A.sleep>=DB.baselines.sleepNeed-60) good.push(`Sleep averaged ${fmtMin(A.sleep)} — inside the 60-minute window where your recovery holds.`);
+  if(A.sleep!=null&&A.sleep>=sleepNeed-60) good.push(`Sleep averaged ${fmtMin(A.sleep)} — within an hour of your ${genericSleep?'assumed':'measured'} ${fmtMin(sleepNeed)} need.`);
   if(A.hrv!=null&&P.hrv!=null&&A.hrv>P.hrv+2) good.push(`HRV averaged ${rnd(A.hrv,0)} ms, up ${rnd(A.hrv-P.hrv,1)} on last week.`);
-  if(A.acts>0) good.push(`${A.acts} activities logged, so the engine had real data to adapt from rather than assumptions.`);
-  if(A.sleep!=null&&A.sleep<DB.baselines.sleepNeed-60) attn.push(`Sleep averaged ${fmtMin(A.sleep)} against a ${fmtMin(DB.baselines.sleepNeed)} need — past the 60-minute cliff where your recovery has historically dropped 11–16 points.`);
+  if(A.acts>0) good.push(`${A.acts} activit${A.acts===1?'y':'ies'} logged, so the engine had real data to adapt from rather than assumptions.`);
+  if(A.sleep!=null&&A.sleep<sleepNeed-60) attn.push(`Sleep averaged ${fmtMin(A.sleep)} against a ${fmtMin(sleepNeed)} need${genericSleep?' (a general adult estimate — import WHOOP data and this becomes yours)':''} — more than an hour short.`);
   if(missed.length>=2) attn.push(`${missed.length} day${missed.length>1?'s':''} with nothing logged at all (${missed.map(fmtDate).join(', ')}). Rest days are fine — unlogged days just leave the engine guessing.`);
-  if(A.sessions<2) attn.push(`Only ${A.sessions} strength session${A.sessions===1?'':'s'} this week. Your six-month average was 1.4/week and that period showed a declining HRV trend.`);
+  if(strTgt&&A.sessions<strTgt-1) attn.push(`${A.sessions} session${A.sessions===1?'':'s'} against a ${strTgt}/week target. If recovery was the reason that is the system working; if it was not, the gap is worth closing.`);
   if(A.expl>=20) attn.push(`Explosive demand totalled ${A.expl} this week — high. Watch for accumulating soreness in the calves and hamstrings.`);
   if(A.sore!=null&&A.sore>=6) attn.push(`Average soreness ${rnd(A.sore,1)}/10 — elevated. Consider an extra easy day before the next power session.`);
-  if(A.rhr!=null&&DB.baselines.rhr&&A.rhr>DB.baselines.rhr+2) attn.push(`Resting HR averaged ${rnd(A.rhr,1)} vs a ${rnd(DB.baselines.rhr,1)} baseline.`);
+  if(A.rhr!=null&&DB.baselines.rhr&&A.rhr>DB.baselines.rhr+2) attn.push(`Resting HR averaged ${rnd(A.rhr,1)} vs your ${rnd(DB.baselines.rhr,1)} baseline.`);
 
   const next=[];
-  if(A.sleep!=null&&A.sleep<DB.baselines.sleepNeed-60) next.push('Anchor your wake time to within 30 minutes all seven days — wake-time regularity was the strongest timing signal in your export (r = −0.32 against recovery).');
-  if(A.sessions<3) next.push('Target three strength sessions. Lifting is the one hard activity in your history that did not cost you recovery the next day.');
+  if(A.sleep!=null&&A.sleep<sleepNeed-60) next.push('Anchor your wake time to within 30 minutes every day. Wake-time regularity is the cheapest recovery lever you have, and once you have a few weeks of data here you will be able to see it in your own numbers.');
+  if(strTgt&&A.sessions<strTgt) next.push(`Aim for ${strTgt} session${strTgt===1?'':'s'} next week — that is what your goals, days and equipment came out at.`);
   if(A.expl>=20) next.push('Cut one plyometric block next week and keep the jump quality high rather than the volume.');
   if(!next.length) next.push('Hold this pattern. It is working — repeat it before adding anything.');
 
@@ -5360,7 +5679,7 @@ function paneWeek(c){
   </div>
   <div class="stats" style="margin-top:9px">
     ${statTile('Sessions',A.sessions,'','a',`vs ${P.sessions}`)}
-    ${statTile('Activities',A.acts,'','g',`${A.tennis} tennis`)}
+    ${statTile('Activities',A.acts,'','g',`${A.sport} ${esc(sportLC())}`)}
     ${statTile('Week load',A.load,'','o',dl(A.load,P.load,1))}
   </div>
 
@@ -5517,7 +5836,9 @@ function panePhysique(c){
      <div class="kv"><span class="k">Chest definition</span><span class="v">Push-Up progressions · Floor Press</span></div>
      <div class="kv"><span class="k">Arms</span><span class="v">Curls + Triceps at high reps to failure</span></div>
      <div class="kv"><span class="k">Posture</span><span class="v">Pull-Apart · Prone Y-T-W · Wall Slides</span></div>
-     <div class="note acc" style="margin-top:11px">With 5 kg dumbbells, visible change comes from <b>proximity to failure, slow eccentrics and total weekly sets</b> — not from load. That is why the upper-body sessions prescribe 15–25 reps at RPE 8–9 rather than heavy triples.</div>
+     ${(DB.profile.gear||[]).indexOf('bb')<0
+       ? `<div class="note acc" style="margin-top:11px">With light dumbbells, visible change comes from <b>proximity to failure, slow eccentrics and total weekly sets</b> — not from load. That is why the upper-body sessions prescribe 15–25 reps at RPE 8–9 rather than heavy triples.</div>`
+       : `<div class="note acc" style="margin-top:11px">With a barbell available, progressive load is your main driver — add weight before adding reps, and keep the last set 1–2 reps short of failure.</div>`}
    </div>`;
   $('#phAdd').onclick=()=>{
     openSheet('Add measurements',`
@@ -5561,10 +5882,9 @@ function paneLinks(c){
      <div class="kv"><span class="k">0.2 – 0.35</span><span class="v">Weak — possible, unproven</span></div>
      <div class="kv"><span class="k">0.35 – 0.5</span><span class="v">Moderate — worth testing</span></div>
      <div class="kv"><span class="k">Above 0.5</span><span class="v">Strong — still not causal</span></div>
-     <div class="hint" style="margin-top:9px">With many relationships tested at once, some will look meaningful by chance alone. In your original 181-day export, <b>no</b> journal-behaviour relationship survived correction for multiple comparisons — including the cold-shower result, which was the strongest raw signal.</div>
+     <div class="hint" style="margin-top:9px">With many relationships tested at once, some will look meaningful by chance alone. Treat everything here as a hypothesis worth testing deliberately, not as a finding — a single strong-looking correlation in a few months of data usually does not survive correction for multiple comparisons.</div>
    </div>`:''}`;
 }
-
 
 /* =========================================================================
    VIEW: WHOOP  (import · baselines · trends · sleep)
@@ -5626,7 +5946,12 @@ function paneTrends(c){
    <div class="card">
      <div class="card-h"><div class="card-t">Day strain</div></div>
      <div class="chart-wrap">${barChart(C.slice(-28).map(x=>({v:x.strain,color:x.strain>=14?'var(--orange)':x.strain>=10?'var(--accent)':'var(--surface-3)'})),{h:84,max:21})}</div>
-     <div class="hint" style="margin-top:6px">Orange bars are strain 14+, the band that has historically cost you around 20 recovery points the next day.</div>
+     <div class="hint" style="margin-top:6px">Orange bars are strain ${DB.settings.hardStrain}+, the level you have set as a hard day.${(()=>{
+       const pairs=[]; C.forEach((x,i)=>{ const n=C[i+1];
+         if(n&&x.strain!=null&&n.recovery!=null) pairs.push({hard:x.strain>=DB.settings.hardStrain,r:n.recovery}); });
+       const h=pairs.filter(x=>x.hard).map(x=>x.r), l=pairs.filter(x=>!x.hard).map(x=>x.r);
+       if(h.length<5||l.length<5) return ' Once you have a few weeks of data here, this will say what they actually cost you.';
+       return ` In your own data they are followed by <b>${rnd(mean(h),1)}%</b> recovery against <b>${rnd(mean(l),1)}%</b> after easier days.`;})()}</div>
    </div>
    <div class="card">
      <div class="card-h"><div class="card-t">Recovery band mix — last 30 days</div></div>
@@ -5674,7 +5999,7 @@ function paneSleep(c){
            <span style="font-weight:650;color:var(--text-2)">${b.l} <span style="color:var(--text-3);font-weight:600">· ${rows.length} nights</span></span>
            <span class="num" style="font-weight:800;color:${rec>=67?'var(--green)':rec>=55?'var(--yellow)':'var(--orange)'}">${rec!=null?rnd(rec,1)+'%':'—'}</span></div>
          <div class="bar ${rec>=67?'g':rec>=55?'y':'o'}"><i style="width:${rec?clamp(rec,0,100):0}%"></i></div></div>`;}).join('')}
-     <div class="note acc">Average recovery by how far short of need you slept. In your original export the drop was sharp and specific: staying within 60 minutes cost nothing, going past it cost 11–16 points. That threshold is built into the daily engine.</div>
+     <div class="note acc">Average recovery by how far short of your sleep need you slept — computed from your own imported nights. The engine treats a shortfall of more than an hour as meaningful; if the bars above show your own threshold sitting somewhere else, that is the one to trust.</div>
    </div>
    <div class="card">
      <div class="card-h"><div class="card-t">Sleep stages — last ${Math.min(30,R.length)} nights</div></div>
@@ -5926,13 +6251,10 @@ function viewSettings(v){
    <div class="card">
      <div class="card-h"><div class="card-t accent">Equipment</div>
        <span class="tag a">${countDoable(P.gear||[])} / ${DB.exercises.length} EXERCISES</span></div>
-     <div class="hint" style="margin-bottom:12px">Tick only what you actually have. Bodyweight, a floor and a wall are assumed — nothing else is.</div>
-     ${EQUIP_ITEMS.map(it=>{ const on=(P.gear||[]).indexOf(it.id)>=0;
-       return `<label style="display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border-soft);cursor:pointer">
-         <input type="checkbox" class="sGear" data-v="${it.id}" ${on?'checked':''} style="width:22px;height:22px;flex:0 0 22px;accent-color:var(--accent)">
-         <span style="flex:1"><span style="font-size:14px;font-weight:650">${esc(it.name)}</span>
-         ${it.hint?`<span style="display:block;font-size:11.5px;color:var(--text-3);margin-top:2px">${esc(it.hint)}</span>`:''}</span>
-       </label>`;}).join('')}
+     <div class="hint" style="margin-bottom:12px">What you chose during setup. Bodyweight, a floor and a wall are assumed — nothing else is. Remove anything you no longer have, or add with <b>+</b>.</div>
+     ${chipPicker({id:'gearPick', chosen:(P.gear||[]),
+        all:EQUIP_ITEMS.map(x=>({id:x.id,name:x.name,hint:x.hint})), allowEmpty:true})}
+     <div class="hint" style="margin-top:8px">Bodyweight only is a valid answer — the program adapts to it.</div>
      ${(P.gear||[]).indexOf('db')>=0?`
      <div class="field" style="margin-top:14px"><label>Heaviest dumbbell (kg, each)</label>
        <input class="inp num" type="number" inputmode="decimal" step="0.5" id="sDbKg" value="${P.dbKg||''}" placeholder="—">
@@ -5970,24 +6292,21 @@ function viewSettings(v){
    <div class="card">
      <div class="card-t accent" style="margin-bottom:6px">What you are training for</div>
      <div class="hint" style="margin-bottom:11px">Sets the priority order the daily engine uses. Your first pick leads.</div>
-     <div class="pills" id="sSports">
-       ${SPORTS.map(x=>{ const arr=(P.sports&&P.sports.length)?P.sports:[P.sport];
-         const i=arr.indexOf(x.id);
-         return `<button data-v="${x.id}" class="${i>=0?'on':''}">${x.emoji} ${esc(x.name)}${i===0?' ★':''}</button>`;}).join('')}
-     </div>
-     <div class="hint" style="margin-top:8px">★ marks the leading sport. Tap to add or remove; at least one must stay selected.</div>
+     ${chipPicker({id:'sportPick', lead:true,
+        chosen:(P.sports&&P.sports.length)?P.sports:[P.sport],
+        all:SPORTS.map(x=>({id:x.id,name:x.name,emoji:x.emoji,hint:x.focus}))})}
+     <div class="hint" style="margin-top:8px">The one marked MAIN leads. Remove it and the next becomes main.</div>
 
      <div class="card-t accent" style="margin:18px 0 6px">What you want from it</div>
-     <div class="pills" id="sGoals">
-       ${PHYSIQUES.map(x=>{ const arr=(P.physiques&&P.physiques.length)?P.physiques:[P.physique];
-         return `<button data-v="${x.id}" class="${arr.indexOf(x.id)>=0?'on':''}">${esc(x.name)}</button>`;}).join('')}
-     </div>
+     ${chipPicker({id:'goalPick',
+        chosen:(P.physiques&&P.physiques.length)?P.physiques:[P.physique],
+        all:PHYSIQUES.map(x=>({id:x.id,name:x.name,hint:x.desc}))})}
      ${(P.physiques||[]).indexOf('muscle')>=0&&(P.physiques||[]).indexOf('lean')>=0
        ? `<div class="note warn" style="margin-top:10px">Building muscle and getting leaner pull against each other — progress on both will be slower than picking one.</div>`:''}
 
      <div class="divider"></div>
      <div class="kv"><span class="k">Weekly targets from this</span><span class="v">${
-        ['lower','upper','power','core','run','bike'].map(k=>DB.targets[k]?`${DB.targets[k]} ${k}`:null).filter(Boolean).join(' · ')}</span></div>
+        targetKeys().map(k=>`${DB.targets[k]} ${(targetMeta()[k]||[k])[0].toLowerCase()}`).join(' · ')||'none yet'}</span></div>
      <div class="hint" style="margin-top:6px">Changing a goal re-derives these immediately. Fine-tune them under Train → Program.</div>
    </div>
 
@@ -6032,7 +6351,7 @@ function viewSettings(v){
      <div class="field"><label>Plan start date</label><input class="inp" type="date" id="sStart" value="${esc(P.planStart)}">
        <div class="hint">Drives which of the 8 progression weeks you are in. Currently <b>week ${currentPhase().absWeek}</b> (${esc(currentPhase().name)}).</div></div>
      <button class="btn ghost block" id="sSched">${svg('edit')} Edit weekly targets</button>
-     <div class="hint" style="margin-top:8px">There is no fixed day-by-day schedule — the daily engine chooses each session. Tennis is never scheduled; log it when you play.</div>
+     <div class="hint" style="margin-top:8px">There is no fixed day-by-day schedule — the daily engine chooses each session.${hasSportChosen()?` ${esc(SPORT_LABEL())} is never scheduled; log it when you play.`:''}</div>
      <div style="margin-top:12px"><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
        <input type="checkbox" id="sAuto" ${S.autoAdjust?'checked':''} style="width:22px;height:22px;accent-color:var(--accent)">
        Let readiness reduce session volume</label>
@@ -6112,7 +6431,7 @@ function viewSettings(v){
    </div>
 
    <div style="text-align:center;padding:20px 0 8px;color:var(--text-3);font-size:11px">
-     Baseline · Tennis Performance System<br>
+     Baseline · Adaptive Training System<br>
      <span style="color:var(--text-3);opacity:.7">Not a medical device. Nothing here diagnoses or treats any condition.<br>
      Persistent symptoms, pain, or unusual physiological readings belong with a qualified healthcare professional.</span>
    </div>`;
@@ -6138,19 +6457,27 @@ function viewSettings(v){
     $$(sel+' button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); cb&&cb(b.dataset.v); });
   pill('#sDur'); pill('#sUnits'); pill('#sDays');
   $('#sWizard').onclick=()=>{ persist(); startSetup(true); };
-  /* equipment changes what you are prescribed, so re-render to show the count */
-  $$('.sGear').forEach(c=>c.onchange=()=>{ persist(); render(); });
-  /* goal chips: multi-select, first sport leads, never allow an empty set */
-  const multi=(sel,key,single)=>$$(sel+' button').forEach(b=>b.onclick=()=>{
-    const arr=(P[key]&&P[key].length)?P[key].slice():[P[single]];
-    const i=arr.indexOf(b.dataset.v);
-    if(i>=0){ if(arr.length===1){ toast('Keep at least one'); return; } arr.splice(i,1); }
-    else arr.push(b.dataset.v);
-    P[key]=arr; P[single]=arr[0];
-    persist(); applyGoalTargets(); save(true); haptic(); render();
-  });
-  multi('#sSports','sports','sport');
-  multi('#sGoals','physiques','physique');
+  /* Equipment: the blocks you chose, plus "+" for the rest of the list.
+     Removing the last one is allowed — bodyweight only is a real setup. */
+  wirePicker('gearPick', (P.gear||[]),
+    EQUIP_ITEMS.map(x=>({id:x.id,name:x.name,hint:x.hint})),
+    next=>{ P.gear=next; P.tier=tierOf(next);
+            P.equipment=equipmentList(next,P.equipNote,P.dbKg);
+            pruneTargets(); save(true); render(); },
+    'Add equipment', true);
+  /* Sports: the first one leads. Goals: at least one. Both re-derive targets. */
+  wirePicker('sportPick', (P.sports&&P.sports.length)?P.sports:[P.sport],
+    SPORTS.map(x=>({id:x.id,name:x.name,emoji:x.emoji,hint:x.focus})),
+    next=>{ P.sports=next; P.sport=next[0];
+            P.goalPrimary=goalTextFor(next);
+            applyGoalTargets(); save(true); render(); },
+    'Add a sport');
+  wirePicker('goalPick', (P.physiques&&P.physiques.length)?P.physiques:[P.physique],
+    PHYSIQUES.map(x=>({id:x.id,name:x.name,hint:x.desc})),
+    next=>{ P.physiques=next; P.physique=next[0];
+            P.goalSecondary=next.map(id=>(PHYSIQUES.find(x=>x.id===id)||{}).desc).filter(Boolean).join(' ');
+            applyGoalTargets(); save(true); render(); },
+    'Add a goal');
   /* keep the band strip in sync while dragging, and keep the bands ordered */
   ['green','yellow','orange'].forEach(k=>{ const el2=$('#sb_'+k); if(!el2)return;
     el2.addEventListener('change',()=>{
@@ -6170,16 +6497,22 @@ function viewSettings(v){
     const ck=(id,d)=>{ const e=$('#'+id); return e?e.checked:d; };
     const num=(id)=>{ const e=$('#'+id); if(!e||e.value==='')return null; const n=parseFloat(e.value); return isNaN(n)?null:n; };
     if(!$('#sName')) return;
+    /* changing training days re-derives the weekly targets; changing equipment
+       only ever removes a target you can no longer do, so hand-tuned numbers
+       are never quietly overwritten */
+    let reDerive=false;
     P.name=(v('sName','')||'').trim();
     P.age=num('sAge'); P.heightCm=num('sHt'); P.weightKg=num('sWt');
     P.sex=v('sSex','')||null;
-    P.gear=$$('.sGear').filter(c=>c.checked).map(c=>c.dataset.v);
-    P.tier=tierOf(P.gear);
+    /* gear is owned by the chip picker above, not by this form — reading a
+       checkbox list that no longer exists used to wipe it on every keystroke */
+    P.tier=tierOf(P.gear||[]);
     P.dbKg=num('sDbKg');
     P.equipNote=(v('sEqNote','')||'').trim();
-    P.equipment=equipmentList(P.gear,P.equipNote,P.dbKg);
+    P.equipment=equipmentList(P.gear||[],P.equipNote,P.dbKg);
     P.preferBest=ck('sBest',true);
-    const dy=$('#sDays button.on'); if(dy)P.daysPerWeek=+dy.dataset.v;
+    const dy=$('#sDays button.on');
+    if(dy){ const nd=+dy.dataset.v; if(nd!==P.daysPerWeek){ P.daysPerWeek=nd; reDerive=true; } }
     const du=$('#sDur button.on'); if(du)P.sessionMin=+du.dataset.v;
     const un=$('#sUnits button.on'); if(un)P.units=un.dataset.v;
     /* goals are derived from the selections, never hand-typed prose */
@@ -6191,6 +6524,7 @@ function viewSettings(v){
     const hs=num('sHs'); if(hs!=null) S.hardStrain=hs;
     S.autoAdjust=ck('sAuto',true);
     S.restTimerOn=ck('sRest',true);
+    if(reDerive) applyGoalTargets(); else pruneTargets();
     save();
   };
   $$('#view input, #view textarea, #view select').forEach(i=>{
@@ -6285,7 +6619,7 @@ function drawWM(){
 }
 function drawWarmup(){
   const wk=DB.workouts.find(x=>x.id===W.workoutId);
-  const wu=WARMUPS[wk.warm]||WARMUPS.easy;
+  const wu=warmupFor(wk);
   $('#wmBody').innerHTML=`
     <div class="wm-ex">Warm-up</div>
     <div class="wm-sub">${esc(wu.name)} · about ${wu.dur} minutes</div>
@@ -6581,7 +6915,7 @@ function migrate(d){
      real single value and silently reset everyone to tennis. */
   const inP=d.profile||{};
   out.profile.sports = (Array.isArray(inP.sports)&&inP.sports.length)
-    ? inP.sports.slice() : [inP.sport||out.profile.sport||'tennis'];
+    ? inP.sports.slice() : [inP.sport||out.profile.sport||'general'];
   out.profile.physiques = (Array.isArray(inP.physiques)&&inP.physiques.length)
     ? inP.physiques.slice() : [inP.physique||out.profile.physique||'athletic'];
   out.profile.sport=out.profile.sports[0];
@@ -6768,7 +7102,7 @@ function startSetup(fromSettings){
     gear:Array.isArray(DB.profile.gear)?DB.profile.gear.slice():[],
     dbKg:DB.profile.dbKg||null,
     tier:DB.profile.tier==null?0:DB.profile.tier,
-    sports:(DB.profile.sports&&DB.profile.sports.length)?DB.profile.sports.slice():[DB.profile.sport||'tennis'],
+    sports:(DB.profile.sports&&DB.profile.sports.length)?DB.profile.sports.slice():['general'],
     physiques:(DB.profile.physiques&&DB.profile.physiques.length)?DB.profile.physiques.slice():[DB.profile.physique||'athletic'],
     daysPerWeek:DB.profile.daysPerWeek||4, sessionMin:DB.profile.sessionMin||50,
     units:DB.profile.units||'metric', equipNote:DB.profile.equipNote||''
@@ -6781,7 +7115,7 @@ function drawSetup(){
   const d=SETUP.draft, s=SETUP.step;
   /* a partially-formed draft must never crash the wizard */
   if(!Array.isArray(d.gear)) d.gear=[];
-  if(!Array.isArray(d.sports)||!d.sports.length) d.sports=['tennis'];
+  if(!Array.isArray(d.sports)||!d.sports.length) d.sports=['general'];
   if(!Array.isArray(d.physiques)||!d.physiques.length) d.physiques=['athletic'];
   const dots=SETUP_STEPS.map((n,i)=>
     `<div style="flex:1;height:3px;border-radius:9px;background:${i<=s?'var(--accent)':'var(--surface-3)'}"></div>`).join('');
@@ -6918,10 +7252,11 @@ function drawSetup(){
 
   const back = s>0 ? `<button class="btn ghost" id="setBack">Back</button>` : '';
   const nextLabel = s===SETUP_STEPS.length-1 ? (d.mode==='whoop'?'Finish & import WHOOP':'Finish setup') : 'Continue';
-  /* closing the wizard leaves the program on defaults — say so rather than
-     letting it vanish and quietly prescribe the wrong exercises */
-  openSheet(title, body,
-    `<div class="btn-row">${back}<button class="btn primary" id="setNext" style="flex:2">${nextLabel}</button></div>`,
+  const foot=`<div class="btn-row">${back}<button class="btn primary" id="setNext" style="flex:2">${nextLabel}</button></div>`;
+  /* Patch the open sheet in place. Re-opening it on every tap restarted the
+     slide-in animation and made the footer button jump. */
+  if($('#sheet').classList.contains('on')) updateSheet(title, body, foot);
+  else openSheet(title, body, foot,
     ()=>{ if(!DB.profile.onboarded){ try{ render(); toast('Setup unfinished — finish it from the card on Today'); }catch(e){} } });
 
   /* single-choice cards */
@@ -7028,44 +7363,93 @@ function goalTextFor(sportIds){
 /* Goals shape the weekly targets. With several sports selected the shared
    qualities (legs, core, conditioning) take priority and sport-specific work
    is spread thinner — the leading sport still decides ties. */
+/* =========================================================================
+   WEEKLY TARGETS — entirely derived
+   Built from the sports you chose, the outcomes you want, the days you have
+   and the equipment you own. A category you cannot or would not do simply
+   does not appear: no bike, no bike target.
+   ====================================================================== */
 function applyGoalTargets(){
-  const P=DB.profile, days=P.daysPerWeek||4, T=DB.targets;
-  const sports=(P.sports&&P.sports.length)?P.sports:[P.sport||'tennis'];
+  const P=DB.profile, days=P.daysPerWeek||4;
+  const sports=(P.sports&&P.sports.length)?P.sports:[P.sport||'general'];
   const goals =(P.physiques&&P.physiques.length)?P.physiques:[P.physique||'athletic'];
+  const gear  =Array.isArray(P.gear)?P.gear:[];
   const has=x=>sports.indexOf(x)>=0;
   const wants=x=>goals.indexOf(x)>=0;
+  const owns=x=>gear.indexOf(x)>=0;
+  const T={};
 
-  const lower = days<=3?1:2;
-  const upper = days<=3?1:2;
-  T.lower=lower; T.upper=upper;
-  /* explosive sports need power work; more of them does not mean more sessions */
-  const explosive = has('tennis')||has('football')||has('basketball')||has('racquet');
-  T.power = explosive && days>=4 ? 1 : (days>=5?1:0);
-  T.core  = Math.min(4, Math.max(2, days-1));
-  T.run   = has('running') ? Math.min(4,days-1)
-          : (sports.length===1&&has('cycling')) ? 0
-          : (days>=4?2:1);
-  T.bike  = has('cycling') ? Math.min(4,days-1) : (days>=4?2:1);
-  T.mobility = Math.max(2, days-1);
+  /* strength scales with available days */
+  T.lower = days<=2?1 : days<=3?1 : 2;
+  T.upper = days<=2?1 : days<=3?1 : 2;
+  T.core  = Math.min(4, Math.max(1, days-1));
+  T.mobility = Math.max(1, Math.min(4, days-1));
 
-  if(wants('muscle')){ T.upper=Math.min(3,T.upper+1); if(!wants('lean')) T.run=Math.max(0,T.run-1); }
-  if(wants('lean')){ T.run=T.run+1; T.bike=T.bike+1; }
-  if(wants('perform')&&!wants('muscle')) T.upper=Math.max(1,T.upper);
+  /* power only where a chosen sport actually needs it */
+  const explosive = sports.some(id=>(SPORT_PROFILES[id]||{}).explosive);
+  if(explosive && days>=3) T.power = days>=5?2:1;
 
-  /* more sports than training days means something has to give */
+  /* Conditioning has to pass two tests: can you do it, and does anything you
+     chose actually call for it? Owning trainers is not a reason to run. */
+  const canRun  = owns('run') ||has('running');
+  const canBike = owns('bike')||has('cycling');
+  const runSports = sports.some(id=>id==='running'||(SPORT_PROFILES[id]||{}).impact==='high');
+  const needsRun  = has('running') || runSports || (!canBike && days>=3);
+  const needsBike = has('cycling') || wants('lean') || canBike;
+  if(canRun && needsRun)   T.run  = has('running') ? Math.min(4,days-1) : (days>=4?2:1);
+  if(canBike && needsBike) T.bike = has('cycling') ? Math.min(4,days-1) : 1;
+  /* a sport that already supplies running needs less programmed running */
+  if(T.run && runSports && !has('running')) T.run=Math.max(1,T.run-1);
+
+  if(wants('muscle')){ T.upper=Math.min(3,T.upper+1); if(!wants('lean')&&T.run) T.run=Math.max(0,T.run-1); }
+  if(wants('lean')){ if(T.run) T.run++; if(T.bike) T.bike++; else if(canBike) T.bike=1; }
+
+  /* more sports than days means something has to give */
   if(sports.length>=3&&days<=3){ T.power=0; T.upper=1; }
+  /* every category is present, but a category you cannot or would not do is
+     zero — and targetKeys() hides zeros everywhere in the UI */
+  TARGET_ORDER.forEach(k=>{ T[k]=Math.max(0, Math.round(T[k]||0)); });
+  DB.targets=T;
+  return T;
+}
+/* Remove targets the user can no longer do. Deliberately one-directional:
+   losing a bike drops the bike target, but buying one does not silently add
+   sessions to your week — "Rebuild from my setup" does that on request. */
+function pruneTargets(){
+  const gear=(DB.profile&&DB.profile.gear)||[], T=DB.targets||{};
+  const sp=sportsOf();
+  if(T.bike && gear.indexOf('bike')<0 && sp.indexOf('cycling')<0) T.bike=0;
+  if(T.run  && gear.indexOf('run')<0  && sp.indexOf('running')<0
+     && !sp.some(id=>(SPORT_PROFILES[id]||{}).impact==='high')) T.run=0;
+  return T;
+}
+/* labels + rationale for whatever targets exist, written from the user's setup */
+function targetMeta(){
+  const sp=SPORT_LABEL(), q=sportProf().qualities;
+  return {
+    lower:   ['Lower body strength', `The base under ${sp.toLowerCase()} — ${q.split(',')[0]}`],
+    upper:   ['Upper body strength', (DB.profile.physiques||[]).indexOf('muscle')>=0
+                ? 'Your muscle-building goal' : 'Shoulder durability and balanced strength'],
+    power:   ['Power / plyometrics', `Explosive qualities ${sp.toLowerCase()} depends on`],
+    core:    ['Core',                'Force transfer between legs and upper body'],
+    run:     ['Runs',                'Aerobic base; reduced when your sport already supplies it'],
+    bike:    ['Rides',               'Low-impact aerobic work'],
+    mobility:['Mobility sessions',   'Protects the hard days']
+  };
 }
 
 function welcome(){
   openSheet('Welcome to Baseline',`
-   <p style="font-size:14.5px;line-height:1.6;color:var(--text-2)">A tennis-first training system built around <b>your</b> physiology, with no gym required — bodyweight, two 5 kg dumbbells, one band, a bike and open space.</p>
+   <p style="font-size:14.5px;line-height:1.6;color:var(--text-2)">A training system built around <b>your</b> physiology, your sport and the equipment you actually own. Nothing here is assumed — it is all set in the wizard and changeable afterwards.</p>
    <div class="card tight" style="margin-top:16px">
      <div class="card-t accent" style="margin-bottom:9px">What you get</div>
-     <div class="kv"><span class="k">Exercises</span><span class="v">${DB.exercises.length}, no gym needed</span></div>
+     <div class="kv"><span class="k">Exercises</span><span class="v">${DB.exercises.length}, filtered to your kit</span></div>
      <div class="kv"><span class="k">Sessions</span><span class="v">${DB.workouts.length} with full/reduced/recovery versions</span></div>
      <div class="kv"><span class="k">Daily engine</span><span class="v">Picks one session for you</span></div>
      <div class="kv"><span class="k">Activity log</span><span class="v">${Object.keys(ACT_TYPES).length} activity types</span></div>
-     <div class="hint" style="margin-top:9px">Built around bodyweight, 2 × 5 kg dumbbells, a band, a bike and open space. Change the equipment list in Settings if yours differs.</div>
+     <div class="hint" style="margin-top:9px">${(DB.profile.gear||[]).length
+        ? 'Built around '+esc(gearNames())+'. Change it any time in Settings.'
+        : 'Bodyweight and a floor are assumed; everything else you tick in setup. Nothing is prescribed that you cannot actually do.'}</div>
    </div>
    <div style="margin-top:16px">
      <div class="card-t" style="margin-bottom:10px">Three things to do first</div>
@@ -7073,7 +7457,7 @@ function welcome(){
        ${Store.durable
          ? `<li class="info"><span class="dot"></span><span><b>Settings → Setup</b> — add this to your Home Screen so it runs full-screen like an app.</span></li>`
          : `<li class="neg"><span class="dot"></span><span><b>Settings → Setup</b> — storage is currently blocked, so nothing will be saved. Fix this first; it takes two minutes.</span></li>`}
-       <li class="info"><span class="dot"></span><span><b>WHOOP → Import</b> — load your CSV export so trends and baselines are real rather than seeded.</span></li>
+       <li class="info"><span class="dot"></span><span><b>WHOOP → Import</b> — optional. Load a CSV export and your baselines become measured rather than estimated.</span></li>
        <li class="info"><span class="dot"></span><span><b>Today → Daily check-in</b> — 60 seconds, and the engine tells you exactly what to train.</span></li>
      </ul>
    </div>
@@ -7100,4 +7484,3 @@ window.addEventListener('resize',()=>{ clearTimeout(orT); orT=setTimeout(()=>{ i
 </script>
 </body>
 </html>
-
