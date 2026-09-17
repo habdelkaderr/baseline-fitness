@@ -218,6 +218,9 @@ a{color:var(--accent);text-decoration:none}
   -webkit-backdrop-filter:saturate(160%) blur(16px);
   display:flex;align-items:flex-end;justify-content:space-between;gap:12px;
 }
+.appbar:has(.ab-back){align-items:center}
+/* :has() is recent; this keeps the button on the text either way */
+.ab-back{align-self:center}
 .appbar .ttl{font-size:26px;font-weight:800;letter-spacing:-.6px;line-height:1.1}
 .appbar .sub{font-size:12.5px;color:var(--text-3);font-weight:500;margin-top:2px}
 .appbar-actions{display:flex;gap:8px;align-items:center;flex:0 0 auto}
@@ -309,6 +312,13 @@ button.card{padding-right:46px}      /* room for the tick */
 .chipadd:active{background:var(--surface-2)}
 .chipadd svg{width:15px;height:15px;stroke-width:2.6}
 .chipnone{font-size:12.5px;color:var(--text-3);font-weight:600;padding:0 2px}
+/* an inline glyph inside a chip or a picker row */
+.chipi{display:inline-flex;align-items:center;margin-right:7px;color:var(--text-3)}
+.chipi svg{width:16px;height:16px;stroke-width:2;display:block}
+.chipblk .chipi{color:var(--text-2)}
+/* a device's type glyph, tinted with its brand colour */
+.srcmark{display:inline-flex;align-items:center;vertical-align:-3px;margin-right:8px}
+.srcmark svg{width:var(--sz,18px);height:var(--sz,18px);stroke-width:1.9;display:block}
 /* settings panes: only the selected group occupies space */
 .spane{display:none}
 .spane.on{display:block}
@@ -342,9 +352,36 @@ button.card{padding-right:46px}      /* room for the tick */
 .btn.xs svg,.btn.sm svg{width:15px;height:15px}
 .chip svg{width:13px;height:13px;flex:0 0 auto;stroke-width:2.2}
 .btn-row{display:flex;gap:9px;flex-wrap:wrap}
+
+/* ---------- row list: the one way to offer choices that lead somewhere --- */
+.rows{display:flex;flex-direction:column;gap:1px;background:var(--border-soft);
+  border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
+.rows>button{display:flex;align-items:center;gap:13px;width:100%;min-height:58px;
+  padding:14px 15px;background:var(--surface);border:0;text-align:left;
+  font:inherit;color:inherit;cursor:pointer}
+.rows>button:active{background:var(--surface-2)}
+.rows>button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.rw-i{width:21px;height:21px;flex:0 0 auto;color:var(--text-3)}
+.rw-i svg{width:21px;height:21px;display:block}
+.rw-x{flex:1;min-width:0;display:flex;flex-direction:column}
+.rw-t{font-size:15.5px;font-weight:650;letter-spacing:-.2px;color:var(--text)}
+.rw-s{font-size:12.5px;font-weight:550;color:var(--text-3);margin-top:3px;line-height:1.45}
+.rw-b{font-size:12.5px;font-weight:700;color:var(--text-2);flex:0 0 auto}
+.rw-c{width:17px;height:17px;flex:0 0 auto;color:var(--text-3);opacity:.7}
+.rw-c svg{width:17px;height:17px;display:block}
+
+/* ---------- app bar back button ---------- */
+.ab-txt{flex:1;min-width:0}
+.ab-back{margin-left:-6px;margin-right:2px;flex:0 0 auto}
+/* the wizard footer must be identical on every step, so its columns are fixed
+   fractions rather than flex against whatever the step happens to contain */
+.btn-row.setup-foot{display:grid;grid-template-columns:1fr 2fr;flex-wrap:nowrap}
+.btn-row.setup-foot .btn{width:100%;min-width:0}
 .btn-row .btn{flex:1;min-width:0}
 .icon-btn{
-  width:40px;height:40px;border-radius:12px;background:var(--surface-2);
+  /* 44px is the accessible minimum for a touch target, and this class is
+     every icon button in the app */
+  width:44px;height:44px;border-radius:12px;background:var(--surface-2);
   border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--text-2);
 }
 .icon-btn:active{transform:scale(.94)}
@@ -472,6 +509,53 @@ input[type=range]::-moz-range-progress{height:8px;border-radius:99px;background:
 
 /* ---------- Forms ---------- */
 .field{margin-bottom:14px}
+/* the one-line intro a step is allowed: short, and the same everywhere */
+.lede{font-size:14.5px;line-height:1.55;color:var(--text-2);margin:0}
+
+/* ---------- Readiness row: one number, one word, a way in ---------- */
+.rdrow{display:flex;align-items:center;gap:14px;width:100%;min-height:66px;
+  padding:13px 15px;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);font:inherit;color:inherit;text-align:left;cursor:pointer}
+.rdrow:active{background:var(--surface-2)}
+.rdrow:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.rd-n{font-size:31px;font-weight:850;letter-spacing:-1.3px;line-height:1;
+  font-variant-numeric:tabular-nums;flex:0 0 auto}
+.rd-x{flex:1;min-width:0;display:flex;flex-direction:column}
+.rd-l{font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--text-3)}
+.rd-w{font-size:15.5px;font-weight:700;letter-spacing:-.2px;margin-top:2px}
+
+/* ---------- The recommendation: the one thing that should dominate ---------- */
+.rec{margin-top:11px;padding:20px 18px;background:var(--surface);
+  border:1px solid var(--border);border-radius:var(--r-xl)}
+.rec-l{font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--text-3)}
+.rec-t{font-size:27px;font-weight:850;letter-spacing:-.9px;line-height:1.14;margin-top:7px}
+.rec-m{font-size:14px;font-weight:600;color:var(--text-2);margin-top:7px}
+
+/* ---------- Tertiary action: available, never competing ---------- */
+.tert{display:flex;align-items:center;justify-content:center;gap:7px;
+  width:100%;min-height:44px;margin-top:4px;padding:0 10px;
+  background:none;border:0;font:inherit;font-size:14px;font-weight:650;
+  color:var(--text-2);cursor:pointer}
+.tert:active{opacity:.6}
+.tert:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:var(--r-sm)}
+.tert svg{width:16px;height:16px;stroke-width:2.2;transition:transform .18s ease}
+.tert.open svg{transform:rotate(180deg)}
+.whybox{padding:2px 2px 4px;margin-bottom:9px}
+.whybox[hidden]{display:none}
+.whyl{list-style:none;margin:0;padding:0}
+.whyl li{display:flex;gap:9px;align-items:flex-start;font-size:13.5px;
+  line-height:1.5;color:var(--text-2);margin-bottom:8px}
+.whyl li:last-child{margin-bottom:0}
+.whyl .dot{width:7px;height:7px;border-radius:50%;margin-top:6px;flex:0 0 auto;background:var(--text-3)}
+.whyl .pos .dot{background:var(--green)}
+.whyl .neg .dot{background:var(--red)}
+.whyl .warn .dot{background:var(--orange)}
+.whyl .info .dot{background:var(--cyan)}
+
+/* a row that states a fact rather than leading somewhere */
+.rw-flat{display:flex;align-items:center;gap:12px;padding:13px 15px;
+  background:var(--surface);min-height:48px}
+.rw-flat .rw-b{margin-left:auto}
 .field label{display:block;font-size:12.5px;font-weight:550;letter-spacing:0;color:var(--text-3);margin-bottom:7px}
 .inp{
   width:100%;min-width:0;min-height:48px;padding:12px 14px;border-radius:var(--r-md);
@@ -792,8 +876,13 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
   .hero-band{font-size:34px}
   .stats{grid-template-columns:repeat(3,1fr)}
   .sheet{
-    border-radius:var(--r-xl);max-width:600px;bottom:auto;
+    border-radius:var(--r-xl);bottom:auto;
     top:50%;left:50%;right:auto;
+    /* A DEFINITE width. With right:auto and no width, a fixed-position box
+       shrink-wraps to its content, so a step containing only a few chips
+       collapsed the whole modal - and the footer buttons with it. The height
+       below is pinned for the same reason; the width was missed. */
+    width:min(600px,calc(100vw - 48px));
     transform:translate(-50%,-46%) scale(.98);opacity:0;
     max-height:86vh;transition:transform .2s ease,opacity .2s ease;
   }
@@ -917,6 +1006,7 @@ const ICON = {
   pulse:'<path d="M3 12h4l2.5-7 4 14L16 12h5"/>',
   gear:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-1.8-.3 1.6 1.6 0 00-1 1.5V21a2 2 0 11-4 0v-.1A1.6 1.6 0 008 19.4a1.6 1.6 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00.3-1.8 1.6 1.6 0 00-1.5-1H2a2 2 0 110-4h.1A1.6 1.6 0 003.6 8a1.6 1.6 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 001.8.3H8a1.6 1.6 0 001-1.5V2a2 2 0 114 0v.1a1.6 1.6 0 001 1.5 1.6 1.6 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00-.3 1.8V8a1.6 1.6 0 001.5 1H22a2 2 0 110 4h-.1a1.6 1.6 0 00-1.5 1z"/>',
   chev:'<path d="M9 18l6-6-6-6"/>', down:'<path d="M6 9l6 6 6-6"/>',
+  left:'<path d="M15 18l-6-6 6-6"/>',
   check:'<path d="M20 6L9 17l-5-5"/>', x:'<path d="M18 6L6 18M6 6l12 12"/>',
   plus:'<path d="M12 5v14M5 12h14"/>', undo:'<path d="M3 7v6h6"/><path d="M3.5 13a9 9 0 102.1-7"/>',
   edit:'<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>',
@@ -935,7 +1025,22 @@ const ICON = {
   target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
   info:'<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/>',
   /* the open readiness ring — the app's own mark, and sport-neutral */
-  ring:'<path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5"/>'
+  ring:'<path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5"/>',
+  /* device types — enough to tell a ring from a band from a watch */
+  watch:'<rect x="6.5" y="6.5" width="11" height="11" rx="3.4"/><path d="M9.5 6.5V3.5h5v3M9.5 17.5v3h5v-3"/>',
+  band:'<rect x="3" y="9" width="18" height="6" rx="3"/><path d="M8.5 9v6M15.5 9v6"/>',
+  ringfull:'<circle cx="12" cy="12" r="6.6"/>',
+  /* equipment */
+  eband:'<path d="M4 12c2.6-5.2 13.4-5.2 16 0-2.6 5.2-13.4 5.2-16 0z"/>',
+  bench:'<path d="M3 10.5h18v3H3zM6.5 13.5V19M17.5 13.5V19"/>',
+  pullbar:'<path d="M3 5.5h18M8 5.5v4M16 5.5v4M12 9.5v3"/>',
+  kettle:'<path d="M9.2 7.4a3 3 0 015.6 0"/><path d="M7 9.4h10a6 6 0 11-10 0z"/>',
+  medball:'<circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16"/>',
+  barbell:'<path d="M2 12h20M5 8v8M19 8v8M8.5 9.5v5M15.5 9.5v5"/>',
+  cable:'<path d="M5 4v6a7 7 0 0014 0V4"/><circle cx="12" cy="18.5" r="2.4"/>',
+  /* metrics */
+  drop:'<path d="M12 3.2s6 6.6 6 10.2a6 6 0 11-12 0C6 9.8 12 3.2 12 3.2z"/>',
+  thermo:'<path d="M10 14.2V5a2 2 0 114 0v9.2a4 4 0 11-4 0z"/>'
 };
 const FILLED={play:1};
 const svg=(k,cls)=>`<svg class="${cls||''}" viewBox="0 0 24 24" fill="${FILLED[k]?'currentColor':'none'}" stroke="currentColor" stroke-width="${FILLED[k]?0:2}" stroke-linecap="round" stroke-linejoin="round">${ICON[k]||''}</svg>`;
@@ -1281,7 +1386,7 @@ function updateBanner(){
     : `<b>This page cannot save data.</b> Your browser is blocking local storage for this page, so anything you enter will be lost when you close the tab.
        <button id="sbFix">How to fix this →</button>`;
   const a=document.getElementById('sbBk'); if(a)a.onclick=exportJSON;
-  const b=document.getElementById('sbFix'); if(b)b.onclick=()=>{ go('settings'); setTimeout(openSetup,260); };
+  const b=document.getElementById('sbFix'); if(b)b.onclick=()=>{ openSetup(); };
 }
 
 /* where is this running? drives the Setup screen */
@@ -2584,14 +2689,15 @@ function freshDB(){
   return {
     version:1, created:new Date().toISOString(),
     profile:{
-      name:'', age:null, heightCm:null,
-      /* written by the setup wizard from what you actually choose — these
-         placeholders only ever show if setup has not been completed */
-      goalPrimary:'Not set yet — finish setup and this is written from your sports and goals.',
-      goalSecondary:'',
-      equipment:['Bodyweight'],
+      /* A fresh profile knows nothing about you. Every field below is either
+         empty or null, and the UI renders that as "None" rather than as an
+         incomplete profile. The engine's own fallbacks live in the working
+         accessors (sportsOf, trainDays, sessMin) in p03b — not here. */
+      name:'',
+      goalPrimary:'', goalSecondary:'',
+      equipment:[],
       units:'metric',
-      sessionMin:50, startDate:todayISO(), planWeek:1, planStart:todayISO(),
+      sessionMin:null, startDate:todayISO(), planWeek:1, planStart:todayISO(),
       /* Which wearable, if any. null = first run, ask. See SOURCES: a device
          is described by the fields it provides, and no device is privileged.
          `mode` is kept in sync only so older saved data keeps working. */
@@ -2604,18 +2710,19 @@ function freshDB(){
       /* standing injuries: [{id, area, side, severity, until, note}] — these
          persist and expire, unlike the one-day pain flag in the check-in */
       limits:[],
-      /* no sport is assumed before setup: 'general' gives balanced defaults */
-      sports:['general'], sport:'general',
-      physiques:['athletic'], physique:'athletic',
-      daysPerWeek:4
+      /* no sport, no goal, no schedule until the user says so */
+      sports:[], sport:null,
+      physiques:[], physique:null,
+      daysPerWeek:null
     },
     meta:{ created:new Date().toISOString(), schema:SCHEMA_VERSION, lastBackup:null, lastBackupCount:null },
     /* Weekly GUIDELINES, not quotas. The daily engine decides the order and
        will happily miss a target rather than train you into the ground. */
-    /* conservative pre-setup defaults: only what bodyweight and a floor allow.
-       Finishing setup replaces these with targets derived from your sports,
-       goals, training days and equipment (see applyGoalTargets). */
-    targets:{lower:2, upper:2, core:3, mobility:3},
+    /* No targets until setup derives them from what the user actually chose.
+       An empty object is the honest state: targetKeys() hides every zero, so
+       the week view says "no targets yet" instead of inventing ten sessions
+       a week for somebody who has not told us anything. */
+    targets:{},
     settings:{
       bands:{green:72,yellow:56,orange:42},
       autoAdjust:true, hardStrain:14, restTimerOn:true
@@ -2660,16 +2767,16 @@ const TIERS=[
    floor are assumed; nothing else is.
    ====================================================================== */
 const EQUIP_ITEMS=[
-  {id:'db',    name:'Dumbbells',          hint:'Any pair, fixed or adjustable', tier:0},
-  {id:'band',  name:'Resistance band',    hint:'One loop or tube band',         tier:0},
-  {id:'bench', name:'Bench, step or sturdy chair', hint:'Something stable to elevate a foot or lie on', tier:1},
-  {id:'bar',   name:'Pull-up bar',        hint:'Doorway or fixed',              tier:1},
-  {id:'kb',    name:'Kettlebell',         hint:'',                              tier:1},
-  {id:'ball',  name:'Medicine ball',      hint:'Plus a wall you can throw at',  tier:1},
-  {id:'bb',    name:'Barbell and rack',   hint:'',                              tier:2},
-  {id:'cable', name:'Cables or machines', hint:'Gym cable stack, leg press etc.',tier:2},
-  {id:'bike',  name:'Bicycle or stationary bike', hint:'',                      tier:0},
-  {id:'run',   name:'Somewhere to run',   hint:'Outdoors or a treadmill',       tier:0}
+  {id:'db',    name:'Dumbbells',          hint:'Any pair, fixed or adjustable', tier:0, icon:'dumbbell'},
+  {id:'band',  name:'Resistance band',    hint:'One loop or tube band',         tier:0, icon:'eband'},
+  {id:'bench', name:'Bench, step or sturdy chair', hint:'Something stable to elevate a foot or lie on', tier:1, icon:'bench'},
+  {id:'bar',   name:'Pull-up bar',        hint:'Doorway or fixed',              tier:1, icon:'pullbar'},
+  {id:'kb',    name:'Kettlebell',         hint:'',                              tier:1, icon:'kettle'},
+  {id:'ball',  name:'Medicine ball',      hint:'Plus a wall you can throw at',  tier:1, icon:'medball'},
+  {id:'bb',    name:'Barbell and rack',   hint:'',                              tier:2, icon:'barbell'},
+  {id:'cable', name:'Cables or machines', hint:'Gym cable stack, leg press etc.',tier:2, icon:'cable'},
+  {id:'bike',  name:'Bicycle or stationary bike', hint:'',                      tier:0, icon:'bike'},
+  {id:'run',   name:'Somewhere to run',   hint:'Outdoors or a treadmill',       tier:0, icon:'run'}
 ];
 const ALWAYS_HAVE=['bw','floor','wall','towel'];   // assumed for everyone
 
@@ -2725,56 +2832,61 @@ function canDo(e){
    engine work identically whatever you wear.
    ====================================================================== */
 const DATA_FIELDS={
-  recovery :{name:'Recovery',        unit:'%',  lo:0,  hi:100, hint:'A 0–100 daily readiness score'},
-  hrv      :{name:'HRV',             unit:'ms', lo:5,  hi:250, hint:'Overnight heart-rate variability'},
-  rhr      :{name:'Resting HR',      unit:'bpm',lo:25, hi:120, hint:'Overnight resting heart rate'},
-  sleep    :{name:'Sleep',           unit:'h',  lo:0,  hi:16,  hint:'Time actually asleep'},
-  sleepNeed:{name:'Sleep need',      unit:'h',  lo:4,  hi:14,  hint:'What your device says you needed'},
-  strain   :{name:'Strain / load',   unit:'',   lo:0,  hi:21,  hint:"Yesterday's cardiovascular load"},
-  resp     :{name:'Respiratory rate',unit:'rpm',lo:6,  hi:30},
-  spo2     :{name:'Blood oxygen',    unit:'%',  lo:70, hi:100},
-  temp     :{name:'Skin temp change',unit:'°C', lo:-5, hi:5},
-  steps    :{name:'Steps',           unit:'',   lo:0,  hi:80000}
+  recovery :{name:'Recovery',        unit:'%',  lo:0,  hi:100, icon:'heart', hint:'A 0–100 daily readiness score'},
+  hrv      :{name:'HRV',             unit:'ms', lo:5,  hi:250, icon:'pulse', hint:'Overnight heart-rate variability'},
+  rhr      :{name:'Resting HR',      unit:'bpm',lo:25, hi:120, icon:'heart', hint:'Overnight resting heart rate'},
+  sleep    :{name:'Sleep',           unit:'h',  lo:0,  hi:16,  icon:'moon', hint:'Time actually asleep'},
+  sleepNeed:{name:'Sleep need',      unit:'h',  lo:4,  hi:14,  icon:'moon', hint:'What your device says you needed'},
+  strain   :{name:'Strain / load',   unit:'',   lo:0,  hi:21,  icon:'flame', hint:"Yesterday's cardiovascular load"},
+  resp     :{name:'Respiratory rate',unit:'rpm',lo:6,  hi:30, icon:'pulse'},
+  spo2     :{name:'Blood oxygen',    unit:'%',  lo:70, hi:100, icon:'drop'},
+  temp     :{name:'Skin temp change',unit:'°C', lo:-5, hi:5, icon:'thermo'},
+  steps    :{name:'Steps',           unit:'',   lo:0,  hi:80000, icon:'run'}
 };
 /* `importer`: 'whoop' = the built-in CSV parser for WHOOP's export format;
    'csv' = the generic column-mapping importer; null = type it in each day. */
 const SOURCES=[
-  {id:'whoop', name:'WHOOP', emoji:'🟣', importer:'whoop',
+  {id:'whoop', name:'WHOOP', kind:'band', tint:'#D8232A', importer:'whoop',
    fields:['recovery','hrv','rhr','sleep','sleepNeed','strain','resp','spo2','temp'],
    how:'WHOOP app → More → Data Export. You are emailed a ZIP of CSV files; import physiological_cycles.csv and workouts.csv here.'},
-  {id:'garmin', name:'Garmin', emoji:'🔵', importer:'csv',
+  {id:'garmin', name:'Garmin', kind:'watch', tint:'#007CC3', importer:'csv',
    fields:['recovery','hrv','rhr','sleep','strain','steps'],
    labels:{recovery:'Body Battery / Training Readiness', strain:'Training Load'},
    how:'Garmin Connect on the web → Reports → export CSV. Or just type the numbers in each morning.'},
-  {id:'oura', name:'Oura Ring', emoji:'💍', importer:'csv',
+  {id:'oura', name:'Oura Ring', kind:'ringfull', tint:'#6E5BD9', importer:'csv',
    fields:['recovery','hrv','rhr','sleep','temp'],
    labels:{recovery:'Readiness Score', temp:'Temperature deviation'},
    how:'Oura web dashboard → Account → Export Data. Or type the numbers in each morning.'},
-  {id:'fitbit', name:'Fitbit', emoji:'🟩', importer:'csv',
+  {id:'fitbit', name:'Fitbit', kind:'band', tint:'#00B0B9', importer:'csv',
    fields:['recovery','hrv','rhr','sleep','spo2','steps'],
    labels:{recovery:'Daily Readiness Score'},
    how:'Google Takeout → Fitbit. Or type the numbers in each morning.'},
-  {id:'apple', name:'Apple Watch', emoji:'⌚', importer:'csv',
+  {id:'apple', name:'Apple Watch', kind:'watch', tint:'#7D7D82', importer:'csv',
    fields:['hrv','rhr','sleep','spo2','steps'],
    how:'Health app → your profile → Export All Health Data. Apple gives no recovery score, so readiness is built from HRV, resting HR and sleep instead — which is what the score is made of anyway.'},
-  {id:'samsung', name:'Samsung Galaxy Watch', emoji:'⌚', importer:'csv',
+  {id:'samsung', name:'Samsung Galaxy Watch', kind:'watch', tint:'#1428A0', importer:'csv',
    fields:['recovery','hrv','rhr','sleep','steps'],
    labels:{recovery:'Energy Score'},
    how:'Samsung Health → Settings → Download personal data.'},
-  {id:'polar', name:'Polar', emoji:'🔴', importer:'csv',
+  {id:'polar', name:'Polar', kind:'watch', tint:'#E4002B', importer:'csv',
    fields:['recovery','hrv','rhr','sleep','strain'],
    labels:{recovery:'Nightly Recharge', strain:'Cardio Load'},
    how:'Polar Flow → Settings → Export your data.'},
-  {id:'coros', name:'COROS', emoji:'⌚', importer:'csv',
+  {id:'coros', name:'COROS', kind:'watch', tint:'#F05A28', importer:'csv',
    fields:['hrv','rhr','sleep','strain'],
    labels:{strain:'Training Load'},
    how:'COROS web → Profile → Data export.'},
-  {id:'other', name:'Another wearable', emoji:'⌚', importer:'csv', pickFields:true,
+  {id:'other', name:'Another wearable', kind:'watch', tint:'var(--text-3)', importer:'csv', pickFields:true,
    fields:['recovery','hrv','rhr','sleep','sleepNeed','strain','resp','spo2','temp','steps'],
    how:'Tick the numbers your device actually shows you. Anything you do not tick is never asked for and never assumed.'},
-  {id:'none', name:'No wearable', emoji:'✍️', importer:null, fields:[],
+  {id:'none', name:'No wearable', kind:null, tint:'var(--text-3)', importer:null, fields:[],
    how:'Everything runs from what you log plus a short daily check-in: energy, soreness, stress, motivation and sleep. That is enough for the engine to work.'}
 ];
+/* the device's mark: its type glyph in its own brand colour. Not a logo. */
+function srcMark(id,px){
+  const s=sourceOf(id); if(!s.kind) return '';
+  return `<i class="srcmark" style="color:${s.tint||'var(--text-3)'};${px?`--sz:${px}px`:''}">${svg(s.kind)}</i>`;
+}
 const sourceOf = id => SOURCES.find(s=>s.id===(id!=null?id:(DB&&DB.profile&&DB.profile.source)))||SOURCES[SOURCES.length-1];
 /* the fields actually in play: what the device offers, narrowed to what the
    user confirmed if they picked their own */
@@ -2835,16 +2947,52 @@ const SPORT_PROFILES={
               focus:['sleg','core','aerobic','mob'],
               qualities:'balanced strength, conditioning and movement quality'}
 };
-const sportsOf   = ()=> (DB&&DB.profile&&DB.profile.sports&&DB.profile.sports.length)
-                        ? DB.profile.sports : [(DB&&DB.profile&&DB.profile.sport)||'general'];
+/* -------------------------------------------------------------------------
+   RAW vs WORKING values.
+
+   Nothing in this app assumes a sport, a goal, a training frequency or a
+   session length. The RAW value is what the user actually chose, and [] or
+   null are legitimate answers that the interface renders as "None".
+
+   The WORKING value is what the recommendation engine needs in order to
+   produce a session at all, and it falls back to a documented neutral
+   default rather than to a preference the user never expressed.
+
+   So: hasSport() asks what the user said. sportsOf() asks what to train.
+   Never use a working accessor to decide what to *display* about the user.
+   --------------------------------------------------------------------- */
+const P_ = ()=> (DB&&DB.profile)||{};
+const rawSports = ()=> Array.isArray(P_().sports) ? P_().sports : [];
+const hasSport  = ()=> rawSports().length>0;
+const sportsOf  = ()=> hasSport() ? rawSports() : ['general'];
+const rawGoals  = ()=> Array.isArray(P_().physiques) ? P_().physiques : [];
+const hasGoal   = ()=> rawGoals().length>0;
+const goalsOf   = ()=> hasGoal() ? rawGoals() : ['athletic'];
+/* frequency and duration are the two things the engine cannot work without,
+   so they keep the old defaults as WORKING values while the stored value
+   stays null until the user answers. DEFAULT_* exists so the number appears
+   once rather than as a literal scattered across the file. */
+const DEFAULT_DAYS = 4, DEFAULT_SESSION_MIN = 50;
+const rawDays  = ()=> P_().daysPerWeek==null ? null : +P_().daysPerWeek;
+const hasDays  = ()=> rawDays()!=null;
+const trainDays= ()=> hasDays() ? rawDays() : DEFAULT_DAYS;
+const rawMin   = ()=> P_().sessionMin==null ? null : +P_().sessionMin;
+const hasMin   = ()=> rawMin()!=null;
+const sessMin  = ()=> hasMin() ? rawMin() : DEFAULT_SESSION_MIN;
+const rawGear  = ()=> Array.isArray(P_().gear) ? P_().gear : [];
+const hasGear  = ()=> rawGear().length>0;
 const mainSport  = ()=> sportsOf()[0];
 const sportProf  = id => SPORT_PROFILES[id||mainSport()]||SPORT_PROFILES.general;
 const SPORT_LABEL= ()=> (SPORTS.find(s=>s.id===mainSport())||{name:'Your sport'}).name;
 /* activity types that count as "your sport" for the engine's guards */
 function mainSportActs(){
+  /* No sport chosen means no activity is "your sport". The old fallback here
+     was a hardcoded racquet/ball list, which made the engine guard against
+     tennis for someone who had never said they play it. */
+  if(!hasSport()) return [];
   const set=[];
   sportsOf().forEach(id=>(sportProf(id).act||[]).forEach(a=>{ if(set.indexOf(a)<0) set.push(a); }));
-  return set.length?set:['tennis','padel','squash','football','basketball'];
+  return set;
 }
 const isMainSportAct = t => mainSportActs().indexOf(t)>=0;
 /* does any chosen sport have this property? */
@@ -2873,7 +3021,8 @@ function sportsText(){
   if(n.length<=1) return n[0]||'your sport';
   return n.slice(0,-1).join(', ')+' and '+n[n.length-1];
 }
-const hasSportChosen = ()=> mainSport()!=='general' && mainSportActs().length>0;
+/* picking "no specific sport" is a real answer; picking nothing is not */
+const hasSportChosen = ()=> rawSports().some(id=>id!=='general');
 /* why a given training system matters, phrased for the chosen sport */
 function sysGoalText(sys){
   const p=sportProf(), sp=sportLC(), q=p.qualities;
@@ -2897,7 +3046,7 @@ function sysGoalText(sys){
 }
 /* the decision priority list, ordered by what this user said they want */
 function priorityList(){
-  const goals=(DB&&DB.profile&&DB.profile.physiques)||[];
+  const goals=rawGoals();
   const L=['Safety and recovery'];
   if(hasSportChosen()) L.push(SPORT_LABEL()+' performance');
   L.push('Leg strength','Core strength');
@@ -4660,7 +4809,7 @@ function recommend(date, ci, rd){
   const H=systemHistory(date), P=weekProgress(date), T=DB.targets, ph=currentPhase();
   const band=rd.band, rank=BAND_RANK[band];
   const sore=ci.soreness!=null?ci.soreness:3;
-  const time=ci.availTime||DB.profile.sessionMin||50;
+  const time=ci.availTime||sessMin();
   const yd=dayDemand(addDays(date,-1));
   /* `sportToday` is the modern field; `tennisToday` is read only so old
      check-ins saved before the rename still behave the same way. */
@@ -5169,13 +5318,15 @@ function wireFocusScroll(root){
    ====================================================================== */
 function chipPicker(opts){
   // opts: {id, chosen:[ids], all:[{id,name,emoji,hint}], lead:bool, allowEmpty:bool}
-  const {id, chosen, all, lead, allowEmpty} = opts;
+  const {id, chosen, all, lead, allowEmpty, emptyText} = opts;
   const pick=x=>all.find(o=>o.id===x)||{id:x,name:x};
+  const mark=o=> o.icon ? `<i class="chipi">${svg(o.icon)}</i>`
+               : o.emoji ? o.emoji+' ' : '';
   return `<div class="chipset" id="${id}">
-    ${(!chosen.length&&allowEmpty)?'<span class="chipnone">Nothing added yet</span>':''}
+    ${(!chosen.length&&allowEmpty)?`<span class="chipnone">${esc(emptyText||'None')}</span>`:''}
     ${chosen.map((cid,i)=>{ const o=pick(cid);
       return `<span class="chipblk${lead&&i===0?' lead':''}" data-v="${esc(cid)}">
-        ${o.emoji?o.emoji+' ':''}${esc(o.name)}${lead&&i===0?'<i class="lead-t">MAIN</i>':''}
+        ${mark(o)}${esc(o.name)}${lead&&i===0?'<i class="lead-t">MAIN</i>':''}
         <button class="chipx" data-rm="${esc(cid)}" aria-label="Remove">${svg('x')}</button>
       </span>`;}).join('')}
     <button class="chipadd" data-add="${id}">${svg('plus')} Add</button>
@@ -5198,7 +5349,7 @@ function wirePicker(id, chosen, all, cb, title, allowEmpty){
     openSheet(title||'Add',
       `<div>${left.map(o=>`<button class="row tap pickrow" data-v="${esc(o.id)}"
          style="display:flex;width:100%;text-align:left;background:var(--surface);border-radius:12px;margin-bottom:7px;border:1px solid var(--border-soft)">
-         <div class="rt"><div class="rn">${o.emoji?o.emoji+' ':''}${esc(o.name)}</div>
+         <div class="rt"><div class="rn">${o.icon?`<i class="chipi">${svg(o.icon)}</i>`:o.emoji?o.emoji+' ':''}${esc(o.name)}</div>
          ${o.hint?`<div class="rs">${esc(o.hint)}</div>`:''}</div>
          <span class="chev">${svg('plus')}</span></button>`).join('')}</div>`);
     /* apply immediately — the sheet closes over the top, which reads as
@@ -5231,16 +5382,55 @@ function bindInputs(root){
    A label that changes per user makes the nav width jump about and reads
    oddly for anyone whose device is not the one it was named after; "Metrics"
    covers trends, sleep, baselines and import whatever you wear, or none. */
+/* Four primary destinations, always the same four.
+
+   Settings left the bar because it is configuration, not a place you go
+   during training - it lives behind the gear in the app bar. Metrics left
+   because it is only meaningful for someone with a wearable, and a tab that
+   appears and disappears is a worse answer than reaching it from the
+   readiness row on Today, where the number it explains already is. */
 function tabs(){ return [
-  {id:'today',  label:'Today',   icon:'today'},
-  {id:'workouts',label:'Train',  icon:'dumbbell'},
+  {id:'today',   label:'Today',    icon:'today'},
+  {id:'workouts',label:'Train',    icon:'dumbbell'},
   /* 'flame' rather than a racquet: this tab holds every activity, not one sport */
-  {id:'tennis', label:'Activity',icon:'flame'},
-  {id:'progress',label:'Progress',icon:'chart'},
-  {id:'whoop',  label:'Metrics', icon:'pulse', needsDevice:true},
-  {id:'settings',label:'Settings',icon:'gear'}
-].filter(t=>!t.needsDevice||usesDevice()||DB.whoop.cycles.length>0);}
+  {id:'tennis',  label:'Activity', icon:'flame'},
+  {id:'progress',label:'Progress', icon:'chart'}
+];}
 let TAB='today';
+
+/* =========================================================================
+   PAGE STACK
+
+   One navigation idiom for the whole app. A section screen lists its
+   subjects as rows, a row pushes a page, and the page's back button is the
+   way out. This replaces five horizontal segment bars that between them hid
+   21 leaf panes with no way back and no sense of depth.
+
+   A page is {build} plus whatever its builder needs; the builder calls
+   appbar() exactly as a tab view does, and appbar() works out on its own
+   that it is drawing a pushed page and needs a back button.
+   ====================================================================== */
+let STACK=[];
+let NAVLOCK=false;   // suppresses the popstate our own history.back() causes
+
+function pushPage(spec){
+  STACK.push(spec);
+  /* a real history entry, so the phone's back gesture leaves the page
+     rather than the app - guarded because file:// has no history to push */
+  try{ history.pushState({bl:STACK.length},''); }catch(e){}
+  render(); window.scrollTo(0,0);
+}
+function popPage(fromHistory){
+  if(!STACK.length) return false;
+  STACK.pop(); render(); window.scrollTo(0,0);
+  if(!fromHistory){ NAVLOCK=true; try{ history.back(); }catch(e){ NAVLOCK=false; } }
+  return true;
+}
+function resetStack(){ STACK=[]; }
+window.addEventListener('popstate',function(){
+  if(NAVLOCK){ NAVLOCK=false; return; }
+  popPage(true);
+});
 function renderNav(){
   /* the brand is app identity, not a status readout — whichever device you
      wear is shown on the Metrics screen and in Settings, not here */
@@ -5252,6 +5442,9 @@ function renderNav(){
   $$('#nav button').forEach(b=>b.onclick=()=>{ haptic(); go(b.dataset.tab); });
 }
 function go(tab){
+  /* tapping a primary destination always lands on that destination, never
+     three pages deep inside where you were last time */
+  resetStack();
   TAB=tab; DB.ui.tab=tab; save();
   renderNav(); render();
   window.scrollTo(0,0);
@@ -5263,13 +5456,54 @@ function render(){
      screen with nothing highlighted in the nav, so the guard lives here and
      re-checks on every render rather than only at boot. */
   if(!tabs().some(x=>x.id===TAB)){ TAB='today'; renderNav(); }
+  /* a pushed page owns the view; the tab underneath stays lit in the bar */
+  if(STACK.length){
+    const pg=STACK[STACK.length-1];
+    v.innerHTML=''; pg.build(v); bindInputs(v); return;
+  }
   ({today:viewToday, workouts:viewWorkouts, tennis:viewTennis,
-    progress:viewProgress, whoop:viewWhoop, settings:viewSettings}[TAB]||viewToday)(v);
+    progress:viewProgress}[TAB]||viewToday)(v);
   bindInputs(v);
 }
+/* The one app bar. On a primary destination it carries the settings gear; on
+   a pushed page it carries a back button instead, and the gear steps aside so
+   there is never more than one way out of a screen. */
 function appbar(title,sub,actions){
-  $('#appbar').innerHTML=`<div><div class="ttl">${title}</div>${sub?`<div class="sub">${sub}</div>`:''}</div>
-    <div class="appbar-actions">${actions||''}</div>`;
+  const onPage=STACK.length>0;
+  $('#appbar').innerHTML=
+    (onPage?`<button class="icon-btn ab-back" id="abBack" aria-label="Back">${svg('left')}</button>`:'')+
+    `<div class="ab-txt"><div class="ttl">${title}</div>${sub?`<div class="sub">${sub}</div>`:''}</div>`+
+    `<div class="appbar-actions">${actions||''}${onPage?''
+      :`<button class="icon-btn" id="abGear" aria-label="Settings">${svg('gear')}</button>`}</div>`;
+  const bk=$('#abBack'); if(bk) bk.onclick=()=>{ haptic(); popPage(); };
+  const gr=$('#abGear'); if(gr) gr.onclick=()=>{ haptic(); openSettings(); };
+}
+
+/* =========================================================================
+   ROW LIST
+
+   The app's one way of offering a set of choices that lead somewhere. Used
+   by every section index, so Train, Progress, Settings and Metrics all browse
+   identically instead of each inventing a segment bar.
+
+   navRows([{ t, s, icon, badge, go }])  - t title, s subtitle, go on tap.
+   ====================================================================== */
+function navRows(id,items){
+  return `<div class="rows" id="${id}">`+items.filter(Boolean).map((r,i)=>
+    `<button data-r="${i}"${r.aria?` aria-label="${esc(r.aria)}"`:''}>
+      ${r.icon?`<i class="rw-i">${svg(r.icon)}</i>`:''}
+      <span class="rw-x"><span class="rw-t">${esc(r.t)}</span>${
+        r.s?`<span class="rw-s">${esc(r.s)}</span>`:''}</span>
+      ${r.badge?`<span class="rw-b">${esc(r.badge)}</span>`:''}
+      <i class="rw-c">${svg('chev')}</i>
+    </button>`).join('')+`</div>`;
+}
+function wireRows(id,items){
+  const list=items.filter(Boolean);
+  $$('#'+id+' button').forEach(b=>{
+    const r=list[+b.dataset.r];
+    if(r&&r.go) b.onclick=()=>{ haptic(); r.go(); };
+  });
 }
 
 /* =========================================================================
@@ -5278,212 +5512,155 @@ function appbar(title,sub,actions){
 function greeting(){ const h=new Date().getHours(); return h<5?'Good night':h<12?'Good morning':h<18?'Good afternoon':'Good evening'; }
 
 function viewToday(v){
-  const d=todayISO(), ci=DB.checkins[d], ph=currentPhase();
-  const nm=DB.profile.name?', '+esc(DB.profile.name.split(' ')[0]):'';
-  appbar(greeting()+nm, fmtDate(d)+' · Week '+ph.absWeek+' — '+ph.name,
-    `<button class="icon-btn" id="tbCheck">${svg('edit')}</button>`);
-  setTimeout(()=>{ const b=$('#tbCheck'); if(b)b.onclick=()=>openCheckin(d); },0);
+  const d=todayISO(), ci=DB.checkins[d];
+  const first=(DB.profile.name||'').trim().split(/\s+/)[0];
+  appbar(greeting()+(first?', '+esc(first):''), fmtDate(d));
 
+  /* No check-in yet: the screen has exactly one thing to offer. */
   if(!ci){ v.innerHTML=setupPrompt()+todayNoCheckin(d); wireToday(d); return; }
 
   const rd=readiness(d,ci), B=BAND[rd.band];
   const ovr=DB.plans[d];
   const rec=recommend(d,ci,rd);
   // a user override replaces the engine's pick but keeps its reasoning visible
-  const pl = ovr ? Object.assign({},rec,{workoutId:ovr.workoutId,variant:ovr.variant,addCore:!!ovr.addCore,
-      label:ovr.label||rec.label,emoji:ovr.emoji||rec.emoji,est:ovr.est||rec.est,overridden:true}) : rec;
+  const pl = ovr ? Object.assign({},rec,{workoutId:ovr.workoutId,variant:ovr.variant,
+      addCore:!!ovr.addCore, label:ovr.label||rec.label, est:ovr.est||rec.est,
+      overridden:true}) : rec;
   const wk=DB.workouts.find(w=>w.id===pl.workoutId);
   const done=DB.sessions.find(s=>s.date===d&&s.done);
-  const P=rec.week, T=DB.targets;
 
   v.innerHTML=setupPrompt()+`
-   <div class="sec-t">This week</div>
+
+  <button class="rdrow" id="rdRow" aria-label="Readiness ${rd.score} of 100, ${esc(B.label)}. View details">
+    <span class="rd-n" style="color:${B.color}">${rd.score}</span>
+    <span class="rd-x"><span class="rd-l">Readiness</span>
+      <span class="rd-w">${esc(B.label)}</span></span>
+    <i class="rw-c">${svg('chev')}</i>
+  </button>
+
+  ${done?`
+  <div class="rec">
+    <div class="rec-l">Done today</div>
+    <div class="rec-t">${esc(done.workoutName||'Session complete')}</div>
+    <div class="rec-m">${done.durationMin||0} min${done.setsDone?' · '+done.setsDone+' sets':''}</div>
+  </div>
+  <button class="btn ghost block" id="btnQuickLog" style="margin-top:11px">${svg('plus')} Log an activity</button>`
+  :`
+  <div class="rec">
+    <div class="rec-l">Today</div>
+    <div class="rec-t">${esc(pl.label)}${pl.addCore?' + Core':''}</div>
+    <div class="rec-m">${pl.est?`~${pl.est} min`:''}${pl.est&&pl.intensity?' · ':''}${esc(pl.intensity||'')}</div>
+    ${pl.overridden?'<div class="rec-m" style="color:var(--violet)">Your choice</div>':''}
+    ${hasLimits(d)?`<div class="rec-m" style="color:var(--orange)">Working around ${esc(limitsText(d))}</div>`:''}
+  </div>
+
+  ${wk?`<button class="btn primary big block" id="btnStart" style="margin-top:13px">${svg('play')} Start session</button>`
+      :`<div class="hint" style="margin-top:13px;text-align:center">Rest is the recommendation today, not the absence of one.</div>`}
+
+  <button class="tert" id="whyT" aria-expanded="false" aria-controls="whyB">Why this? ${svg('down')}</button>
+  <div class="whybox" id="whyB" hidden>
+    <ul class="whyl">${pl.why.map(w=>`<li class="${w.k}"><span class="dot"></span><span>${w.t}</span></li>`).join('')}</ul>
+    ${(pl.ruledOut&&pl.ruledOut.length)?`<div class="ruled">
+      <div class="rl-t">Not today</div>
+      ${pl.ruledOut.map(r=>`<div class="rl"><i>${svg('x')}</i>
+        <span><b>${esc(r.label)}</b> — ${r.why}</span></div>`).join('')}
+    </div>`:''}
+    <div class="hint" style="margin-top:10px">Based on ${esc(rd.sources.label)}.</div>
+  </div>
+
+  <button class="btn ghost block" id="btnSwap">Change today's plan</button>
+  ${wk?`<button class="tert" id="btnPreview">Preview session</button>`:''}`}
+
+  ${(pl.prep&&!done)?`
+  <div class="rows" style="margin-top:13px" id="prepRows">
+    <button data-r="0"><span class="rw-x"><span class="rw-t">Pre-${esc(sportLC())} activation</span>
+      <span class="rw-s">${sportWarmup().dur} min before you play</span></span>
+      <i class="rw-c">${svg('chev')}</i></button>
+  </div>`:''}
+
+  <div class="sec-t">This week</div>
   ${weekStrip(d)}
 
-  <div class="hero" style="--hc:${B.color}">
-    <div class="hero-top">
-      <div>
-        <div class="hero-lab">Today's recommendation</div>
-        <div style="font-size:26px;font-weight:900;letter-spacing:-.9px;line-height:1.1;margin-top:2px">
-          ${pl.emoji} ${esc(pl.label)}${pl.addCore?' <span style="color:var(--violet)">+ Core</span>':''}</div>
-      </div>
-      <div class="ring">${ringSvg(rd.score,B.color)}<div class="rv"><b style="color:${B.color}">${rd.score}</b><i>READY</i></div></div>
-    </div>
-    <div class="hero-body">
-      <div class="hero-meta" style="margin-top:0">
-        <span class="chip ${rd.band==='green'?'g':rd.band==='yellow'?'y':rd.band==='orange'?'o':'r'}">${B.label} · ${esc(pl.intensity||'')}</span>
-        ${pl.est?`<span class="chip">${svg('timer')} ~${pl.est} min</span>`:''}
-        ${pl.isSport?`<span class="chip g">${SPORT_EMOJI()} ${esc(pl.sportName||SPORT_LABEL())} today</span>`:''}
-        ${hasLimits(d)?`<span class="chip o" id="chipLim">Working around ${esc(limitsText(d))}</span>`:''}
-        ${pl.overridden?'<span class="chip v">Your choice</span>':''}
-      </div>
-      ${wk?`<div style="font-size:13.5px;color:var(--text-2);margin-top:12px;font-weight:600">${esc(wk.name)}${pl.variant!=='full'?' · '+esc(pl.variant.toUpperCase()):''}</div>`:''}
-      <div class="why">
-        <div class="card-t" style="margin-bottom:8px">Why today</div>
-        <ul>${pl.why.map(w=>`<li class="${w.k}"><span class="dot"></span><span>${w.t}</span></li>`).join('')}</ul>
-        ${(pl.ruledOut&&pl.ruledOut.length)?`<div class="ruled">
-          <div class="rl-t">Ruled out today</div>
-          ${pl.ruledOut.map(r=>`<div class="rl"><i>${svg('x')}</i>
-            <span><b>${esc(r.label)}</b> — ${r.why}</span></div>`).join('')}
-        </div>`:''}
-        <div style="font-size:11.5px;color:var(--text-3);margin-top:10px;line-height:1.5">
-          Based on ${esc(rd.sources.label)} · ${esc(rd.sources.confidence)} confidence${(usesDevice()&&!hasWhoop())?' · '+esc(SRC_NAME())+' not connected':''}
-        </div>
-      </div>
-      ${pl.goalNote?`<div class="note acc" style="margin-top:12px"><b>How this serves your goals:</b> ${esc(pl.goalNote)}</div>`:''}
-    </div>
-  </div>
+  <button class="btn ghost block" id="btnQuickLog${done?'2':''}" style="margin-top:11px">${svg('plus')} Log an activity</button>
+  ${loggedToday(d)}`;
 
-  ${done?`<div class="card" style="border-color:var(--accent-line);background:var(--accent-wash)">
-     <div style="display:flex;align-items:center;gap:11px">
-       <div style="width:38px;height:38px;border-radius:11px;background:var(--accent);color:var(--accent-ink);display:flex;align-items:center;justify-content:center">${svg('check')}</div>
-       <div style="flex:1"><div style="font-weight:750;font-size:15px">Session complete</div>
-       <div style="font-size:12px;color:var(--text-3)">${esc(done.workoutName||'')} · ${done.durationMin||0} min · ${done.setsDone||0} sets</div></div>
-     </div></div>
-     <button class="btn ghost block" id="btnQuickLog2" style="margin-bottom:12px">${svg('plus')} Log another activity</button>`
-   :wk?`<button class="btn primary big block" id="btnStart">${svg('play')} START ${esc((wk.short||'').toUpperCase())}</button>
-     <div class="btn-row" style="margin-top:9px">
-       <button class="btn ghost sm" id="btnPreview">Preview session</button>
-       <button class="btn ghost sm" id="btnSwap">Change today's plan</button>
-     </div>`
-   :`<div class="card" style="text-align:center;padding:22px">
-      <div style="font-size:30px;margin-bottom:8px">😴</div>
-      <div style="font-weight:750;font-size:15px">Today is a rest day</div>
-      <div style="font-size:12.5px;color:var(--text-3);margin-top:5px;line-height:1.5">Nothing scheduled is the recommendation, not an absence of one.</div>
-      <button class="btn ghost block" id="btnSwap" style="margin-top:14px">Change today's plan</button></div>`}
-
-  ${pl.prep&&!done?`<div class="card tight" style="border-left:3px solid var(--green)">
-     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-       <div style="flex:1"><div style="font-weight:700;font-size:14px">${SPORT_EMOJI()} Pre-${esc(sportLC())} activation</div>
-       <div style="font-size:11.5px;color:var(--text-3);margin-top:3px">${sportWarmup().dur} min before you play + maintenance after</div></div>
-       <button class="btn xs ghost" id="btnPrep">Open</button></div></div>`:''}
-
-  <div class="sec-t">Today's activity</div>
-  ${dailySummaryCard(d)}
-  <button class="btn ghost block" id="btnQuickLog" style="margin-bottom:12px">${svg('plus')} Log an activity</button>
-
-
-  ${firstWeekCard()}
-
-  <div class="sec-t">This week so far</div>
-  <div class="card">
-    ${targetKeys().map(k=>{
-      const meta=targetMeta()[k]||[k,''], cl=TARGET_BAR[k]||'a';
-      const done_=P[k]||0, t=T[k]||0; if(!t) return '';
-      return `<div style="margin-bottom:10px">
-        <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px">
-          <span style="color:var(--text-2);font-weight:600">${esc(meta[0])}</span>
-          <span class="num" style="font-weight:750;color:${done_>=t?'var(--green)':'var(--text-2)'}">${done_} / ${t}</span></div>
-        <div class="bar ${done_>=t?'g':cl}"><i style="width:${clamp(done_/t*100,0,100)}%"></i></div></div>`;}).join('')
-      ||'<div class="hint">No weekly targets yet — finish setup and the engine will build them from your sports, goals and equipment.</div>'}
-    ${P.sport?`<div class="kv" style="margin-top:4px"><span class="k">${SPORT_EMOJI()} ${esc(SPORT_LABEL())} (never scheduled — logged when you play)</span><span class="v">${P.sport} × · ${Math.round(P.sportMin)} min</span></div>`:''}
-    ${P.otherSport?`<div class="kv"><span class="k">Other activity</span><span class="v">${P.otherSport} ×</span></div>`:''}
-    <div class="hint" style="margin-top:8px">Targets are guidelines the engine weighs, never quotas it will chase at the cost of your recovery.</div>
-  </div>
-
-  ${(()=>{ /* the week's verdict, collapsed: worth having, not worth reading
-       every single morning. The summary line says whether to open it. */
-    const R=weekReview();
-    return `<div class="card acc" id="accWk" style="padding:0;overflow:hidden">
-      <div class="acc-h" id="accWkH">
-        <div><div class="card-t">This week in review</div>
-          <div style="font-size:12.5px;color:var(--text-2);font-weight:600;margin-top:4px">${
-            R.attn.length ? esc(R.attn.length+' thing'+(R.attn.length>1?'s':'')+' to watch')
-            : R.good.length ? 'Going well so far'
-            : 'Not enough logged yet to judge'}</div></div>
-        <span class="acc-x">${svg('down')}</span>
-      </div>
-      <div class="acc-b">${weekNarrative(R)}</div>
-    </div>`; })()}
-
-  <div class="sec-t">Today's numbers</div>
-  ${(ci.recovery!=null||ci.hrv!=null||ci.rhr!=null)?`
-  <div class="stats">
-    ${statTile('Recovery',ci.recovery,'%',ci.recovery>=67?'g':ci.recovery>=34?'y':'r', ci.recovery!=null&&DB.baselines.recovery!=null?`vs ${rnd(DB.baselines.recovery,0)}% avg`:'')}
-    ${statTile('HRV',ci.hrv,'ms', rd.hrvZ==null?'':rd.hrvZ>.4?'g':rd.hrvZ<-1?'r':rd.hrvZ<-.4?'y':'c', rd.hrvZ!=null?(rd.hrvZ>0?'+':'')+rd.hrvZ+' SD':'')}
-    ${statTile('Rest HR',ci.rhr,'bpm', rd.rhrZ==null?'':rd.rhrZ>1.2?'r':rd.rhrZ>.6?'y':'g', rd.rhrZ!=null?(rd.rhrZ>0?'+':'')+rd.rhrZ+' SD':'')}
-  </div>
-  <div class="stats" style="margin-top:9px">
-    ${statTile('Sleep',ci.sleepMin!=null?fmtMin(ci.sleepMin):null,'', rd.shortfall==null?'':rd.shortfall<=60?'g':rd.shortfall<=120?'y':'r',
-       rd.shortfall!=null?(rd.shortfall<=0?'target met':Math.round(rd.shortfall)+' min short'):'')}
-    ${statTile('Yest. strain',ci.prevStrain!=null?rnd(ci.prevStrain,1):null,'', ci.prevStrain==null?'':ci.prevStrain>=14?'r':ci.prevStrain>=10?'y':'g',
-       ci.prevStrain!=null?(ci.prevStrain>=14?'high':ci.prevStrain>=10?'moderate':'low'):'')}
-    ${statTile('7d load',rd.acwr.ratio!=null?rnd(rd.acwr.ratio,2):null,'×', rd.acwr.ratio==null?'':rd.acwr.ratio>1.4?'o':rd.acwr.ratio<0.8?'c':'g','acute:chronic')}
-  </div>`
-  :`
-  <div class="stats">
-    ${statTile('Sleep',ci.sleepMin!=null?fmtMin(ci.sleepMin):null,'', rd.shortfall==null?'':rd.shortfall<=60?'g':rd.shortfall<=120?'y':'r',
-       rd.shortfall!=null?(rd.shortfall<=0?'target met':Math.round(rd.shortfall)+' min short'):'')}
-    ${statTile('Yesterday load',rnd(dayDemand(addDays(d,-1)).load,1),'', (()=>{const v=dayDemand(addDays(d,-1)).load; return v>=12?'r':v>=7?'y':'g';})(),'from your log')}
-    ${statTile('7d load',rd.acwr.ratio!=null?rnd(rd.acwr.ratio,2):null,'×', rd.acwr.ratio==null?'':rd.acwr.ratio>1.4?'o':rd.acwr.ratio<0.8?'c':'g','acute:chronic')}
-  </div>
-  ${usesDevice()?`<div class="card tight" style="margin-top:9px;border-left:3px solid var(--cyan)">
-    <div style="font-size:13px;font-weight:700;margin-bottom:4px">${hasWhoop()?`No ${esc(SRC_NAME())} data for today`:`${esc(SRC_NAME())} not connected yet`}</div>
-    <div style="font-size:12.5px;color:var(--text-2);line-height:1.5">${hasWhoop()
-      ? `Your import covers up to ${esc(DB.whoop.cycles[DB.whoop.cycles.length-1].date)}. Today's recommendation is based on how you feel and your training history instead — import a fresh export, or type this morning's numbers into the check-in.`
-      : `Recommendations are based on how you feel and your training history. No ${esc(srcFields().slice(0,3).map(f=>fieldLabel(f).toLowerCase()).join(', '))} figures are shown because none exist yet — the app will not invent them.`}</div>
-    <button class="btn xs ghost" id="btnAddWhoop" style="margin-top:10px">${hasWhoop()?`Re-import ${esc(SRC_NAME())}`:`Import ${esc(SRC_NAME())} data`}</button>
-  </div>`:`<div class="card tight" style="margin-top:9px;border-left:3px solid var(--violet)">
-    <div style="font-size:13px;font-weight:700;margin-bottom:4px">No wearable — and none needed</div>
-    <div style="font-size:12.5px;color:var(--text-2);line-height:1.5">Today's call comes from how you said you feel, your sleep, and what your training history already shows. No recovery or HRV figures appear because none exist, and the app will not invent them.</div>
-    <button class="btn xs ghost" id="btnAddWhoop" style="margin-top:10px">Add a wearable</button>
-  </div>`}`}
-
-  <div class="sec-t">How you feel</div>
-  <div class="card tight">
-    ${feelRow('Energy',ci.energy,'g')}
-    ${feelRow('Soreness',ci.soreness,'r',true)}
-    ${feelRow('Stress',ci.stress,'o',true)}
-    ${feelRow('Motivation',ci.motivation,'a')}
-    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:12px">
-      <span class="chip ${ci.pain==='None'?'g':ci.pain==='Mild'?'y':ci.pain==='Moderate'?'o':'r'}">Pain: ${esc(ci.pain||'—')}</span>
-      ${ci.availTime?`<span class="chip">${ci.availTime} min available</span>`:''}
-      <button class="chip" id="btnEditCi">${svg('edit')} Edit check-in</button>
-    </div>
-    ${ci.notes?`<div class="note" style="margin-top:12px">${esc(ci.notes)}</div>`:''}
-  </div>
-
-  <div class="card acc" id="accReady" style="padding:0;overflow:hidden">
-    <div class="acc-h" id="accReadyH">
-      <div><div class="card-t">Readiness breakdown</div>
-        <div style="font-size:12.5px;color:var(--text-2);font-weight:600;margin-top:4px">${rd.score}/100 — ${esc(B.name.toLowerCase())}</div></div>
-      <span class="acc-x">${svg('down')}</span>
-    </div>
-    <div class="acc-b">
-      <ul class="why" style="border:none;padding:0;margin:0">
-        ${rd.why.map(w=>`<li class="${w.k}"><span class="dot"></span><span>${w.t}</span></li>`).join('')}
-      </ul>
-    </div>
-  </div>
-
-  <div class="card acc" id="accOpts" style="padding:0;overflow:hidden">
-    <div class="acc-h" id="accOptsH">
-      <div><div class="card-t">What else was considered</div>
-        <div style="font-size:12.5px;color:var(--text-2);font-weight:600;margin-top:4px">${rec.scored.filter(x=>!x.blocked).length} options ranked, ${rec.scored.filter(x=>x.blocked).length} ruled out</div></div>
-      <span class="acc-x">${svg('down')}</span>
-    </div>
-    <div class="acc-b">
-      ${rec.scored.map((x,i)=>`<div class="kv">
-        <span class="k">${x.c.emoji} ${esc(x.c.label)}</span>
-        <span class="v" style="color:${x.blocked?'var(--text-3)':i===0?'var(--accent)':'var(--text-2)'};font-size:11.5px;text-align:right;max-width:58%">
-          ${x.blocked?esc(x.blocked):'score '+x.score}</span></div>`).join('')}
-      <div class="hint" style="margin-top:9px">Scores combine your goal hierarchy, readiness, how recently each system was loaded, and what the week already contains.</div>
-    </div>
-  </div>
-
-
-
-
-  <div class="card">
-    <div class="card-h"><div class="card-t">Week ${ph.absWeek} — ${esc(ph.name)}</div><span class="tag v">Block ${ph.block}</span></div>
-    <div style="font-size:13.5px;line-height:1.55;color:var(--text-2)"><b style="color:var(--text)">Goal:</b> ${esc(ph.goal)}</div>
-    <div style="font-size:13px;line-height:1.55;color:var(--text-3);margin-top:8px"><b>Focus:</b> ${esc(ph.focus)}</div>
-    <div class="divider"></div>
-    <div class="kv"><span class="k">Volume target</span><span class="v">${Math.round(ph.vol*100)}% of listed sets</span></div>
-    <div class="kv"><span class="k">Effort cap</span><span class="v">RPE ${ph.rpeCap}</span></div>
-    <div class="kv"><span class="k">Plyometric allowance</span><span class="v">${esc(ph.plyo)}</span></div>
-  </div>`;
   wireToday(d);
+}
+
+/* What has actually been logged today, and nothing at all when nothing has.
+   The old version printed a paragraph of encouragement into an empty state. */
+function loggedToday(d){
+  const dd=dayDemand(d);
+  if(!dd.n) return '';
+  const groups={};
+  dd.items.forEach(i=>{
+    const k = i.kind==='session' ? 'Strength' : (ACT_TYPES[i.type]||ACT_TYPES.other).name;
+    groups[k]=groups[k]||0; groups[k]+=i.min||0;
+  });
+  return `<div class="rows" style="margin-top:11px">`+
+    Object.keys(groups).map(k=>
+      `<div class="rw-flat"><span class="rw-t">${esc(k)}</span>
+        <span class="rw-b">${Math.round(groups[k])} min</span></div>`).join('')+
+    `</div>`;
+}
+
+/* ---------------------------------------------------------------- READINESS
+   The contributors behind the number, on their own screen. Garmin and Oura
+   both do this: one score on the home screen, the factors that produced it a
+   tap away. It is also where the wearable figures live now, so someone with
+   no device never sees an empty chart. */
+function pageReadiness(d){
+  return function(c){
+    const ci=DB.checkins[d]; if(!ci){ c.innerHTML=''; return; }
+    const rd=readiness(d,ci), B=BAND[rd.band];
+    appbar('Readiness', fmtDate(d));
+    const dev=(ci.recovery!=null||ci.hrv!=null||ci.rhr!=null);
+    c.innerHTML=`
+    <div class="rec" style="text-align:center">
+      <div class="rec-t" style="font-size:44px;color:${B.color}">${rd.score}</div>
+      <div class="rec-m" style="font-weight:750;color:${B.color}">${esc(B.label)}</div>
+      <div class="hint" style="margin-top:8px">${esc(rd.sources.label)} · ${esc(rd.sources.confidence)} confidence</div>
+    </div>
+
+    <div class="sec-t">What moved it</div>
+    <div class="card"><ul class="whyl">${
+      (rd.parts||[]).filter(p=>p&&p.t).map(p=>
+        `<li class="${p.v>0?'pos':p.v<0?'neg':'info'}"><span class="dot"></span>
+          <span>${p.t}</span></li>`).join('')
+      || '<li class="info"><span class="dot"></span><span>Not enough history yet to attribute the score.</span></li>'
+    }</ul></div>
+
+    <div class="sec-t">This morning</div>
+    ${dev?`<div class="stats">
+      ${statTile('Recovery',ci.recovery,'%',ci.recovery>=67?'g':ci.recovery>=34?'y':'r')}
+      ${statTile('HRV',ci.hrv,'ms','c')}
+      ${statTile('Rest HR',ci.rhr,'bpm','')}
+    </div><div class="stats" style="margin-top:9px">`:'<div class="stats">'}
+      ${statTile('Sleep',ci.sleepMin!=null?fmtMin(ci.sleepMin):null,'',
+         rd.shortfall==null?'':rd.shortfall<=60?'g':rd.shortfall<=120?'y':'r',
+         rd.shortfall!=null?(rd.shortfall<=0?'target met':Math.round(rd.shortfall)+' min short'):'')}
+      ${statTile('7d load',rd.acwr.ratio!=null?rnd(rd.acwr.ratio,2):null,'×',
+         rd.acwr.ratio==null?'':rd.acwr.ratio>1.4?'o':rd.acwr.ratio<0.8?'c':'g','acute:chronic')}
+      ${statTile('Yest. load',rnd(dayDemand(addDays(d,-1)).load,1),'',
+         (()=>{const x=dayDemand(addDays(d,-1)).load; return x>=12?'r':x>=7?'y':'g';})(),'from your log')}
+    </div>
+
+    <div class="sec-t">How you said you feel</div>
+    <div class="card">
+      ${feelRow('Energy',ci.energy,'g')}
+      ${feelRow('Soreness',ci.soreness,'o',true)}
+      ${feelRow('Stress',ci.stress,'y',true)}
+      ${feelRow('Motivation',ci.motivation,'c')}
+      ${ci.pain&&ci.pain!=='None'?`<div class="kv"><span class="k">Pain</span><span class="v">${esc(ci.pain)}</span></div>`:''}
+    </div>
+
+    <button class="btn ghost block" id="rdEdit" style="margin-top:13px">Edit check-in</button>
+    ${(usesDevice()||DB.whoop.cycles.length)
+      ? `<button class="btn ghost block" id="rdMetrics">Wearable metrics and trends</button>`
+      : ''}`;
+    const e=$('#rdEdit'); if(e) e.onclick=()=>openCheckin(d);
+    const m=$('#rdMetrics'); if(m) m.onclick=()=>{ HTAB='trends'; openMetrics(); };
+  };
 }
 
 function statTile(lab,val,unit,cls,delta){
@@ -5528,34 +5705,21 @@ function weekStrip(d){
 }
 
 function todayNoCheckin(d){
-  const ph=currentPhase();
   const cy=cycleByDate(d);
-  const P=weekProgress(d), H=systemHistory(d), T=DB.targets;
   return `
-  <div class="card" style="border-color:var(--accent-line);background:linear-gradient(160deg,var(--accent-wash),transparent)">
-    <div class="card-t accent">Start here</div>
-    <div style="font-size:21px;font-weight:800;letter-spacing:-.5px;margin:8px 0 8px">What should I do today?</div>
-    <p style="font-size:14px;color:var(--text-2);line-height:1.55">The engine picks one session for you — but it needs this morning's numbers first. About 60 seconds.</p>
-    ${cy?`<div class="note acc" style="margin-top:13px"><b>Found in your WHOOP data:</b> recovery ${cy.recovery??'—'}%, HRV ${cy.hrv??'—'} ms, RHR ${cy.rhr??'—'} bpm. These will be pre-filled.</div>`:''}
-    <button class="btn primary big block" id="btnCheck" style="margin-top:14px">${svg('play')} Start check-in</button>
+  <div class="rec">
+    <div class="rec-l">Today</div>
+    <div class="rec-t">How are you doing?</div>
+    <div class="rec-m">Baseline needs this before it can pick a session. About a minute.</div>
   </div>
-  <div class="sec-t">What the engine already knows</div>
-  <div class="card">
-    <div class="kv"><span class="k">Legs last loaded</span><span class="v">${sinceText(H.since.lower)}</span></div>
-    <div class="kv"><span class="k">Upper body last trained</span><span class="v">${sinceText(H.since.upper)}</span></div>
-    <div class="kv"><span class="k">Explosive work</span><span class="v">${sinceText(H.since.expl)}</span></div>
-    ${hasSportChosen()?`<div class="kv"><span class="k">Last ${esc(sportLC())}</span><span class="v">${sinceText(H.since.sport)}</span></div>`:''}
-    <div class="kv"><span class="k">This week</span><span class="v">${[(P.lower+P.upper+P.power)+' strength', T.run?P.run+' run':null, T.bike?P.bike+' bike':null, P.sport?P.sport+' '+esc(sportLC()):null].filter(Boolean).join(' · ')}</span></div>
-    <div class="kv"><span class="k">Program week</span><span class="v">${ph.absWeek} — ${esc(ph.name)}</span></div>
-    ${hasHistory()
-      ? `<div class="note warn" style="margin-top:12px">There is <b>no fixed schedule</b>. Today's session is chosen after your check-in from readiness, recent load and what the week already contains.</div>`
-      : `<div class="note" style="margin-top:12px">Nothing logged yet — that is not a problem. The engine will start from your check-in, and every session or activity you record from here makes the next recommendation sharper.</div>`}
-  </div>
-  ${weekStrip(d)}`;
+  <button class="btn primary big block" id="btnCheck" style="margin-top:13px">${svg('play')} Check in</button>
+  ${cy?`<div class="hint" style="margin-top:11px;text-align:center">Your ${esc(SRC_NAME())} numbers for today are already there — they will be filled in for you.</div>`:''}
+
+  <div class="sec-t">This week</div>
+  ${weekStrip(d)}
+  <button class="btn ghost block" id="btnQuickLog" style="margin-top:11px">${svg('plus')} Log an activity</button>`;
 }
-/* Setup can be dismissed, but it must never disappear silently — an
-   unfinished setup means the program is running on defaults that may be
-   wrong for this user (equipment above all). Say so, persistently. */
+
 function setupPrompt(){
   if(DB.profile.onboarded) return '';
   const t=TIERS[DB.profile.tier||0]||TIERS[0];
@@ -5596,13 +5760,12 @@ function firstWeekCard(){
       ${left===0?'That is everything \u2014 it only gets sharper from here'
                 :'Three things make this work'}</div>
     <p style="font-size:12.5px;color:var(--text-2);line-height:1.5;margin-bottom:11px">
-      The recommendation is only as good as what it knows about you. Right now it is
-      working from ${n===0?'your setup alone':'very little history'}.</p>
+      Right now it is working from ${n===0?'your setup alone':'very little history'}.</p>
     ${done.map(([t,ok,why])=>`<div class="row" style="padding:9px 0">
       <div style="flex:0 0 20px;color:${ok?'var(--accent)':'var(--text-3)'}">${svg(ok?'check':'chev')}</div>
       <div class="rt"><div class="rn" style="font-size:13.5px;${ok?'color:var(--text-3)':''}">${esc(t)}</div>
       ${ok?'':`<div class="rs">${why}</div>`}</div></div>`).join('')}
-    <div class="hint" style="margin-top:8px">This card goes away by itself once you have a few entries.</div>
+    <div class="hint" style="margin-top:8px">Goes away once you have a few entries.</div>
   </div>`;
 }
 
@@ -5660,6 +5823,19 @@ function todayPlan(d){
 }
 function wireToday(d){
   const on=(id,fn)=>{ const b=$('#'+id); if(b)b.onclick=fn; };
+  /* the score pushes its own explanation rather than printing it here */
+  on('rdRow',()=>pushPage({build:pageReadiness(d)}));
+  /* "Why this?" expands in place: progressive disclosure, not a new screen,
+     because the answer is three lines and belongs next to the question */
+  const wt=$('#whyT'), wb=$('#whyB');
+  if(wt&&wb) wt.onclick=()=>{
+    const open=wb.hasAttribute('hidden');
+    if(open) wb.removeAttribute('hidden'); else wb.setAttribute('hidden','');
+    wt.classList.toggle('open',open);
+    wt.setAttribute('aria-expanded',open?'true':'false');
+    haptic();
+  };
+  const pr=$('#prepRows button'); if(pr) pr.onclick=()=>previewWorkout('w_prep','full');
   on('btnCheck',()=>openCheckin(d));
   on('btnEditCi',()=>openCheckin(d));
   on('btnStart',()=>{ const p=todayPlan(d); startWorkout(p.workoutId,p.variant,d,p); });
@@ -5668,7 +5844,7 @@ function wireToday(d){
   on('btnPrep',()=>previewWorkout('w_prep','full'));
   on('btnQuickLog',()=>activitySheet(null,d));
   on('btnQuickLog2',()=>activitySheet(null,d));
-  on('btnAddWhoop',()=>{ if(usesDevice()){ HTAB='import'; go('whoop'); } else startSetup(true); });
+  on('btnAddWhoop',()=>{ if(usesDevice()){ HTAB='import'; openMetrics(); } else startSetup(true); });
   on('setupGo',()=>startSetup());
   on('setupDismiss',()=>{
     DB.profile.onboarded=true; save(true); renderNav(); render();
@@ -5896,7 +6072,7 @@ function viewWorkouts(v){
 function paneProgram(c){
   const ph=currentPhase(), P=weekProgress(todayISO()), T=DB.targets;
   c.innerHTML=`
-  <div class="note acc" style="margin-bottom:14px">There is <b>no fixed weekly schedule</b>. These are the targets the engine weighs when it chooses each day's session — guidelines, never quotas.${hasSportChosen()?` ${esc(sportsText().charAt(0).toUpperCase()+sportsText().slice(1))} ${sportsOf().length>1?'are':'is'} deliberately absent: never scheduled, only logged when you actually play.`:''}</div>
+  <div class="note acc" style="margin-bottom:14px">No fixed weekly schedule — these are what the engine weighs.${hasSportChosen()?` ${esc(sportsText().charAt(0).toUpperCase()+sportsText().slice(1))} ${sportsOf().length>1?'are':'is'} deliberately absent: never scheduled, only logged when you actually play.`:''}</div>
   <div class="card">
     <div class="card-h"><div class="card-t accent">Weekly targets</div>
       <button class="btn xs ghost" id="edSched">${svg('edit')} Edit</button></div>
@@ -5909,7 +6085,7 @@ function paneProgram(c){
         <div class="rt"><div class="rn">${esc(meta[0])}</div><div class="rs">${esc(meta[1])}</div></div>
         <div class="rv" style="text-align:right"><span style="color:${done>=t?'var(--green)':'var(--text-2)'}">${done}</span>
           <span style="color:var(--text-3)"> / ${t}</span><div style="font-size:10px;color:var(--text-3);font-weight:650">this week</div></div></div>`;}).join(''); })()}
-    <div class="hint" style="margin-top:8px">Derived from ${esc(sportsText())}, your goals, ${DB.profile.daysPerWeek||4} training days a week and the equipment you own. Change any of those in Settings and these move with them.</div>
+    <div class="hint" style="margin-top:8px">From ${esc(sportsText())}, your goals, ${DB.profile.daysPerWeek||4} days a week and your equipment.</div>
   </div>
 
   <div class="card acc" id="accPri" style="padding:0;overflow:hidden">
@@ -5921,7 +6097,7 @@ function paneProgram(c){
     <div class="acc-b">
     ${priorityList()
       .map((x,i)=>`<div class="kv"><span class="k"><b style="color:var(--accent)">${i+1}.</b> ${esc(x)}</span></div>`).join('')}
-    <div class="hint" style="margin-top:9px">Applied in order. Recovery is never sacrificed to complete a weekly target, and conditioning is never recommended just because it is available.</div>
+    <div class="hint" style="margin-top:9px">Applied in order. Recovery is never traded for a weekly target.</div>
     </div>
   </div>
 
@@ -5997,7 +6173,7 @@ function editSchedule(){
     return true;                                              // bodyweight-able
   });
   openSheet('Weekly targets',`
-   <p class="hint" style="margin-bottom:16px">How many of each the engine should aim for in a week. It uses these as one input among many — being behind raises a session's score, being ahead lowers it, and neither will override your recovery. Set one to 0 to remove it entirely.</p>
+   <p class="hint" style="margin-bottom:16px">How many the engine aims for each week. Set one to 0 to remove it.</p>
    ${F.map(k=>{ const mx=TARGET_MAX[k]||6, meta=M[k]||[k,''];
      return `<div class="slider-row">
      <div class="slider-top"><span class="l">${esc(meta[0])}</span><span class="v num" id="tg_${k}_o">${T[k]||0}</span></div>
@@ -6311,7 +6487,7 @@ function exerciseSheet(id,editMode){
 /* ---------------------------------------------------- WARM-UPS pane */
 function paneWarmups(c){
   c.innerHTML=`
-   <div class="note acc" style="margin-bottom:14px">Every session in this app attaches one of these automatically. They are built to raise temperature, mobilise the joints you are about to load, and prime the nervous system — in that order.</div>
+   <div class="note acc" style="margin-bottom:14px">Attached to every session automatically.</div>
    ${(()=>{ /* the sport warm-up is generated from the sports you chose, so it
         replaces the built-in one rather than sitting next to it */
      const gen=sportsOf().filter(id=>SPORT_PROFILES[id]).map(id=>({k:'sport:'+id,w:sportWarmup(id),gen:true}));
@@ -6792,7 +6968,7 @@ function weekNarrative(R){
   <div class="card"><div class="card-t" style="margin-bottom:10px;color:var(--cyan)">Next week</div>
     <ul class="why" style="border:none;padding:0;margin:0">${R.next.map(g=>`<li class="info"><span class="dot"></span><span>${g}</span></li>`).join('')}</ul></div>
 
-  <div class="note">Statements here are drawn only from what you logged and imported. Where a week has few data points, treat them as observations rather than conclusions.</div>`;
+  <div class="note">Drawn only from what you logged. A thin week means observations, not conclusions.</div>`;
 }
 
 /* the week's numbers, shown above the training history they summarise */
@@ -6814,7 +6990,7 @@ function weekNumbers(R){
     <div class="card-h"><div class="card-t">Daily load</div></div>
     <div class="chart-wrap">${barChart(wk.map(d=>{const dd=dayDemand(d);
       return {v:dd.load,t:DOW_NAME[dowOf(d)][0],color:dd.load>=12?'var(--orange)':dd.load>=7?'var(--accent)':'var(--surface-3)'};}),{h:84})}</div>
-    <div class="hint" style="margin-top:6px">Hard/easy alternation is the goal. Two 12+ days back to back is the pattern the engine will push back on.</div>
+    <div class="hint" style="margin-top:6px">Hard/easy alternation is the goal.</div>
   </div>`;
 }
 
@@ -6971,7 +7147,7 @@ function paneLinks(c){
      <div class="card-h"><div class="card-t accent">Is this engine's advice any good?</div>
        ${rev.n?`<span class="tag">${rev.n} DAY${rev.n===1?'':'S'}</span>`:''}</div>
      ${rev.n===0
-       ? `<div class="hint">Nothing to judge yet. From now on, each day's recommendation is recorded before you act on it, and once there are enough days where you followed it and enough where you did not, this will compare how the mornings after went.</div>`
+       ? `<div class="hint">Nothing to judge yet. Each day's call is recorded before you act on it; once there are enough of both, this compares the mornings after.</div>`
        : `<div class="kv"><span class="k">You followed the recommendation</span><span class="v">${rev.adherence}% of ${rev.n} days</span></div>
           ${rev.ready
             ? `<div class="kv"><span class="k">Average ${esc(rev.label)} when you followed it</span><span class="v">${rnd(rev.keptAvg,1)}</span></div>
@@ -6986,7 +7162,7 @@ function paneLinks(c){
             : `<div class="hint" style="margin-top:8px">Not enough yet to compare: ${rev.nKept} day${rev.nKept===1?'':'s'} following it and ${rev.nIgnored} not, against a minimum of ${rev.min} each. Until both sides reach that, any difference would be noise and nothing is claimed.</div>`}
           ${rev.restReady?`<div class="note" style="margin-top:10px">When it specifically said <b>rest or mobility</b>: ${rnd(rev.restKeptAvg,1)} when you took it, ${rnd(rev.restIgnoredAvg,1)} when you trained anyway (${rev.restDiff>0?'+':''}${rev.restDiff}).</div>`:''}`}
    </div>
-   <div class="note red" style="margin-bottom:14px"><b>These are correlations, not causes.</b> A relationship here means two things moved together in your data — it does not establish that one produced the other. Confounders (a busy week, illness, travel, poor sleep and hard training arriving together) are common. Treat every line below as a hypothesis worth testing deliberately, not as a finding.</div>
+   <div class="note red" style="margin-bottom:14px"><b>Correlations, not causes.</b> Two things moving together does not mean one caused the other. Treat each line as a hypothesis, not a finding.</div>
    ${cors.length? cors.map(x=>{
      const a=Math.abs(x.r), cls=a<0.2?'':a<0.35?'c':a<0.5?'o':'a';
      return `<div class="card tight">
@@ -7006,7 +7182,7 @@ function paneLinks(c){
      <div class="kv"><span class="k">0.2 – 0.35</span><span class="v">Weak — possible, unproven</span></div>
      <div class="kv"><span class="k">0.35 – 0.5</span><span class="v">Moderate — worth testing</span></div>
      <div class="kv"><span class="k">Above 0.5</span><span class="v">Strong — still not causal</span></div>
-     <div class="hint" style="margin-top:9px">With many relationships tested at once, some will look meaningful by chance alone. Treat everything here as a hypothesis worth testing deliberately, not as a finding — a single strong-looking correlation in a few months of data usually does not survive correction for multiple comparisons.</div>
+     <div class="hint" style="margin-top:9px">Test enough relationships and some look meaningful by chance. A single strong one in a few months of data usually is.</div>
    </div>`:''}`;
 }
 
@@ -7026,9 +7202,9 @@ function limitSheet(id){
   const draw=()=>{
     const a=d.area?areaOf(d.area):null;
     const body=`
-     <p class="hint" style="margin-bottom:14px">Tell the app what is bothering you and until when. It drops the movements that load it and keeps the rest, so you keep training around it. This is not medical advice — persistent pain belongs with a physio or doctor.</p>
+     <p class="hint" style="margin-bottom:14px">What is bothering you, and until when. Movements that load it are dropped; the rest stays. Not medical advice.</p>
      <div class="field"><label>Where</label>
-       <div class="hint" style="margin-bottom:9px">Pick the closest area.</div>
+       
        ${BODY_AREAS.map(x=>`<button class="card tight limArea ${d.area===x.id?'on':''}" data-v="${x.id}"
            style="display:block;width:100%;text-align:left;margin-bottom:7px">
            <div style="font-weight:750;font-size:14.5px">${esc(x.name)}</div>
@@ -7044,10 +7220,10 @@ function limitSheet(id){
          <button data-v="mod" class="${d.severity!=='high'?'on':''}">Managing it</button>
          <button data-v="high" class="${d.severity==='high'?'on':''}">Significant</button>
        </div>
-       <div class="hint">“Managing it” drops the worst movements and keeps the rest at lower volume. “Significant” also blocks the sessions built around that area.</div></div>
+       <div class="hint">Managing it caps the risky movements. Significant blocks them.</div></div>
      <div class="field"><label>Until</label>
        <input class="inp" type="date" id="limUntil" value="${esc(d.until||'')}">
-       <div class="hint">It expires on its own — you are not asked to remember. Mark it better sooner from Settings if it clears up.</div></div>
+       <div class="hint">Expires on its own. Mark it better early if it clears up.</div></div>
      <div class="field"><label>Note (optional)</label>
        <input class="inp" id="limNote" value="${esc(d.note||'')}" placeholder="e.g. physio said avoid deep flexion"></div>
      <div class="note warn">While this is active: <b>${esc((a.avoid||[]).map(p=>PATTERNS[p]||p).join(', '))}</b> is dropped${
@@ -7142,7 +7318,7 @@ function paneTrends(c){
    <div class="card">
      <div class="card-h"><div class="card-t">Respiratory rate</div><span class="tag">${dv(B.respRate,1)} RPM ± ${dv(B.respSd,2)}</span></div>
      <div class="chart-wrap">${lineChart([{pts:R.map(x=>({v:x.resp})),color:'var(--violet)',area:true}],{h:84,dp:1,baseline:B.respRate})}</div>
-     <div class="hint" style="margin-top:6px">This metric is normally very stable. A sustained jump alongside feeling unwell is worth taking seriously — as a health signal, not a training one.</div>
+     <div class="hint" style="margin-top:6px">Normally very stable. A sustained jump is a health signal, not a training one.</div>
    </div>
    <div class="card">
      <div class="card-h"><div class="card-t">Day strain</div></div>
@@ -7200,7 +7376,7 @@ function paneSleep(c){
            <span style="font-weight:650;color:var(--text-2)">${b.l} <span style="color:var(--text-3);font-weight:600">· ${rows.length} nights</span></span>
            <span class="num" style="font-weight:800;color:${rec>=67?'var(--green)':rec>=55?'var(--yellow)':'var(--orange)'}">${rec!=null?rnd(rec,1)+'%':'—'}</span></div>
          <div class="bar ${rec>=67?'g':rec>=55?'y':'o'}"><i style="width:${rec?clamp(rec,0,100):0}%"></i></div></div>`;}).join('')}
-     <div class="note acc">Average recovery by how far short of your sleep need you slept — computed from your own imported nights. The engine treats a shortfall of more than an hour as meaningful; if the bars above show your own threshold sitting somewhere else, that is the one to trust.</div>
+     <div class="note acc">Average recovery by how short of your sleep need you slept. More than an hour short is where it starts to show.</div>
    </div>
    <div class="card">
      <div class="card-h"><div class="card-t">Sleep stages — last ${Math.min(30,R.length)} nights</div></div>
@@ -7238,7 +7414,7 @@ function paneBaselines(c){
      <div class="kv"><span class="k">RHR alert threshold</span><span class="v">above ${rnd(B.rhr+1.5*B.rhrSd,0)} bpm</span></div>
      <div class="kv"><span class="k">Sleep floor (no penalty)</span><span class="v">${fmtMin(B.sleepNeed-60)}</span></div>
      <div class="kv"><span class="k">Hard-strain threshold</span><span class="v">${DB.settings.hardStrain}+</span></div>
-     <div class="hint" style="margin-top:9px">Thresholds are expressed in standard deviations from <i>your</i> baseline rather than population norms, so an 83 ms HRV is not compared to anyone else's.</div>
+     
    </div>
    <div class="card">
      <div class="card-t" style="margin-bottom:10px">Data inventory</div>
@@ -7260,13 +7436,13 @@ function journalCard(){
   const useful=rows.filter(r=>r.pct>3&&r.pct<97);
   return `<div class="card">
     <div class="card-h"><div class="card-t">Journal behaviours</div><span class="tag">${rows.length} QUESTIONS</span></div>
-    <div class="hint" style="margin-bottom:11px">Only questions that actually <b>vary</b> can tell you anything. ${rows.length-useful.length} of your ${rows.length} questions are answered the same way over 97% of the time and carry no information.</div>
+    <div class="hint" style="margin-bottom:11px">${rows.length-useful.length} of ${rows.length} questions almost never vary, so they carry no information.</div>
     ${useful.slice(0,14).map(r=>`<div style="margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
         <span style="color:var(--text-2);font-weight:600;flex:1;padding-right:8px">${esc(r.q)}</span>
         <span class="num" style="font-weight:750">${rnd(r.pct,0)}%</span></div>
       <div class="bar c"><i style="width:${r.pct}%"></i></div></div>`).join('')}
-    <div class="note warn" style="margin-top:11px">Behaviour-to-recovery relationships are shown under <b>Progress → Links</b>, and every one of them is a correlation only.</div>
+    
   </div>`;
 }
 
@@ -7284,13 +7460,10 @@ function paneImport(c){
           ['journal_entries.csv','Behaviour log']].map(([f,d])=>
          `<div class="kv"><span class="k mono">${f}</span><span class="v" style="font-weight:600;font-size:11.5px;color:var(--text-3);max-width:52%">${d}</span></div>`).join('')}
      </div>`:`<div class="note acc" style="margin-top:12px">
-       The importer reads any daily CSV that has a date column plus columns it recognises —
-       ${esc(srcFields().map(f=>fieldLabel(f).toLowerCase()).join(', '))}.
-       It matches headers loosely, so ${esc(SRC_NAME())}'s own wording should resolve.
-       If a column does not come through, the daily check-in still takes those numbers by hand.
+       Any daily CSV with a date column and columns it recognises: ${esc(srcFields().map(f=>fieldLabel(f).toLowerCase()).join(', '))}. Headers are matched loosely.
      </div>`}
      <button class="btn primary big block" id="impGo" style="margin-top:14px">${svg('ul')} Choose CSV files</button>
-     <div class="hint" style="margin-top:9px">Files are read in your browser only. Nothing is uploaded anywhere. Re-importing the same export is safe — duplicates are detected and skipped.</div>
+     <div class="hint" style="margin-top:9px">Read in your browser only. Re-importing is safe — duplicates are skipped.</div>
    </div>
    ${DB.whoop.cycles.length?`<div class="card">
      <div class="card-h"><div class="card-t">Currently loaded</div></div>
@@ -7340,7 +7513,7 @@ $('#fileIn').addEventListener('change',async e=>{
       ${r.bad?`<div class="kv"><span class="k">Rows without a usable date</span><span class="v">${r.bad}</span></div>`:''}
       ${r.days?`<div class="kv"><span class="k">Total days now held</span><span class="v">${r.days}</span></div>`:''}
     </div>`).join('')}
-    ${ok.some(r=>r.merged)?`<div class="note" style="margin-top:10px">WHOOP sometimes records two physiological cycles inside one calendar day. This app is day-keyed — one readiness decision per day — so those rows were <b>merged</b>, with the row carrying the recovery score taking precedence. That is why the day count can be lower than the row count.</div>`:''}
+    ${ok.some(r=>r.merged)?`<div class="note" style="margin-top:10px">Two cycles in one calendar day were merged — one decision per day. That is why days can be fewer than rows.</div>`:''}
     ${bad.map(r=>`<div class="card tight" style="border-color:var(--red-line)">
       <div style="font-weight:750;font-size:14px">${esc(r.file)}</div>
       <div class="note red" style="margin-top:8px">${esc(r.error)}</div></div>`).join('')}
@@ -7378,15 +7551,15 @@ function openSetup(auto){
    <div class="card tight" style="margin-bottom:14px">
      <div class="card-t" style="margin-bottom:6px">Is my data actually persistent?</div>
      <p style="font-size:13px;line-height:1.6;color:var(--text-2)">Check it yourself in 20 seconds: make any change (a check-in slider, a note), <b>fully close the tab or app</b>, reopen it, and confirm the change is still there. If it is, storage is working.</p>
-     <div class="note warn" style="margin-top:10px"><b>What clears it:</b> iOS Settings → Safari → <i>Clear History and Website Data</i> wipes it instantly. iOS can also evict data for sites unopened for a long time. Deleting the Home Screen icon alone does <b>not</b> delete data. A JSON backup is the only thing that survives all of these.</p>
+     <div class="note warn" style="margin-top:10px"><b>What clears it:</b> clearing website data, or iOS evicting a site left unopened. Deleting the Home Screen icon does not. A backup survives all three.</p>
    </div>
 
    ${file?`
    <div class="card">
      <div class="card-t accent" style="margin-bottom:10px">Why a local file behaves differently</div>
      <p style="font-size:13.5px;line-height:1.6;color:var(--text-2)">Opening an <span class="mono">.html</span> file from the Files app gives the page an <b>opaque origin</b>. On an opaque origin Safari grants <b>no persistent storage</b>, refuses to register a <b>service worker</b>, will not load a <b>manifest</b>, and does not offer <b>Add to Home Screen</b> at all. The app still runs — it simply cannot remember anything, cannot go offline, and cannot be installed.</p>
-     <div class="note red" style="margin-top:12px">Adding <span class="mono">apple-mobile-web-app-capable</span> does <b>not</b> change any of this. A local file cannot be a PWA. The origin has to change.</div>
-     <div class="note warn" style="margin-top:10px">Until you deploy, treat the app as read-only: use it, then <b>export a JSON backup before closing the tab</b>.</div>
+     
+     <div class="note warn" style="margin-top:10px">Until you deploy, <b>back up before closing the tab</b>.</div>
    </div>
 
    <div class="card">
@@ -7398,7 +7571,7 @@ function openSetup(auto){
        <div class="kv"><span class="k">4.</span><span class="v" style="text-align:left;font-weight:600">Open the link, then Share → <b>Add to Home Screen</b></span></div>
      </div>
      <div class="note red" style="margin-top:12px"><b>Claim the site before entering any data.</b> Browser storage is tied to the exact address. If the link changes later, your history is stranded on the old one.</div>
-     <div class="note" style="margin-top:10px">No account, server or command line is needed beyond that. Your training data still lives only in your phone's browser — Netlify only ever stores the app files, never your WHOOP or workout data.</div>
+     
    </div>
 
    <div class="card">
@@ -7418,7 +7591,7 @@ function openSetup(auto){
        <div class="kv"><span class="k">2.</span><span class="v" style="text-align:left;font-weight:600">Scroll and tap <b>Add to Home Screen</b></span></div>
        <div class="kv"><span class="k">3.</span><span class="v" style="text-align:left;font-weight:600">Tap <b>Add</b></span></div>
      </div>
-     <div class="note acc" style="margin-top:12px">Launch it from the Home Screen icon from then on. Data is shared with this tab as long as the URL is the same.</div>
+     <div class="note acc" style="margin-top:12px">Open it from the Home Screen icon from then on.</div>
    </div>`:''}
 
    ${sa?`<div class="card" style="border-color:var(--green-line);background:var(--green-wash)">
@@ -7452,6 +7625,11 @@ function setPane(id){
   const v=$('#view'); if(v) v.scrollTop=0;
   window.scrollTo(0,0);
 }
+/* Settings and Metrics are reached, not navigated to. Keeping them as page
+   builders means the whole of both screens works unchanged. */
+function openSettings(){ pushPage({build:viewSettings}); }
+function openMetrics(){ pushPage({build:viewWhoop}); }
+
 function viewSettings(v){
   appbar('Settings','Everything here is editable without touching code');
   const P=DB.profile,S=DB.settings;
@@ -7462,21 +7640,21 @@ function viewSettings(v){
    <div class="card spane training">
      <div class="card-h"><div class="card-t accent">Equipment</div>
        <span class="tag a">${countDoable(P.gear||[])} / ${DB.exercises.length} EXERCISES</span></div>
-     <div class="hint" style="margin-bottom:12px">What you chose during setup. Bodyweight, a floor and a wall are assumed — nothing else is. Remove anything you no longer have, or add with <b>+</b>.</div>
+     <div class="hint" style="margin-bottom:12px">Bodyweight, a floor and a wall are assumed. Nothing else is.</div>
      ${chipPicker({id:'gearPick', chosen:(P.gear||[]),
         all:EQUIP_ITEMS.map(x=>({id:x.id,name:x.name,hint:x.hint})), allowEmpty:true})}
-     <div class="hint" style="margin-top:8px">Bodyweight only is a valid answer — the program adapts to it.</div>
+     
      ${(P.gear||[]).indexOf('db')>=0?`
      <div class="field" style="margin-top:14px"><label>Heaviest dumbbell (kg, each)</label>
        <input class="inp num" type="number" inputmode="decimal" step="0.5" id="sDbKg" value="${P.dbKg||''}" placeholder="—">
-       <div class="hint">Under about 10 kg the program progresses through tempo, pauses and single-leg work rather than load.</div></div>`:''}
+       <div class="hint">Under 10 kg, progression comes from tempo and single-leg work.</div></div>`:''}
      <div class="field" style="margin-top:12px"><label>Anything else</label>
        <input class="inp" id="sEqNote" value="${esc(P.equipNote||'')}" placeholder="e.g. TRX, rowing machine"></div>
      <div style="margin-top:6px"><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
        <input type="checkbox" id="sBest" ${P.preferBest!==false?'checked':''} style="width:22px;height:22px;accent-color:var(--accent)">
        Use the best exercise my equipment allows</label>
-       <div class="hint">On: with a barbell you get back squats where the bodyweight program says goblet squats. Off: you always get the base exercise.</div></div>
-     <div class="note" style="margin-top:12px"><b>Currently:</b> ${esc((P.equipment||['Bodyweight']).join(' · '))}</div>
+       <div class="hint">On: the best variation your kit allows. Off: always the base exercise.</div></div>
+     
    </div>
 
    <div class="card spane you">
@@ -7508,7 +7686,7 @@ function viewSettings(v){
      <div class="card-h"><div class="card-t accent">Injuries &amp; limitations</div>
        <button class="btn xs ghost" id="limAdd">${svg('plus')} Add</button></div>
      ${(() => { const act=activeLimits(), past=(P.limits||[]).filter(l=>act.indexOf(l)<0);
-       if(!act.length) return `<div class="hint">Nothing flagged. If something is bothering you, add it here and the engine routes around it until the date you set — rather than you re-reporting pain every morning.</div>`;
+       if(!act.length) return `<div class="hint">Nothing flagged. Add anything that is bothering you and sessions route around it.</div>`;
        return act.map(l=>{ const a=areaOf(l.area)||{name:l.area,hint:''};
          const left=l.until?daysBetween(todayISO(),l.until):null;
          return `<div class="row" style="padding:12px 0">
@@ -7519,14 +7697,14 @@ function viewSettings(v){
            <button class="btn xs ghost" data-limed="${esc(l.id)}">Edit</button>
            <button class="btn xs ghost" data-limrm="${esc(l.id)}">${svg('check')} Better</button>
          </div>`;}).join('')
-         + `<div class="hint" style="margin-top:8px">The engine drops the movement patterns these load and keeps everything else, so you carry on training around it instead of stopping.</div>`
+         + `<div class="hint" style="margin-top:8px">Movements these load are dropped. Everything else carries on.</div>`
          + (past.length?`<div class="hint" style="margin-top:6px">${past.length} expired limitation${past.length>1?'s':''} kept in your history.</div>`:'');
      })()}
    </div>
 
    <div class="card spane you">
      <div class="card-t accent" style="margin-bottom:6px">What you are training for</div>
-     <div class="hint" style="margin-bottom:11px">Sets the priority order the daily engine uses. Your first pick leads.</div>
+     
      ${chipPicker({id:'sportPick', lead:true,
         chosen:(P.sports&&P.sports.length)?P.sports:[P.sport],
         all:SPORTS.map(x=>({id:x.id,name:x.name,emoji:x.emoji,hint:x.focus}))})}
@@ -7542,7 +7720,7 @@ function viewSettings(v){
      <div class="divider"></div>
      <div class="kv"><span class="k">Weekly targets from this</span><span class="v">${
         targetKeys().map(k=>`${DB.targets[k]} ${(targetMeta()[k]||[k])[0].toLowerCase()}`).join(' · ')||'none yet'}</span></div>
-     <div class="hint" style="margin-top:6px">Changing a goal re-derives these immediately. Fine-tune them under Train → Program.</div>
+     <div class="hint" style="margin-top:6px">Fine-tune under Train → Program.</div>
    </div>
 
    <div class="card spane you">
@@ -7559,7 +7737,7 @@ function viewSettings(v){
 
    <div class="card spane training">
      <div class="card-t accent" style="margin-bottom:6px">How cautious should the engine be?</div>
-     <div class="hint" style="margin-bottom:14px">Each morning you get a readiness score out of 100. These sliders decide which band that score falls into, and the band decides what you are told to do.</div>
+     <div class="hint" style="margin-bottom:14px">Where each readiness band starts.</div>
 
      <div style="display:flex;height:26px;border-radius:8px;overflow:hidden;margin-bottom:6px;font-size:9.5px;font-weight:800;letter-spacing:.4px">
        <div style="width:${S.bands.orange}%;background:var(--red);display:flex;align-items:center;justify-content:center;color:var(--on-band)">RED</div>
@@ -7596,13 +7774,13 @@ function viewSettings(v){
    <div class="card spane training">
      <div class="card-t accent" style="margin-bottom:12px">Program</div>
      <div class="field"><label>Plan start date</label><input class="inp" type="date" id="sStart" value="${esc(P.planStart)}">
-       <div class="hint">Drives which of the 8 progression weeks you are in. Currently <b>week ${currentPhase().absWeek}</b> (${esc(currentPhase().name)}).</div></div>
+       <div class="hint">Currently <b>week ${currentPhase().absWeek}</b> — ${esc(currentPhase().name)}.</div></div>
      <button class="btn ghost block" id="sSched">${svg('edit')} Edit weekly targets</button>
-     <div class="hint" style="margin-top:8px">There is no fixed day-by-day schedule — the daily engine chooses each session.${hasSportChosen()?` ${esc(SPORT_LABEL())} is never scheduled; log it when you play.`:''}</div>
+     
      <div style="margin-top:12px"><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
        <input type="checkbox" id="sAuto" ${S.autoAdjust?'checked':''} style="width:22px;height:22px;accent-color:var(--accent)">
        Let readiness reduce session volume</label>
-       <div class="hint">Off means the chosen session always comes at full volume. The engine still picks <i>which</i> session, and still shows its reasoning.</div></div>
+       <div class="hint">Off: the chosen session always comes at full volume.</div></div>
      <div style="margin-top:12px"><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
        <input type="checkbox" id="sRest" ${S.restTimerOn?'checked':''} style="width:22px;height:22px;accent-color:var(--accent)">
        Rest timer in workout mode</label></div>
@@ -7621,7 +7799,7 @@ function viewSettings(v){
    <div class="card spane data">
      <div class="card-h"><div class="card-t accent">Data source</div>
        <span class="tag ${hasWhoop()?'g':'c'}">${hasWhoop()?esc(SRC_NAME().toUpperCase())+' CONNECTED':(usesDevice()?'NOT IMPORTED YET':'MANUAL ONLY')}</span></div>
-     <div class="kv"><span class="k">Wearable</span><span class="v">${esc(sourceOf().name)}</span></div>
+     <div class="kv"><span class="k">Wearable</span><span class="v">${srcMark()}${esc(sourceOf().name)}</span></div>
      ${srcFields().length?`<div class="kv"><span class="k">Numbers it provides</span><span class="v">${
         esc(srcFields().map(f=>fieldLabel(f)).join(' · '))}</span></div>`:''}
      <div class="kv"><span class="k">Days on this device</span><span class="v">${DB.whoop.cycles.length}</span></div>
@@ -7680,9 +7858,9 @@ function viewSettings(v){
      <div class="kv"><span class="k">Running as</span><span class="v">${
         ((window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)||window.navigator.standalone===true)
           ? 'Installed app' : 'Browser tab'}</span></div>
-     <div class="hint" style="margin-top:8px">Quote the build number in any bug report — it is the quickest way to tell a real bug from an out-of-date copy.</div>
+     <div class="hint" style="margin-top:8px">Quote the build number in any bug report.</div>
      <button class="btn ghost block" id="sDiag" style="margin-top:12px">${svg('copy')} Copy diagnostics</button>
-     <div class="hint" style="margin-top:8px">Copies a short summary — device, browser, storage, and how many things you have logged. <b>No training data</b>: counts only, never what you entered. It goes to your clipboard, not anywhere else.</div>
+     <div class="hint" style="margin-top:8px">Device, browser, storage and how much you have logged. <b>Counts only</b>, never what you entered.</div>
    </div>
    <div class="card spane app">
      <div class="card-t" style="margin-bottom:10px;color:var(--red)">Danger zone</div>
@@ -7690,7 +7868,7 @@ function viewSettings(v){
        <button class="btn danger sm" id="rsProg">Reset program to defaults</button>
        <button class="btn danger sm" id="rsAll">Erase everything</button>
      </div>
-     <div class="hint" style="margin-top:9px">Resetting the program restores the default workouts and exercise library but keeps your history, check-ins, activities and WHOOP data.</div>
+     <div class="hint" style="margin-top:9px">Restores the default workouts and exercises. Your history is kept.</div>
    </div>
 
    <div class="spane app" style="text-align:center;padding:20px 0 8px;color:var(--text-3);font-size:11px">
@@ -7705,7 +7883,7 @@ function viewSettings(v){
       `${Math.round(e.usage/1024)} KB · ${c.sessions} sessions · ${c.activities} activities · ${c.cycles} device days`; });
   }catch(e){}
   $('#sSetup').onclick=()=>openSetup();
-  $('#sImpWhoop').onclick=()=>{ if(usesDevice()){ HTAB='import'; go('whoop'); } else startSetup(true); };
+  $('#sImpWhoop').onclick=()=>{ if(usesDevice()){ HTAB='import'; openMetrics(); } else startSetup(true); };
   const dw=$('#sDelWhoop');
   if(dw) dw.onclick=()=>confirmSheet('Remove imported data?',
     `All <b>${DB.whoop.cycles.length}</b> imported days, workouts and journal entries will be deleted from this device. Your own sessions, activities, check-ins and settings are kept, and the app carries on using them.`,
@@ -7909,7 +8087,7 @@ function drawWarmup(){
         <div style="flex:1"><div style="font-size:14.5px;font-weight:650">${esc(it.n)}</div>
         <div style="font-size:12px;color:var(--text-3);margin-top:2px">${esc(it.d)}</div></div></div>`).join('')}
     </div>
-    <div class="note" style="margin-top:16px">Do not skip this. Raising temperature, mobilising the joints you are about to load, then priming the nervous system — in that order — is what makes the first working set safe and productive.</div>
+    <div class="note" style="margin-top:16px">Do not skip this. It makes the first working set as good as the last.</div>
     <div style="margin-top:18px"><div class="card-t" style="margin-bottom:10px">Then, today's ${W.entries.length} exercises</div>
       ${W.entries.map((e,n)=>`<div class="kv"><span class="k">${n+1}. ${esc(e.name)}</span>
         <span class="v">${e.plannedSets} × ${esc(e.plannedReps)}</span></div>`).join('')}</div>`;
@@ -8120,7 +8298,7 @@ function exportJSON(){
   DB.meta.lastBackupCount=c;
   save(true);
   toast('Backup downloaded','ok');
-  if(TAB==='settings') setTimeout(render,300);
+  if(STACK.length) setTimeout(render,300);
 }
 function exportWhoopCSV(){
   if(!DB.whoop.cycles.length){ toast('No WHOOP data to export','err'); return; }
@@ -8224,11 +8402,14 @@ function migrate(d){
   /* Single sport/physique became multi-select. Trust the arrays only if the
      SAVED data had them — otherwise the fresh defaults would mask the user's
      real single value and silently reset everyone to one sport. */
-  out.profile.sports = (Array.isArray(inP.sports)&&inP.sports.length)
-    ? inP.sports.slice() : [inP.sport||out.profile.sport||'general'];
-  out.profile.physiques = (Array.isArray(inP.physiques)&&inP.physiques.length)
-    ? inP.physiques.slice() : [inP.physique||out.profile.physique||'athletic'];
-  out.profile.sport=out.profile.sports[0];
+  /* Carry a real answer forward; invent nothing. A saved array wins, then a
+     saved single value, then nothing at all — which is now a valid state and
+     no longer gets papered over with 'general'/'athletic'. */
+  out.profile.sports = Array.isArray(inP.sports) ? inP.sports.slice()
+    : (inP.sport ? [inP.sport] : []);
+  out.profile.physiques = Array.isArray(inP.physiques) ? inP.physiques.slice()
+    : (inP.physique ? [inP.physique] : []);
+  out.profile.sport=out.profile.sports[0]||null;
   /* equipment used to be a 3-way tier that assumed dumbbells and a band.
      Derive an explicit item list from whatever the old profile implied. */
   if(!Array.isArray(out.profile.gear)){
@@ -8241,7 +8422,7 @@ function migrate(d){
   }
   out.profile.tier=tierOf(out.profile.gear);
   out.profile.equipment=equipmentList(out.profile.gear,out.profile.equipNote,out.profile.dbKg);
-  out.profile.physique=out.profile.physiques[0];
+  out.profile.physique=out.profile.physiques[0]||null;
   out.meta.schema=SCHEMA_VERSION;
   // legacy: fold old separate tennis/cardio logs into the unified activity log
   if(Array.isArray(d.tennis)) d.tennis.forEach(t=>out.activities.push({
@@ -8331,6 +8512,11 @@ async function boot(){
   try{ loaded=await withTimeout(Store.loadAll(),6000,null); }catch(e){}
   const raw=hydrate(loaded);
   DB = raw ? migrate(raw) : freshDB();
+  /* A fresh profile has no weekly targets, because nobody has told us
+     anything yet. But an install that DID complete setup and predates derived
+     targets would now come up empty, so rebuild them from the profile it
+     already has. Setup never completed means still none, which is correct. */
+  if(DB.profile.onboarded && !Object.keys(DB.targets||{}).length) applyGoalTargets();
   BOOTED=true;
   /* a legacy localStorage install is rewritten into IndexedDB once */
   if(loaded&&loaded.legacy){ save(true,true); toast('Data upgraded to IndexedDB','ok'); }
@@ -8417,180 +8603,190 @@ function startSetup(fromSettings){
     gear:Array.isArray(DB.profile.gear)?DB.profile.gear.slice():[],
     dbKg:DB.profile.dbKg||null,
     tier:DB.profile.tier==null?0:DB.profile.tier,
-    sports:(DB.profile.sports&&DB.profile.sports.length)?DB.profile.sports.slice():['general'],
-    physiques:(DB.profile.physiques&&DB.profile.physiques.length)?DB.profile.physiques.slice():[DB.profile.physique||'athletic'],
-    daysPerWeek:DB.profile.daysPerWeek||4, sessionMin:DB.profile.sessionMin||50,
+    name:DB.profile.name||'',
+    sports:rawSports().slice(),
+    physiques:rawGoals().slice(),
+    daysPerWeek:rawDays(), sessionMin:rawMin(),
     units:DB.profile.units||'metric', equipNote:DB.profile.equipNote||''
   }};
   drawSetup();
 }
-const SETUP_STEPS=['Data source','About you','Equipment','Your sport','Your goal','Schedule'];
+/* Seven steps, one question each. `optional` drives the Skip affordance:
+   there is no separate skip control, the primary button simply says "Skip"
+   while the step is empty. */
+const SETUP_STEPS=[
+  {id:'name',   name:'Your name',  optional:true},
+  {id:'goals',  name:'What for'},
+  {id:'sports', name:'Sports'},
+  {id:'gear',   name:'Equipment'},
+  {id:'sched',  name:'Schedule'},
+  {id:'device', name:'Wearable',   optional:true},
+  {id:'body',   name:'About you',  optional:true}
+];
+/* sports offered in the picker. SPORT_PROFILES.general remains the engine's
+   neutral fallback, but it is not offered as a choice any more: choosing
+   nothing already means "no specific sport", and having both was two ways to
+   say the same thing. */
+const SETUP_SPORTS = ()=> SPORTS.filter(s=>s.id!=='general');
+/* is this step still empty? decides Skip vs Continue */
+function stepEmpty(id,d){
+  switch(id){
+    case 'name':   return !(d.name||'').trim();
+    case 'device': return !d.source;
+    case 'body':   return d.age==null && d.heightCm==null && d.weightKg==null;
+    default:       return false;
+  }
+}
 
 function drawSetup(){
-  const d=SETUP.draft, s=SETUP.step;
-  /* a partially-formed draft must never crash the wizard */
+  const d=SETUP.draft, s=SETUP.step, step=SETUP_STEPS[s];
+  /* guard the shape, never the content: an empty selection is the user's
+     answer, and re-forcing it here made "None" literally unreachable */
   if(!Array.isArray(d.gear)) d.gear=[];
-  if(!Array.isArray(d.sports)||!d.sports.length) d.sports=['general'];
-  if(!Array.isArray(d.physiques)||!d.physiques.length) d.physiques=['athletic'];
+  if(!Array.isArray(d.sports)) d.sports=[];
+  if(!Array.isArray(d.physiques)) d.physiques=[];
+
   const dots=SETUP_STEPS.map((n,i)=>
     `<div style="flex:1;height:3px;border-radius:9px;background:${i<=s?'var(--accent)':'var(--surface-3)'}"></div>`).join('');
-  const head=`<div style="display:flex;gap:4px;margin-bottom:6px">${dots}</div>
-    <div style="font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--text-3);margin-bottom:14px">
-      Step ${s+1} of ${SETUP_STEPS.length} · ${esc(SETUP_STEPS[s])}</div>`;
+  const head=`<div style="display:flex;gap:4px;margin-bottom:14px">${dots}</div>`;
 
   let body='', title='';
-  /* ---------------- 0 · data source ---------------- */
-  if(s===0){
+
+  /* ---------------- 1 · name ---------------- */
+  if(step.id==='name'){
     title='Welcome to Baseline';
-    const src=d.source?sourceOf(d.source):null;
     body=head+`
-     <p style="font-size:14.5px;line-height:1.6;color:var(--text-2)">A training system that decides what you should do each day, from your recovery and what you have actually been doing.</p>
-     <div class="field" style="margin-top:18px"><label>Do you wear anything that tracks recovery or sleep?</label>
-       <div class="hint" style="margin-bottom:10px">Pick your device and the app asks only for the numbers it actually gives you. No device is required — the engine works without one.</div>
-       ${SOURCES.map(o=>`
-         <button class="card tight setOpt ${d.source===o.id?'on':''}" data-k="source" data-v="${o.id}"
-                 style="display:block;width:100%;text-align:left;margin-bottom:8px">
-           <div style="font-weight:800;font-size:15px">${esc(o.name)}</div>
-           <div style="font-size:11.5px;color:var(--text-3);margin-top:5px;line-height:1.5">${
-             o.fields.length
-               ? 'Gives: '+esc(o.fields.slice(0,5).map(f=>fieldLabel(f,o.id)).join(' · '))+(o.fields.length>5?' …':'')
-               : 'Energy, soreness, stress, motivation and sleep, typed in each morning.'}</div>
-         </button>`).join('')}
+     <p class="lede">Baseline decides what you should train each day, from how
+       recovered you are and what you have actually been doing.</p>
+     <div class="field" style="margin-top:20px">
+       <label>What should I call you?</label>
+       <input class="inp setF" data-k="name" id="setName" type="text"
+              autocomplete="given-name" enterkeyhint="next"
+              value="${esc(d.name||'')}" placeholder="First name">
      </div>
-     ${src?`<div class="note acc">${esc(src.how)}</div>`:''}
-     ${src&&src.pickFields?`
-       <div class="field" style="margin-top:14px"><label>Which numbers does it give you?</label>
-       <div class="hint" style="margin-bottom:9px">Tick only what you can actually read off the device. Nothing unticked is ever asked for or assumed.</div>
-       ${src.fields.map(fid=>{ const on=(d.sourceFields||src.fields).indexOf(fid)>=0;
-         return `<button class="card tight setField ${on?'on':''}" data-v="${fid}"
-                   style="display:block;width:100%;text-align:left;margin-bottom:7px">
-           <div style="font-weight:750;font-size:14px">${esc(DATA_FIELDS[fid].name)}${
-             DATA_FIELDS[fid].unit?` <span style="color:var(--text-3);font-weight:600">(${esc(DATA_FIELDS[fid].unit)})</span>`:''}</div>
-           ${DATA_FIELDS[fid].hint?`<div style="font-size:11.5px;color:var(--text-3);margin-top:3px">${esc(DATA_FIELDS[fid].hint)}</div>`:''}
-         </button>`;}).join('')}
-       </div>`:''}
-     <div class="note acc" style="margin-top:16px"><b>Your data never leaves this device.</b> No account, no server, no tracking — it lives in this browser only.</div>`;
-  }
-  /* ---------------- 1 · about you ---------------- */
-  if(s===1){
-    title='About you';
-    body=head+`
-     <p style="font-size:13.5px;line-height:1.6;color:var(--text-2)">All optional. It is used for context — estimated training heart-rate zones and tracking body measurements over time. Skip anything you would rather not enter.</p>
-     <div class="grid2" style="margin-top:16px">
-       <div class="field"><label>Age</label><input class="inp num setF" data-k="age" type="number" inputmode="numeric" min="10" max="100" value="${d.age||''}" placeholder="—"></div>
-       <div class="field"><label>Height (cm)</label><input class="inp num setF" data-k="heightCm" type="number" inputmode="numeric" min="100" max="250" value="${d.heightCm||''}" placeholder="—"></div>
-       <div class="field"><label>Weight (kg)</label><input class="inp num setF" data-k="weightKg" type="number" inputmode="decimal" step="0.1" min="30" max="250" value="${d.weightKg||''}" placeholder="—"></div>
-       <div class="field"><label>Units</label>
-         <div class="seg acc" id="setUnits"><button data-v="metric" class="${d.units==='metric'?'on':''}">Metric</button><button data-v="imperial" class="${d.units==='imperial'?'on':''}">Imperial</button></div></div>
-     </div>
-     <div class="field"><label>Sex</label>
-       <div class="pills" id="setSex">
-         ${['Male','Female','Prefer not to say'].map(x=>`<button data-v="${x}" class="${d.sex===x?'on':''}">${x}</button>`).join('')}
-       </div>
-       <div class="hint">Used only for body-composition context. It does not change the training program.</div>
-     </div>
-     ${d.age?`<div class="note" style="margin-top:6px">Estimated max heart rate ≈ <b>${Math.round(208-0.7*d.age)} bpm</b> (Tanaka formula). Zone 2 would be roughly ${Math.round((208-0.7*d.age)*0.65)}–${Math.round((208-0.7*d.age)*0.75)} bpm. An estimate, not a measurement.</div>`:''}`;
-  }
-  /* ---------------- 2 · equipment ---------------- */
-  if(s===2){
-    title='What do you actually have?';
-    const n=countDoable(d.gear);
-    body=head+`
-     <p style="font-size:13.5px;line-height:1.6;color:var(--text-2)">The answer that matters most — you will only ever be given exercises you can actually perform. Tick everything you have access to.</p>
-     <div class="note acc" style="margin-top:14px">Bodyweight, a floor and a wall are assumed. Tick nothing at all and you get a complete bodyweight-only program.</div>
-     <div class="multi-hint" style="margin-top:16px">${svg('check')} Tick all that apply</div>
-     <div>
-       ${EQUIP_ITEMS.map(it=>{ const on=d.gear.indexOf(it.id)>=0;
-       return `<button class="card tight setGear ${on?'on':''}" data-v="${it.id}" style="display:block;width:100%;text-align:left;margin-bottom:7px">
-         <div class="opt-t" style="font-weight:750;font-size:14.5px">${esc(it.name)}</div>
-         ${it.hint?`<div style="font-size:12px;color:var(--text-3);margin-top:3px">${esc(it.hint)}</div>`:''}
-       </button>`;}).join('')}
-     </div>
-     ${d.gear.indexOf('db')>=0?`
-     <div class="field" style="margin-top:12px"><label>Heaviest dumbbell (kg, each)</label>
-       <input class="inp num setF" data-k="dbKg" type="number" inputmode="decimal" step="0.5" value="${d.dbKg||''}" placeholder="e.g. 5">
-       <div class="hint">Light dumbbells change how you progress — with under about 10 kg the program leans on tempo, pauses and single-leg work instead of load.</div></div>`:''}
-     <div class="field"><label>Anything else <span style="text-transform:none;font-weight:600">(optional)</span></label>
-       <input class="inp setF" data-k="equipNote" value="${esc(d.equipNote||'')}" placeholder="e.g. TRX, rowing machine — for your own reference">
-     </div>
-     <div class="card tight" style="border-color:var(--accent-line)">
-       <div style="display:flex;justify-content:space-between;align-items:center">
-         <div><div style="font-weight:750;font-size:14px">${n} exercises available</div>
-         <div style="font-size:12px;color:var(--text-3);margin-top:3px">out of ${DB.exercises.length} in the library</div></div>
-         <span class="tag a">${esc((TIERS.find(t=>t.id===tierOf(d.gear))||TIERS[0]).short)}</span>
-       </div>
-     </div>`;
-  }
-  /* ---------------- 3 · sport ---------------- */
-  if(s===3){
-    title='What are you training for?';
-    body=head+`
-     <p style="font-size:13.5px;line-height:1.6;color:var(--text-2)">This sets the priority order the daily engine uses when it chooses between strength, power, conditioning and recovery.</p>
-     <div class="multi-hint" style="margin-top:16px">${svg('check')} Pick as many as you like — the first one you choose leads</div>
-     <div>
-       ${SPORTS.map(x=>{ const i=d.sports.indexOf(x.id);
-       return `<button class="card tight setMulti ${i>=0?'on':''}" data-k="sports" data-v="${x.id}" style="display:block;width:100%;text-align:left;margin-bottom:8px">
-         <div class="opt-t" style="font-weight:800;font-size:14.5px">${esc(x.name)}${i===0?' <span class="tag a" style="margin-left:6px">PRIMARY</span>':''}</div>
-         <div style="font-size:12px;color:var(--text-3);margin-top:4px;line-height:1.5">${esc(x.focus)}</div>
-       </button>`;}).join('')}
-     </div>
-     ${d.sports.length>1?`<div class="note acc">Training for several sports at once means shared qualities get priority — leg strength, core and conditioning — and sport-specific work is spread thinner. <b>${esc((SPORTS.find(x=>x.id===d.sports[0])||{}).name)}</b> leads.</div>`:''}`;
-  }
-  /* ---------------- 4 · physique ---------------- */
-  if(s===4){
-    title='And what you want from it';
-    body=head+`
-     <p style="font-size:13.5px;line-height:1.6;color:var(--text-2)">Secondary goals. These adjust how much upper-body and conditioning volume you get, without compromising the sport work.</p>
-     <div class="multi-hint" style="margin-top:16px">${svg('check')} Pick as many as apply</div>
-     <div>
-       ${PHYSIQUES.map(x=>{ const on=d.physiques.indexOf(x.id)>=0;
-       return `<button class="card tight setMulti ${on?'on':''}" data-k="physiques" data-v="${x.id}" style="display:block;width:100%;text-align:left;margin-bottom:8px">
-         <div class="opt-t" style="font-weight:800;font-size:14.5px">${esc(x.name)}</div>
-         <div style="font-size:12px;color:var(--text-3);margin-top:4px;line-height:1.5">${esc(x.desc)}</div>
-       </button>`;}).join('')}
-     </div>
-     ${d.physiques.indexOf('muscle')>=0&&d.physiques.indexOf('lean')>=0
-       ? `<div class="note warn">Building muscle and getting leaner pull in opposite directions. You can chase both, but progress on each will be slower than picking one. The program will keep upper-body volume up and add conditioning.</div>`:''}
-     ${d.physiques.indexOf('perform')>=0&&d.physiques.length>1
-       ? `<div class="note">You have picked "performance only" alongside an appearance goal. Performance will win where they conflict.</div>`:''}`;
-  }
-  /* ---------------- 5 · schedule ---------------- */
-  if(s===5){
-    title='How much can you train?';
-    body=head+`
-     <div class="field"><label>Days per week you can train</label>
-       <div class="pills" id="setDays">${[2,3,4,5,6].map(n=>`<button data-v="${n}" class="${d.daysPerWeek===n?'on':''}">${n} days</button>`).join('')}</div>
-       <div class="hint">A guideline for the weekly targets. The engine will still tell you to rest when your recovery says so.</div>
-     </div>
-     <div class="field"><label>Typical session length</label>
-       <div class="pills" id="setMin">${[20,30,45,60,75].map(n=>`<button data-v="${n}" class="${d.sessionMin===n?'on':''}">${n} min</button>`).join('')}</div>
-     </div>
-     <div class="divider"></div>
-     <div class="card tight">
-       <div class="card-t accent" style="margin-bottom:10px">Your setup</div>
-       <div class="kv"><span class="k">Data source</span><span class="v">${esc(sourceOf(d.source).name)}</span></div>
-       ${srcFields(d.source).length?`<div class="kv"><span class="k">Numbers it provides</span><span class="v">${
-          esc(srcFields(d.source).map(f=>fieldLabel(f,d.source)).join(' · '))}</span></div>`:''}
-       <div class="kv"><span class="k">Equipment</span><span class="v">${d.gear.length
-          ? esc(d.gear.map(id=>(EQUIP_ITEMS.find(x=>x.id===id)||{}).name).filter(Boolean).join(', '))
-          : 'Bodyweight only'}</span></div>
-       <div class="kv"><span class="k">Exercises available</span><span class="v">${countDoable(d.gear)} of ${DB.exercises.length}</span></div>
-       <div class="kv"><span class="k">Training for</span><span class="v">${esc(d.sports.map(id=>(SPORTS.find(x=>x.id===id)||{}).name).filter(Boolean).join(', '))}</span></div>
-       <div class="kv"><span class="k">Goals</span><span class="v">${esc(d.physiques.map(id=>(PHYSIQUES.find(x=>x.id===id)||{}).name).filter(Boolean).join(', '))}</span></div>
-       <div class="kv"><span class="k">Schedule</span><span class="v">${d.daysPerWeek} days × ${d.sessionMin} min</span></div>
-       ${d.age?`<div class="kv"><span class="k">Age / height / weight</span><span class="v">${d.age} · ${d.heightCm||'—'} cm · ${d.weightKg||'—'} kg</span></div>`:''}
-     </div>`;
+     <div class="note acc">Everything stays on this device. No account, no
+       server, nothing uploaded.</div>`;
   }
 
-  /* The footer must be geometrically identical on every step. Previously the
-     Back button only existed from step 2 onwards, so Continue went from full
-     width to two-thirds width and jumped sideways on the first tap — which is
-     what read as the button glitching. The left slot is now always occupied:
-     on the first step it closes the wizard instead of going back. */
+  /* ---------------- 2 · what for ---------------- */
+  if(step.id==='goals'){
+    title='What are you training for?';
+    body=head+`
+     <p class="lede">Pick any that apply, or none.</p>
+     ${chipPicker({id:'setGoalPick', allowEmpty:true, chosen:d.physiques,
+        emptyText:'None selected',
+        all:PHYSIQUES.map(x=>({id:x.id,name:x.name,hint:x.desc}))})}
+     ${d.physiques.indexOf('muscle')>=0&&d.physiques.indexOf('lean')>=0
+       ? `<div class="note warn">Muscle and leanness pull against each other. Both is slower than either.</div>`:''}
+     ${d.physiques.indexOf('perform')>=0&&d.physiques.length>1
+       ? `<div class="note">Performance wins where these conflict.</div>`:''}`;
+  }
+
+  /* ---------------- 3 · sports ---------------- */
+  if(step.id==='sports'){
+    title='Do you play a sport?';
+    body=head+`
+     <p class="lede">Baseline trains around it and never schedules it. Leave
+       empty if none.</p>
+     ${chipPicker({id:'setSportPick', lead:true, allowEmpty:true, chosen:d.sports,
+        emptyText:'None — general training',
+        all:SETUP_SPORTS().map(x=>({id:x.id,name:x.name,hint:x.focus}))})}
+     ${d.sports.length>1?`<div class="note acc">Shared qualities get priority.
+       <b>${esc((SPORTS.find(x=>x.id===d.sports[0])||{}).name)}</b> leads.</div>`:''}`;
+  }
+
+  /* ---------------- 4 · equipment ---------------- */
+  if(step.id==='gear'){
+    title='What equipment do you have?';
+    body=head+`
+     <p class="lede">You are only ever shown exercises you can actually do.</p>
+     ${chipPicker({id:'setGearPick', allowEmpty:true, chosen:d.gear,
+        emptyText:'None — bodyweight only',
+        all:EQUIP_ITEMS.map(x=>({id:x.id,name:x.name,hint:x.hint||''}))})}
+     ${d.gear.indexOf('db')>=0?`
+     <div class="field" style="margin-top:16px"><label>Heaviest dumbbell (kg)</label>
+       <input class="inp num setF" data-k="dbKg" type="number" inputmode="decimal"
+              step="0.5" value="${d.dbKg||''}" placeholder="Optional"></div>`:''}
+     <div class="ruled" style="font-size:13px;color:var(--text-2);font-weight:600">
+       ${countDoable(d.gear)} of ${DB.exercises.length} exercises available</div>`;
+  }
+
+  /* ---------------- 5 · how much ---------------- */
+  if(step.id==='sched'){
+    title='How much can you train?';
+    body=head+`
+     <div class="field"><label>Days a week</label>
+       <div class="pills" id="setDays">${[2,3,4,5,6].map(n=>
+         `<button data-v="${n}" class="${d.daysPerWeek===n?'on':''}">${n}</button>`).join('')}</div>
+     </div>
+     <div class="field"><label>Usual session length</label>
+       <div class="pills" id="setMin">${[20,30,45,60,75].map(n=>
+         `<button data-v="${n}" class="${d.sessionMin===n?'on':''}">${n} min</button>`).join('')}</div>
+     </div>
+     <div class="hint">A guideline, not a quota. Baseline still tells you to
+       rest when your recovery says so.${(d.daysPerWeek==null||d.sessionMin==null)
+        ? ` Left blank, it assumes ${DEFAULT_DAYS} days and ${DEFAULT_SESSION_MIN} minutes.`:''}</div>`;
+  }
+
+  /* ---------------- 6 · wearable (optional) ---------------- */
+  if(step.id==='device'){
+    title='Do you wear a tracker?';
+    const src=d.source?sourceOf(d.source):null;
+    body=head+`
+     <p class="lede">Optional. Baseline works fully without one.</p>
+     <div class="field">
+       <select class="inp setSel" data-k="source" id="setSrcSel">
+         <option value="" ${!d.source?'selected':''}>None</option>
+         ${SOURCES.filter(o=>o.id!=='none').map(o=>
+           `<option value="${o.id}" ${d.source===o.id?'selected':''}>${esc(o.name)}</option>`).join('')}
+       </select>
+     </div>
+     ${src&&src.fields.length?`<div class="hint" style="display:flex;align-items:center">
+        ${srcMark(src.id,17)}<span>Gives ${esc(src.fields.map(f=>
+          fieldLabel(f,src.id).toLowerCase()).join(', '))}.</span></div>`:''}
+     ${src&&src.pickFields?`
+       <div class="field" style="margin-top:16px"><label>Which numbers does it give?</label>
+        ${chipPicker({id:'setFieldPick', allowEmpty:true, emptyText:'None',
+           chosen:(d.sourceFields||src.fields),
+           all:src.fields.map(fid=>({id:fid,name:DATA_FIELDS[fid].name,hint:DATA_FIELDS[fid].hint||''}))})}
+        </div>`:''}
+     ${src?`<div class="note acc">${esc(src.how)}</div>`:''}`;
+  }
+
+  /* ---------------- 7 · about you (optional) ---------------- */
+  if(step.id==='body'){
+    title='A little about you';
+    body=head+`
+     <p class="lede">Optional. Used for heart-rate zones and tracking
+       measurements over time.</p>
+     <div class="grid2" style="margin-top:16px">
+       <div class="field"><label>Age</label>
+         <input class="inp num setF" data-k="age" type="number" inputmode="numeric"
+                min="10" max="100" value="${d.age||''}" placeholder="—"></div>
+       <div class="field"><label>Height (cm)</label>
+         <input class="inp num setF" data-k="heightCm" type="number" inputmode="numeric"
+                min="100" max="250" value="${d.heightCm||''}" placeholder="—"></div>
+       <div class="field"><label>Weight (kg)</label>
+         <input class="inp num setF" data-k="weightKg" type="number" inputmode="decimal"
+                step="0.1" min="30" max="250" value="${d.weightKg||''}" placeholder="—"></div>
+     </div>
+     ${d.age?`<div class="hint">Estimated max heart rate about
+       <b>${Math.round(208-0.7*d.age)} bpm</b>. An estimate, not a measurement.</div>`:''}`;
+  }
+
+  /* The footer is geometrically identical on every step: the left slot is
+     always occupied (Close on the first step, Back after), and the columns are
+     fixed fractions. The sheet's own width is pinned in CSS - it used to
+     shrink-wrap its content on desktop, which is what made this button appear
+     to jump between steps. */
   const backLabel = s>0 ? 'Back' : 'Close';
-  const back = `<button class="btn ghost" id="setBack" style="flex:1">${backLabel}</button>`;
-  const nextLabel = s===SETUP_STEPS.length-1 ? finishLabel(d) : 'Continue';
-  const foot=`<div class="btn-row setup-foot">${back}<button class="btn primary" id="setNext" style="flex:2">${esc(nextLabel)}</button></div>`;
+  const back = `<button class="btn ghost" id="setBack">${backLabel}</button>`;
+  /* an optional step that is still empty offers Skip, so skipping needs no
+     extra control and cannot be mistaken for a dead end */
+  const nextLabel = s===SETUP_STEPS.length-1
+    ? (stepEmpty(step.id,d) ? 'Skip & finish' : finishLabel(d))
+    : (step.optional && stepEmpty(step.id,d) ? 'Skip' : 'Continue');
+  const foot=`<div class="btn-row setup-foot">${back}<button class="btn primary" id="setNext">${esc(nextLabel)}</button></div>`;
   /* Patch the open sheet in place. Re-opening it on every tap restarted the
      slide-in animation and made the footer button jump. `steps` holds a floor
      height so the footer does not walk up and down as each step's content
@@ -8602,36 +8798,45 @@ function drawSetup(){
     ()=>{ $('#sheet').classList.remove('steps');
           if(!DB.profile.onboarded){ try{ render(); toast('Setup unfinished — finish it from the card on Today'); }catch(e){} } });
 
-  /* single-choice cards */
+  /* single-choice cards that remain (data-source tiles elsewhere) */
   $$('.setOpt').forEach(b=>b.onclick=()=>{
     const k=b.dataset.k; let v=b.dataset.v;
     if(k==='tier') v=+v;
     SETUP.draft[k]=v; haptic(); drawSetup();
   });
-  /* which numbers a non-listed wearable actually provides */
-  $$('.setField').forEach(b=>b.onclick=()=>{
+  /* the wearable is a plain select: one row, and the phone's own picker */
+  $$('.setSel').forEach(sel=>sel.onchange=()=>{
+    SETUP.draft[sel.dataset.k]=sel.value||null;
+    if(sel.dataset.k==='source') SETUP.draft.sourceFields=null;   // re-derive
+    haptic(); drawSetup();
+  });
+  /* every multi-choice step uses the same chip picker as Settings: chosen
+     items as blocks, "+" opens the full list in a sheet */
+  const pick=(id,key,all,title,allowEmpty,lead)=>{
+    const cur=SETUP.draft[key]||[];
+    wirePicker(id, cur, all, next=>{
+      SETUP.draft[key]=next;
+      if(lead) SETUP.draft[key.replace(/s$/,'')]=next[0];
+      haptic(); drawSetup();
+    }, title, allowEmpty);
+  };
+  pick('setGearPick','gear',
+       EQUIP_ITEMS.map(x=>({id:x.id,name:x.name,hint:x.hint||''})),
+       'Add equipment', true);
+  pick('setSportPick','sports',
+       SETUP_SPORTS().map(x=>({id:x.id,name:x.name,hint:x.focus})),
+       'Add a sport', true, true);
+  pick('setGoalPick','physiques',
+       PHYSIQUES.map(x=>({id:x.id,name:x.name,hint:x.desc})),
+       'Add a goal', true, true);
+  (function(){
     const src=sourceOf(SETUP.draft.source);
+    if(!src.pickFields) return;
     if(!Array.isArray(SETUP.draft.sourceFields)) SETUP.draft.sourceFields=src.fields.slice();
-    const arr=SETUP.draft.sourceFields, v=b.dataset.v, i=arr.indexOf(v);
-    if(i>=0) arr.splice(i,1); else arr.push(v);
-    haptic(); drawSetup();
-  });
-  /* equipment ticks — may legitimately be empty (bodyweight only) */
-  $$('.setGear').forEach(b=>b.onclick=()=>{
-    const v=b.dataset.v, arr=SETUP.draft.gear, i=arr.indexOf(v);
-    if(i>=0) arr.splice(i,1); else arr.push(v);
-    haptic(); drawSetup();
-  });
-  /* multi-choice cards — toggle, first pick leads, never allow empty */
-  $$('.setMulti').forEach(b=>b.onclick=()=>{
-    const k=b.dataset.k, v=b.dataset.v, arr=SETUP.draft[k];
-    const i=arr.indexOf(v);
-    if(i>=0){
-      if(arr.length===1){ toast('Keep at least one'); return; }
-      arr.splice(i,1);
-    } else arr.push(v);
-    haptic(); drawSetup();
-  });
+    pick('setFieldPick','sourceFields',
+         src.fields.map(f=>({id:f,name:DATA_FIELDS[f].name,hint:DATA_FIELDS[f].hint||''})),
+         'Add a metric', true);
+  })();
   /* free fields */
   $$('.setF').forEach(i=>i.oninput=()=>{
     const k=i.dataset.k;
@@ -8646,11 +8851,14 @@ function drawSetup(){
 
   const bk=$('#setBack');
   if(bk) bk.onclick=()=>{ if(SETUP.step>0){ SETUP.step--; drawSetup(); } else closeSheet(); };
+  /* nothing blocks progress: every question can be left unanswered, and
+     "None" is a real answer rather than a reason to refuse */
   $('#setNext').onclick=()=>{
-    if(SETUP.step===0 && !SETUP.draft.source){ toast('Pick one to continue','err'); return; }
     if(SETUP.step<SETUP_STEPS.length-1){ SETUP.step++; drawSetup(); return; }
     finishSetup();
   };
+  const nm=$('#setName');
+  if(nm) nm.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); $('#setNext').click(); } };
 }
 
 function finishSetup(){
@@ -8664,12 +8872,13 @@ function finishSetup(){
   P.age=d.age; P.sex=d.sex; P.heightCm=d.heightCm; P.weightKg=d.weightKg;
   P.gear=d.gear.slice(); P.dbKg=d.dbKg||null;
   P.tier=tierOf(d.gear);                                   // derived, not chosen
-  P.sports=d.sports.slice(); P.sport=d.sports[0];          // sport = the leading one
-  P.physiques=d.physiques.slice(); P.physique=d.physiques[0];
+  P.name=(d.name||'').trim();
+  P.sports=d.sports.slice(); P.sport=d.sports[0]||null;    // sport = the leading one
+  P.physiques=d.physiques.slice(); P.physique=d.physiques[0]||null;
   P.daysPerWeek=d.daysPerWeek; P.sessionMin=d.sessionMin; P.units=d.units;
   if(d.equipNote) P.equipNote=d.equipNote;
   P.equipment=equipmentList(d.gear, d.equipNote, d.dbKg);
-  P.goalPrimary=goalTextFor(d.sports);
+  P.goalPrimary=d.sports.length?goalTextFor(d.sports):'';
   P.goalSecondary=d.physiques.map(id=>(PHYSIQUES.find(x=>x.id===id)||{}).desc).filter(Boolean).join(' ');
   P.onboarded=true;
   applyGoalTargets();
@@ -8677,9 +8886,10 @@ function finishSetup(){
   const wasSettings=SETUP.fromSettings;
   setTimeout(()=>{
     const src=sourceOf(d.source);
-    if(src.importer && !hasWhoop()){ HTAB='import'; go('whoop'); toast(`Import your ${src.name} data to finish`); }
+    if(src.importer && !hasWhoop()){ HTAB='import'; openMetrics(); toast(`Import your ${src.name} data to finish`); }
     else { go('today'); toast('Setup complete','ok'); }
-    if(!wasSettings && !sourceOf(d.source).importer) setTimeout(welcome,400);
+    /* no welcome sheet: Today opens with "Good morning, <name>", which is
+       the same information without a dialog to dismiss */
   },240);
 }
 /* built strictly from what was ticked — nothing inferred */
@@ -8729,10 +8939,8 @@ function goalTextFor(sportIds){
    does not appear: no bike, no bike target.
    ====================================================================== */
 function applyGoalTargets(){
-  const P=DB.profile, days=P.daysPerWeek||4;
-  const sports=(P.sports&&P.sports.length)?P.sports:[P.sport||'general'];
-  const goals =(P.physiques&&P.physiques.length)?P.physiques:[P.physique||'athletic'];
-  const gear  =Array.isArray(P.gear)?P.gear:[];
+  const P=DB.profile, days=trainDays();
+  const sports=sportsOf(), goals=goalsOf(), gear=rawGear();
   const has=x=>sports.indexOf(x)>=0;
   const wants=x=>goals.indexOf(x)>=0;
   const owns=x=>gear.indexOf(x)>=0;
@@ -8787,7 +8995,7 @@ function targetMeta(){
   const sp=SPORT_LABEL(), q=sportProf().qualities;
   return {
     lower:   ['Lower body strength', `The base under ${sp.toLowerCase()} — ${q.split(',')[0]}`],
-    upper:   ['Upper body strength', (DB.profile.physiques||[]).indexOf('muscle')>=0
+    upper:   ['Upper body strength', rawGoals().indexOf('muscle')>=0
                 ? 'Your muscle-building goal' : 'Shoulder durability and balanced strength'],
     power:   ['Power / plyometrics', `Explosive qualities ${sp.toLowerCase()} depends on`],
     core:    ['Core',                'Force transfer between legs and upper body'],
