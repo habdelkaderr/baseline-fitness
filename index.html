@@ -306,6 +306,9 @@ button.card{padding-right:46px}      /* room for the tick */
 .chipadd:active{background:var(--surface-2)}
 .chipadd svg{width:15px;height:15px;stroke-width:2.6}
 .chipnone{font-size:12.5px;color:var(--text-3);font-weight:600;padding:0 2px}
+/* settings panes: only the selected group occupies space */
+.spane{display:none}
+.spane.on{display:block}
 .card.tight{padding:13px}
 .card.flush{padding:0;overflow:hidden}
 .card-h{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
@@ -947,6 +950,67 @@ function haptic(){ try{ if(navigator.vibrate) navigator.vibrate(8);}catch(e){} }
 const DB_NAME='baseline';
 const DB_VERSION=2;                 // bump to add/alter object stores
 const SCHEMA_VERSION=2;             // bump to transform stored records
+/* A readable build stamp. Without one, a tester reporting "it's broken" cannot
+   tell you whether they are on today's build or a cached copy from last week,
+   which is most of the diagnosis. Bump this on every deploy. */
+const APP_BUILD='2026-09-17';
+/* The last few errors, kept in memory only, so a bug report can carry
+   something better than "it stopped working". Never written to disk, never
+   sent anywhere — it is read only by the diagnostics button. */
+const ERRLOG=[];
+function noteError(what){
+  ERRLOG.push(String(what).slice(0,160));
+  if(ERRLOG.length>5) ERRLOG.shift();
+}
+window.addEventListener('error',e=>noteError((e.message||'error')+' @'+(e.lineno||'?')));
+window.addEventListener('unhandledrejection',e=>
+  noteError('promise: '+((e.reason&&e.reason.message)||e.reason||'?')));
+
+/* =========================================================================
+   DIAGNOSTICS
+   A short, copyable summary for a bug report. Deliberately contains no
+   training data: counts only, never values, notes, dates of sessions or
+   anything a person entered. It goes to the clipboard, not to a server.
+   ====================================================================== */
+function diagnostics(){
+  const P=(DB&&DB.profile)||{};
+  const standalone = (window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)
+                     || window.navigator.standalone===true;
+  const ua=navigator.userAgent||'';
+  const dev = /iPhone/.test(ua)?'iPhone' : /iPad/.test(ua)?'iPad'
+            : /Android/.test(ua)?'Android' : /Mac/.test(ua)?'Mac'
+            : /Windows/.test(ua)?'Windows' : 'other';
+  const br  = /CriOS/.test(ua)?'Chrome iOS' : /FxiOS/.test(ua)?'Firefox iOS'
+            : /Edg\//.test(ua)?'Edge' : /Chrome/.test(ua)?'Chrome'
+            : /Safari/.test(ua)?'Safari' : 'other';
+  const osm = ua.match(/OS (\d+[_.]\d+)/) || ua.match(/Version\/(\d+)/);
+  const n=(a)=>Array.isArray(a)?a.length:0;
+  const L=[];
+  L.push(`Baseline build ${APP_BUILD} (schema ${SCHEMA_VERSION})`);
+  L.push(`${dev}${osm?' '+osm[1].replace('_','.'):''} \u00b7 ${br} \u00b7 ${standalone?'installed':'browser tab'} \u00b7 ${window.innerWidth}x${window.innerHeight}`);
+  L.push(`Theme: ${themePref()}`);
+  L.push(`Storage: ${Store.mode||'?'} \u00b7 eviction protection ${Store.persisted===true?'granted':Store.persisted===false?'DENIED':'unknown'}`);
+  L.push(`Setup: ${P.onboarded?'complete':'NOT FINISHED'} \u00b7 wearable ${P.source||'?'} \u00b7 sports ${(P.sports||[]).join('+')||'-'} \u00b7 gear ${(P.gear||[]).join('+')||'none'}`);
+  L.push(`Data: ${n(DB.sessions)} sessions, ${n(DB.activities)} activities, ${Object.keys(DB.checkins||{}).length} check-ins, ${n(DB.tests)} tests, ${n(DB.whoop&&DB.whoop.cycles)} imported days, ${n(P.limits)} limitations`);
+  L.push(`Errors: ${ERRLOG.length?ERRLOG.join(' | '):'none'}`);
+  return L.join('\n');
+}
+function copyDiagnostics(){
+  const txt=diagnostics();
+  const done=()=>toast('Diagnostics copied — paste it into your message','ok');
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done).catch(()=>showDiagnostics(txt));
+  } else showDiagnostics(txt);
+}
+/* clipboard access is refused in some browsers; show the text so it can still
+   be selected by hand rather than failing silently */
+function showDiagnostics(txt){
+  openSheet('Diagnostics',
+    `<p class="hint" style="margin-bottom:12px">Copy this and send it over. It contains no training data \u2014 counts only.</p>
+     <textarea class="inp" id="diagTxt" style="min-height:190px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px">${esc(txt||diagnostics())}</textarea>`,
+    `<button class="btn primary big block" onclick="closeSheet()">Done</button>`);
+  const el=$('#diagTxt'); if(el){ el.focus(); el.select(); }
+}
 const KEY='baseline.tps.v1';        // legacy localStorage blob (v1 installs)
 const PREF='baseline.prefs';        // tiny, non-sensitive boot hints
 
@@ -6925,11 +6989,28 @@ function openSetup(auto){
 /* =========================================================================
    VIEW: SETTINGS
    ====================================================================== */
+/* Settings used to be one thirteen-card scroll. It is now four short panes,
+   selected the same way every other view selects its sub-sections. Panes are
+   shown and hidden by class rather than re-rendered, so a half-typed field
+   survives switching away and back. */
+const SET_PANES=[{id:'you',name:'You'},{id:'training',name:'Training'},
+                 {id:'data',name:'Data'},{id:'app',name:'App'}];
+let SETTAB='you';
+function setPane(id){
+  SETTAB=id;
+  $$('#view .spane').forEach(el=>el.classList.toggle('on', el.classList.contains(id)));
+  $$('#setSeg button').forEach(b=>b.classList.toggle('on', b.dataset.p===id));
+  const v=$('#view'); if(v) v.scrollTop=0;
+  window.scrollTo(0,0);
+}
 function viewSettings(v){
   appbar('Settings','Everything here is editable without touching code');
   const P=DB.profile,S=DB.settings;
   v.innerHTML=`
-   <div class="card">
+   <div class="seg acc" id="setSeg" style="margin-bottom:14px">
+     ${SET_PANES.map(x=>`<button data-p="${x.id}" class="${SETTAB===x.id?'on':''}">${esc(x.name)}</button>`).join('')}
+   </div>
+   <div class="card spane you">
      <div class="card-h"><div class="card-t accent">Your setup</div>
        <button class="btn xs ghost" id="sWizard">Re-run setup</button></div>
      <div class="kv"><span class="k">Training for</span><span class="v">${esc(
@@ -6941,7 +7022,7 @@ function viewSettings(v){
      <div class="kv"><span class="k">Schedule</span><span class="v">${P.daysPerWeek||4} days × ${P.sessionMin} min</span></div>
    </div>
 
-   <div class="card">
+   <div class="card spane training">
      <div class="card-h"><div class="card-t accent">Equipment</div>
        <span class="tag a">${countDoable(P.gear||[])} / ${DB.exercises.length} EXERCISES</span></div>
      <div class="hint" style="margin-bottom:12px">What you chose during setup. Bodyweight, a floor and a wall are assumed — nothing else is. Remove anything you no longer have, or add with <b>+</b>.</div>
@@ -6961,7 +7042,7 @@ function viewSettings(v){
      <div class="note" style="margin-top:12px"><b>Currently:</b> ${esc((P.equipment||['Bodyweight']).join(' · '))}</div>
    </div>
 
-   <div class="card">
+   <div class="card spane you">
      <div class="card-t accent" style="margin-bottom:12px">Profile</div>
      <div class="field"><label>Name</label><input class="inp" id="sName" value="${esc(P.name)}" placeholder="Your name"></div>
      <div class="grid2">
@@ -6986,7 +7067,7 @@ function viewSettings(v){
        <div class="hint">Matching the system is the default. Pin one if you would rather it stayed put.</div></div>
    </div>
 
-   <div class="card">
+   <div class="card spane training">
      <div class="card-h"><div class="card-t accent">Injuries &amp; limitations</div>
        <button class="btn xs ghost" id="limAdd">${svg('plus')} Add</button></div>
      ${(() => { const act=activeLimits(), past=(P.limits||[]).filter(l=>act.indexOf(l)<0);
@@ -7006,7 +7087,7 @@ function viewSettings(v){
      })()}
    </div>
 
-   <div class="card">
+   <div class="card spane you">
      <div class="card-t accent" style="margin-bottom:6px">What you are training for</div>
      <div class="hint" style="margin-bottom:11px">Sets the priority order the daily engine uses. Your first pick leads.</div>
      ${chipPicker({id:'sportPick', lead:true,
@@ -7027,7 +7108,7 @@ function viewSettings(v){
      <div class="hint" style="margin-top:6px">Changing a goal re-derives these immediately. Fine-tune them under Train → Program.</div>
    </div>
 
-   <div class="card">
+   <div class="card spane training">
      <div class="card-t accent" style="margin-bottom:6px">How cautious should the engine be?</div>
      <div class="hint" style="margin-bottom:14px">Each morning you get a readiness score out of 100. These sliders decide which band that score falls into, and the band decides what you are told to do.</div>
 
@@ -7063,7 +7144,7 @@ function viewSettings(v){
      <button class="btn ghost sm block" id="sbReset" style="margin-top:14px">Reset to defaults (72 / 56 / 42)</button>
    </div>
 
-   <div class="card">
+   <div class="card spane training">
      <div class="card-t accent" style="margin-bottom:12px">Program</div>
      <div class="field"><label>Plan start date</label><input class="inp" type="date" id="sStart" value="${esc(P.planStart)}">
        <div class="hint">Drives which of the 8 progression weeks you are in. Currently <b>week ${currentPhase().absWeek}</b> (${esc(currentPhase().name)}).</div></div>
@@ -7078,7 +7159,7 @@ function viewSettings(v){
        Rest timer in workout mode</label></div>
    </div>
 
-   <div class="card" style="${Store.durable?'':'border-color:var(--red-line)'}">
+   <div class="card spane app" style="${Store.durable?'':'border-color:var(--red-line)'}">
      <div class="card-h"><div class="card-t accent">Setup &amp; install</div>
        <span class="tag ${Store.durable?'g':'r'}">${Store.durable?'STORING OK':'NOT STORING'}</span></div>
      <div class="kv"><span class="k">Storage</span><span class="v">${esc(Store.mode)}</span></div>
@@ -7088,7 +7169,7 @@ function viewSettings(v){
        ${Store.durable?'Add to Home Screen &amp; storage details':'Fix storage — how to install properly'}</button>
    </div>
 
-   <div class="card">
+   <div class="card spane data">
      <div class="card-h"><div class="card-t accent">Data source</div>
        <span class="tag ${hasWhoop()?'g':'c'}">${hasWhoop()?esc(SRC_NAME().toUpperCase())+' CONNECTED':(usesDevice()?'NOT IMPORTED YET':'MANUAL ONLY')}</span></div>
      <div class="kv"><span class="k">Wearable</span><span class="v">${esc(sourceOf().name)}</span></div>
@@ -7107,7 +7188,7 @@ function viewSettings(v){
          : 'The app is running entirely from your check-ins and training log, which is enough. Add a wearable any time and its numbers join the daily decision.'}</div>
    </div>
 
-   <div class="card">
+   <div class="card spane data">
      <div class="card-t accent" style="margin-bottom:12px">Your data</div>
      <div class="kv"><span class="k">Stored in</span><span class="v">${esc(Store.mode)}, this browser only</span></div>
      <div class="kv"><span class="k">Approx. size</span><span class="v" id="sSize">—</span></div>
@@ -7125,14 +7206,14 @@ function viewSettings(v){
      <div class="note warn" style="margin-top:13px"><b>Your data is stored locally on this device.</b> If you clear browser data or change devices, restore your backup to recover it. Clearing website data erases everything instantly, and no copy exists anywhere else.</div>
    </div>
 
-   <div class="card">
+   <div class="card spane data">
      <div class="card-t" style="margin-bottom:10px">Using more than one device</div>
      <p style="font-size:13px;line-height:1.6;color:var(--text-2)">Each browser on each device keeps its <b>own separate</b> dataset. Your phone's history is not on your PC, and there is no sync — that is the price of having no account and no server.</p>
      <div class="kv" style="margin-top:8px"><span class="k">To move data across</span><span class="v">Export JSON → send the file → Import JSON</span></div>
      <div class="hint" style="margin-top:6px">That is a one-time snapshot. Changes made afterwards on either device will not appear on the other.</div>
    </div>
 
-   <div class="card">
+   <div class="card spane data">
      <div class="card-t" style="margin-bottom:10px">Privacy</div>
      <ul class="why" style="border:none;padding:0;margin:0">
        <li class="pos"><span class="dot"></span><span>No analytics, no tracking, no advertising, no external services.</span></li>
@@ -7142,7 +7223,19 @@ function viewSettings(v){
      </ul>
    </div>
 
-   <div class="card">
+
+   <div class="card spane app">
+     <div class="card-t accent" style="margin-bottom:10px">Version &amp; problem reports</div>
+     <div class="kv"><span class="k">Build</span><span class="v num">${esc(APP_BUILD)}</span></div>
+     <div class="kv"><span class="k">Storage format</span><span class="v num">v${SCHEMA_VERSION}</span></div>
+     <div class="kv"><span class="k">Running as</span><span class="v">${
+        ((window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)||window.navigator.standalone===true)
+          ? 'Installed app' : 'Browser tab'}</span></div>
+     <div class="hint" style="margin-top:8px">Quote the build number in any bug report — it is the quickest way to tell a real bug from an out-of-date copy.</div>
+     <button class="btn ghost block" id="sDiag" style="margin-top:12px">${svg('copy')} Copy diagnostics</button>
+     <div class="hint" style="margin-top:8px">Copies a short summary — device, browser, storage, and how many things you have logged. <b>No training data</b>: counts only, never what you entered. It goes to your clipboard, not anywhere else.</div>
+   </div>
+   <div class="card spane app">
      <div class="card-t" style="margin-bottom:10px;color:var(--red)">Danger zone</div>
      <div class="btn-row">
        <button class="btn danger sm" id="rsProg">Reset program to defaults</button>
@@ -7151,7 +7244,7 @@ function viewSettings(v){
      <div class="hint" style="margin-top:9px">Resetting the program restores the default workouts and exercise library but keeps your history, check-ins, activities and WHOOP data.</div>
    </div>
 
-   <div style="text-align:center;padding:20px 0 8px;color:var(--text-3);font-size:11px">
+   <div class="spane app" style="text-align:center;padding:20px 0 8px;color:var(--text-3);font-size:11px">
      Baseline · Adaptive Training System<br>
      <span style="color:var(--text-3);opacity:.7">Not a medical device. Nothing here diagnoses or treats any condition.<br>
      Persistent symptoms, pain, or unusual physiological readings belong with a qualified healthcare professional.</span>
@@ -7176,6 +7269,10 @@ function viewSettings(v){
   const ew=$('#expCsvW'); if(ew) ew.onclick=exportWhoopCSV;
   const pill=(sel,cb)=>$$(sel+' button').forEach(b=>b.onclick=()=>{
     $$(sel+' button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); cb&&cb(b.dataset.v); });
+  /* pane switching: class toggle only, so nothing in the form is lost */
+  $$('#setSeg button').forEach(b=>b.onclick=()=>{ haptic(); setPane(b.dataset.p); });
+  setPane(SETTAB);
+  const dg=$('#sDiag'); if(dg) dg.onclick=copyDiagnostics;
   pill('#sDur'); pill('#sUnits'); pill('#sDays');
   /* theme is applied immediately: a preference you cannot see is useless */
   pill('#sTheme', v=>{ setTheme(v); haptic(); });
