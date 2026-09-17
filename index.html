@@ -921,7 +921,9 @@ const ICON = {
   run:'<circle cx="16" cy="4" r="2"/><path d="M12 21l1.5-6-3-2.5L9 17M10.5 12.5L8 8l4-1.5 3 2.5 3 1"/>',
   bike:'<circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M15 6a1 1 0 100-2 1 1 0 000 2zM12 17.5L9 9l4-1 2.5 3.5H18"/>',
   target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
-  info:'<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/>'
+  info:'<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/>',
+  /* the open readiness ring — the app's own mark, and sport-neutral */
+  ring:'<path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5"/>'
 };
 const FILLED={play:1};
 const svg=(k,cls)=>`<svg class="${cls||''}" viewBox="0 0 24 24" fill="${FILLED[k]?'currentColor':'none'}" stroke="currentColor" stroke-width="${FILLED[k]?0:2}" stroke-linecap="round" stroke-linejoin="round">${ICON[k]||''}</svg>`;
@@ -2613,7 +2615,7 @@ function freshDB(){
     baselines:Object.assign({},SEED_BASE,{computed:false,seeded:true}),
     whoop:{cycles:[],workouts:[],journal:[],imports:[]},
     checkins:{},
-    exercises:applyExMeta(seedExercises().concat(gymExercises())),
+    exercises:builtInExercises(),
     workouts:seedWorkouts(),
     sessions:[],
     activities:[],
@@ -3398,6 +3400,355 @@ function gymExercises(){ return [
 ];}
 
 /* attach pattern / tier / equipment-needs metadata to the library */
+
+/* =========================================================================
+   ADDITIONAL EXERCISES
+   Chosen to fill the thinnest movement patterns rather than to pad the total.
+   Before these, `squat`, `hinge` and `slsquat` had two options or fewer each,
+   which left the injury router and the equipment substitution with nowhere to
+   go: if the one available hinge needed a dumbbell you did not own, or loaded
+   a back you were resting, there was no alternative to fall back to.
+
+   Weighted towards bodyweight, because that is the only kit a no-gym user is
+   guaranteed to have, and because every pattern needs at least one option
+   that survives having no equipment at all.
+   ====================================================================== */
+function extraExercises(){ return [
+
+/* ---------------- SQUAT ---------------- */
+{id:'x01',name:'Prisoner Squat',cat:'lower',pat:'squat',tier:0,muscles:'Quads, glutes, upper back',equip:'BW',sets:3,reps:'15–25',rpe:'RPE 7',rest:'60s',tempo:'3-1-1-0',
+ how:'Hands behind the head, elbows wide. Squat to the deepest position you can hold without the lower back rounding, then stand.',
+ cue:'Elbows stay back all the way down — that is what stops the chest folding forward.',
+ prog:'Add reps to 25, then move to the 1.5-Rep Squat, then add load.',
+ reg:'Hold a doorframe lightly for balance, or reduce depth.',
+ subs:'Tempo Goblet Squat · Wall Sit'},
+
+{id:'x02',name:'1.5-Rep Squat',cat:'lower',pat:'squat',tier:0,muscles:'Quads, glutes',equip:'BW',sets:3,reps:'8–12',rpe:'RPE 8',rest:'75s',tempo:'Controlled',
+ how:'Squat down, come up only halfway, sit back down to the bottom, then stand fully. That whole sequence is one rep.',
+ cue:'The half rep is the point. Do not rush through the bottom — it is where the work is.',
+ prog:'Add reps, then hold a dumbbell at the chest.',
+ reg:'Reduce depth, or do straight reps.',
+ subs:'Prisoner Squat · Tempo Goblet Squat',
+ notes:'The extra time in the hardest position is how you keep loading the quads without extra weight.'},
+
+{id:'x03',name:'Heels-Elevated Goblet Squat',cat:'lower',pat:'squat',tier:0,muscles:'Quads, glutes',equip:'DB',sets:3,reps:'8–12',rpe:'RPE 8',rest:'75s',tempo:'3-1-1-0',
+ how:'Stand with your heels on a book or folded mat, toes flat. Hold a dumbbell at the chest and squat deep.',
+ cue:'Raising the heels lets the knees travel further forward, which loads the quads harder and lets you sit deeper.',
+ prog:'Add reps, then load, then reduce the heel lift as ankle range improves.',
+ reg:'Lower the heel lift, or hold nothing.',
+ subs:'Tempo Goblet Squat · 1.5-Rep Squat'},
+
+{id:'x04',name:'Kettlebell Front Squat',cat:'lower',pat:'squat',tier:1,muscles:'Quads, glutes, trunk',equip:'Kettlebell',sets:3,reps:'6–10',rpe:'RPE 8',rest:'90s',tempo:'3-0-1-0',
+ how:'Hold one kettlebell in both hands at the chest, elbows tucked in. Squat to depth and drive up.',
+ cue:'Keep the weight glued to the sternum. If it drifts away the lower back takes over.',
+ prog:'Add reps, then a heavier bell, then move to two bells or a barbell.',
+ reg:'Goblet Squat with a dumbbell.',
+ subs:'Tempo Goblet Squat · Barbell Back Squat'},
+
+/* ---------------- HINGE ---------------- */
+{id:'x05',name:'Single-Leg Hip Hinge (Airplane)',cat:'lower',pat:'hinge',tier:0,muscles:'Hamstrings, glutes, balance',equip:'BW',sets:3,reps:'8–12 / leg',rpe:'RPE 7',rest:'45s / leg',tempo:'3-1-2-0',
+ how:'Stand on one leg. Hinge at the hip until the torso and the free leg form one line parallel to the floor, arms out to the sides. Return.',
+ cue:'Hips stay level — do not let the free-leg hip rotate open to the ceiling.',
+ prog:'Add reps, then add a slow 5-second lower, then hold a dumbbell.',
+ reg:'Touch a wall with one hand for balance.',
+ subs:'Single-Leg RDL · DB Romanian Deadlift'},
+
+{id:'x06',name:'Band Pull-Through',cat:'lower',pat:'hinge',tier:0,muscles:'Glutes, hamstrings',equip:'BAND',sets:3,reps:'12–20',rpe:'RPE 7',rest:'60s',tempo:'2-0-1-1',
+ how:'Anchor a band low behind you, face away, and pass the band between your legs. Hinge forward, then stand by driving the hips forward against the band.',
+ cue:'This is a hip movement, not an arm movement. Your hands just hold on.',
+ prog:'Shorten the band or step further away for more tension.',
+ reg:'Step closer to the anchor.',
+ subs:'DB Romanian Deadlift · Floor Hip Thrust',
+ notes:'The easiest way to learn what a hinge should feel like, because the band pulls you into the right shape.'},
+
+{id:'x07',name:'Banded Good Morning',cat:'lower',pat:'hinge',tier:0,muscles:'Hamstrings, glutes, erectors',equip:'BAND',sets:3,reps:'12–20',rpe:'RPE 7',rest:'60s',tempo:'3-1-1-0',
+ how:'Stand on a band and loop the top behind your neck across the upper back. Hinge forward with a flat back until you feel the hamstrings, then stand.',
+ cue:'Push the hips back rather than bending the spine. Knees stay softly bent throughout.',
+ prog:'Add reps, then use a heavier band.',
+ reg:'Reduce range, or do it with no band.',
+ subs:'DB Romanian Deadlift · Band Pull-Through'},
+
+{id:'x08',name:'Kettlebell Swing',cat:'lower',pat:'hinge',tier:1,muscles:'Glutes, hamstrings, trunk',equip:'Kettlebell',sets:4,reps:'12–20',rpe:'RPE 7',rest:'60s',tempo:'Ballistic',
+ how:'Hinge and hike the bell back between the legs, then snap the hips forward so the bell floats to chest height. Let it fall and repeat.',
+ cue:'The arms do nothing. It is a hinge that happens fast, not a front raise.',
+ prog:'Add reps, then a heavier bell, then single-arm.',
+ reg:'Learn the Band Pull-Through first.',
+ subs:'Band Pull-Through · Broad Jump',
+ notes:'Counts as both hinge strength and conditioning. Stop the set the moment the hips stop snapping.'},
+
+/* ---------------- SINGLE-LEG SQUAT ---------------- */
+{id:'x09',name:'Step-Down (Eccentric)',cat:'lower',pat:'slsquat',tier:1,muscles:'Quads, glutes, knee control',equip:'Step or bench',sets:3,reps:'6–10 / leg',rpe:'RPE 8',rest:'60s / leg',tempo:'5-0-1-0',
+ how:'Stand on a step on one leg, the other hanging off the side. Lower that heel towards the floor over 5 seconds, tap lightly, then push back up.',
+ cue:'The knee of the working leg must not collapse inward. Watch it, and stop the set when it does.',
+ prog:'Use a higher step, then hold a dumbbell.',
+ reg:'Lower step, or hold a support.',
+ subs:'Skater Squat · Bulgarian Split Squat',
+ notes:'The single best exercise for knee control, and the one physios reach for first.'},
+
+{id:'x10',name:'Shrimp Squat',cat:'lower',pat:'slsquat',tier:0,muscles:'Quads, glutes, balance',equip:'BW',sets:3,reps:'4–8 / leg',rpe:'RPE 8',rest:'75s / leg',tempo:'3-0-1-0',
+ how:'Stand on one leg, bend the other knee and hold that foot behind you. Squat down until the trailing knee touches the floor, then stand.',
+ cue:'Stay upright. Reach the arms forward as a counterweight if you need to.',
+ prog:'Progress towards holding the foot with both hands, then to a pistol.',
+ reg:'Do not hold the foot; let the back leg trail freely (Skater Squat).',
+ subs:'Skater Squat · Step-Down (Eccentric)'},
+
+{id:'x11',name:'Pistol Squat Progression',cat:'lower',pat:'slsquat',tier:0,muscles:'Quads, glutes, ankle range',equip:'BW',sets:3,reps:'3–8 / leg',rpe:'RPE 8',rest:'90s / leg',tempo:'3-1-1-0',
+ how:'Stand on one leg with the other extended in front. Lower as far as you can control, then stand. Hold a doorframe with one hand at first and take less support over time.',
+ cue:'Heel stays down. If it lifts, you have gone past your ankle range for today.',
+ prog:'Take progressively less hand support, then none.',
+ reg:'Sit back to a chair and stand from it on one leg.',
+ subs:'Skater Squat · Shrimp Squat',
+ notes:'A long project. Treat it as a skill you practise, not a set you grind.'},
+
+/* ---------------- HIP EXTENSION ---------------- */
+{id:'x12',name:'Frog Pump',cat:'lower',pat:'hipext',tier:0,muscles:'Glutes',equip:'BW',sets:3,reps:'20–30',rpe:'RPE 7',rest:'45s',tempo:'1-0-1-1',
+ how:'Lie on your back, heels together, knees wide and turned out. Drive the hips up, squeeze hard at the top, lower.',
+ cue:'The turned-out position takes the hamstrings out of it, so the glutes have to do the work.',
+ prog:'Add reps to 30, then a band across the hips.',
+ reg:'Reduce range.',
+ subs:'Floor Hip Thrust · Single-Leg Glute Bridge'},
+
+{id:'x13',name:'Banded Glute Bridge',cat:'lower',pat:'hipext',tier:0,muscles:'Glutes, hamstrings',equip:'BAND',sets:3,reps:'15–25',rpe:'RPE 7',rest:'45s',tempo:'2-0-1-2',
+ how:'Loop a band just above the knees. Lie on your back, feet flat, and bridge up while pushing the knees out against the band.',
+ cue:'Push out against the band the whole time — that is what makes this different from a plain bridge.',
+ prog:'Add reps, heavier band, then single-leg.',
+ reg:'Remove the band.',
+ subs:'Floor Hip Thrust · Frog Pump'},
+
+{id:'x14',name:'Hip Thrust March',cat:'lower',pat:'hipext',tier:0,muscles:'Glutes, trunk stability',equip:'BW',sets:3,reps:'8–12 / side',rpe:'RPE 7',rest:'60s',tempo:'Controlled',
+ how:'Hold a bridge at the top. Without letting the hips drop or tilt, lift one knee towards the chest, replace it, then the other.',
+ cue:'Put a hand on each hip bone — they should stay perfectly level as you march.',
+ prog:'Slow the march down, or hold each knee up for 2 seconds.',
+ reg:'Hold a plain bridge with both feet down.',
+ subs:'Single-Leg Glute Bridge · Floor Hip Thrust'},
+
+/* ---------------- HAMSTRING CURL ---------------- */
+{id:'x15',name:'Band Leg Curl',cat:'lower',pat:'hamcurl',tier:0,muscles:'Hamstrings',equip:'BAND',sets:3,reps:'12–20 / leg',rpe:'RPE 7',rest:'45s',tempo:'2-0-2-0',
+ how:'Anchor a band low in front of you and hook it around one ankle. Lie face down and curl the heel towards your backside against the tension.',
+ cue:'Keep the hips pressed down. If they lift, the band is too heavy.',
+ prog:'Step further from the anchor, or use a heavier band.',
+ reg:'Lighter band or shorter range.',
+ subs:'Sliding Leg Curl · Nordic Curl Eccentric'},
+
+{id:'x16',name:'Long-Lever Bridge Walkout',cat:'lower',pat:'hamcurl',tier:0,muscles:'Hamstrings, glutes',equip:'BW',sets:3,reps:'6–10',rpe:'RPE 8',rest:'60s',tempo:'Slow',
+ how:'Bridge up with feet flat. Walk the feet out a few inches at a time, keeping the hips high, until the legs are nearly straight. Walk back in.',
+ cue:'The further the feet travel, the harder the hamstrings work. Stop before the hips sag.',
+ prog:'Walk out further, or one leg at a time.',
+ reg:'Fewer steps out.',
+ subs:'Sliding Leg Curl · Single-Leg Glute Bridge',
+ notes:'A hamstring curl for people with no equipment at all.'},
+
+{id:'x17',name:'Single-Leg Bridge Curl',cat:'lower',pat:'hamcurl',tier:0,muscles:'Hamstrings',equip:'TOWEL',sets:3,reps:'8–12 / leg',rpe:'RPE 8',rest:'60s / leg',tempo:'2-0-3-0',
+ how:'One heel on a towel on a smooth floor, other leg held up. Bridge the hips and slide the heel out until the leg is straight, then drag it back in without dropping the hips.',
+ cue:'Dragging back in is the working half. Do it slowly.',
+ prog:'Slow the return further, then add reps.',
+ reg:'Use both legs.',
+ subs:'Sliding Leg Curl · Nordic Curl Eccentric'},
+
+/* ---------------- CALF & TIBIALIS ---------------- */
+{id:'x18',name:'Bent-Knee Calf Raise',cat:'lower',pat:'calf',tier:0,muscles:'Soleus',equip:'BW',sets:3,reps:'15–25',rpe:'RPE 8',rest:'45s',tempo:'2-1-2-1',
+ how:'Stand with knees bent to about 30 degrees and hold that angle. Rise onto the toes and lower slowly without straightening the knees.',
+ cue:'Bending the knee shifts the work from the calf to the soleus underneath it — the muscle that matters for running and repeated push-off.',
+ prog:'Add reps, then do it one leg at a time.',
+ reg:'Hold a wall for balance.',
+ subs:'Standing Calf Raise · Single-Leg Calf Raise',
+ notes:'Straight-leg raises miss the soleus almost entirely, which is why this earns its own slot.'},
+
+{id:'x19',name:'Eccentric Heel Lower',cat:'lower',pat:'calf',tier:0,muscles:'Calves, Achilles tendon',equip:'BW',sets:3,reps:'8–12 / leg',rpe:'RPE 7',rest:'60s',tempo:'1-0-6-0',
+ how:'Rise onto both toes, shift your weight onto one leg, then lower that heel to the floor over 6 seconds. Use both legs to rise again.',
+ cue:'Slow and even. No sudden drop at the end.',
+ prog:'Add reps, then a small heel lift, then hold a dumbbell.',
+ reg:'Lower over 3 seconds instead.',
+ subs:'Single-Leg Calf Raise · Standing Calf Raise',
+ notes:'The classic tendon-loading protocol. Slow eccentrics are what tendons respond to.'},
+
+{id:'x20',name:'Toe Walk',cat:'lower',pat:'tib',tier:0,muscles:'Tibialis anterior, foot',equip:'BW',sets:3,reps:'30–45 s',rpe:'RPE 6',rest:'45s',tempo:'Steady',
+ how:'Walk forwards on your heels with the toes pulled up as high as they will go.',
+ cue:'Pull the toes towards the shin hard enough that the front of the shin burns.',
+ prog:'Longer walks, then add a light band around the forefoot.',
+ reg:'Shorter bouts.',
+ subs:'Tibialis Raise'},
+
+{id:'x21',name:'Tibialis Wall Raise',cat:'lower',pat:'tib',tier:0,muscles:'Tibialis anterior',equip:'WALL',sets:3,reps:'15–25',rpe:'RPE 7',rest:'45s',tempo:'2-0-3-0',
+ how:'Lean your back against a wall with the feet a step out in front. Keeping the heels planted, pull the toes up towards the shins, then lower slowly.',
+ cue:'Walk the feet further out to make it harder.',
+ prog:'Feet further from the wall, then add reps.',
+ reg:'Feet closer in.',
+ subs:'Tibialis Raise · Toe Walk',
+ notes:'Trains the muscle that decelerates the foot on landing — thin on most programmes and cheap insurance for the shins.'},
+
+/* ---------------- ADDUCTOR ---------------- */
+{id:'x22',name:'Side-Lying Adductor Raise',cat:'lower',pat:'adduct',tier:0,muscles:'Adductors',equip:'BW',sets:3,reps:'12–20 / side',rpe:'RPE 7',rest:'45s',tempo:'2-1-2-0',
+ how:'Lie on your side with the top leg bent and resting forward. Keep the bottom leg straight and lift it towards the ceiling, then lower slowly.',
+ cue:'Small range, no momentum. You should feel it on the inside of the thigh, not the hip.',
+ prog:'Add reps, then a pause at the top, then an ankle weight.',
+ reg:'Reduce range.',
+ subs:'Copenhagen Plank · Adductor Squeeze',
+ notes:'A gentler entry than the Copenhagen for anyone with a groin that is still grumbling.'},
+
+{id:'x23',name:'Adductor Slide-Out',cat:'lower',pat:'adduct',tier:0,muscles:'Adductors, groin',equip:'TOWEL',sets:3,reps:'8–12 / side',rpe:'RPE 7',rest:'60s',tempo:'3-0-2-0',
+ how:'Stand with one foot on a towel on a smooth floor. Slide that leg out to the side, keeping the other knee slightly bent, then drag it back in.',
+ cue:'Pull back in with the inner thigh, not by shifting your body weight across.',
+ prog:'Slide further out, then slow the return.',
+ reg:'Shorter slide.',
+ subs:'Cossack Squat · Copenhagen Plank'},
+
+/* ---------------- VERTICAL PULL ---------------- */
+{id:'x24',name:'Chin-Up',cat:'pull',pat:'pullv',tier:1,muscles:'Lats, biceps, upper back',equip:'Pull-up bar',sets:4,reps:'4–10',rpe:'RPE 8',rest:'2 min',tempo:'2-0-2-0',
+ how:'Hang from a bar with an underhand grip, hands about shoulder width. Pull until the chin clears the bar, lower under control.',
+ cue:'Start each rep from a dead hang with the shoulders set down, not shrugged up.',
+ prog:'Add reps, then weight, then move towards the wider Pull-Up.',
+ reg:'Negative Pull-Up or Band Lat Pulldown.',
+ subs:'Pull-Up · Band Lat Pulldown',
+ notes:'The underhand grip lets most people get more reps than a pull-up, which makes it the better starting point.'},
+
+{id:'x25',name:'Negative Pull-Up',cat:'pull',pat:'pullv',tier:1,muscles:'Lats, biceps',equip:'Pull-up bar',sets:4,reps:'3–6',rpe:'RPE 8',rest:'90s',tempo:'0-0-6-0',
+ how:'Jump or step up so your chin is over the bar, then lower yourself to a full hang over 6 seconds. Step up again for the next rep.',
+ cue:'Fight the whole way down. If you drop through the bottom half, shorten the count.',
+ prog:'Lengthen the lower to 8–10 seconds, then attempt full chin-ups.',
+ reg:'Band Lat Pulldown.',
+ subs:'Chin-Up · Inverted Row',
+ notes:'The fastest route to a first pull-up for most people.'},
+
+{id:'x26',name:'Band Kneeling Lat Pull',cat:'pull',pat:'pullv',tier:0,muscles:'Lats, upper back',equip:'BAND',sets:3,reps:'12–20',rpe:'RPE 7',rest:'60s',tempo:'2-0-2-1',
+ how:'Anchor a band high, kneel facing it, and pull the band down to the chest with straight-ish arms, leading with the elbows.',
+ cue:'Think about pulling your elbows into your back pockets.',
+ prog:'Heavier band, or kneel further back.',
+ reg:'Lighter band.',
+ subs:'Band Lat Pulldown · Chin-Up'},
+
+/* ---------------- ROTATION ---------------- */
+{id:'x27',name:'Half-Kneeling Band Rotation',cat:'core',pat:'rotate',tier:0,muscles:'Obliques, trunk rotators',equip:'BAND',sets:3,reps:'10–15 / side',rpe:'RPE 7',rest:'45s',tempo:'1-0-2-0',
+ how:'Anchor a band at chest height to your side. Kneel on the inside knee, hold the band with both hands at the chest, and rotate the torso away from the anchor.',
+ cue:'Rotate through the ribs, not by swinging the arms or shifting the hips.',
+ prog:'Heavier band, or step further from the anchor.',
+ reg:'Lighter band, smaller range.',
+ subs:'Band Rotational Press · Half-Kneeling Band Chop'},
+
+{id:'x28',name:'Standing Band Woodchop',cat:'core',pat:'rotate',tier:0,muscles:'Obliques, trunk',equip:'BAND',sets:3,reps:'10–15 / side',rpe:'RPE 7',rest:'45s',tempo:'1-0-2-0',
+ how:'Anchor a band high to one side. Standing tall, pull it down and across the body to the opposite hip, then return slowly.',
+ cue:'Let the hips turn with the movement — this is a whole-body rotation, not an arm pull.',
+ prog:'Heavier band, then add speed while keeping control on the return.',
+ reg:'Lighter band.',
+ subs:'Cable Woodchop · Band Rotational Press'},
+
+/* ---------------- LANDING ---------------- */
+{id:'x29',name:'Snap-Down',cat:'plyo',pat:'land',tier:0,muscles:'Landing mechanics, trunk',equip:'BW',sets:4,reps:'5',rpe:'RPE 6',rest:'60s',tempo:'Fast down, hold',
+ how:'Stand tall on the balls of your feet with arms overhead. Snap down into a quarter-squat athletic position and freeze there, arms driving back.',
+ cue:'Land silently and stop dead. No wobble, no second dip.',
+ prog:'Move to Depth Drop and Stick once you can freeze every rep.',
+ reg:'Slow the drop down.',
+ subs:'Depth Drop & Stick · Single-Leg Hop & Stick',
+ notes:'Teaches the landing position before you ever fall from a height. Do it before any jumping work.'},
+
+{id:'x30',name:'Single-Leg Drop Landing',cat:'plyo',pat:'land',tier:0,muscles:'Knee and ankle control',equip:'BW',sets:3,reps:'4–6 / leg',rpe:'RPE 6',rest:'60s',tempo:'Land and hold',
+ how:'Stand on one leg, hop a few inches off the floor, and land on the same leg. Hold the landing for two seconds.',
+ cue:'The knee must not travel inward on landing. If it does, you are done for that set.',
+ prog:'Small step down, then a slightly higher drop.',
+ reg:'Two-footed landings first.',
+ subs:'Single-Leg Hop & Stick · Snap-Down',
+ notes:'Most non-contact knee injuries happen on a single-leg landing. This is the rehearsal.'},
+
+{id:'x31',name:'Lateral Drop & Stick',cat:'plyo',pat:'land',tier:0,muscles:'Hip control, lateral stability',equip:'BW',sets:3,reps:'4–6 / side',rpe:'RPE 7',rest:'60s',tempo:'Land and hold',
+ how:'Hop sideways onto one leg and freeze the landing for two seconds before hopping back.',
+ cue:'Absorb through the hip, not by letting the ankle roll or the knee fall in.',
+ prog:'Hop further, then land from a small step.',
+ reg:'Shorter hop, two-footed.',
+ subs:'Lateral Bound (Skater) · Single-Leg Hop & Stick'},
+
+/* ---------------- BOUNDING ---------------- */
+{id:'x32',name:'Continuous Skater Bounds',cat:'plyo',pat:'bound',tier:0,muscles:'Glutes, lateral power',equip:'BW',sets:4,reps:'6–10 / side',rpe:'RPE 8',rest:'90s',tempo:'Reactive',
+ how:'Bound side to side, landing on one leg and immediately pushing off again without pausing.',
+ cue:'Minimum ground contact. If you are pausing to balance, do the Lateral Bound with a stick landing instead.',
+ prog:'Bound further, or add reps.',
+ reg:'Lateral Bound (Skater) with a held landing.',
+ subs:'Lateral Bound (Skater) · Lateral Drop & Stick',
+ notes:'Quality first: stop the set the moment distance drops off, not when you are tired.'},
+
+{id:'x33',name:'Standing Triple Jump',cat:'plyo',pat:'bound',tier:0,muscles:'Glutes, hamstrings, calves',equip:'Open ground',sets:4,reps:'3 sets of 3 jumps',rpe:'RPE 8',rest:'2 min',tempo:'Maximal',
+ how:'From standing, make three continuous forward bounds — left, right, then land on both feet. Mark the distance.',
+ cue:'Reach forward with each bound rather than hopping upwards.',
+ prog:'Chase the distance mark, not more reps.',
+ reg:'Two bounds, or Broad Jump.',
+ subs:'Broad Jump · Continuous Skater Bounds'},
+
+/* ---------------- SPRINT ---------------- */
+{id:'x34',name:'Wall Acceleration Drill',cat:'speed',pat:'sprint',tier:0,muscles:'Hip flexors, mechanics',equip:'WALL',sets:4,reps:'6–8 / leg',rpe:'RPE 7',rest:'60s',tempo:'Sharp',
+ how:'Lean into a wall with the body in one straight line from head to the support foot. Drive one knee up and punch the foot back down to the floor.',
+ cue:'Body stays in one line — no bending at the hips. Punch the foot down, do not reach it out.',
+ prog:'Add reps, then alternate legs at speed.',
+ reg:'Do it slowly, one position at a time.',
+ subs:'Acceleration Sprints (10–20 m)',
+ notes:'Lets you practise sprint mechanics without the soft-tissue cost of actually sprinting — useful on a low-readiness day.'},
+
+{id:'x35',name:'Flying Sprints (20 m)',cat:'speed',pat:'sprint',tier:0,muscles:'Top speed, hamstrings',equip:'RUN',sets:4,reps:'20 m at full speed',rpe:'RPE 9',rest:'2–3 min',tempo:'Maximal',
+ how:'Build up over 20 m, hold maximum speed for 20 m, then slow down over 20 m. The timed part is only the middle.',
+ cue:'Relax the face and hands. Trying harder at top speed usually makes you slower.',
+ prog:'Add one rep per week to a maximum of six.',
+ reg:'Acceleration Sprints from a standstill.',
+ subs:'Acceleration Sprints (10–20 m) · Hill Sprints',
+ notes:'Genuinely high risk if the hamstrings are not warm. Never do this on a yellow or worse day, and never without a full warm-up.'},
+
+{id:'x36',name:'Resisted Sprint Starts',cat:'speed',pat:'sprint',tier:0,muscles:'Acceleration, glutes',equip:'BAND + RUN',sets:5,reps:'10 m',rpe:'RPE 8',rest:'90s',tempo:'Maximal',
+ how:'Loop a band around your waist with a partner or fixed anchor behind you. Drive out for 10 m against the resistance.',
+ cue:'Big forward lean out of the first three steps, long pushes behind you.',
+ prog:'Heavier band, or add reps.',
+ reg:'Unresisted Acceleration Sprints.',
+ subs:'Acceleration Sprints (10–20 m) · Hill Sprints'},
+
+{id:'x37',name:'Hill Bounds',cat:'plyo',pat:'bound',tier:0,muscles:'Glutes, calves, power',equip:'Hill',sets:4,reps:'15–20 m',rpe:'RPE 8',rest:'2 min',tempo:'Powerful',
+ how:'Bound up a moderate hill, driving one knee at a time and covering as much ground per stride as you can.',
+ cue:'Long, powerful strides. This is bounding, not running up a hill.',
+ prog:'Longer distance, or a steeper hill.',
+ reg:'Hill Sprints, or flat bounding.',
+ subs:'Hill Sprints · Standing Triple Jump',
+ notes:'The incline reduces impact on landing while raising the force needed to push off — a safer way to bound.'},
+
+/* ---------------- BODYWEIGHT COVER FOR THE LAST FOUR PATTERNS ----------------
+   Added because a test asserted that every strength pattern must have at least
+   one option needing no equipment, and these four failed it. Without them a
+   user who ticked nothing lost vertical pulling, lateral raises, biceps and
+   trunk rotation from their programme with no explanation. */
+{id:'x38',name:'Wall Isometric Lateral Raise',cat:'push',pat:'latraise',tier:0,muscles:'Side deltoids',equip:'WALL',sets:3,reps:'20–40 s / side',rpe:'RPE 8',rest:'45s',tempo:'Isometric',
+ how:'Stand side-on in a doorway or beside a wall, arm straight down with the back of the hand against the surface. Press outwards as hard as you can hold, without moving.',
+ cue:'Press through the back of the wrist, not the palm. The shoulder should burn within 20 seconds.',
+ prog:'Hold longer, then press harder, then do it at 45 degrees of abduction as well.',
+ reg:'Shorter holds, less force.',
+ subs:'DB Lateral Raise · Band Lateral Raise',
+ notes:'An isometric cannot replace loaded raises forever, but it means shoulder width is still trainable with nothing at all.'},
+
+{id:'x39',name:'Self-Resisted Curl',cat:'pull',pat:'biceps',tier:0,muscles:'Biceps, forearms',equip:'TOWEL',sets:3,reps:'8–12 / arm',rpe:'RPE 8',rest:'45s',tempo:'3-0-4-0',
+ how:'Hold one end of a towel in the curling hand and the other end in the opposite hand below it. Curl up against resistance from your own arm, then resist on the way down.',
+ cue:'Give just enough resistance that the last two reps are genuinely hard. The lowering half should be slower than the lift.',
+ prog:'Resist harder, and lengthen the lowering to 5 seconds.',
+ reg:'Less resistance.',
+ subs:'DB Bicep Curl · Band Curl',
+ notes:'Crude, but self-resistance works if you are honest about how hard you push.'},
+
+{id:'x40',name:'Lying Windshield Wiper',cat:'core',pat:'rotate',tier:0,muscles:'Obliques, trunk rotators',equip:'FLOOR',sets:3,reps:'8–12 / side',rpe:'RPE 7',rest:'45s',tempo:'2-0-3-0',
+ how:'Lie on your back, arms out wide, legs up and knees bent to 90 degrees. Lower both knees slowly to one side without letting the opposite shoulder lift, then return through the middle.',
+ cue:'Both shoulders stay pinned to the floor. That is what makes it rotation rather than a hip swing.',
+ prog:'Straighten the legs to lengthen the lever, then slow the return.',
+ reg:'Smaller range, feet resting down between reps.',
+ subs:'Half-Kneeling Band Rotation · Cable Woodchop'},
+
+{id:'x41',name:'Prone Sliding Lat Pull',cat:'pull',pat:'pullv',tier:0,muscles:'Lats, upper back',equip:'TOWEL',sets:3,reps:'10–15',rpe:'RPE 7',rest:'60s',tempo:'2-0-3-0',
+ how:'Lie face down with a hand on a towel on each side. Slide both arms overhead, then pull them down towards your hips, pressing into the floor hard enough that the lats have to do the work.',
+ cue:'Press down into the floor as you pull. Without that pressure it is just an arm sweep.',
+ prog:'Press harder, slow the pull, then lift the chest slightly off the floor as you pull.',
+ reg:'Smaller range, less downward pressure.',
+ subs:'Band Lat Pulldown · Chin-Up',
+ notes:'Not a substitute for a pull-up, but it keeps the vertical pull pattern trainable with no bar and no band.'}
+
+];}
+
+/* The whole built-in library, in one place. freshDB and migrate both go
+   through this, so a new group of exercises can never again be added to one
+   and forgotten in the other. */
+function builtInExercises(){
+  return applyExMeta(seedExercises().concat(gymExercises()).concat(extraExercises()));
+}
+
 function applyExMeta(list){
   list.forEach(e=>{
     const m=EX_META[e.id];
@@ -4870,7 +5221,8 @@ function bindInputs(root){
 function tabs(){ return [
   {id:'today',  label:'Today',   icon:'today'},
   {id:'workouts',label:'Train',  icon:'dumbbell'},
-  {id:'tennis', label:'Activity',icon:'tennis'},
+  /* 'flame' rather than a racquet: this tab holds every activity, not one sport */
+  {id:'tennis', label:'Activity',icon:'flame'},
   {id:'progress',label:'Progress',icon:'chart'},
   {id:'whoop',  label:'Metrics', icon:'pulse'},
   {id:'settings',label:'Settings',icon:'gear'}
@@ -4880,7 +5232,7 @@ function renderNav(){
   /* the brand is app identity, not a status readout — whichever device you
      wear is shown on the Metrics screen and in Settings, not here */
   $('#nav').innerHTML=
-    `<div class="nav-brand"><i>${svg('tennis')}</i><div>Baseline<span>Adaptive training</span></div></div>`+
+    `<div class="nav-brand"><i>${svg('ring')}</i><div>Baseline<span>Adaptive training</span></div></div>`+
     tabs().map(t=>
       `<button data-tab="${t.id}" class="${TAB===t.id?'on':''}" aria-current="${TAB===t.id?'page':'false'}">${svg(t.icon)}<span>${esc(t.label)}</span></button>`).join('')+
     `<div class="nav-foot">All data stays on this device.<br>No account, no server, no tracking.</div>`;
@@ -7805,8 +8157,12 @@ function migrate(d){
   // older exports had w_aerobic / w_interval; make sure the cardio set exists
   const have=new Set(out.workouts.map(w=>w.id));
   seedWorkouts().forEach(sw=>{ if(!have.has(sw.id)) out.workouts.push(sw); });
+  /* Backfill against the ENTIRE built-in library. This used to read
+     seedExercises() alone, so every exercise added later — the gym set, and
+     now the extra patterns — was invisible to anyone who already had the app
+     installed. Their own edits and additions are untouched. */
   const exHave=new Set(out.exercises.map(e=>e.id));
-  seedExercises().forEach(se=>{ if(!exHave.has(se.id)) out.exercises.push(se); });
+  builtInExercises().forEach(se=>{ if(!exHave.has(se.id)) out.exercises.push(se); });
   // repair any workout whose exercises no longer exist
   const ids=new Set(out.exercises.map(e=>e.id));
   out.workouts.forEach(w=>{
