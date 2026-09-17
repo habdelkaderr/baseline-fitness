@@ -590,6 +590,15 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .wm-ex{font-size:27px;font-weight:850;letter-spacing:-.9px;line-height:1.14}
 .wm-sub{font-size:13px;color:var(--text-3);margin-top:7px;font-weight:600}
 /* what you did last time, shown while you are standing in front of the bar */
+/* what the engine rejected — the reason to trust the one thing it chose */
+.ruled{margin-top:12px;padding-top:11px;border-top:1px solid var(--border-soft)}
+.ruled .rl-t{font-size:11px;font-weight:600;color:var(--text-3);margin-bottom:6px}
+.ruled .rl{display:flex;gap:7px;align-items:flex-start;margin-bottom:5px;
+  font-size:12px;color:var(--text-3);line-height:1.45}
+.ruled .rl:last-child{margin-bottom:0}
+.ruled .rl i{flex:0 0 14px;margin-top:1px;color:var(--text-3);opacity:.7}
+.ruled .rl i svg{width:12px;height:12px;stroke-width:2.6;display:block}
+.ruled .rl b{color:var(--text-2);font-weight:600}
 .lastrow{
   margin-top:14px;padding:11px 13px;border-radius:12px;
   background:var(--surface-2);border-left:3px solid var(--cyan);
@@ -955,7 +964,7 @@ const SCHEMA_VERSION=2;             // bump to transform stored records
 /* A readable build stamp. Without one, a tester reporting "it's broken" cannot
    tell you whether they are on today's build or a cached copy from last week,
    which is most of the diagnosis. Bump this on every deploy. */
-const APP_BUILD='2026-09-17';
+const APP_BUILD='2026-09-18';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */
@@ -4885,20 +4894,21 @@ function recommend(date, ci, rd){
   win.notes.filter(n=>Math.abs(n.v)>=8).slice(0,5).forEach(n=>{ if(n.t) why.push({t:n.t,k:n.k}); });
   trimNotes.forEach(n=>why.push(n));
   if(addCore) why.push({t:`Core added — it is a primary goal, it has been ${H.since.core===99?'a while':H.since.core+' days'} since the last session, and it stacks cleanly on this one.`,k:'pos'});
-  /* say what was rejected and why — the second-best option */
-  const runnerUp=scored.filter(x=>x!==win)[0];
-  if(runnerUp){
-    if(runnerUp.blocked) why.push({t:`<b>${esc(runnerUp.c.label)}</b> ruled out: ${runnerUp.blocked}.`,k:'info'});
-    else {
-      const neg=runnerUp.notes.filter(n=>n.v<=-14&&n.t)[0];
-      if(neg) why.push({t:`<b>${esc(runnerUp.c.label)}</b> scored lower: ${neg.t}`,k:'info'});
-    }
-  }
+  /* What was rejected, and why. This is the thing no other training app
+     does, so it is returned separately rather than appended to the reasons
+     list, where it read as one more bullet. Up to three, strongest first. */
+  const ruledOut=[];
+  scored.filter(x=>x!==win).forEach(x=>{
+    if(ruledOut.length>=3) return;
+    if(x.blocked){ ruledOut.push({label:x.c.label, emoji:x.c.emoji, why:x.blocked, hard:true}); return; }
+    const neg=x.notes.filter(n=>n.v<=-14&&n.t)[0];
+    if(neg) ruledOut.push({label:x.c.label, emoji:x.c.emoji, why:neg.t, hard:false});
+  });
 
   return {
     id:win.c.id, label:win.c.label, emoji:win.c.emoji, goalNote:win.c.goal,
     workoutId:win.wid, variant, addCore, est, intensity, prep,
-    isSport:flagSport||loggedSport, sportName:SPN, readiness:rd, why,
+    isSport:flagSport||loggedSport, sportName:SPN, readiness:rd, why, ruledOut,
     scored, week:P, history:H, phase:ph, notes:why
   };
 }
@@ -4946,7 +4956,7 @@ function planFor(date, ci, rd){
                         score:r.readiness?r.readiness.score:null, at:new Date().toISOString()};
     save();
   }
-  return {workoutId:r.workoutId, variant:r.variant, est:r.est, notes:r.why,
+  return {workoutId:r.workoutId, variant:r.variant, est:r.est, notes:r.why, ruledOut:r.ruledOut,
           isSport:r.isSport, readiness:r.readiness, addCore:r.addCore, rec:r};
 }
 
@@ -5224,9 +5234,9 @@ function tabs(){ return [
   /* 'flame' rather than a racquet: this tab holds every activity, not one sport */
   {id:'tennis', label:'Activity',icon:'flame'},
   {id:'progress',label:'Progress',icon:'chart'},
-  {id:'whoop',  label:'Metrics', icon:'pulse'},
+  {id:'whoop',  label:'Metrics', icon:'pulse', needsDevice:true},
   {id:'settings',label:'Settings',icon:'gear'}
-];}
+].filter(t=>!t.needsDevice||usesDevice()||DB.whoop.cycles.length>0);}
 let TAB='today';
 function renderNav(){
   /* the brand is app identity, not a status readout — whichever device you
@@ -5245,6 +5255,11 @@ function go(tab){
 }
 function render(){
   const v=$('#view');
+  /* The tab set is not fixed: Metrics disappears for anyone with no wearable.
+     Removing a wearable while standing on that tab used to leave you on a
+     screen with nothing highlighted in the nav, so the guard lives here and
+     re-checks on every render rather than only at boot. */
+  if(!tabs().some(x=>x.id===TAB)){ TAB='today'; renderNav(); }
   ({today:viewToday, workouts:viewWorkouts, tennis:viewTennis,
     progress:viewProgress, whoop:viewWhoop, settings:viewSettings}[TAB]||viewToday)(v);
   bindInputs(v);
@@ -5279,6 +5294,9 @@ function viewToday(v){
   const P=rec.week, T=DB.targets;
 
   v.innerHTML=setupPrompt()+`
+   <div class="sec-t">This week</div>
+  ${weekStrip(d)}
+
   <div class="hero" style="--hc:${B.color}">
     <div class="hero-top">
       <div>
@@ -5300,6 +5318,11 @@ function viewToday(v){
       <div class="why">
         <div class="card-t" style="margin-bottom:8px">Why today</div>
         <ul>${pl.why.map(w=>`<li class="${w.k}"><span class="dot"></span><span>${w.t}</span></li>`).join('')}</ul>
+        ${(pl.ruledOut&&pl.ruledOut.length)?`<div class="ruled">
+          <div class="rl-t">Ruled out today</div>
+          ${pl.ruledOut.map(r=>`<div class="rl"><i>${svg('x')}</i>
+            <span><b>${esc(r.label)}</b> — ${r.why}</span></div>`).join('')}
+        </div>`:''}
         <div style="font-size:11.5px;color:var(--text-3);margin-top:10px;line-height:1.5">
           Based on ${esc(rd.sources.label)} · ${esc(rd.sources.confidence)} confidence${(usesDevice()&&!hasWhoop())?' · '+esc(SRC_NAME())+' not connected':''}
         </div>
@@ -5332,6 +5355,13 @@ function viewToday(v){
        <div style="font-size:11.5px;color:var(--text-3);margin-top:3px">${sportWarmup().dur} min before you play + maintenance after</div></div>
        <button class="btn xs ghost" id="btnPrep">Open</button></div></div>`:''}
 
+  <div class="sec-t">Today's activity</div>
+  ${dailySummaryCard(d)}
+  <button class="btn ghost block" id="btnQuickLog" style="margin-bottom:12px">${svg('plus')} Log an activity</button>
+
+
+  ${firstWeekCard()}
+
   <div class="sec-t">This week so far</div>
   <div class="card">
     ${targetKeys().map(k=>{
@@ -5347,6 +5377,21 @@ function viewToday(v){
     ${P.otherSport?`<div class="kv"><span class="k">Other activity</span><span class="v">${P.otherSport} ×</span></div>`:''}
     <div class="hint" style="margin-top:8px">Targets are guidelines the engine weighs, never quotas it will chase at the cost of your recovery.</div>
   </div>
+
+  ${(()=>{ /* the week's verdict, collapsed: worth having, not worth reading
+       every single morning. The summary line says whether to open it. */
+    const R=weekReview();
+    return `<div class="card acc" id="accWk" style="padding:0;overflow:hidden">
+      <div class="acc-h" id="accWkH">
+        <div><div class="card-t">This week in review</div>
+          <div style="font-size:12.5px;color:var(--text-2);font-weight:600;margin-top:4px">${
+            R.attn.length ? esc(R.attn.length+' thing'+(R.attn.length>1?'s':'')+' to watch')
+            : R.good.length ? 'Going well so far'
+            : 'Not enough logged yet to judge'}</div></div>
+        <span class="acc-x">${svg('down')}</span>
+      </div>
+      <div class="acc-b">${weekNarrative(R)}</div>
+    </div>`; })()}
 
   <div class="sec-t">Today's numbers</div>
   ${(ci.recovery!=null||ci.hrv!=null||ci.rhr!=null)?`
@@ -5381,6 +5426,20 @@ function viewToday(v){
     <button class="btn xs ghost" id="btnAddWhoop" style="margin-top:10px">Add a wearable</button>
   </div>`}`}
 
+  <div class="sec-t">How you feel</div>
+  <div class="card tight">
+    ${feelRow('Energy',ci.energy,'g')}
+    ${feelRow('Soreness',ci.soreness,'r',true)}
+    ${feelRow('Stress',ci.stress,'o',true)}
+    ${feelRow('Motivation',ci.motivation,'a')}
+    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:12px">
+      <span class="chip ${ci.pain==='None'?'g':ci.pain==='Mild'?'y':ci.pain==='Moderate'?'o':'r'}">Pain: ${esc(ci.pain||'—')}</span>
+      ${ci.availTime?`<span class="chip">${ci.availTime} min available</span>`:''}
+      <button class="chip" id="btnEditCi">${svg('edit')} Edit check-in</button>
+    </div>
+    ${ci.notes?`<div class="note" style="margin-top:12px">${esc(ci.notes)}</div>`:''}
+  </div>
+
   <div class="card acc" id="accReady" style="padding:0;overflow:hidden">
     <div class="acc-h" id="accReadyH">
       <div><div class="card-t">Readiness breakdown</div>
@@ -5409,26 +5468,8 @@ function viewToday(v){
     </div>
   </div>
 
-  <div class="sec-t">How you feel</div>
-  <div class="card tight">
-    ${feelRow('Energy',ci.energy,'g')}
-    ${feelRow('Soreness',ci.soreness,'r',true)}
-    ${feelRow('Stress',ci.stress,'o',true)}
-    ${feelRow('Motivation',ci.motivation,'a')}
-    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:12px">
-      <span class="chip ${ci.pain==='None'?'g':ci.pain==='Mild'?'y':ci.pain==='Moderate'?'o':'r'}">Pain: ${esc(ci.pain||'—')}</span>
-      ${ci.availTime?`<span class="chip">${ci.availTime} min available</span>`:''}
-      <button class="chip" id="btnEditCi">${svg('edit')} Edit check-in</button>
-    </div>
-    ${ci.notes?`<div class="note" style="margin-top:12px">${esc(ci.notes)}</div>`:''}
-  </div>
 
-  <div class="sec-t">Today's activity</div>
-  ${dailySummaryCard(d)}
-  <button class="btn ghost block" id="btnQuickLog" style="margin-bottom:12px">${svg('plus')} Log an activity</button>
 
-  <div class="sec-t">This week</div>
-  ${weekStrip(d)}
 
   <div class="card">
     <div class="card-h"><div class="card-t">Week ${ph.absWeek} — ${esc(ph.name)}</div><span class="tag v">Block ${ph.block}</span></div>
@@ -5525,6 +5566,43 @@ function setupPrompt(){
     </div>
   </div>`;
 }
+/* How much the engine has to work with. Used to decide whether a new user
+   still needs orienting: it is not a dismissible banner, it simply stops
+   appearing once there is enough history for the app to speak for itself. */
+function loggedCount(){
+  return (DB.sessions||[]).filter(s=>s.done).length
+       + (DB.activities||[]).length
+       + Object.keys(DB.checkins||{}).length;
+}
+function firstWeekCard(){
+  if(!DB.profile.onboarded) return '';        // the setup prompt owns that case
+  const n=loggedCount();
+  if(n>=6) return '';                          // it can speak for itself now
+  const done=[
+    ['Check in each morning', Object.keys(DB.checkins||{}).length>0,
+     'Sixty seconds. It is what turns a generic plan into a decision about today.'],
+    ['Finish a session', (DB.sessions||[]).some(s=>s.done),
+     'Once one is logged, every exercise starts showing what you did last time.'],
+    ['Log anything else you do', (DB.activities||[]).length>0,
+     'A match, a run, a long walk. Unplanned activity is not a missed workout \u2014 the engine works around it.']
+  ];
+  const left=done.filter(x=>!x[1]).length;
+  return `<div class="card" style="border-color:var(--accent-line);background:var(--accent-wash)">
+    <div class="card-t accent">Getting started</div>
+    <div style="font-size:15px;font-weight:650;letter-spacing:-.2px;margin:7px 0 3px">
+      ${left===0?'That is everything \u2014 it only gets sharper from here'
+                :'Three things make this work'}</div>
+    <p style="font-size:12.5px;color:var(--text-2);line-height:1.5;margin-bottom:11px">
+      The recommendation is only as good as what it knows about you. Right now it is
+      working from ${n===0?'your setup alone':'very little history'}.</p>
+    ${done.map(([t,ok,why])=>`<div class="row" style="padding:9px 0">
+      <div style="flex:0 0 20px;color:${ok?'var(--accent)':'var(--text-3)'}">${svg(ok?'check':'chev')}</div>
+      <div class="rt"><div class="rn" style="font-size:13.5px;${ok?'color:var(--text-3)':''}">${esc(t)}</div>
+      ${ok?'':`<div class="rs">${why}</div>`}</div></div>`).join('')}
+    <div class="hint" style="margin-top:8px">This card goes away by itself once you have a few entries.</div>
+  </div>`;
+}
+
 /* has this device recorded anything at all? */
 function hasHistory(){
   return (DB.sessions||[]).some(s=>s.done) || (DB.activities||[]).length>0 || DB.whoop.cycles.length>0;
@@ -5593,7 +5671,7 @@ function wireToday(d){
     DB.profile.onboarded=true; save(true); renderNav(); render();
     toast('Using defaults — change them any time in Settings');
   });
-  ['accReady','accOpts'].forEach(id=>{
+  ['accReady','accOpts','accWk'].forEach(id=>{
     const h=$('#'+id+'H'); if(h) h.onclick=()=>$('#'+id).classList.toggle('open');
   });
 }
@@ -5831,15 +5909,26 @@ function paneProgram(c){
     <div class="hint" style="margin-top:8px">Derived from ${esc(sportsText())}, your goals, ${DB.profile.daysPerWeek||4} training days a week and the equipment you own. Change any of those in Settings and these move with them.</div>
   </div>
 
-  <div class="card">
-    <div class="card-t accent" style="margin-bottom:11px">Decision priority</div>
+  <div class="card acc" id="accPri" style="padding:0;overflow:hidden">
+    <div class="acc-h" id="accPriH">
+      <div><div class="card-t">Decision priority</div>
+        <div style="font-size:12.5px;color:var(--text-2);font-weight:600;margin-top:4px">What the engine weighs, in order</div></div>
+      <span class="acc-x">${svg('down')}</span>
+    </div>
+    <div class="acc-b">
     ${priorityList()
       .map((x,i)=>`<div class="kv"><span class="k"><b style="color:var(--accent)">${i+1}.</b> ${esc(x)}</span></div>`).join('')}
     <div class="hint" style="margin-top:9px">Applied in order. Recovery is never sacrificed to complete a weekly target, and conditioning is never recommended just because it is available.</div>
+    </div>
   </div>
 
-  <div class="card">
-    <div class="card-h"><div class="card-t">8-week progression plan</div><span class="tag v">Now: week ${ph.absWeek}</span></div>
+  <div class="card acc" id="accPlan" style="padding:0;overflow:hidden">
+    <div class="acc-h" id="accPlanH">
+      <div><div class="card-t">8-week progression plan</div>
+        <div style="font-size:12.5px;color:var(--text-2);font-weight:600;margin-top:4px">Week ${ph.absWeek} — ${esc(ph.name)}</div></div>
+      <span class="acc-x">${svg('down')}</span>
+    </div>
+    <div class="acc-b">
     ${PHASES.map(p=>{ const on=p.w===ph.w;
       return `<div class="row" style="padding:11px 0;${on?'background:var(--accent-wash);margin:0 -16px;padding-left:16px;padding-right:16px':''}">
         <div style="width:28px;font-size:12px;font-weight:800;color:${on?'var(--accent)':'var(--text-3)'}">W${p.w}</div>
@@ -5847,6 +5936,7 @@ function paneProgram(c){
         <div class="rv" style="font-size:11.5px;text-align:right">${Math.round(p.vol*100)}%<br><span style="color:var(--text-3);font-weight:600">RPE ${p.rpeCap}</span></div></div>`;}).join('')}
     ${ph.pausedWeeks>0?`<div class="note warn" style="margin-top:12px">You are in <b>week ${ph.absWeek}</b>, not week ${ph.elapsedWeek}: ${ph.pausedWeeks} week${ph.pausedWeeks>1?'s':''} passed with nothing logged, and the plan waited rather than moving on without you. Progression is earned by the work, not by the calendar.</div>`:''}
     <div class="note acc" style="margin-top:12px">After week 8 the cycle repeats as <b>block ${ph.block+1}</b> — same structure, harder variations and higher benchmarks. Retest at the end of each block.</div>
+    </div>
   </div>
 
   <div class="sec-t">All workouts</div>
@@ -5872,6 +5962,9 @@ function paneProgram(c){
    </div>`).join('')}
   <button class="btn ghost block" id="newW" style="margin-top:4px">${svg('plus')} New workout</button>`;
 
+  ['accPri','accPlan'].forEach(id=>{
+    const h=$('#'+id+'H'); if(h) h.onclick=()=>$('#'+id).classList.toggle('open');
+  });
   $('#edSched').onclick=editSchedule;
   $$('[data-pv]',c).forEach(b=>b.onclick=()=>previewWorkout(b.dataset.pv,'full'));
   $$('[data-ed]',c).forEach(b=>b.onclick=()=>editWorkout(b.dataset.ed));
@@ -6289,8 +6382,8 @@ function viewTennis(v){
   v.innerHTML=`
     <button class="btn primary big block" id="aAdd" style="margin-bottom:13px">${svg('plus')} Log an activity</button>
     <div class="seg acc" id="aSeg" style="margin-bottom:14px">
-      <button data-t="timeline">Timeline</button><button data-t="tennis">${esc(SPORT_LABEL())}</button>
-      <button data-t="history">History</button><button data-t="totals">Totals</button>
+      <button data-t="timeline">Recent</button><button data-t="tennis">${esc(SPORT_LABEL())}</button>
+      <button data-t="history">All</button><button data-t="totals">Totals</button>
     </div><div id="aBody"></div>`;
   $('#aAdd').onclick=()=>activitySheet(null,todayISO());
   $$('#aSeg button').forEach(b=>{ b.classList.toggle('on',b.dataset.t===ATAB);
@@ -6601,24 +6694,27 @@ function activitySheet(id,defDate){
 }
 
 /* =========================================================================
-   VIEW: PROGRESS  (week review · strength · tests · physique · correlations)
+   VIEW: PROGRESS  (training · tests · physique · correlations)
+   The week review that used to live here has moved: its narrative to Today,
+   its numbers to the top of Training. What was left duplicated Today's target
+   bars and the Metrics trends.
    ====================================================================== */
-let PTAB='week';
+let PTAB='training';
 function viewProgress(v){
   appbar('Progress','Performance and physique, tracked separately');
   v.innerHTML=`<div class="seg acc" id="pSeg" style="margin-bottom:14px">
-      <button data-t="week">Week</button><button data-t="strength">Strength</button>
-      <button data-t="tests">Tests</button><button data-t="physique">Physique</button>
-      <button data-t="links">Links</button>
+      <button data-t="training">Training</button><button data-t="tests">Tests</button>
+      <button data-t="physique">Physique</button><button data-t="links">Links</button>
     </div><div id="pBody"></div>`;
   $$('#pSeg button').forEach(b=>{ b.classList.toggle('on',b.dataset.t===PTAB);
     b.onclick=()=>{ PTAB=b.dataset.t; viewProgress(v); }; });
-  ({week:paneWeek,strength:paneStrength,tests:paneTests,physique:panePhysique,links:paneLinks}[PTAB])($('#pBody'));
+  ({training:paneStrength,tests:paneTests,physique:panePhysique,links:paneLinks}[PTAB]||paneStrength)($('#pBody'));
   bindInputs(v);
 }
 
 /* ------------------------------------------------------------- WEEK */
-function paneWeek(c){
+function weekReview(){
+
   const today=todayISO(), start=addDays(today,-dowOf(today)), prevStart=addDays(start,-7);
   const range=(s,e)=>{ const o=[]; let d=s; while(d<=e){o.push(d);d=addDays(d,1);} return o; };
   const wk=range(start,today), pv=range(prevStart,addDays(start,-1));
@@ -6675,60 +6771,57 @@ function paneWeek(c){
   if(A.expl>=20) next.push('Cut one plyometric block next week and keep the jump quality high rather than the volume.');
   if(!next.length) next.push('Hold this pattern. It is working — repeat it before adding anything.');
 
-  c.innerHTML=`
+  return {A, P, dl, wk, pv, good, attn, next,
+          tgtDone, tgtTotal, compl, missed, strTgt, sleepNeed, genericSleep};
+}
+
+/* the narrative half, rendered wherever it is useful */
+function weekNarrative(R){
+  return `
+  <div class="card"><div class="card-t accent" style="margin-bottom:10px">What went well</div>
+    ${R.good.length?`<ul class="why" style="border:none;padding:0;margin:0">${R.good.map(g=>`<li class="pos"><span class="dot"></span><span>${g}</span></li>`).join('')}</ul>`
+      :'<div class="hint">Not enough logged this week to say. Log your sessions and activities and this fills in.</div>'}</div>
+
+  <div class="card"><div class="card-t" style="margin-bottom:10px;color:var(--orange)">What needs attention</div>
+    ${R.attn.length?`<ul class="why" style="border:none;padding:0;margin:0">${R.attn.map(g=>`<li class="warn"><span class="dot"></span><span>${g}</span></li>`).join('')}</ul>`
+      :'<div class="hint">Nothing flagged. Good week.</div>'}</div>
+
+  <div class="card"><div class="card-t" style="margin-bottom:10px;color:var(--cyan)">Next week</div>
+    <ul class="why" style="border:none;padding:0;margin:0">${R.next.map(g=>`<li class="info"><span class="dot"></span><span>${g}</span></li>`).join('')}</ul></div>
+
+  <div class="note">Statements here are drawn only from what you logged and imported. Where a week has few data points, treat them as observations rather than conclusions.</div>`;
+}
+
+/* the week's numbers, shown above the training history they summarise */
+function weekNumbers(R){
+  const A=R.A, P=R.P, dl=R.dl, wk=R.wk;
+  return `
   <div class="stats c2">
     ${statTile('Avg recovery',A.rec!=null?rnd(A.rec,0):null,'%',A.rec>=67?'g':A.rec>=34?'y':'r',dl(A.rec,P.rec))}
     ${statTile('Avg HRV',A.hrv!=null?rnd(A.hrv,0):null,'ms','c',dl(A.hrv,P.hrv))}
     ${statTile('Avg RHR',A.rhr!=null?rnd(A.rhr,1):null,'bpm','',dl(A.rhr,P.rhr,1))}
-    ${statTile('Avg sleep',A.sleep!=null?fmtMin(A.sleep):null,'',A.sleep>=DB.baselines.sleepNeed-60?'g':'o',dl(A.sleep,P.sleep))}
+    ${statTile('Avg sleep',A.sleep!=null?fmtMin(A.sleep):null,'',A.sleep>=R.sleepNeed-60?'g':'o',dl(A.sleep,P.sleep))}
   </div>
   <div class="stats" style="margin-top:9px">
     ${statTile('Sessions',A.sessions,'','a',`vs ${P.sessions}`)}
     ${statTile('Activities',A.acts,'','g',`${A.sport} ${esc(sportLC())}`)}
     ${statTile('Week load',A.load,'','o',dl(A.load,P.load,1))}
   </div>
-
   <div class="card" style="margin-top:12px">
-    <div class="card-h"><div class="card-t accent">Weekly targets met</div>
-      <span class="tag ${tgtDone>=tgtTotal*0.8?'g':'o'}">${tgtDone}/${tgtTotal}</span></div>
-    <div class="bar ${tgtDone>=tgtTotal*0.8?'g':'o'}"><i style="width:${tgtTotal?clamp(tgtDone/tgtTotal*100,0,100):0}%"></i></div>
-    <div class="hint" style="margin-top:8px">${compl} sessions · ${A.sets||0} sets · ${rnd(A.vol,0)||0} kg·reps · ${fmtMin(A.min)} total activity time.
-    Targets are guidelines — falling short because your recovery said so is the system working, not failing.</div>
-  </div>
-
-  <div class="card">
-    <div class="card-h"><div class="card-t">Recovery &amp; HRV this week</div></div>
-    <div class="chart-wrap">${lineChart([
-      {pts:wk.map(d=>({v:(cycleByDate(d)||{}).recovery})),color:'var(--accent)',area:true},
-     ],{h:96,min:0,max:100,labels:wk.map((d,i)=>({i,t:DOW_NAME[dowOf(d)][0]}))})}</div>
-    <div class="legend"><span><i style="background:var(--accent)"></i>Recovery %</span></div>
-  </div>
-
-  <div class="card">
     <div class="card-h"><div class="card-t">Daily load</div></div>
     <div class="chart-wrap">${barChart(wk.map(d=>{const dd=dayDemand(d);
       return {v:dd.load,t:DOW_NAME[dowOf(d)][0],color:dd.load>=12?'var(--orange)':dd.load>=7?'var(--accent)':'var(--surface-3)'};}),{h:84})}</div>
     <div class="hint" style="margin-top:6px">Hard/easy alternation is the goal. Two 12+ days back to back is the pattern the engine will push back on.</div>
-  </div>
-
-  <div class="card"><div class="card-t accent" style="margin-bottom:10px">What went well</div>
-    ${good.length?`<ul class="why" style="border:none;padding:0;margin:0">${good.map(g=>`<li class="pos"><span class="dot"></span><span>${g}</span></li>`).join('')}</ul>`
-      :'<div class="hint">Not enough logged this week to say. Log your sessions and activities and this fills in.</div>'}</div>
-
-  <div class="card"><div class="card-t" style="margin-bottom:10px;color:var(--orange)">What needs attention</div>
-    ${attn.length?`<ul class="why" style="border:none;padding:0;margin:0">${attn.map(g=>`<li class="warn"><span class="dot"></span><span>${g}</span></li>`).join('')}</ul>`
-      :'<div class="hint">Nothing flagged. Good week.</div>'}</div>
-
-  <div class="card"><div class="card-t" style="margin-bottom:10px;color:var(--cyan)">Next week</div>
-    <ul class="why" style="border:none;padding:0;margin:0">${next.map(g=>`<li class="info"><span class="dot"></span><span>${g}</span></li>`).join('')}</ul></div>
-
-  <div class="note">Statements here are drawn only from what you logged and imported. Where a week has few data points, treat them as observations rather than conclusions.</div>`;
+  </div>`;
 }
 
 /* --------------------------------------------------------- STRENGTH */
 function paneStrength(c){
   const done=DB.sessions.filter(s=>s.done);
-  if(done.length<1){ c.innerHTML='<div class="empty"><div class="ei">📈</div><h4>No sessions yet</h4><p>Complete a workout and your exercise-by-exercise progression appears here.</p></div>'; return; }
+  const wknums=weekNumbers(weekReview());
+  if(done.length<1){
+    c.innerHTML=wknums+'<div class="empty"><div class="ei">📈</div><h4>No sessions yet</h4><p>Complete a workout and your exercise-by-exercise progression appears here.</p></div>';
+    return; }
   const byEx={};
   done.forEach(s=>s.entries.forEach(en=>{
     const sets=en.sets.filter(x=>x.done&&x.reps);
@@ -6741,7 +6834,8 @@ function paneStrength(c){
       rpe:mean(sets.map(x=>+x.rpe||null))});
   }));
   const keys=Object.keys(byEx).sort((a,b)=>byEx[b].pts.length-byEx[a].pts.length);
-  c.innerHTML=`
+  /* the week's numbers open this pane whether or not there is lifting history */
+  c.innerHTML=wknums+`
    <div class="card">
      <div class="card-h"><div class="card-t accent">Total weekly volume</div></div>
      <div class="chart-wrap">${(()=>{const w=[];for(let i=7;i>=0;i--){const e=addDays(todayISO(),-7*i),s=addDays(e,-6);
