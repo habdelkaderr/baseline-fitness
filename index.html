@@ -7010,18 +7010,6 @@ function viewSettings(v){
    <div class="seg acc" id="setSeg" style="margin-bottom:14px">
      ${SET_PANES.map(x=>`<button data-p="${x.id}" class="${SETTAB===x.id?'on':''}">${esc(x.name)}</button>`).join('')}
    </div>
-   <div class="card spane you">
-     <div class="card-h"><div class="card-t accent">Your setup</div>
-       <button class="btn xs ghost" id="sWizard">Re-run setup</button></div>
-     <div class="kv"><span class="k">Training for</span><span class="v">${esc(
-        ((P.sports&&P.sports.length)?P.sports:[P.sport]).map(id=>(SPORTS.find(x=>x.id===id)||{}).name).filter(Boolean).join(', ')||'—')}</span></div>
-     <div class="kv"><span class="k">Goals</span><span class="v">${esc(
-        ((P.physiques&&P.physiques.length)?P.physiques:[P.physique]).map(id=>(PHYSIQUES.find(x=>x.id===id)||{}).name).filter(Boolean).join(', ')||'—')}</span></div>
-     <div class="kv"><span class="k">Equipment</span><span class="v">${esc((TIERS[P.tier||0]||TIERS[0]).name)}</span></div>
-     <div class="kv"><span class="k">Exercises available</span><span class="v">${DB.exercises.filter(e=>(e.tier||0)<=(P.tier||0)).length} of ${DB.exercises.length}</span></div>
-     <div class="kv"><span class="k">Schedule</span><span class="v">${P.daysPerWeek||4} days × ${P.sessionMin} min</span></div>
-   </div>
-
    <div class="card spane training">
      <div class="card-h"><div class="card-t accent">Equipment</div>
        <span class="tag a">${countDoable(P.gear||[])} / ${DB.exercises.length} EXERCISES</span></div>
@@ -7106,6 +7094,18 @@ function viewSettings(v){
      <div class="kv"><span class="k">Weekly targets from this</span><span class="v">${
         targetKeys().map(k=>`${DB.targets[k]} ${(targetMeta()[k]||[k])[0].toLowerCase()}`).join(' · ')||'none yet'}</span></div>
      <div class="hint" style="margin-top:6px">Changing a goal re-derives these immediately. Fine-tune them under Train → Program.</div>
+   </div>
+
+   <div class="card spane you">
+     <div class="card-h"><div class="card-t accent">Your setup</div>
+       <button class="btn xs ghost" id="sWizard">Re-run setup</button></div>
+     <div class="kv"><span class="k">Training for</span><span class="v">${esc(
+        ((P.sports&&P.sports.length)?P.sports:[P.sport]).map(id=>(SPORTS.find(x=>x.id===id)||{}).name).filter(Boolean).join(', ')||'—')}</span></div>
+     <div class="kv"><span class="k">Goals</span><span class="v">${esc(
+        ((P.physiques&&P.physiques.length)?P.physiques:[P.physique]).map(id=>(PHYSIQUES.find(x=>x.id===id)||{}).name).filter(Boolean).join(', ')||'—')}</span></div>
+     <div class="kv"><span class="k">Equipment</span><span class="v">${esc((TIERS[P.tier||0]||TIERS[0]).name)}</span></div>
+     <div class="kv"><span class="k">Exercises available</span><span class="v">${DB.exercises.filter(e=>(e.tier||0)<=(P.tier||0)).length} of ${DB.exercises.length}</span></div>
+     <div class="kv"><span class="k">Schedule</span><span class="v">${P.daysPerWeek||4} days × ${P.sessionMin} min</span></div>
    </div>
 
    <div class="card spane training">
@@ -7997,7 +7997,7 @@ function drawSetup(){
        ${SOURCES.map(o=>`
          <button class="card tight setOpt ${d.source===o.id?'on':''}" data-k="source" data-v="${o.id}"
                  style="display:block;width:100%;text-align:left;margin-bottom:8px">
-           <div style="font-weight:800;font-size:15px">${o.emoji} ${esc(o.name)}</div>
+           <div style="font-weight:800;font-size:15px">${esc(o.name)}</div>
            <div style="font-size:11.5px;color:var(--text-3);margin-top:5px;line-height:1.5">${
              o.fields.length
                ? 'Gives: '+esc(o.fields.slice(0,5).map(f=>fieldLabel(f,o.id)).join(' · '))+(o.fields.length>5?' …':'')
@@ -8077,7 +8077,7 @@ function drawSetup(){
      <div>
        ${SPORTS.map(x=>{ const i=d.sports.indexOf(x.id);
        return `<button class="card tight setMulti ${i>=0?'on':''}" data-k="sports" data-v="${x.id}" style="display:block;width:100%;text-align:left;margin-bottom:8px">
-         <div class="opt-t" style="font-weight:800;font-size:14.5px">${x.emoji} ${esc(x.name)}${i===0?' <span class="tag a" style="margin-left:6px">PRIMARY</span>':''}</div>
+         <div class="opt-t" style="font-weight:800;font-size:14.5px">${esc(x.name)}${i===0?' <span class="tag a" style="margin-left:6px">PRIMARY</span>':''}</div>
          <div style="font-size:12px;color:var(--text-3);margin-top:4px;line-height:1.5">${esc(x.focus)}</div>
        </button>`;}).join('')}
      </div>
