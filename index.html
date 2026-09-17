@@ -234,7 +234,10 @@ a{color:var(--accent);text-decoration:none}
   padding-bottom:var(--sa-b);            /* clears the home indicator */
   padding-left:var(--sa-l);padding-right:var(--sa-r);
 }
-.nav-inner{max-width:680px;margin:0 auto;display:grid;grid-template-columns:repeat(6,1fr);height:var(--nav-h)}
+/* auto columns, not a fixed six: the tab count varies with whether a
+   wearable is set, and a fixed grid left the row short by one slot */
+.nav-inner{max-width:680px;margin:0 auto;height:var(--nav-h);
+  display:grid;grid-auto-flow:column;grid-auto-columns:1fr}
 .nav button{
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
   color:var(--text-3);font-size:9.5px;font-weight:600;letter-spacing:.3px;
