@@ -368,6 +368,20 @@ button.card{padding-right:46px}      /* room for the tick */
 .rw-s{font-size:12.5px;font-weight:550;color:var(--text-3);margin-top:3px;line-height:1.45}
 .rw-b{font-size:12.5px;font-weight:700;color:var(--text-2);flex:0 0 auto}
 .rw-c{width:17px;height:17px;flex:0 0 auto;color:var(--text-3);opacity:.7}
+
+/* ---------- Multi-select list inside a sheet ---------- */
+.picklist{display:flex;flex-direction:column;gap:7px}
+.pickrow{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;
+  padding:12px 13px;background:var(--surface);border:1px solid var(--border-soft);
+  border-radius:12px;font:inherit;color:inherit;text-align:left;cursor:pointer}
+.pickrow:active{background:var(--surface-2)}
+.pickrow:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.pickrow.on{border-color:var(--accent);background:var(--accent-wash)}
+.pick-c{width:24px;height:24px;flex:0 0 auto;border-radius:7px;color:var(--text-3);
+  display:flex;align-items:center;justify-content:center;background:var(--surface-2);
+  border:1px solid var(--border)}
+.pick-c svg{width:15px;height:15px;stroke-width:2.6;display:block}
+.pickrow.on .pick-c{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .rw-c svg{width:17px;height:17px;display:block}
 
 /* ---------- app bar back button ---------- */
@@ -650,7 +664,10 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 
 /* ---------- Empty state ---------- */
 .empty{text-align:center;padding:38px 20px;color:var(--text-3)}
-.empty .ei{font-size:34px;margin-bottom:10px;opacity:.5}
+/* an icon from the app's own set, not a system emoji rendered at whatever
+   size and style the platform happens to choose */
+.empty .ei{width:36px;height:36px;margin:0 auto 12px;color:var(--text-3);opacity:.75}
+.empty .ei svg{width:36px;height:36px;stroke-width:1.5;display:block}
 .empty h4{font-size:15px;font-weight:700;color:var(--text-2);margin-bottom:6px}
 .empty p{font-size:13px;line-height:1.5;max-width:300px;margin:0 auto}
 
@@ -957,7 +974,7 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 
 <div class="scrim" id="scrim"></div>
 <div class="sheet" id="sheet">
-  <div class="sheet-h"><h3 id="sheetTitle"></h3><button class="icon-btn" id="sheetX" aria-label="Close">✕</button></div>
+  <div class="sheet-h"><h3 id="sheetTitle"></h3><button class="icon-btn" id="sheetX" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:19px;height:19px"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
   <div class="sheet-b" id="sheetBody"></div>
   <div class="sheet-f hide" id="sheetFoot"></div>
 </div>
@@ -3066,7 +3083,9 @@ const anySport = f => sportsOf().some(id=>f(sportProf(id)));
    claims to know something the setup did not tell it.
    --------------------------------------------------------------------- */
 const sportLC    = ()=> SPORT_LABEL().toLowerCase();
-const SPORT_EMOJI= ()=> (SPORTS.find(s=>s.id===mainSport())||{emoji:'🏅'}).emoji||'🏅';
+/* SPORT_EMOJI is gone: the app has no emoji. Where a single cell has to
+   stand for "you played your sport", the week strip uses the activity's
+   three-letter short label instead. */
 /* target keys in the order they should be shown, filtered to what exists */
 const TARGET_ORDER=['lower','upper','power','core','run','bike','mobility'];
 const TARGET_BAR={lower:'a',upper:'c',power:'o',core:'v',run:'g',bike:'c',mobility:'g'};
@@ -4344,25 +4363,28 @@ const ACT_TYPES={
   /* `upper` is RESISTANCE-style upper demand, not incidental arm work. A tennis
      serve loads the shoulder but is nothing like an upper-body session, so it
      stays low here and is handled separately as shoulder fatigue. */
-  tennis:     {name:'Tennis',           emoji:'🎾', base:1.00, lower:.90, upper:.35, expl:.90, impact:.80, dist:false, aerobic:.7, shoulder:.8},
-  padel:      {name:'Padel',            emoji:'🎾', base:0.85, lower:.80, upper:.30, expl:.75, impact:.70, dist:false, aerobic:.65, shoulder:.7},
-  squash:     {name:'Squash',           emoji:'🎾', base:1.05, lower:.90, upper:.30, expl:.90, impact:.85, dist:false, aerobic:.85, shoulder:.75},
-  football:   {name:'Football / Soccer',emoji:'⚽', base:1.15, lower:1.00,upper:.15, expl:1.00,impact:.95, dist:false, aerobic:.9},
-  basketball: {name:'Basketball',       emoji:'🏀', base:1.10, lower:.95, upper:.35, expl:1.00,impact:.90, dist:false, aerobic:.85, shoulder:.4},
-  running:    {name:'Running',          emoji:'🏃', base:1.00, lower:.90, upper:.10, expl:.35, impact:.90, dist:true,  aerobic:1.0},
-  cycling:    {name:'Cycling',          emoji:'🚲', base:0.70, lower:.60, upper:.05, expl:.20, impact:.10, dist:true,  aerobic:1.0},
-  swimming:   {name:'Swimming',         emoji:'🏊', base:0.80, lower:.30, upper:.95, expl:.25, impact:.05, dist:true,  aerobic:.95},
-  walking:    {name:'Walking',          emoji:'🚶', base:0.35, lower:.25, upper:.05, expl:.05, impact:.20, dist:true,  aerobic:.4},
-  hiking:     {name:'Hiking',           emoji:'🥾', base:0.60, lower:.70, upper:.10, expl:.15, impact:.50, dist:true,  aerobic:.7},
-  strength:   {name:'Strength (other)', emoji:'🏋️', base:0.80, lower:.60, upper:.70, expl:.35, impact:.25, dist:false, aerobic:.3},
-  climbing:   {name:'Climbing',         emoji:'🧗', base:0.85, lower:.45, upper:.95, expl:.55, impact:.20, dist:false, aerobic:.5},
-  volleyball: {name:'Volleyball',       emoji:'🏐', base:0.85, lower:.75, upper:.55, expl:.95, impact:.85, dist:false, aerobic:.6},
-  martial:    {name:'Martial arts',     emoji:'🥋', base:1.00, lower:.70, upper:.75, expl:.85, impact:.60, dist:false, aerobic:.8},
-  skiing:     {name:'Skiing / Boarding',emoji:'⛷️', base:0.85, lower:.90, upper:.25, expl:.55, impact:.60, dist:false, aerobic:.6},
-  rowing:     {name:'Rowing',           emoji:'🚣', base:0.90, lower:.60, upper:.75, expl:.35, impact:.10, dist:true,  aerobic:.95},
-  yoga:       {name:'Yoga / Pilates',   emoji:'🧘', base:0.35, lower:.30, upper:.35, expl:.05, impact:.05, dist:false, aerobic:.2},
-  golf:       {name:'Golf',             emoji:'⛳', base:0.40, lower:.30, upper:.35, expl:.30, impact:.25, dist:false, aerobic:.3},
-  other:      {name:'Other activity',   emoji:'💪', base:0.75, lower:.55, upper:.45, expl:.45, impact:.45, dist:true,  aerobic:.6}
+  /* `short` is for the one place with a single cell to fill - the week strip -
+     and matches the abbreviations it already uses for sessions. Everywhere
+     else the full name is shown, which is why these carried no emoji. */
+  tennis:     {name:'Tennis',           short:'Ten', base:1.00, lower:.90, upper:.35, expl:.90, impact:.80, dist:false, aerobic:.7, shoulder:.8},
+  padel:      {name:'Padel',            short:'Pad', base:0.85, lower:.80, upper:.30, expl:.75, impact:.70, dist:false, aerobic:.65, shoulder:.7},
+  squash:     {name:'Squash',           short:'Sqh', base:1.05, lower:.90, upper:.30, expl:.90, impact:.85, dist:false, aerobic:.85, shoulder:.75},
+  football:   {name:'Football / Soccer',short:'Ftbl',base:1.15, lower:1.00,upper:.15, expl:1.00,impact:.95, dist:false, aerobic:.9},
+  basketball: {name:'Basketball',       short:'Bball',base:1.10,lower:.95, upper:.35, expl:1.00,impact:.90, dist:false, aerobic:.85, shoulder:.4},
+  running:    {name:'Running',          short:'Run', base:1.00, lower:.90, upper:.10, expl:.35, impact:.90, dist:true,  aerobic:1.0},
+  cycling:    {name:'Cycling',          short:'Bike',base:0.70, lower:.60, upper:.05, expl:.20, impact:.10, dist:true,  aerobic:1.0},
+  swimming:   {name:'Swimming',         short:'Swim',base:0.80, lower:.30, upper:.95, expl:.25, impact:.05, dist:true,  aerobic:.95},
+  walking:    {name:'Walking',          short:'Walk',base:0.35, lower:.25, upper:.05, expl:.05, impact:.20, dist:true,  aerobic:.4},
+  hiking:     {name:'Hiking',           short:'Hike',base:0.60, lower:.70, upper:.10, expl:.15, impact:.50, dist:true,  aerobic:.7},
+  strength:   {name:'Strength (other)', short:'Str', base:0.80, lower:.60, upper:.70, expl:.35, impact:.25, dist:false, aerobic:.3},
+  climbing:   {name:'Climbing',         short:'Climb',base:0.85,lower:.45, upper:.95, expl:.55, impact:.20, dist:false, aerobic:.5},
+  volleyball: {name:'Volleyball',       short:'Vball',base:0.85,lower:.75, upper:.55, expl:.95, impact:.85, dist:false, aerobic:.6},
+  martial:    {name:'Martial arts',     short:'Mart',base:1.00, lower:.70, upper:.75, expl:.85, impact:.60, dist:false, aerobic:.8},
+  skiing:     {name:'Skiing / Boarding',short:'Ski', base:0.85, lower:.90, upper:.25, expl:.55, impact:.60, dist:false, aerobic:.6},
+  rowing:     {name:'Rowing',           short:'Row', base:0.90, lower:.60, upper:.75, expl:.35, impact:.10, dist:true,  aerobic:.95},
+  yoga:       {name:'Yoga / Pilates',   short:'Yoga',base:0.35, lower:.30, upper:.35, expl:.05, impact:.05, dist:false, aerobic:.2},
+  golf:       {name:'Golf',             short:'Golf',base:0.40, lower:.30, upper:.35, expl:.30, impact:.25, dist:false, aerobic:.3},
+  other:      {name:'Other activity',   short:'Act', base:0.75, lower:.55, upper:.45, expl:.45, impact:.45, dist:true,  aerobic:.6}
 };
 const LOAD_BANDS=[
   {max:3,  label:'Minimal',   cls:'g', note:'negligible recovery cost'},
@@ -4835,25 +4857,25 @@ function candidates(){
  const canBike= gear.indexOf('bike')>=0 || T.bike>0 || sportsOf().indexOf('cycling')>=0;
  const wantsPower = anySport(x=>x.explosive) || T.power>0;
  const list=[
- {id:'lower',  emoji:'🏠', label:'Lower Body Strength', base:100, minBand:'yellow', sys:'lower',
+ {id:'lower',  label:'Lower Body Strength', base:100, minBand:'yellow', sys:'lower',
   pick:()=>alternate('w_lowerA','w_lowerB'), canCore:true, goal:sysGoalText('lower')},
- {id:'power',  emoji:'⚡', label:'Power & Plyometrics', base:88, minBand:'green', sys:'expl',
+ {id:'power',  label:'Power & Plyometrics', base:88, minBand:'green', sys:'expl',
   pick:()=>'w_power', canCore:true, goal:sysGoalText('expl'), need:wantsPower},
- {id:'core',   emoji:'🧠', label:'Core & Anti-Rotation', base:84, minBand:'orange', sys:'core',
+ {id:'core',   label:'Core & Anti-Rotation', base:84, minBand:'orange', sys:'core',
   pick:()=>'w_core', canCore:false, goal:sysGoalText('core')},
- {id:'upper',  emoji:'🏠', label:'Upper Body Strength', base:78, minBand:'yellow', sys:'upper',
+ {id:'upper',  label:'Upper Body Strength', base:78, minBand:'yellow', sys:'upper',
   pick:()=>alternate('w_upperA','w_upperB'), canCore:true, goal:sysGoalText('upper')},
- {id:'run_int',emoji:'🏃', label:'Interval Run', base:66, minBand:'green', sys:'run',
+ {id:'run_int',label:'Interval Run', base:66, minBand:'green', sys:'run',
   pick:()=>'w_runInt', canCore:false, goal:'Repeat-sprint ability — hard efforts with short recoveries.', need:canRun},
- {id:'run_q',  emoji:'🏃', label:'Tempo Run', base:62, minBand:'green', sys:'run',
+ {id:'run_q',  label:'Tempo Run', base:62, minBand:'green', sys:'run',
   pick:()=>'w_runQuality', canCore:false, goal:'Raises the aerobic ceiling so your level holds when it gets long.', need:canRun},
- {id:'run_e',  emoji:'🏃', label:'Easy Aerobic Run', base:60, minBand:'yellow', sys:'run',
+ {id:'run_e',  label:'Easy Aerobic Run', base:60, minBand:'yellow', sys:'run',
   pick:()=>'w_runEasy', canCore:true, goal:sysGoalText('run'), need:canRun},
- {id:'bike',   emoji:'🚴', label:'Zone 2 Bike', base:52, minBand:'orange', sys:'bike',
+ {id:'bike',   label:'Zone 2 Bike', base:52, minBand:'orange', sys:'bike',
   pick:()=>'w_bike', canCore:true, goal:sysGoalText('bike'), need:canBike},
- {id:'mobility',emoji:'🧘',label:'Mobility & Recovery', base:44, minBand:'red', sys:'mobility',
+ {id:'mobility',label:'Mobility & Recovery', base:44, minBand:'red', sys:'mobility',
   pick:()=>'w_recovery', canCore:false, goal:sysGoalText('mobility')},
- {id:'rest',   emoji:'😴', label:'Rest', base:30, minBand:'red', sys:'rest',
+ {id:'rest',   label:'Rest', base:30, minBand:'red', sys:'rest',
   pick:()=>null, canCore:false, goal:'Training today would cost more than it returns.'}
  ];
  /* drop options the user has no equipment or reason for; never drop them all */
@@ -5115,13 +5137,13 @@ function recommend(date, ci, rd){
   const ruledOut=[];
   scored.filter(x=>x!==win).forEach(x=>{
     if(ruledOut.length>=3) return;
-    if(x.blocked){ ruledOut.push({label:x.c.label, emoji:x.c.emoji, why:x.blocked, hard:true}); return; }
+    if(x.blocked){ ruledOut.push({label:x.c.label, why:x.blocked, hard:true}); return; }
     const neg=x.notes.filter(n=>n.v<=-14&&n.t)[0];
-    if(neg) ruledOut.push({label:x.c.label, emoji:x.c.emoji, why:neg.t, hard:false});
+    if(neg) ruledOut.push({label:x.c.label, why:neg.t, hard:false});
   });
 
   return {
-    id:win.c.id, label:win.c.label, emoji:win.c.emoji, goalNote:win.c.goal,
+    id:win.c.id, label:win.c.label, goalNote:win.c.goal,
     workoutId:win.wid, variant, addCore, est, intensity, prep,
     isSport:flagSport||loggedSport, sportName:SPN, readiness:rd, why, ruledOut,
     scored, week:P, history:H, phase:ph, notes:why
@@ -5384,7 +5406,7 @@ function chipPicker(opts){
   const {id, chosen, all, lead, allowEmpty, emptyText} = opts;
   const pick=x=>all.find(o=>o.id===x)||{id:x,name:x};
   const mark=o=> o.icon ? `<i class="chipi">${svg(o.icon)}</i>`
-               : o.emoji ? o.emoji+' ' : '';
+               : '';
   return `<div class="chipset" id="${id}">
     ${(!chosen.length&&allowEmpty)?`<span class="chipnone">${esc(emptyText||'None')}</span>`:''}
     ${chosen.map((cid,i)=>{ const o=pick(cid);
@@ -5398,7 +5420,12 @@ function chipPicker(opts){
 /* wire a chip picker: cb(newChosenArray).
    allowEmpty is for sets that can legitimately be empty — equipment, where
    "bodyweight only" is a real answer — unlike sports or goals. */
-function wirePicker(id, chosen, all, cb, title, allowEmpty){
+/* keepSheet: the caller will redraw this sheet itself (the setup wizard does),
+   so the picker must not close it. closeSheet() runs the sheet's onClose, and
+   the wizard's onClose persists the draft, re-renders and toasts - which is
+   what used to flash "Saved where you left off" every time you ticked a
+   dumbbell during first-run setup. */
+function wirePicker(id, chosen, all, cb, title, allowEmpty, keepSheet){
   const root=$('#'+id); if(!root) return;
   $$('#'+id+' [data-rm]').forEach(b=>b.onclick=ev=>{
     ev.stopPropagation();
@@ -5407,20 +5434,39 @@ function wirePicker(id, chosen, all, cb, title, allowEmpty){
   });
   const add=$('#'+id+' [data-add]');
   if(add) add.onclick=()=>{
-    const left=all.filter(o=>chosen.indexOf(o.id)<0);
-    if(!left.length){ toast('Nothing left to add'); return; }
-    openSheet(title||'Add',
-      `<div>${left.map(o=>`<button class="row tap pickrow" data-v="${esc(o.id)}"
-         style="display:flex;width:100%;text-align:left;background:var(--surface);border-radius:12px;margin-bottom:7px;border:1px solid var(--border-soft)">
-         <div class="rt"><div class="rn">${o.icon?`<i class="chipi">${svg(o.icon)}</i>`:o.emoji?o.emoji+' ':''}${esc(o.name)}</div>
-         ${o.hint?`<div class="rs">${esc(o.hint)}</div>`:''}</div>
-         <span class="chev">${svg('plus')}</span></button>`).join('')}</div>`);
-    /* apply immediately — the sheet closes over the top, which reads as
-       responsive, and a deferred write can be lost if the view changes first */
-    $$('.pickrow').forEach(b=>b.onclick=()=>{
-      closeSheet(); haptic();
-      cb(chosen.concat([b.dataset.v]));
-    });
+    /* One visit, however many you want. The list shows everything with your
+       choices already ticked, so you can see what you have while choosing and
+       tick four things without leaving. */
+    let pending=chosen.slice();
+    const draw=()=>{
+      updateSheet(title||'Choose',
+        `<div class="picklist">${all.map(o=>{
+          const on=pending.indexOf(o.id)>=0;
+          return `<button class="pickrow${on?' on':''}" data-v="${esc(o.id)}" aria-pressed="${on?'true':'false'}">
+            ${o.icon?`<i class="rw-i">${svg(o.icon)}</i>`:''}
+            <span class="rw-x"><span class="rw-t">${esc(o.name)}</span>${
+              o.hint?`<span class="rw-s">${esc(o.hint)}</span>`:''}</span>
+            <i class="pick-c">${svg(on?'check':'plus')}</i>
+          </button>`;}).join('')}</div>`,
+        `<button class="btn primary big block" id="pkDone">Done${
+          pending.length?' · '+pending.length+' selected':''}</button>`);
+      $$('.pickrow').forEach(b=>b.onclick=()=>{
+        const v=b.dataset.v, i=pending.indexOf(v);
+        if(i>=0){
+          if(pending.length<=1 && !allowEmpty){ toast('Keep at least one'); return; }
+          pending.splice(i,1);
+        } else pending.push(v);
+        haptic(); draw();
+      });
+      $('#pkDone').onclick=()=>{
+        haptic();
+        if(!keepSheet) closeSheet();
+        cb(pending.slice());
+      };
+    };
+    /* open first so updateSheet has a sheet to update, then draw */
+    openSheet(title||'Choose','','');
+    draw();
   };
 }
 
@@ -5760,9 +5806,9 @@ function weekStrip(d){
     const cy=cycleByDate(day);
     const col = sess?'var(--accent)': ten?'var(--green)': acts.length?'var(--cyan)':'var(--surface-3)';
     let tag='';
-    if(ten) tag=SPORT_EMOJI();
+    if(ten) tag=(ACT_TYPES[(acts.find(a=>isMainSportAct(a.type))||{}).type]||{}).short||'Sport';
     else if(sess) tag=TAGS[sess.category||catOfWorkout(DB.workouts.find(w=>w.id===sess.workoutId))]||'Train';
-    else if(acts.length) tag=(ACT_TYPES[acts[0].type]||ACT_TYPES.other).emoji;
+    else if(acts.length) tag=(ACT_TYPES[acts[0].type]||ACT_TYPES.other).short;
     h+=`<div style="padding:11px 2px;text-align:center;border-right:${i<6?'1px solid var(--border-soft)':'none'};${isT?'background:var(--accent-wash)':''}">
       <div style="font-size:9.5px;font-weight:800;color:${isT?'var(--accent)':'var(--text-3)'};letter-spacing:.5px">${DOW_NAME[dow].toUpperCase()}</div>
       <div style="font-size:14px;font-weight:750;margin:3px 0 6px;color:${isT?'var(--text)':'var(--text-2)'}">${new Date(day+'T12:00:00').getDate()}</div>
@@ -5889,7 +5935,7 @@ function dailySummaryCard(d){
 function todayPlan(d){
   const ci=DB.checkins[d], ovr=DB.plans[d], rec=recommend(d,ci);
   return ovr ? Object.assign({},rec,{workoutId:ovr.workoutId,variant:ovr.variant,addCore:!!ovr.addCore,
-    label:ovr.label||rec.label,emoji:ovr.emoji||rec.emoji,est:ovr.est||rec.est,id:ovr.id||rec.id,overridden:true}) : rec;
+    label:ovr.label||rec.label,est:ovr.est||rec.est,id:ovr.id||rec.id,overridden:true}) : rec;
 }
 function wireToday(d){
   const on=(id,fn)=>{ const b=$('#'+id); if(b)b.onclick=fn; };
@@ -5939,7 +5985,7 @@ function changePlan(d){
      return `<button class="card tight" data-pick="${x.c.id}" style="display:block;width:100%;text-align:left;margin-bottom:8px;${isRec||isCur?'border-color:var(--accent)':''}">
        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
          <div style="flex:1;min-width:0">
-           <div style="font-size:14.5px;font-weight:750">${x.c.emoji} ${esc(x.c.label)}</div>
+           <div style="font-size:14.5px;font-weight:750">${esc(x.c.label)}</div>
            <div style="font-size:11.5px;color:${x.blocked?'var(--orange)':'var(--text-3)'};margin-top:4px;line-height:1.45">
              ${x.blocked?'Engine advises against: '+esc(x.blocked):esc((wk&&wk.focus)||x.c.goal).slice(0,90)}</div>
          </div>
@@ -5957,7 +6003,7 @@ function changePlan(d){
   `);
   $$('[data-pick]',$('#sheetBody')).forEach(b=>b.onclick=()=>{
     const x=rec.scored.find(s=>s.c.id===b.dataset.pick);
-    if(!x.wid){ DB.plans[d]={id:x.c.id,workoutId:null,variant:'full',label:x.c.label,emoji:x.c.emoji,est:0};
+    if(!x.wid){ DB.plans[d]={id:x.c.id,workoutId:null,variant:'full',label:x.c.label,est:0};
       save(true); closeSheet(); toast('Plan updated'); setTimeout(render,220); return; }
     closeSheet(); setTimeout(()=>pickVariantFor(d,x.wid,x.c),240);
   });
@@ -5979,7 +6025,7 @@ function pickVariantFor(d,wid,cand){
   `);
   $$('[data-v]',$('#sheetBody')).forEach(b=>b.onclick=()=>{
     DB.plans[d]={id:cand?cand.id:catOfWorkout(w),workoutId:wid,variant:b.dataset.v,
-      label:cand?cand.label:w.name, emoji:cand?cand.emoji:'🏠', est:w.est[b.dataset.v]};
+      label:cand?cand.label:w.name, est:w.est[b.dataset.v]};
     save(true); closeSheet(); toast('Plan updated','ok'); setTimeout(()=>{ if(TAB!=='today')go('today'); else render(); },220);
   });
 }
@@ -5994,17 +6040,20 @@ function lastCheckin(before){
   const ks=Object.keys(DB.checkins||{}).filter(k=>k<before).sort();
   return ks.length? DB.checkins[ks[ks.length-1]] : null;
 }
-/* Sleep in 15-minute steps. Nobody knows their sleep to the minute, and two
-   number fields to say "seven and a half hours" was the worst input in here. */
-function sleepStepper(mins){
-  const v = mins==null? '' : Math.round(mins);
-  return `<div class="stp" id="ciSleep" style="max-width:230px">
-    <button type="button" data-d="-1" aria-label="Less sleep">&minus;</button>
-    <span id="ciSleepL" style="flex:1;text-align:center;font-size:16px;font-weight:750;
-      font-variant-numeric:tabular-nums;padding:0 4px;line-height:44px"
-      >${v===''?'Not set':fmtMin(v)}</span>
-    <button type="button" data-d="1" aria-label="More sleep">+</button>
-    <input type="hidden" id="ciSleepV" value="${v}">
+/* One gesture for any value between three and twelve hours, in the fifteen
+   minute resolution anybody actually knows their sleep to. Consistent with the
+   four questions below it, which were already sliders. */
+const SLEEP_MIN=180, SLEEP_MAX=720, SLEEP_STEP=15;
+function sleepSlider(mins,fallback){
+  const raw = mins!=null ? mins : fallback;
+  const v = clamp(Math.round((raw||450)/SLEEP_STEP)*SLEEP_STEP, SLEEP_MIN, SLEEP_MAX);
+  return `<div class="slider-row">
+    <div class="slider-top"><span class="l">Time asleep</span>
+      <span class="v num" id="ciSleep_o">${fmtMin(v)}</span></div>
+    <input type="range" id="ciSleep" min="${SLEEP_MIN}" max="${SLEEP_MAX}"
+           step="${SLEEP_STEP}" value="${v}" data-out="ciSleep_o" data-fmt="min"
+           aria-label="Time asleep">
+    <div class="scale"><span>${fmtMin(SLEEP_MIN)}</span><span>${fmtMin(SLEEP_MAX)}</span></div>
   </div>`;
 }
 
@@ -6068,11 +6117,22 @@ function openCheckin(d){
    <div class="note" style="margin-bottom:16px">Leave any of these blank and the engine simply weighs them out — it will not guess a value.</div>`:''}
    ${(!autoWhoop&&!askWhoop)?`<div class="note" style="margin-bottom:16px">The questions below are all it needs. Your answers plus your training history drive the recommendation.</div>`:''}
    <div class="field"><label>How long did you sleep?</label>
-     ${sleepStepper(ex.sleepMin!=null?ex.sleepMin:(cy&&cy.sleepMin!=null?cy.sleepMin:null))}
+     ${(()=>{
+       /* a real prior, in order of authority; never an invented figure */
+       const imported = ex.sleepMin!=null ? ex.sleepMin
+                      : (cy&&cy.sleepMin!=null ? cy.sleepMin : null);
+       const prior = PREV.sleepMin!=null ? PREV.sleepMin : DB.baselines.sleepNeed;
+       return sleepSlider(imported, prior);
+     })()}
      <div class="hint">${
-       cy&&cy.sleepNeed ? `Your need last night was <b>${fmtMin(cy.sleepNeed)}</b>.`
-       : DB.baselines.sleepNeedGeneric ? `Using a general <b>${fmtMin(DB.baselines.sleepNeed)}</b> target.`
-       : `Your typical need is <b>${fmtMin(DB.baselines.sleepNeed)}</b>.`
+       (ex.sleepMin!=null||(cy&&cy.sleepMin!=null))
+         ? (cy&&cy.sleepMin!=null&&ex.sleepMin==null
+             ? `From your ${esc(SRC_NAME())} data.` : 'Drag to adjust.')
+       : PREV.sleepMin!=null
+         ? `Starting from last time's <b>${fmtMin(PREV.sleepMin)}</b> — drag to what you actually got.`
+         : `Starting from your <b>${fmtMin(DB.baselines.sleepNeed)}</b> target — drag to what you actually got.`
+     }${
+       cy&&cy.sleepNeed ? ` Your need last night was <b>${fmtMin(cy.sleepNeed)}</b>.` : ''
      }</div></div>
    ${(!autoWhoop&&!askWhoop)?`<div class="hint" style="margin-bottom:16px">Yesterday's load is worked out from what you logged — currently <b>${rnd(dayDemand(addDays(d,-1)).load,1)}</b>. Log your activities and it stays accurate.</div>`:''}
 
@@ -6112,16 +6172,7 @@ function openCheckin(d){
     nt.classList.toggle('open',open);
     nt.setAttribute('aria-expanded',open?'true':'false');
   };
-  /* the sleep stepper: 15-minute steps, which is the resolution anyone
-     actually knows their sleep to */
-  $$('#ciSleep button').forEach(b=>b.onclick=()=>{
-    const f=$('#ciSleepV');
-    let v=+f.value||0;
-    v=clamp(v + (+b.dataset.d)*15, 0, 16*60);
-    f.value=String(v);
-    $('#ciSleepL').textContent=v?fmtMin(v):'Not set';
-    haptic();
-  });
+
 
   const aw=$('#accWH'); if(aw) aw.onclick=()=>$('#accW').classList.toggle('open');
   $$('#ciPain button').forEach(b=>b.onclick=()=>{ $$('#ciPain button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); haptic(); });
@@ -6129,7 +6180,7 @@ function openCheckin(d){
 
   $('#ciSave').onclick=()=>{
     const nv=id=>{ const e=$(id); if(!e||e.value==='')return null; const n=parseFloat(e.value); return isNaN(n)?null:n; };
-    const sv=nv('#ciSleepV');
+    const sv=nv('#ciSleep');
     const sleepMin = (sv==null||sv<=0)?null:sv;
     const painB=$('#ciPain button.on'), timB=$('#ciTime button.on');
     /* WHOOP fields are absent from the DOM unless they apply — nv() returns
@@ -6170,53 +6221,79 @@ function sliderHTML(id,label,val,lo,hi){
    VIEW: WORKOUTS  (program · builder · exercise library · warm-ups)
    ====================================================================== */
 let WTAB='program';
+/* Train leads with where you are in the programme. Everything else is a row. */
 function viewWorkouts(v){
-  appbar('Train');
-  const ph=currentPhase(), P=weekProgress(todayISO()), T=DB.targets;
-  const ks=targetKeys();
-  const done=ks.reduce((a,k)=>a+Math.min(P[k]||0,T[k]||0),0);
-  const want=ks.reduce((a,k)=>a+(T[k]||0),0);
+  const ph=currentPhase();
+  appbar('Train', 'Week '+ph.absWeek+' — '+ph.name);
   const sess=(DB.sessions||[]).filter(s=>s.done).length;
   const rows=[
-    {t:'This week', icon:'today',
-     s: want? `${done} of ${want} sessions · week ${ph.absWeek}, ${ph.name.toLowerCase()}`
-            : 'No targets yet',
-     go:()=>openPane('This week', `Week ${ph.absWeek} — ${ph.name}`, paneProgram)},
-    {t:'Exercises', icon:'dumbbell',
+    {t:'Workouts', icon:'dumbbell',
+     s:`${DB.workouts.length} sessions, and how they get chosen`,
+     go:()=>openPane('Workouts', null, paneProgram)},
+    {t:'Exercises', icon:'barbell',
      s:`${countDoable(DB.profile.gear||[])} of ${DB.exercises.length} you can do`,
      go:()=>openPane('Exercises','Filtered to your equipment', paneLibrary)},
     {t:'Warm-ups', icon:'flame',
-     s: hasSportChosen()? `Sport prep for ${esc(sportLC())}, plus the session routines`
+     s: hasSportChosen()? `Sport prep for ${sportLC()}, plus the session routines`
                         : 'The routine before each session type',
      go:()=>openPane('Warm-ups', null, paneWarmups)},
     {t:'History', icon:'book',
      s: sess? `${sess} session${sess===1?'':'s'} logged` : 'Nothing logged yet',
      go:()=>openPane('History','Completed sessions', paneHistory)}
   ];
-  v.innerHTML=navRows('wRows',rows);
+  v.innerHTML = targetsCard() + progressionCard()
+    + '<div class="sec-t">More</div>' + navRows('wRows',rows);
+  const es=$('#edSched'); if(es) es.onclick=editSchedule;
+  const ph2=$('#accPlanH'); if(ph2) ph2.onclick=()=>$('#accPlan').classList.toggle('open');
   wireRows('wRows',rows);
   bindInputs(v);
 }
 
 /* ---------------------------------------------------------- PROGRAM pane */
-function paneProgram(c){
-  const ph=currentPhase(), P=weekProgress(todayISO()), T=DB.targets;
-  c.innerHTML=`
-  <div class="note acc" style="margin-bottom:14px">No fixed weekly schedule — these are what the engine weighs.${hasSportChosen()?` ${esc(sportsText().charAt(0).toUpperCase()+sportsText().slice(1))} ${sportsOf().length>1?'are':'is'} deliberately absent: never scheduled, only logged when you actually play.`:''}</div>
-  <div class="card">
-    <div class="card-h"><div class="card-t accent">Weekly targets</div>
+/* The one thing Train exists to show: what this week asks for and how much of
+   it you have done. Returned as HTML so the tab can lead with it. */
+function targetsCard(){
+  const P=weekProgress(todayISO()), T=DB.targets;
+  const M=targetMeta(), ks=targetKeys();
+  return `<div class="card">
+    <div class="card-h"><div class="card-t accent">This week</div>
       <button class="btn xs ghost" id="edSched">${svg('edit')} Edit</button></div>
-    ${(()=>{ const M=targetMeta(), ks=targetKeys();
-      if(!ks.length) return '<div class="hint">No targets yet — they are built from the sports, goals, days and equipment you enter in setup.</div>';
-      return ks.map(k=>{
-      const meta=M[k]||[k,''];
-      const done=P[k]||0, t=T[k]||0;
-      return `<div class="row" style="padding:12px 0">
-        <div class="rt"><div class="rn">${esc(meta[0])}</div><div class="rs">${esc(meta[1])}</div></div>
-        <div class="rv" style="text-align:right"><span style="color:${done>=t?'var(--green)':'var(--text-2)'}">${done}</span>
-          <span style="color:var(--text-3)"> / ${t}</span><div style="font-size:10px;color:var(--text-3);font-weight:650">this week</div></div></div>`;}).join(''); })()}
-    <div class="hint" style="margin-top:8px">From ${esc(sportsText())}, your goals, ${DB.profile.daysPerWeek||4} days a week and your equipment.</div>
-  </div>
+    ${!ks.length ? '<div class="hint">No targets yet — they are built from the sports, goals, days and equipment you enter in setup.</div>'
+      : ks.map(k=>{
+        const meta=M[k]||[k,''];
+        const done=P[k]||0, t=T[k]||0;
+        return `<div class="row" style="padding:12px 0">
+          <div class="rt"><div class="rn">${esc(meta[0])}</div><div class="rs">${esc(meta[1])}</div></div>
+          <div class="rv" style="text-align:right"><span style="color:${done>=t?'var(--green)':'var(--text-2)'}">${done}</span>
+            <span style="color:var(--text-3)"> / ${t}</span></div></div>`;}).join('')}
+    <div class="hint" style="margin-top:8px">Guidelines, not quotas. The engine still chooses each day.</div>
+  </div>`;
+}
+/* where you are in the eight-week cycle: the other half of "where am I" */
+function progressionCard(){
+  const ph=currentPhase();
+  return `<div class="card acc" id="accPlan" style="padding:0;overflow:hidden">
+    <div class="acc-h" id="accPlanH">
+      <div><div class="card-t">8-week progression</div>
+        <div style="font-size:12.5px;color:var(--text-2);font-weight:600;margin-top:4px">Week ${ph.absWeek} — ${esc(ph.name)}</div></div>
+      <span class="acc-x">${svg('down')}</span>
+    </div>
+    <div class="acc-b">
+    ${PHASES.map(p=>{ const on=p.w===ph.w;
+      return `<div class="row" style="padding:11px 0;${on?'background:var(--accent-wash);margin:0 -16px;padding-left:16px;padding-right:16px':''}">
+        <div style="width:28px;font-size:12px;font-weight:800;color:${on?'var(--accent)':'var(--text-3)'}">W${p.w}</div>
+        <div class="rt"><div class="rn" style="font-size:14px">${esc(p.name)}</div><div class="rs">${esc(p.goal)}</div></div>
+        <div class="rv" style="font-size:11.5px;text-align:right">${Math.round(p.vol*100)}%<br><span style="color:var(--text-3);font-weight:600">RPE ${p.rpeCap}</span></div></div>`;}).join('')}
+    ${ph.pausedWeeks>0?`<div class="note warn" style="margin-top:12px">You are in <b>week ${ph.absWeek}</b>, not week ${ph.elapsedWeek}: ${ph.pausedWeeks} week${ph.pausedWeeks>1?'s':''} passed with nothing logged, and the plan waited rather than moving on without you.</div>`:''}
+    <div class="note acc" style="margin-top:12px">After week 8 the cycle repeats as <b>block ${ph.block+1}</b> — same structure, harder variations.</div>
+    </div>
+  </div>`;
+}
+
+/* The Workouts page: how sessions get chosen, and the library of them. */
+function paneProgram(c){
+  c.innerHTML=`
+  <div class="note acc" style="margin-bottom:14px">No fixed weekly schedule — these are what the engine weighs.${hasSportChosen()?` ${esc(sportsText().charAt(0).toUpperCase()+sportsText().slice(1))} ${sportsOf().length>1?'are':'is'} never scheduled, only logged when you play.`:''}</div>
 
   <div class="card acc" id="accPri" style="padding:0;overflow:hidden">
     <div class="acc-h" id="accPriH">
@@ -6228,23 +6305,6 @@ function paneProgram(c){
     ${priorityList()
       .map((x,i)=>`<div class="kv"><span class="k"><b style="color:var(--accent)">${i+1}.</b> ${esc(x)}</span></div>`).join('')}
     <div class="hint" style="margin-top:9px">Applied in order. Recovery is never traded for a weekly target.</div>
-    </div>
-  </div>
-
-  <div class="card acc" id="accPlan" style="padding:0;overflow:hidden">
-    <div class="acc-h" id="accPlanH">
-      <div><div class="card-t">8-week progression plan</div>
-        <div style="font-size:12.5px;color:var(--text-2);font-weight:600;margin-top:4px">Week ${ph.absWeek} — ${esc(ph.name)}</div></div>
-      <span class="acc-x">${svg('down')}</span>
-    </div>
-    <div class="acc-b">
-    ${PHASES.map(p=>{ const on=p.w===ph.w;
-      return `<div class="row" style="padding:11px 0;${on?'background:var(--accent-wash);margin:0 -16px;padding-left:16px;padding-right:16px':''}">
-        <div style="width:28px;font-size:12px;font-weight:800;color:${on?'var(--accent)':'var(--text-3)'}">W${p.w}</div>
-        <div class="rt"><div class="rn" style="font-size:14px">${esc(p.name)}</div><div class="rs">${esc(p.goal)}</div></div>
-        <div class="rv" style="font-size:11.5px;text-align:right">${Math.round(p.vol*100)}%<br><span style="color:var(--text-3);font-weight:600">RPE ${p.rpeCap}</span></div></div>`;}).join('')}
-    ${ph.pausedWeeks>0?`<div class="note warn" style="margin-top:12px">You are in <b>week ${ph.absWeek}</b>, not week ${ph.elapsedWeek}: ${ph.pausedWeeks} week${ph.pausedWeeks>1?'s':''} passed with nothing logged, and the plan waited rather than moving on without you. Progression is earned by the work, not by the calendar.</div>`:''}
-    <div class="note acc" style="margin-top:12px">After week 8 the cycle repeats as <b>block ${ph.block+1}</b> — same structure, harder variations and higher benchmarks. Retest at the end of each block.</div>
     </div>
   </div>
 
@@ -6271,10 +6331,7 @@ function paneProgram(c){
    </div>`).join('')}
   <button class="btn ghost block" id="newW" style="margin-top:4px">${svg('plus')} New workout</button>`;
 
-  ['accPri','accPlan'].forEach(id=>{
-    const h=$('#'+id+'H'); if(h) h.onclick=()=>$('#'+id).classList.toggle('open');
-  });
-  $('#edSched').onclick=editSchedule;
+  const ah=$('#accPriH'); if(ah) ah.onclick=()=>$('#accPri').classList.toggle('open');
   $$('[data-pv]',c).forEach(b=>b.onclick=()=>previewWorkout(b.dataset.pv,'full'));
   $$('[data-ed]',c).forEach(b=>b.onclick=()=>editWorkout(b.dataset.ed));
   $$('[data-dup]',c).forEach(b=>b.onclick=()=>{
@@ -6639,7 +6696,7 @@ function paneWarmups(c){
 /* ---------------------------------------------------- HISTORY pane */
 function paneHistory(c){
   const ss=DB.sessions.filter(s=>s.done).slice().reverse();
-  if(!ss.length){ c.innerHTML='<div class="empty"><div class="ei">🏋️</div><h4>No sessions logged yet</h4><p>Completed workouts appear here with your planned-versus-actual numbers.</p></div>'; return; }
+  if(!ss.length){ c.innerHTML='<div class="empty"><div class="ei">'+svg('dumbbell')+'</div><h4>No sessions logged yet</h4><p>Completed workouts appear here with your planned-versus-actual numbers.</p></div>'; return; }
   c.innerHTML=ss.map(s=>{
     const w=DB.workouts.find(w=>w.id===s.workoutId);
     return `<div class="card tight">
@@ -6732,7 +6789,7 @@ function paneTimeline(c){
           sub:`${i.min||0} min · load ${rnd(i.load,1)}${i.rpe?' · RPE '+i.rpe:''}`,cls:'sess'});
       } else {
         const t=ACT_TYPES[i.type]||ACT_TYPES.other;
-        rows.push({time:i.time||'—',label:t.emoji+' '+t.name+(i.subtype?' · '+i.subtype:''),
+        rows.push({time:i.time||'—',label:t.name+(i.subtype?' · '+i.subtype:''),
           sub:`${i.min||0} min${i.dist?' · '+i.dist+' km':''} · RPE ${i.rpe||'—'} · load ${rnd(i.load,1)}`,
           cls:'act',tag:i.planned===false?'UNPLANNED':(i.planned===true?'PLANNED':''),id:i.id});
       }
@@ -6765,7 +6822,7 @@ function paneTimeline(c){
 
 /* ------------------------------------------------------- YOUR SPORT pane */
 function paneTennis(c){
-  const SPN=SPORT_LABEL(), SLC=sportLC(), SEM=SPORT_EMOJI();
+  const SPN=SPORT_LABEL(), SLC=sportLC();
   const T=DB.activities.filter(a=>isMainSportAct(a.type)).slice().reverse();
   const wT=DB.whoop.workouts.filter(w=>mainSportActs().some(x=>new RegExp(x,'i').test(w.activity)));
   const last30=T.filter(t=>daysBetween(t.date,todayISO())<=30);
@@ -6811,7 +6868,7 @@ function paneTennis(c){
        </div>
        ${t.notes?`<div class="note" style="margin-top:9px;font-size:11.5px">${esc(t.notes)}</div>`:''}
      </div>`).join('')
-    :`<div class="empty"><div class="ei">\${SEM}</div><h4>No \${esc(SLC)} logged yet</h4><p>Log a session and the engine will start protecting the day after it.</p></div>`}
+    :`<div class="empty"><div class="ei">\${svg('flame')}</div><h4>No \${esc(SLC)} logged yet</h4><p>Log a session and the engine will start protecting the day after it.</p></div>`}
    ${wT.length?`<div class="note" style="margin-top:10px">Plus <b>${wT.length}</b> matching sessions imported from WHOOP.</div>`:''}`;
   $$('[data-w]',c).forEach(b=>b.onclick=()=>previewWorkout(b.dataset.w,'full'));
   $$('[data-aid]',c).forEach(b=>b.onclick=()=>activitySheet(b.dataset.aid));
@@ -6824,14 +6881,14 @@ function paneActHistory(c){
   c.innerHTML=`
    <div class="swipe" style="margin-bottom:12px">
      <button class="chip ${AFILTER===''?'a':''}" data-f="">All ${DB.activities.length}</button>
-     ${types.map(t=>`<button class="chip ${AFILTER===t?'a':''}" data-f="${t}">${(ACT_TYPES[t]||ACT_TYPES.other).emoji} ${esc((ACT_TYPES[t]||ACT_TYPES.other).name)} ${DB.activities.filter(a=>a.type===t).length}</button>`).join('')}
+     ${types.map(t=>`<button class="chip ${AFILTER===t?'a':''}" data-f="${t}">${''} ${esc((ACT_TYPES[t]||ACT_TYPES.other).name)} ${DB.activities.filter(a=>a.type===t).length}</button>`).join('')}
    </div>
    ${list.length? list.map(a=>{ const t=ACT_TYPES[a.type]||ACT_TYPES.other, L=activityLoad(a), b=loadBand(L);
      const cy=cycleByDate(addDays(a.date,1));
      return `<div class="card tight" data-aid="${a.id}">
        <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
          <div style="flex:1;min-width:0">
-           <div style="font-size:14.5px;font-weight:750">${t.emoji} ${esc(t.name)}${a.subtype?' · '+esc(a.subtype):''}</div>
+           <div style="font-size:14.5px;font-weight:750">${esc(t.name)}${a.subtype?' · '+esc(a.subtype):''}</div>
            <div style="font-size:11.5px;color:var(--text-3);margin-top:3px">${fmtDate(a.date)}${a.time?' · '+esc(a.time):''}</div>
          </div>
          <span class="chip ${b.cls}">${b.label}</span>
@@ -6847,7 +6904,7 @@ function paneActHistory(c){
        </div>
        ${a.notes?`<div class="note" style="margin-top:9px;font-size:11.5px">${esc(a.notes)}</div>`:''}
      </div>`;}).join('')
-    :'<div class="empty"><div class="ei">📋</div><h4>Nothing logged yet</h4><p>Use “Log an activity” above. Anything counts — a kickabout, a hike, a swim, a spontaneous run.</p></div>'}`;
+    :'<div class="empty"><div class="ei">'+svg('book')+'</div><h4>Nothing logged yet</h4><p>Use “Log an activity” above. Anything counts — a kickabout, a hike, a swim, a spontaneous run.</p></div>'}`;
   $$('[data-f]',c).forEach(b=>b.onclick=()=>{ AFILTER=b.dataset.f; paneActHistory(c); });
   $$('[data-aid]',c).forEach(b=>b.onclick=()=>activitySheet(b.dataset.aid));
 }
@@ -6892,7 +6949,7 @@ function paneTotals(c){
      <div class="card-h"><div class="card-t">By activity type — all time</div></div>
      ${Object.entries(byType).sort((a,b)=>b[1].load-a[1].load).map(([t,g])=>{
        const T=ACT_TYPES[t]||ACT_TYPES.other;
-       return `<div class="kv"><span class="k">${T.emoji} ${esc(T.name)}</span>
+       return `<div class="kv"><span class="k">${esc(T.name)}</span>
          <span class="v">${g.n} × · ${fmtMin(g.min)} · load ${rnd(g.load,0)}</span></div>`;}).join('')
       ||'<div class="hint">No activities logged yet.</div>'}
    </div>
@@ -6905,6 +6962,27 @@ function paneTotals(c){
 }
 
 /* ---------------------------------------------------------- ENTRY SHEET */
+/* Things the app has no activity type for, plus whatever this user has
+   actually typed before. Fed to a native <datalist>, so the platform does the
+   filtering as you type and the keyboard behaves the way the phone's does. */
+const OTHER_SUGGESTIONS=[
+  'Badminton','Table tennis','Cricket','Baseball','Rugby','Hockey','Handball',
+  'Boxing','Kickboxing','Wrestling','Judo','Surfing','Kayaking','Canoeing',
+  'Paddleboarding','Sailing','Horse riding','Skateboarding','Ice skating',
+  'Dance','Ballet','Pilates','CrossFit','Circuit training','Spinning',
+  'Cross-trainer','Stair climbing','Gardening','Manual work','Physiotherapy',
+  'Stretching','Foam rolling','Sauna','Cold exposure','Walk with the dog'
+];
+function otherSuggestions(){
+  const mine=[];
+  (DB.activities||[]).forEach(a=>{
+    const s=(a.subtype||'').trim();
+    if(s && mine.indexOf(s)<0) mine.push(s);
+  });
+  /* the user's own words first: they are the likeliest next answer */
+  return mine.concat(OTHER_SUGGESTIONS.filter(s=>mine.indexOf(s)<0));
+}
+
 function activitySheet(id,defDate){
   const ex = id? DB.activities.find(a=>a.id===id) : null;
   /* No pre-selected type: "what did you do" is the question, and answering it
@@ -6935,6 +7013,15 @@ function activitySheet(id,defDate){
               style="margin-top:8px">
      </div>
 
+     ${type==='other'?`
+     <div class="field"><label>What was it?</label>
+       <input class="inp" id="asName" list="asNames" autocomplete="off"
+              value="${esc(a.subtype||'')}" placeholder="Start typing…">
+       <datalist id="asNames">${otherSuggestions().map(s=>
+         `<option value="${esc(s)}"></option>`).join('')}</datalist>
+       <div class="hint">Suggestions appear as you type. Anything is fine.</div>
+     </div>`:''}
+
      <div class="field"><label>How hard?</label>
        <div class="pills" id="asInt">
          ${['Easy','Moderate','Hard','Maximal'].map(f=>
@@ -6958,7 +7045,7 @@ function activitySheet(id,defDate){
          <div class="field"><label>Pace (min/km)</label>
            <input class="inp" id="asPace" value="${esc(a.pace||'')}" placeholder="auto"></div>
        </div>`:''}
-       ${['tennis','padel','squash'].includes(type)?`
+       ${type==='other'?'':['tennis','padel','squash'].includes(type)?`
          <div class="field"><label>Format</label><div class="pills" id="asFormat">
            ${['Singles','Doubles','Hitting','Solo drills'].map(f=>
              `<button data-v="${f}" class="${a.format===f?'on':''}">${f}</button>`).join('')}</div></div>
@@ -7017,7 +7104,9 @@ function activitySheet(id,defDate){
         time: ($('#asTime')||{}).value||null,
         type, min, dist, pace,
         format: gv('#asFormat'),
-        subtype: gv('#asSubtype') || ($('#asSubtype2')?$('#asSubtype2').value.trim():null),
+        subtype: gv('#asSubtype')
+                 || ($('#asName')?$('#asName').value.trim():'')
+                 || ($('#asSubtype2')?$('#asSubtype2').value.trim():null),
         /* unset stays unset: the app records what it was told, and
            activityLoad() supplies its own neutral rpe when none was given */
         intensity: gv('#asInt'),
@@ -7042,19 +7131,17 @@ function activitySheet(id,defDate){
    bars and the Metrics trends.
    ====================================================================== */
 let PTAB='training';
-/* Progress answers four questions, one per row, each with the answer already
-   on the row so most visits need no tap at all. */
+/* Progress leads with how the week actually went - the verdict and the load
+   chart - and keeps the deeper questions as rows. */
 function viewProgress(v){
   appbar('Progress');
   const R=weekReview();
   const nT=(DB.tests||[]).length, nP=(DB.physique||[]).length;
   const nS=(DB.sessions||[]).filter(s=>s.done).length;
+  const verdict = R.attn.length ? R.attn.length+' thing'+(R.attn.length>1?'s':'')+' to watch'
+                : R.good.length ? 'Going well so far'
+                : 'Not enough logged yet to judge';
   const rows=[
-    {t:'This week', icon:'today',
-     s: R.attn.length ? `${R.attn.length} thing${R.attn.length>1?'s':''} to watch`
-        : R.good.length ? 'Going well so far'
-        : 'Not enough logged yet to judge',
-     go:()=>openPane('This week','How the week is going', paneWeek)},
     {t:'Strength', icon:'dumbbell',
      s: nS? `${nS} session${nS===1?'':'s'} of history` : 'No sessions yet',
      go:()=>openPane('Strength','What is moving, and what is not', paneStrength)},
@@ -7068,7 +7155,16 @@ function viewProgress(v){
      s:'What your data does and does not show',
      go:()=>openPane('Patterns','Correlations only, never causes', paneLinks)}
   ];
-  v.innerHTML=navRows('pRows',rows);
+  v.innerHTML=
+    `<div class="rec" style="margin-top:0">
+       <div class="rec-l">This week</div>
+       <div class="rec-t" style="font-size:22px">${esc(verdict)}</div>
+     </div>`
+    + weekNumbers(R)
+    + `<button class="tert" id="pFull">Full week review ${svg('chev')}</button>`
+    + '<div class="sec-t">Go deeper</div>' + navRows('pRows',rows);
+  const f=$('#pFull');
+  if(f) f.onclick=()=>openPane('This week','How the week went', paneWeek);
   wireRows('pRows',rows);
   bindInputs(v);
 }
@@ -7296,7 +7392,7 @@ function panePhysique(c){
        </div>
        ${pts.length>1?`<div class="chart-wrap" style="margin-top:8px">${lineChart([{pts:pts.map(p=>({v:p[k]})),color:'var(--violet)',area:true}],{h:56,l:26,dp:1})}</div>`:''}
      </div>`;}).join('')
-    :'<div class="empty"><div class="ei">📏</div><h4>No measurements yet</h4><p>Record a baseline now and repeat every 4 weeks, same time of day, same conditions.</p></div>'}
+    :'<div class="empty"><div class="ei">'+svg('ruler')+'</div><h4>No measurements yet</h4><p>Record a baseline now and repeat every 4 weeks, same time of day, same conditions.</p></div>'}
    <div class="card">
      <div class="card-t" style="margin-bottom:10px">What drives the physique goal</div>
      <div class="kv"><span class="k">Shoulder width / V-taper</span><span class="v">Lateral Raise · Pike Push-Up · Band Lat Pulldown</span></div>
@@ -7363,7 +7459,7 @@ function paneLinks(c){
        </div>
        <div class="bar ${cls}" style="margin-top:8px"><i style="width:${clamp(a*100,3,100)}%"></i></div>
      </div>`;}).join('')
-    :`<div class="empty"><div class="ei">🔗</div><h4>Not enough data yet</h4><p>${usesDevice()
+    :`<div class="empty"><div class="ei">${svg('pulse')}</div><h4>Not enough data yet</h4><p>${usesDevice()
         ? `Import your ${esc(SRC_NAME())} history, or log a few weeks of daily numbers, and log 2–3 weeks of activity — then relationships appear here.`
         : 'These relationships are drawn between a wearable\'s overnight metrics and what you did the day before. Without a wearable there is nothing to correlate, so this stays empty rather than showing you something invented.'}</p></div>`}
    ${cors.length?`<div class="card">
@@ -7495,10 +7591,10 @@ function viewWhoop(v){
 }
 function needImport(c){
   c.innerHTML=usesDevice()
-    ? `<div class="empty"><div class="ei">📊</div><h4>No ${esc(SRC_NAME())} data yet</h4>
+    ? `<div class="empty"><div class="ei">${svg('chart')}</div><h4>No ${esc(SRC_NAME())} data yet</h4>
        <p>Import an export from ${esc(SRC_NAME())} to unlock trends, baselines and correlations — or type this morning's numbers into the daily check-in.</p>
        <button class="btn primary" id="niGo" style="margin-top:16px">Go to import</button></div>`
-    : `<div class="empty"><div class="ei">✍️</div><h4>No wearable connected</h4>
+    : `<div class="empty"><div class="ei">${svg('edit')}</div><h4>No wearable connected</h4>
        <p>Trends here are built from a device's overnight metrics. You told setup you do not use one, so there is nothing to chart — the daily engine runs from your check-ins and training log instead.</p>
        <button class="btn primary" id="niGo" style="margin-top:16px">Add a wearable</button></div>`;
   $('#niGo').onclick=()=>{ if(usesDevice()){ HTAB='import'; render(); } else startSetup(true); };
@@ -7745,7 +7841,7 @@ $('#fileIn').addEventListener('change',async e=>{
 function openSetup(auto){
   const ok=Store.durable, https=ENV.isHttps, file=ENV.isFile, sa=ENV.standalone;
   const row=(good,label,detail)=>`<div class="row" style="padding:11px 0">
-    <div style="width:24px;flex:0 0 24px;color:${good?'var(--green)':'var(--orange)'};font-size:15px;font-weight:800">${good?'✓':'!'}</div>
+    <div style="width:24px;flex:0 0 24px;color:${good?'var(--green)':'var(--orange)'};font-size:15px;font-weight:800">${good?svg('check'):svg('info')}</div>
     <div class="rt"><div class="rn" style="font-size:13.5px">${label}</div>
     <div class="rs">${detail}</div></div></div>`;
   openSheet(auto?'Read this first':'Setup & install',`
@@ -7950,7 +8046,7 @@ function settingsBody(v){
      
      ${chipPicker({id:'sportPick', lead:true,
         chosen:(P.sports&&P.sports.length)?P.sports:[P.sport],
-        all:SPORTS.map(x=>({id:x.id,name:x.name,emoji:x.emoji,hint:x.focus}))})}
+        all:SPORTS.map(x=>({id:x.id,name:x.name,hint:x.focus}))})}
      <div class="hint" style="margin-top:8px">The one marked MAIN leads. Remove it and the next becomes main.</div>
 
      <div class="card-t accent" style="margin:18px 0 6px">What you want from it</div>
@@ -8169,7 +8265,7 @@ function settingsBody(v){
     'Add equipment', true);
   /* Sports: the first one leads. Goals: at least one. Both re-derive targets. */
   wirePicker('sportPick', (P.sports&&P.sports.length)?P.sports:[P.sport],
-    SPORTS.map(x=>({id:x.id,name:x.name,emoji:x.emoji,hint:x.focus})),
+    SPORTS.map(x=>({id:x.id,name:x.name,hint:x.focus})),
     next=>{ P.sports=next; P.sport=next[0];
             P.goalPrimary=goalTextFor(next);
             applyGoalTargets(); save(true); render(); },
@@ -8790,7 +8886,7 @@ function bootFallback(reason){
     }
   }catch(e){
     document.getElementById('view').innerHTML =
-      '<div class="empty"><div class="ei">⚠️</div><h4>Could not start</h4>'+
+      '<div class="empty"><div class="ei">'+svg('info')+'</div><h4>Could not start</h4>'+
       '<p>Reload the page. If this persists, the saved data may be corrupt — '+
       'restore a JSON backup from Settings after reloading.</p></div>';
   }
@@ -9185,9 +9281,9 @@ function drawSetup(){
     const cur=SETUP.draft[key]||[];
     wirePicker(id, cur, all, next=>{
       SETUP.draft[key]=next;
-      if(lead) SETUP.draft[key.replace(/s$/,'')]=next[0];
+      if(lead) SETUP.draft[key.replace(/s$/,'')]=next[0]||null;
       haptic(); drawSetup();
-    }, title, allowEmpty);
+    }, title, allowEmpty, true);   // the wizard redraws this sheet itself
   };
   pick('setGearPick','gear',
        EQUIP_ITEMS.map(x=>({id:x.id,name:x.name,hint:x.hint||''})),
