@@ -85,6 +85,9 @@
   --shadow-lg:0 12px 44px rgba(16,18,20,.16);
   --ring:rgba(27,122,75,.30);
 
+  /* one vertical rhythm. Every block-level component owns its BOTTOM margin
+     and nothing owns a top margin, so adjacency is the same everywhere. */
+  --sp-1:6px; --sp-2:10px; --sp-3:14px; --sp-4:20px; --sp-5:26px;
   --r-sm:8px; --r-md:11px; --r-lg:14px; --r-xl:18px;
   --sp:16px;
   --nav-h:58px;
@@ -254,7 +257,7 @@ a{color:var(--accent);text-decoration:none}
 /* ---------- Cards ---------- */
 .card{
   background:var(--surface);border:1px solid var(--border-soft);
-  border-radius:var(--r-lg);padding:17px 16px;margin-bottom:10px;
+  border-radius:var(--r-lg);padding:17px 16px;margin-bottom:var(--sp-2);
 }
 /* a card sitting directly on the page reads as one plane; a card nested
    inside another should not draw a second box around itself */
@@ -327,7 +330,7 @@ button.card{padding-right:46px}      /* room for the tick */
 .card-h{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
 .card-t{font-size:13px;font-weight:600;letter-spacing:-.1px;color:var(--text-2)}
 .card-t.accent{color:var(--accent)}
-.sec-t{font-size:13px;font-weight:600;letter-spacing:-.1px;color:var(--text-2);margin:26px 2px 10px}
+.sec-t{font-size:13px;font-weight:600;letter-spacing:-.1px;color:var(--text-2);margin:var(--sp-5) 2px var(--sp-2)}
 .sec-t:first-child{margin-top:4px}
 
 /* ---------- Buttons ---------- */
@@ -342,7 +345,7 @@ button.card{padding-right:46px}      /* room for the tick */
 .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
 .btn.ghost{background:transparent;border-color:var(--border)}
 .btn.danger{background:var(--red-wash);color:var(--red);border-color:var(--red-line)}
-.btn.block{display:flex;width:100%}
+.btn.block{display:flex;width:100%;margin-bottom:var(--sp-2)}
 .btn.sm{min-height:38px;padding:0 13px;font-size:13.5px;border-radius:10px}
 .btn.xs{min-height:32px;padding:0 10px;font-size:12.5px;border-radius:9px;font-weight:600}
 .btn.big{min-height:56px;font-size:16.5px;border-radius:var(--r-lg);font-weight:650;letter-spacing:0}
@@ -351,11 +354,12 @@ button.card{padding-right:46px}      /* room for the tick */
 .btn.big svg{width:20px;height:20px}
 .btn.xs svg,.btn.sm svg{width:15px;height:15px}
 .chip svg{width:13px;height:13px;flex:0 0 auto;stroke-width:2.2}
-.btn-row{display:flex;gap:9px;flex-wrap:wrap}
+.btn-row{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:var(--sp-2)}
 
 /* ---------- row list: the one way to offer choices that lead somewhere --- */
 .rows{display:flex;flex-direction:column;gap:1px;background:var(--border-soft);
-  border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
+  border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;
+  margin-bottom:var(--sp-2)}
 .rows>button{display:flex;align-items:center;gap:13px;width:100%;min-height:58px;
   padding:14px 15px;background:var(--surface);border:0;text-align:left;
   font:inherit;color:inherit;cursor:pointer}
@@ -402,7 +406,7 @@ button.card{padding-right:46px}      /* room for the tick */
 .icon-btn svg{width:19px;height:19px;stroke-width:2}
 
 /* ---------- Stat tiles ---------- */
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:var(--sp-2)}
 .stats.c2{grid-template-columns:repeat(2,1fr)}
 .stats.c4{grid-template-columns:repeat(4,1fr)}
 .stat{
@@ -472,7 +476,7 @@ button.chip{min-height:40px;padding:8px 14px;font-size:12px}
 .why li b{color:var(--text);font-weight:700}
 
 /* ---------- Sliders ---------- */
-.slider-row{margin-bottom:17px}
+.slider-row{margin-bottom:var(--sp-3);margin-bottom:17px}
 .slider-top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:9px}
 .slider-top .l{font-size:13.5px;font-weight:650;color:var(--text)}
 .slider-top .v{font-size:19px;font-weight:800;color:var(--accent);letter-spacing:-.4px}
@@ -522,14 +526,19 @@ input[type=range]::-moz-range-progress{height:8px;border-radius:99px;background:
 .pills button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:750}
 
 /* ---------- Forms ---------- */
-.field{margin-bottom:14px}
+.field{margin-bottom:var(--sp-3)}
+/* the last thing in a container never adds space below itself: that is what
+   made sheet footers and card bottoms look unevenly padded */
+.sheet-f>:last-child,.sheet-b>:last-child,#view>:last-child,
+.card>:last-child,.acc-b>:last-child{margin-bottom:0}
 /* the one-line intro a step is allowed: short, and the same everywhere */
 .lede{font-size:14.5px;line-height:1.55;color:var(--text-2);margin:0}
 
 /* ---------- Readiness row: one number, one word, a way in ---------- */
 .rdrow{display:flex;align-items:center;gap:14px;width:100%;min-height:66px;
   padding:13px 15px;background:var(--surface);border:1px solid var(--border);
-  border-radius:var(--r-lg);font:inherit;color:inherit;text-align:left;cursor:pointer}
+  border-radius:var(--r-lg);font:inherit;color:inherit;text-align:left;cursor:pointer;
+  margin-bottom:var(--sp-2)}
 .rdrow:active{background:var(--surface-2)}
 .rdrow:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .rd-n{font-size:31px;font-weight:850;letter-spacing:-1.3px;line-height:1;
@@ -539,7 +548,7 @@ input[type=range]::-moz-range-progress{height:8px;border-radius:99px;background:
 .rd-w{font-size:15.5px;font-weight:700;letter-spacing:-.2px;margin-top:2px}
 
 /* ---------- The recommendation: the one thing that should dominate ---------- */
-.rec{margin-top:11px;padding:20px 18px;background:var(--surface);
+.rec{margin:0 0 var(--sp-2);padding:20px 18px;background:var(--surface);
   border:1px solid var(--border);border-radius:var(--r-xl)}
 .rec-l{font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--text-3)}
 .rec-t{font-size:27px;font-weight:850;letter-spacing:-.9px;line-height:1.14;margin-top:7px}
@@ -784,6 +793,7 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .note{
   background:var(--surface-2);border:1px solid var(--border);border-left:3px solid var(--cyan);
   border-radius:10px;padding:12px 14px;font-size:12.5px;color:var(--text-2);line-height:1.55;
+  margin-bottom:var(--sp-2);
 }
 .note.warn{border-left-color:var(--orange)}
 .note.acc{border-left-color:var(--accent)}
@@ -5632,7 +5642,7 @@ function mcRow(date){
   if(!mcOn()) return '';
   const s=mcSummary(date);
   const logged=!!mcLog(date);
-  return `<div class="rows" style="margin-top:11px" id="mcRow">
+  return `<div class="rows" id="mcRow">
     <button data-r="0">
       <i class="rw-i">${svg('drop')}</i>
       <span class="rw-x"><span class="rw-t">${esc(s.top)}</span>
@@ -5748,7 +5758,7 @@ function paneCycle(c){
     ${p.phase!=='unknown'&&p.confidence!=='reported'
       ? `<div class="rec-m" style="color:var(--text-3)">Estimate confidence: ${esc(p.confidence)}</div>`:''}
   </div>
-  <button class="btn primary big block" id="mcLogBtn" style="margin-top:13px">
+  <button class="btn primary big block" id="mcLogBtn">
     ${mcLog(d)?'Update today':'Log today'}</button>
 
   <div class="sec-t">Your cycles</div>
@@ -5801,7 +5811,7 @@ function paneCycle(c){
         return i>0? daysBetween(st[i-1],s)+' days later' : '—'; })()}</span></div>`).join('')}
   </div>`:''}
 
-  <div class="note" style="margin-top:14px">Baseline is not a medical device.
+  <div class="note">Baseline is not a medical device.
     It does not estimate fertility or pregnancy, does not diagnose anything,
     and cannot tell you whether a cycle is healthy. Anything that concerns you
     belongs with a qualified healthcare professional.</div>`;
@@ -6294,7 +6304,7 @@ function sinceText(n){
    history to look at instead. */
 function tourRow(){
   if(!DB.profile.onboarded || tourSeen() || loggedCount()>0) return '';
-  return `<div class="rows" style="margin-top:11px" id="tourRow">
+  return `<div class="rows" id="tourRow">
     <button data-r="0"><i class="rw-i">${svg('info')}</i>
       <span class="rw-x"><span class="rw-t">New here?</span>
         <span class="rw-s">How Baseline works — about a minute</span></span>
@@ -6336,7 +6346,7 @@ function viewToday(v){
     <div class="rec-t">${esc(done.workoutName||'Session complete')}</div>
     <div class="rec-m">${done.durationMin||0} min${done.setsDone?' · '+done.setsDone+' sets':''}</div>
   </div>
-  <button class="btn ghost block" id="btnQuickLog" style="margin-top:11px">${svg('plus')} Log an activity</button>`
+  <button class="btn ghost block" id="btnQuickLog">${svg('plus')} Log an activity</button>`
   :`
   <div class="rec">
     <div class="rec-l">Today</div>
@@ -6346,7 +6356,7 @@ function viewToday(v){
     ${hasLimits(d)?`<div class="rec-m" style="color:var(--orange)">Working around ${esc(limitsText(d))}</div>`:''}
   </div>
 
-  ${wk?`<button class="btn primary big block" id="btnStart" style="margin-top:13px">${svg('play')} Start session</button>`
+  ${wk?`<button class="btn primary big block" id="btnStart">${svg('play')} Start session</button>`
       :`<div class="hint" style="margin-top:13px;text-align:center">Rest is the recommendation today, not the absence of one.</div>`}
 
   <button class="tert" id="whyT" aria-expanded="false" aria-controls="whyB">Why this? ${svg('down')}</button>
@@ -6364,7 +6374,7 @@ function viewToday(v){
   ${wk?`<button class="tert" id="btnPreview">Preview session</button>`:''}`}
 
   ${(pl.prep&&!done)?`
-  <div class="rows" style="margin-top:13px" id="prepRows">
+  <div class="rows" id="prepRows">
     <button data-r="0"><span class="rw-x"><span class="rw-t">Pre-${esc(sportLC())} activation</span>
       <span class="rw-s">${sportWarmup().dur} min before you play</span></span>
       <i class="rw-c">${svg('chev')}</i></button>
@@ -6373,7 +6383,7 @@ function viewToday(v){
   <div class="sec-t">This week</div>
   ${weekStrip(d)}
 
-  <button class="btn ghost block" id="btnQuickLog${done?'2':''}" style="margin-top:11px">${svg('plus')} Log an activity</button>
+  <button class="btn ghost block" id="btnQuickLog${done?'2':''}">${svg('plus')} Log an activity</button>
   ${loggedToday(d)}`;
 
   wireToday(d);
@@ -6389,7 +6399,7 @@ function loggedToday(d){
     const k = i.kind==='session' ? 'Strength' : (ACT_TYPES[i.type]||ACT_TYPES.other).name;
     groups[k]=groups[k]||0; groups[k]+=i.min||0;
   });
-  return `<div class="rows" style="margin-top:11px">`+
+  return `<div class="rows">`+
     Object.keys(groups).map(k=>
       `<div class="rw-flat"><span class="rw-t">${esc(k)}</span>
         <span class="rw-b">${Math.round(groups[k])} min</span></div>`).join('')+
@@ -6427,7 +6437,7 @@ function pageReadiness(d){
       ${statTile('Recovery',ci.recovery,'%',ci.recovery>=67?'g':ci.recovery>=34?'y':'r')}
       ${statTile('HRV',ci.hrv,'ms','c')}
       ${statTile('Rest HR',ci.rhr,'bpm','')}
-    </div><div class="stats" style="margin-top:9px">`:'<div class="stats">'}
+    </div><div class="stats">`:'<div class="stats">'}
       ${statTile('Sleep',ci.sleepMin!=null?fmtMin(ci.sleepMin):null,'',
          rd.shortfall==null?'':rd.shortfall<=60?'g':rd.shortfall<=120?'y':'r',
          rd.shortfall!=null?(rd.shortfall<=0?'target met':Math.round(rd.shortfall)+' min short'):'')}
@@ -6446,7 +6456,7 @@ function pageReadiness(d){
       ${ci.pain&&ci.pain!=='None'?`<div class="kv"><span class="k">Pain</span><span class="v">${esc(ci.pain)}</span></div>`:''}
     </div>
 
-    <button class="btn ghost block" id="rdEdit" style="margin-top:13px">Edit check-in</button>
+    <button class="btn ghost block" id="rdEdit">Edit check-in</button>
     ${(usesDevice()||DB.whoop.cycles.length)
       ? `<button class="btn ghost block" id="rdMetrics">Wearable metrics and trends</button>`
       : ''}`;
@@ -6522,13 +6532,13 @@ function todayNoCheckin(d){
     <div class="rec-t">How are you doing?</div>
     <div class="rec-m">Baseline needs this before it can pick a session. About a minute.</div>
   </div>
-  <button class="btn primary big block" id="btnCheck" style="margin-top:13px">${svg('play')} Check in</button>
+  <button class="btn primary big block" id="btnCheck">${svg('play')} Check in</button>
   ${cy?`<div class="hint" style="margin-top:11px;text-align:center">Your ${esc(SRC_NAME())} numbers for today are already there — they will be filled in for you.</div>`:''}
 
   ${tourRow()}
   <div class="sec-t">This week</div>
   ${weekStrip(d)}
-  <button class="btn ghost block" id="btnQuickLog" style="margin-top:11px">${svg('plus')} Log an activity</button>`;
+  <button class="btn ghost block" id="btnQuickLog">${svg('plus')} Log an activity</button>`;
 }
 
 function setupPrompt(){
@@ -6538,7 +6548,7 @@ function setupPrompt(){
     <div class="card-t" style="color:var(--orange)">Setup not finished</div>
     <div style="font-size:15px;font-weight:750;letter-spacing:-.2px;margin:7px 0 7px">The program is running on defaults</div>
     <p style="font-size:13px;color:var(--text-2);line-height:1.55">Right now it assumes <b>${esc(t.name.toLowerCase())}</b> equipment and <b>${esc(sportsText())}</b> as your sport. If either is wrong you are being given the wrong exercises.</p>
-    <div class="btn-row" style="margin-top:12px">
+    <div class="btn-row">
       <button class="btn primary sm" id="setupGo">Continue setup</button>
       <button class="btn ghost sm" id="setupDismiss">Defaults are fine</button>
     </div>
@@ -6573,7 +6583,7 @@ function dailySummaryCard(d){
       `<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
         <span style="color:var(--text-2);font-weight:600">${l}</span><span class="num" style="font-weight:750">${v}</span></div>
         <div class="bar ${cl}"><i style="width:${clamp(v/18*100,0,100)}%"></i></div></div>`).join('')}
-    <div class="note ${dd.expl>=8||dd.lower>=12?'warn':'acc'}" style="margin-top:12px"><b>Effect on tomorrow:</b> ${tomorrow}</div>
+    <div class="note ${dd.expl>=8||dd.lower>=12?'warn':'acc'}"><b>Effect on tomorrow:</b> ${tomorrow}</div>
     <div class="hint" style="margin-top:8px">Load Score is this app's own estimate from activity type, duration and RPE — not a WHOOP measurement. Where WHOOP strain exists for a day, the engine uses that for the day total.</div>
   </div>`;
 }
@@ -6647,7 +6657,7 @@ function changePlan(d){
    ${DB.workouts.map(w=>`<button class="row tap" data-w="${w.id}" style="display:flex;width:100%;text-align:left;background:var(--surface);border-radius:11px;margin-bottom:6px;border:1px solid var(--border-soft)">
      <div class="rt"><div class="rn" style="font-size:13.5px">${esc(w.name)}</div><div class="rs">${esc(w.focus)}</div></div>
      <span class="chev">${svg('chev')}</span></button>`).join('')}
-   ${cur?`<button class="btn ghost block" id="cpClear" style="margin-top:12px">${svg('undo')} Back to the engine's pick</button>`:''}
+   ${cur?`<button class="btn ghost block" id="cpClear">${svg('undo')} Back to the engine's pick</button>`:''}
   `);
   $$('[data-pick]',$('#sheetBody')).forEach(b=>b.onclick=()=>{
     const x=rec.scored.find(s=>s.c.id===b.dataset.pick);
@@ -6932,8 +6942,8 @@ function progressionCard(){
         <div style="width:28px;font-size:12px;font-weight:800;color:${on?'var(--accent)':'var(--text-3)'}">W${p.w}</div>
         <div class="rt"><div class="rn" style="font-size:14px">${esc(p.name)}</div><div class="rs">${esc(p.goal)}</div></div>
         <div class="rv" style="font-size:11.5px;text-align:right">${Math.round(p.vol*100)}%<br><span style="color:var(--text-3);font-weight:600">RPE ${p.rpeCap}</span></div></div>`;}).join('')}
-    ${ph.pausedWeeks>0?`<div class="note warn" style="margin-top:12px">You are in <b>week ${ph.absWeek}</b>, not week ${ph.elapsedWeek}: ${ph.pausedWeeks} week${ph.pausedWeeks>1?'s':''} passed with nothing logged, and the plan waited rather than moving on without you.</div>`:''}
-    <div class="note acc" style="margin-top:12px">After week 8 the cycle repeats as <b>block ${ph.block+1}</b> — same structure, harder variations.</div>
+    ${ph.pausedWeeks>0?`<div class="note warn">You are in <b>week ${ph.absWeek}</b>, not week ${ph.elapsedWeek}: ${ph.pausedWeeks} week${ph.pausedWeeks>1?'s':''} passed with nothing logged, and the plan waited rather than moving on without you.</div>`:''}
+    <div class="note acc">After week 8 the cycle repeats as <b>block ${ph.block+1}</b> — same structure, harder variations.</div>
     </div>
   </div>`;
 }
@@ -6970,14 +6980,14 @@ function paneProgram(c){
          </div>
        </div>
      </div>
-     <div class="btn-row" style="margin-top:11px">
+     <div class="btn-row">
        <button class="btn xs ghost" data-pv="${w.id}">View</button>
        <button class="btn xs ghost" data-ed="${w.id}">Edit</button>
        <button class="btn xs ghost" data-dup="${w.id}">${svg('copy')}</button>
        <button class="btn xs primary" data-go="${w.id}">Start</button>
      </div>
    </div>`).join('')}
-  <button class="btn ghost block" id="newW" style="margin-top:4px">${svg('plus')} New workout</button>`;
+  <button class="btn ghost block" id="newW">${svg('plus')} New workout</button>`;
 
   const ah=$('#accPriH'); if(ah) ah.onclick=()=>$('#accPri').classList.toggle('open');
   $$('[data-pv]',c).forEach(b=>b.onclick=()=>previewWorkout(b.dataset.pv,'full'));
@@ -7015,7 +7025,7 @@ function editSchedule(){
      <input type="range" id="tg_${k}" min="0" max="${mx}" step="1" value="${T[k]||0}" data-out="tg_${k}_o">
      <div class="scale"><span>0</span><span>${mx} / week</span></div></div>`;}).join('')}
    ${hasSportChosen()?`<div class="note warn">${esc(SPORT_LABEL())} has no target and is never scheduled. Log it when you play and the engine adapts everything around it.</div>`:''}
-   <button class="btn ghost block" id="schAuto" style="margin-top:12px">${svg('target')} Rebuild from my setup</button>
+   <button class="btn ghost block" id="schAuto">${svg('target')} Rebuild from my setup</button>
   `,`<button class="btn primary big block" id="schSave">Save targets</button>`);
   $('#schAuto').onclick=()=>{ applyGoalTargets(); save(true); closeSheet();
     toast('Targets rebuilt from your setup','ok'); setTimeout(render,240); };
@@ -7060,7 +7070,7 @@ function previewWorkout(wid,variant,rec){
              ${(b.tempo||e.tempo)?`<span class="tag c">TEMPO ${esc(b.tempo||e.tempo)}</span>`:''}
            </div>
            ${e.cue?`<div style="font-size:12px;color:var(--text-2);margin-top:9px;line-height:1.5"><b style="color:var(--accent)">Cue:</b> ${esc(e.cue)}</div>`:''}
-           ${b.note?`<div class="note" style="margin-top:9px;font-size:11.5px">${esc(b.note)}</div>`:''}
+           ${b.note?`<div class="note" style="font-size:11.5px">${esc(b.note)}</div>`:''}
            ${e.prog?`<div style="font-size:11.5px;color:var(--text-3);margin-top:7px;line-height:1.5"><b>Progress:</b> ${esc(e.prog)}</div>`:''}
            ${e.subs?`<div style="font-size:11.5px;color:var(--text-3);margin-top:4px;line-height:1.5"><b>Swap for:</b> ${esc(e.subs)}</div>`:''}
          </div></div></div>`;}).join('')
@@ -7154,7 +7164,7 @@ function editWorkout(wid){
              <input class="inp bEdit" data-i="${i}" data-k="note" value="${esc(b.note||'')}" placeholder="optional"></div>
          </div></div>`;}).join('')
       :'<div class="empty"><p>No exercises in this version. Add one below.</p></div>'}
-     <button class="btn ghost block" id="ewAdd" style="margin-top:10px">${svg('plus')} Add exercise</button>
+     <button class="btn ghost block" id="ewAdd">${svg('plus')} Add exercise</button>
      <div class="divider"></div>
      <button class="btn danger block" id="ewDel">${svg('trash')} Delete this workout</button>
     `,`<button class="btn primary big block" id="ewSave">Save workout</button>`);
@@ -7268,8 +7278,8 @@ function exerciseSheet(id,editMode){
       ${e.equip?`<div class="kv"><span class="k">Equipment</span><span class="v">${esc((e.equip||'').split('+').map(x=>EQ[x]||x).join(' + '))}</span></div>`:''}
       ${e.how?`<div style="margin-top:16px"><div class="card-t" style="margin-bottom:7px">How to perform</div>
         <p style="font-size:13.5px;line-height:1.6;color:var(--text-2)">${esc(e.how)}</p></div>`:''}
-      ${e.cue?`<div class="note acc" style="margin-top:13px"><b>Coaching cue:</b> ${esc(e.cue)}</div>`:''}
-      ${e.notes?`<div class="note warn" style="margin-top:10px">${esc(e.notes)}</div>`:''}
+      ${e.cue?`<div class="note acc"><b>Coaching cue:</b> ${esc(e.cue)}</div>`:''}
+      ${e.notes?`<div class="note warn">${esc(e.notes)}</div>`:''}
       ${e.prog?`<div style="margin-top:16px"><div class="card-t" style="margin-bottom:7px">Progression</div>
         <p style="font-size:13px;line-height:1.55;color:var(--text-2)">${esc(e.prog)}</p></div>`:''}
       ${e.reg?`<div style="margin-top:13px"><div class="card-t" style="margin-bottom:7px">Regression (make it easier)</div>
@@ -7379,9 +7389,9 @@ function sessionDetail(sid){
        <div style="font-size:14px;font-weight:750;margin-bottom:7px">${esc(en.name)}${en.skipped?' <span class="tag r">SKIPPED</span>':''}</div>
        <div class="kv"><span class="k">Planned</span><span class="v">${en.plannedSets} × ${esc(en.plannedReps)} @ ${esc(en.plannedRpe||'—')}</span></div>
        <div class="kv"><span class="k">Actual</span><span class="v">${done.length?done.map(x=>x.reps+(x.weight?'×'+x.weight+'kg':'')+(x.rpe?' @'+x.rpe:'')).join(' · '):'—'}</span></div>
-       ${en.note?`<div class="note" style="margin-top:8px;font-size:11.5px">${esc(en.note)}</div>`:''}
+       ${en.note?`<div class="note" style="font-size:11.5px">${esc(en.note)}</div>`:''}
      </div>`;}).join('')}
-   ${s.notes?`<div class="note acc" style="margin-top:12px"><b>Session notes:</b> ${esc(s.notes)}</div>`:''}
+   ${s.notes?`<div class="note acc"><b>Session notes:</b> ${esc(s.notes)}</div>`:''}
   `,`<button class="btn danger block" id="sdDel">${svg('trash')} Delete session</button>`);
   $('#sdDel').onclick=()=>confirmSheet('Delete session?','This removes it from your history and progress calculations permanently.','Delete',()=>{
     DB.sessions=DB.sessions.filter(x=>x.id!==sid); save(true); toast('Deleted'); render(); },true);
@@ -7493,7 +7503,7 @@ function paneTennis(c){
      <div class="kv"><span class="k">Average recovery the day after ${esc(SLC)}</span><span class="v">${rnd(nextAvg,1)}%</span></div>
      <div class="kv"><span class="k">Your overall average recovery</span><span class="v">${rnd(baseAvg,1)}%</span></div>
      <div class="kv"><span class="k">Difference</span><span class="v" style="color:${nextAvg<baseAvg?'var(--red)':'var(--green)'}">${nextAvg>baseAvg?'+':''}${rnd(nextAvg-baseAvg,1)} points</span></div>
-     <div class="note warn" style="margin-top:11px">Observation, not proof of cause — it is your own data, ${after.length} day-pairs of it, and plenty else changes between days. ${(baseAvg!=null&&nextAvg<baseAvg-3)?`A drop this size is why the engine keeps heavy legs off the day after ${esc(SLC)}.`:'No meaningful drop so far.'}</div>
+     <div class="note warn">Observation, not proof of cause — it is your own data, ${after.length} day-pairs of it, and plenty else changes between days. ${(baseAvg!=null&&nextAvg<baseAvg-3)?`A drop this size is why the engine keeps heavy legs off the day after ${esc(SLC)}.`:'No meaningful drop so far.'}</div>
    </div>`:`<div class="note" style="margin-bottom:12px">Once you have five ${esc(SLC)} sessions followed by a WHOOP recovery score, this pane will show what ${esc(SLC)} actually costs <b>you</b>. Nothing is assumed before then.</div>`}
    <div class="card">
      <div class="card-t" style="margin-bottom:11px">How your training serves ${esc(SLC)}</div>
@@ -7514,10 +7524,10 @@ function paneTennis(c){
          <span class="tag">RPE ${t.rpe||'—'}</span><span class="tag a">LOAD ${activityLoad(t)}</span>
          ${t.planned===false?'<span class="tag o">UNPLANNED</span>':''}
        </div>
-       ${t.notes?`<div class="note" style="margin-top:9px;font-size:11.5px">${esc(t.notes)}</div>`:''}
+       ${t.notes?`<div class="note" style="font-size:11.5px">${esc(t.notes)}</div>`:''}
      </div>`).join('')
     :`<div class="empty"><div class="ei">\${svg('flame')}</div><h4>No \${esc(SLC)} logged yet</h4><p>Log a session and the engine will start protecting the day after it.</p></div>`}
-   ${wT.length?`<div class="note" style="margin-top:10px">Plus <b>${wT.length}</b> matching sessions imported from WHOOP.</div>`:''}`;
+   ${wT.length?`<div class="note">Plus <b>${wT.length}</b> matching sessions imported from WHOOP.</div>`:''}`;
   $$('[data-w]',c).forEach(b=>b.onclick=()=>previewWorkout(b.dataset.w,'full'));
   $$('[data-aid]',c).forEach(b=>b.onclick=()=>activitySheet(b.dataset.aid));
 }
@@ -7550,7 +7560,7 @@ function paneActHistory(c){
          ${a.planned===false?'<span class="tag o">UNPLANNED</span>':'<span class="tag g">PLANNED</span>'}
          ${cy&&cy.recovery!=null?`<span class="tag ${cy.recovery>=67?'g':cy.recovery>=34?'o':'r'}">NEXT DAY ${cy.recovery}%</span>`:''}
        </div>
-       ${a.notes?`<div class="note" style="margin-top:9px;font-size:11.5px">${esc(a.notes)}</div>`:''}
+       ${a.notes?`<div class="note" style="font-size:11.5px">${esc(a.notes)}</div>`:''}
      </div>`;}).join('')
     :'<div class="empty"><div class="ei">'+svg('book')+'</div><h4>Nothing logged yet</h4><p>Use “Log an activity” above. Anything counts — a kickabout, a hike, a swim, a spontaneous run.</p></div>'}`;
   $$('[data-f]',c).forEach(b=>b.onclick=()=>{ AFILTER=b.dataset.f; paneActHistory(c); });
@@ -7915,7 +7925,7 @@ function weekNumbers(R){
     ${statTile('Avg RHR',A.rhr!=null?rnd(A.rhr,1):null,'bpm','',dl(A.rhr,P.rhr,1))}
     ${statTile('Avg sleep',A.sleep!=null?fmtMin(A.sleep):null,'',A.sleep>=R.sleepNeed-60?'g':'o',dl(A.sleep,P.sleep))}
   </div>
-  <div class="stats" style="margin-top:9px">
+  <div class="stats">
     ${statTile('Sessions',A.sessions,'','a',`vs ${P.sessions}`)}
     ${statTile('Activities',A.acts,'','g',`${A.sport} ${esc(sportLC())}`)}
     ${statTile('Week load',A.load,'','o',dl(A.load,P.load,1))}
@@ -7968,7 +7978,7 @@ function paneStrength(c){
        ${pts.length>1?`<div class="kv"><span class="k">Change since first logged</span>
          <span class="v ${chg>0?'up':chg<0?'down':'flat'}">${chg>0?'+':''}${chg} reps</span></div>`:''}
        <div class="kv"><span class="k">Best single set</span><span class="v">${Math.max(...pts.map(p=>p.best))} reps</span></div>
-       <div class="note ${chg>0?'acc':chg<0?'warn':''}" style="margin-top:10px;font-size:11.5px">
+       <div class="note ${chg>0?'acc':chg<0?'warn':''}" style="font-size:11.5px">
          ${chg>0?'Progressing — keep adding reps until you reach the top of the range, then move to the harder variation.'
           :chg<0?'Output has fallen. Check recovery and sleep before assuming you need to train harder — dropping performance is usually a fatigue signal, not a motivation one.'
           :'Holding steady. If recovery is good, add a rep per set. If recovery is poor, maintaining is the correct outcome.'}</div>
@@ -8049,8 +8059,8 @@ function panePhysique(c){
      <div class="kv"><span class="k">Arms</span><span class="v">Curls + Triceps at high reps to failure</span></div>
      <div class="kv"><span class="k">Posture</span><span class="v">Pull-Apart · Prone Y-T-W · Wall Slides</span></div>
      ${(DB.profile.gear||[]).indexOf('bb')<0
-       ? `<div class="note acc" style="margin-top:11px">With light dumbbells, visible change comes from <b>proximity to failure, slow eccentrics and total weekly sets</b> — not from load. That is why the upper-body sessions prescribe 15–25 reps at RPE 8–9 rather than heavy triples.</div>`
-       : `<div class="note acc" style="margin-top:11px">With a barbell available, progressive load is your main driver — add weight before adding reps, and keep the last set 1–2 reps short of failure.</div>`}
+       ? `<div class="note acc">With light dumbbells, visible change comes from <b>proximity to failure, slow eccentrics and total weekly sets</b> — not from load. That is why the upper-body sessions prescribe 15–25 reps at RPE 8–9 rather than heavy triples.</div>`
+       : `<div class="note acc">With a barbell available, progressive load is your main driver — add weight before adding reps, and keep the last set 1–2 reps short of failure.</div>`}
    </div>`;
   $('#phAdd').onclick=()=>{
     openSheet('Add measurements',`
@@ -8110,14 +8120,14 @@ function paneLinks(c){
             ? `<div class="kv"><span class="k">Average ${esc(rev.label)} when you followed it</span><span class="v">${rnd(rev.keptAvg,1)}</span></div>
                <div class="kv"><span class="k">…and when you did not</span><span class="v">${rnd(rev.ignoredAvg,1)}</span></div>
                <div class="kv"><span class="k">Difference</span><span class="v" style="color:${rev.diff>1?'var(--green)':rev.diff<-1?'var(--red)':'var(--text-2)'}">${rev.diff>0?'+':''}${rev.diff}</span></div>
-               <div class="note ${Math.abs(rev.diff)<=1?'':'acc'}" style="margin-top:11px">${
+               <div class="note ${Math.abs(rev.diff)<=1?'':'acc'}">${
                  Math.abs(rev.diff)<=1
                    ? 'No meaningful difference so far. That is a real result: on your data this engine is not yet demonstrably better than your own judgement.'
                    : rev.diff>0
                      ? `Days you followed it were followed by <b>${rev.diff}</b> better ${esc(rev.label)} on average. Suggestive, not proof — you probably also felt better on the days you agreed with it.`
                      : `Days you followed it came out <b>${Math.abs(rev.diff)}</b> worse on average. Worth treating the recommendation more sceptically, and worth telling me so the weights can be looked at.`}</div>`
             : `<div class="hint" style="margin-top:8px">Not enough yet to compare: ${rev.nKept} day${rev.nKept===1?'':'s'} following it and ${rev.nIgnored} not, against a minimum of ${rev.min} each. Until both sides reach that, any difference would be noise and nothing is claimed.</div>`}
-          ${rev.restReady?`<div class="note" style="margin-top:10px">When it specifically said <b>rest or mobility</b>: ${rnd(rev.restKeptAvg,1)} when you took it, ${rnd(rev.restIgnoredAvg,1)} when you trained anyway (${rev.restDiff>0?'+':''}${rev.restDiff}).</div>`:''}`}
+          ${rev.restReady?`<div class="note">When it specifically said <b>rest or mobility</b>: ${rnd(rev.restKeptAvg,1)} when you took it, ${rnd(rev.restIgnoredAvg,1)} when you trained anyway (${rev.restDiff>0?'+':''}${rev.restDiff}).</div>`:''}`}
    </div>
    <div class="note red" style="margin-bottom:14px"><b>Correlations, not causes.</b> Two things moving together does not mean one caused the other. Treat each line as a hypothesis, not a finding.</div>
    ${cors.length? cors.map(x=>{
@@ -8348,7 +8358,7 @@ function paneSleep(c){
        {pts:R.map(x=>({v:x.sleepMin})),color:'var(--cyan)',area:true},
        {pts:R.map(x=>({v:x.sleepNeed||B.sleepNeed})),color:'var(--accent)',dots:false,dash:true,w:1.6}],{h:104,l:34})}</div>
      <div class="legend"><span><i style="background:var(--cyan)"></i>Slept</span><span><i style="background:var(--accent)"></i>Need</span></div>
-     <div class="note ${mean(under)>60?'warn':'acc'}" style="margin-top:11px">
+     <div class="note ${mean(under)>60?'warn':'acc'}">
        You were short of need on <b>${under.length} of ${C.length}</b> nights (${Math.round(under.length/C.length*100)}%), by an average of <b>${rnd(mean(under),0)} min</b> when short.</div>
    </div>
    <div class="card">
@@ -8444,10 +8454,10 @@ function paneImport(c){
           ['workouts.csv','Individual activities and their strain'],
           ['journal_entries.csv','Behaviour log']].map(([f,d])=>
          `<div class="kv"><span class="k mono">${f}</span><span class="v" style="font-weight:600;font-size:11.5px;color:var(--text-3);max-width:52%">${d}</span></div>`).join('')}
-     </div>`:`<div class="note acc" style="margin-top:12px">
+     </div>`:`<div class="note acc">
        Any daily CSV with a date column and columns it recognises: ${esc(srcFields().map(f=>fieldLabel(f).toLowerCase()).join(', '))}. Headers are matched loosely.
      </div>`}
-     <button class="btn primary big block" id="impGo" style="margin-top:14px">${svg('ul')} Choose CSV files</button>
+     <button class="btn primary big block" id="impGo">${svg('ul')} Choose CSV files</button>
      <div class="hint" style="margin-top:9px">Read in your browser only. Re-importing is safe — duplicates are skipped.</div>
    </div>
    ${DB.whoop.cycles.length?`<div class="card">
@@ -8498,11 +8508,11 @@ $('#fileIn').addEventListener('change',async e=>{
       ${r.bad?`<div class="kv"><span class="k">Rows without a usable date</span><span class="v">${r.bad}</span></div>`:''}
       ${r.days?`<div class="kv"><span class="k">Total days now held</span><span class="v">${r.days}</span></div>`:''}
     </div>`).join('')}
-    ${ok.some(r=>r.merged)?`<div class="note" style="margin-top:10px">Two cycles in one calendar day were merged — one decision per day. That is why days can be fewer than rows.</div>`:''}
+    ${ok.some(r=>r.merged)?`<div class="note">Two cycles in one calendar day were merged — one decision per day. That is why days can be fewer than rows.</div>`:''}
     ${bad.map(r=>`<div class="card tight" style="border-color:var(--red-line)">
       <div style="font-weight:750;font-size:14px">${esc(r.file)}</div>
-      <div class="note red" style="margin-top:8px">${esc(r.error)}</div></div>`).join('')}
-    <div class="note acc" style="margin-top:12px"><b>${added}</b> new rows imported, <b>${dup}</b> duplicates skipped. Baselines have been recalculated from your most recent 90 cycles.</div>
+      <div class="note red">${esc(r.error)}</div></div>`).join('')}
+    <div class="note acc"><b>${added}</b> new rows imported, <b>${dup}</b> duplicates skipped. Baselines have been recalculated from your most recent 90 cycles.</div>
   `,`<button class="btn primary big block" onclick="closeSheet()">Done</button>`,()=>render());
 });
 
@@ -8536,7 +8546,7 @@ function openSetup(auto){
    <div class="card tight" style="margin-bottom:14px">
      <div class="card-t" style="margin-bottom:6px">Is my data actually persistent?</div>
      <p style="font-size:13px;line-height:1.6;color:var(--text-2)">Check it yourself in 20 seconds: make any change (a check-in slider, a note), <b>fully close the tab or app</b>, reopen it, and confirm the change is still there. If it is, storage is working.</p>
-     <div class="note warn" style="margin-top:10px"><b>What clears it:</b> clearing website data, or iOS evicting a site left unopened. Deleting the Home Screen icon does not. A backup survives all three.</p>
+     <div class="note warn"><b>What clears it:</b> clearing website data, or iOS evicting a site left unopened. Deleting the Home Screen icon does not. A backup survives all three.</p>
    </div>
 
    ${file?`
@@ -8544,7 +8554,7 @@ function openSetup(auto){
      <div class="card-t accent" style="margin-bottom:10px">Why a local file behaves differently</div>
      <p style="font-size:13.5px;line-height:1.6;color:var(--text-2)">Opening an <span class="mono">.html</span> file from the Files app gives the page an <b>opaque origin</b>. On an opaque origin Safari grants <b>no persistent storage</b>, refuses to register a <b>service worker</b>, will not load a <b>manifest</b>, and does not offer <b>Add to Home Screen</b> at all. The app still runs — it simply cannot remember anything, cannot go offline, and cannot be installed.</p>
      
-     <div class="note warn" style="margin-top:10px">Until you deploy, <b>back up before closing the tab</b>.</div>
+     <div class="note warn">Until you deploy, <b>back up before closing the tab</b>.</div>
    </div>
 
    <div class="card">
@@ -8555,7 +8565,7 @@ function openSetup(auto){
        <div class="kv"><span class="k">3.</span><span class="v" style="text-align:left;font-weight:600">Sign up and <b>Claim</b> the site so the link is permanent</span></div>
        <div class="kv"><span class="k">4.</span><span class="v" style="text-align:left;font-weight:600">Open the link, then Share → <b>Add to Home Screen</b></span></div>
      </div>
-     <div class="note red" style="margin-top:12px"><b>Claim the site before entering any data.</b> Browser storage is tied to the exact address. If the link changes later, your history is stranded on the old one.</div>
+     <div class="note red"><b>Claim the site before entering any data.</b> Browser storage is tied to the exact address. If the link changes later, your history is stranded on the old one.</div>
      
    </div>
 
@@ -8576,7 +8586,7 @@ function openSetup(auto){
        <div class="kv"><span class="k">2.</span><span class="v" style="text-align:left;font-weight:600">Scroll and tap <b>Add to Home Screen</b></span></div>
        <div class="kv"><span class="k">3.</span><span class="v" style="text-align:left;font-weight:600">Tap <b>Add</b></span></div>
      </div>
-     <div class="note acc" style="margin-top:12px">Open it from the Home Screen icon from then on.</div>
+     <div class="note acc">Open it from the Home Screen icon from then on.</div>
    </div>`:''}
 
    ${sa?`<div class="card" style="border-color:var(--green-line);background:var(--green-wash)">
@@ -8587,7 +8597,7 @@ function openSetup(auto){
    <div class="card">
      <div class="card-t" style="margin-bottom:9px">Backups are the real safety net</div>
      <p style="font-size:13px;line-height:1.6;color:var(--text-2)">Even with storage working, iOS can clear website data for sites you have not opened in a while, and "Clear History and Website Data" erases it instantly. A JSON backup takes five seconds and restores everything.</p>
-     <button class="btn primary block" id="suBk" style="margin-top:12px">${svg('dl')} Export backup now</button>
+     <button class="btn primary block" id="suBk">${svg('dl')} Export backup now</button>
    </div>
   `,`<button class="btn ${ok?'primary':'ghost'} big block" onclick="closeSheet()">${ok?'Got it':'Continue anyway'}</button>`);
   const b=$('#suBk'); if(b)b.onclick=exportJSON;
@@ -8629,7 +8639,14 @@ function viewSettings(v){
     t:g.name, s:g.s, icon:g.icon,
     go:()=>pushPage({build:c=>{ SETTAB=g.id; settingsBody(c); }})
   }));
-  v.innerHTML=navRows('setRows',rows);
+  /* the build, where somebody looking for "what version am I on" looks */
+  v.innerHTML=navRows('setRows',rows)
+    + `<div style="text-align:center;padding:18px 0 4px;color:var(--text-3);
+         font-size:11.5px;line-height:1.6">
+         Baseline · version ${esc(APP_BUILD)}<br>
+         <span style="opacity:.75">Storage format v${SCHEMA_VERSION} ·
+           ${esc(Store.mode||'local')}</span>
+       </div>`;
   wireRows('setRows',rows);
   bindInputs(v);
 }
@@ -8753,7 +8770,7 @@ function settingsBody(v){
         chosen:(P.physiques&&P.physiques.length)?P.physiques:[P.physique],
         all:PHYSIQUES.map(x=>({id:x.id,name:x.name,hint:x.desc}))})}
      ${(P.physiques||[]).indexOf('muscle')>=0&&(P.physiques||[]).indexOf('lean')>=0
-       ? `<div class="note warn" style="margin-top:10px">Building muscle and getting leaner pull against each other — progress on both will be slower than picking one.</div>`:''}
+       ? `<div class="note warn">Building muscle and getting leaner pull against each other — progress on both will be slower than picking one.</div>`:''}
 
      <div class="divider"></div>
      <div class="kv"><span class="k">Weekly targets from this</span><span class="v">${
@@ -8806,7 +8823,7 @@ function settingsBody(v){
        <div class="scale"><span>drag to adjust</span><span style="color:var(--text-3)">strain counted as a hard day</span></div>
      </div>
      <div class="hint">Yesterday at or above this counts as a hard day, and today gets pulled back.</div>
-     <button class="btn ghost sm block" id="sbReset" style="margin-top:14px">Reset to defaults (72 / 56 / 42)</button>
+     <button class="btn ghost sm block" id="sbReset">Reset to defaults (72 / 56 / 42)</button>
    </div>
 
    <div class="card spane training">
@@ -8830,7 +8847,7 @@ function settingsBody(v){
      <div class="kv"><span class="k">Storage</span><span class="v">${esc(Store.mode)}</span></div>
      <div class="kv"><span class="k">Opened from</span><span class="v">${ENV.isFile?'local file (file://)':ENV.isHttps?'https':esc(ENV.proto)}</span></div>
      <div class="kv"><span class="k">Mode</span><span class="v">${ENV.standalone?'Home Screen app':'Safari tab'}</span></div>
-     <button class="btn ${Store.durable?'ghost':'primary'} block" id="sSetup" style="margin-top:12px">
+     <button class="btn ${Store.durable?'ghost':'primary'} block" id="sSetup">
        ${Store.durable?'Add to Home Screen &amp; storage details':'Fix storage — how to install properly'}</button>
    </div>
 
@@ -8842,7 +8859,7 @@ function settingsBody(v){
         esc(srcFields().map(f=>fieldLabel(f)).join(' · '))}</span></div>`:''}
      <div class="kv"><span class="k">Days on this device</span><span class="v">${DB.whoop.cycles.length}</span></div>
      <div class="kv"><span class="k">Baselines</span><span class="v">${DB.baselines.computed?'Computed from your data':'Not established'}</span></div>
-     <div class="btn-row" style="margin-top:13px">
+     <div class="btn-row">
        <button class="btn ghost sm" id="sImpWhoop">${svg('ul')} ${usesDevice()?'Import '+esc(SRC_NAME())+' CSV':'Add a wearable'}</button>
        ${DB.whoop.cycles.length?`<button class="btn ghost sm" id="sDelWhoop">Remove imported data</button>`:''}
      </div>
@@ -8859,16 +8876,16 @@ function settingsBody(v){
      <div class="kv"><span class="k">Approx. size</span><span class="v" id="sSize">—</span></div>
      <div class="kv"><span class="k">Last backup</span><span class="v" style="color:${DB.meta.lastBackup?'var(--text-2)':'var(--orange)'}">${
         DB.meta.lastBackup?esc(new Date(DB.meta.lastBackup).toLocaleString()):'never'}</span></div>
-     <div class="btn-row" style="margin-top:14px">
+     <div class="btn-row">
        <button class="btn ${DB.meta.lastBackup?'ghost':'primary'} sm" id="expJson">${svg('dl')} Backup JSON</button>
        <button class="btn ghost sm" id="impJson">${svg('ul')} Restore JSON</button>
      </div>
-     <div class="btn-row" style="margin-top:9px">
+     <div class="btn-row">
        <button class="btn ghost sm" id="expCsvS">Sessions CSV</button>
        <button class="btn ghost sm" id="expCsvA">Activities CSV</button>
        ${DB.whoop.cycles.length?`<button class="btn ghost sm" id="expCsvW">Metrics CSV</button>`:''}
      </div>
-     <div class="note warn" style="margin-top:13px"><b>Your data is stored locally on this device.</b> If you clear browser data or change devices, restore your backup to recover it. Clearing website data erases everything instantly, and no copy exists anywhere else.</div>
+     <div class="note warn"><b>Your data is stored locally on this device.</b> If you clear browser data or change devices, restore your backup to recover it. Clearing website data erases everything instantly, and no copy exists anywhere else.</div>
    </div>
 
    <div class="card spane data">
@@ -8897,7 +8914,7 @@ function settingsBody(v){
         ((window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)||window.navigator.standalone===true)
           ? 'Installed app' : 'Browser tab'}</span></div>
      <div class="hint" style="margin-top:8px">Quote the build number in any bug report.</div>
-     <button class="btn ghost block" id="sTour" style="margin-top:12px">${svg('info')} How Baseline works</button>
+     <button class="btn ghost block" id="sTour">${svg('info')} How Baseline works</button>
      <button class="btn ghost block" id="sDiag">${svg('copy')} Copy diagnostics</button>
      <div class="hint" style="margin-top:8px">Device, browser, storage and how much you have logged. <b>Counts only</b>, never what you entered.</div>
    </div>
@@ -9169,14 +9186,14 @@ function drawWarmup(){
   $('#wmBody').innerHTML=`
     <div class="wm-ex">Warm-up</div>
     <div class="wm-sub">${esc(wu.name)} · about ${wu.dur} minutes</div>
-    ${wk.desc?`<div class="note acc" style="margin-top:16px">${esc(wk.desc)}</div>`:''}
+    ${wk.desc?`<div class="note acc">${esc(wk.desc)}</div>`:''}
     <div style="margin-top:18px">
       ${wu.items.map((it,n)=>`<div class="setrow" style="align-items:flex-start">
         <div class="sn">${n+1}</div>
         <div style="flex:1"><div style="font-size:14.5px;font-weight:650">${esc(it.n)}</div>
         <div style="font-size:12px;color:var(--text-3);margin-top:2px">${esc(it.d)}</div></div></div>`).join('')}
     </div>
-    <div class="note" style="margin-top:16px">Do not skip this. It makes the first working set as good as the last.</div>
+    <div class="note">Do not skip this. It makes the first working set as good as the last.</div>
     <div style="margin-top:18px"><div class="card-t" style="margin-bottom:10px">Then, today's ${W.entries.length} exercises</div>
       ${W.entries.map((e,n)=>`<div class="kv"><span class="k">${n+1}. ${esc(e.name)}</span>
         <span class="v">${e.plannedSets} × ${esc(e.plannedReps)}</span></div>`).join('')}</div>`;
@@ -9199,8 +9216,8 @@ function drawExercise(en,i,total){
         ${p&&p.up===true?`<div class="lp up">${svg('up')} ${p.pct}% more volume so far</div>`:''}
         ${p&&p.up===false?`<div class="lp down">${svg('down2')} ${Math.abs(p.pct)}% below last time — fine on a low-readiness day</div>`:''}
       </div>`;})()}
-    ${en.cue?`<div class="note acc" style="margin-top:14px"><b>Cue:</b> ${esc(en.cue)}</div>`:''}
-    ${en.blockNote?`<div class="note warn" style="margin-top:9px">${esc(en.blockNote)}</div>`:''}
+    ${en.cue?`<div class="note acc"><b>Cue:</b> ${esc(en.cue)}</div>`:''}
+    ${en.blockNote?`<div class="note warn">${esc(en.blockNote)}</div>`:''}
     <div class="setlist">
       <div class="setrow" style="background:none;border:0;padding:0 12px 4px;margin-bottom:2px">
         <div class="sn" style="background:none"></div>
@@ -9226,7 +9243,7 @@ function drawExercise(en,i,total){
                   aria-label="${s.done?'Undo set':'Complete set'} ${n+1}">${svg('check')}</button>
         </div>`).join('')}
     </div>
-    <div class="btn-row" style="margin-top:13px">
+    <div class="btn-row">
       <button class="btn sm ghost" id="wmAddSet">${svg('plus')} Set</button>
       <button class="btn sm ghost" id="wmUndo">${svg('undo')} Undo</button>
       <button class="btn sm ghost" id="wmMore">More</button>
@@ -9238,7 +9255,7 @@ function drawExercise(en,i,total){
       <div style="flex:0 0 128px">${stepper(-1,'rpe',
         (en.sets.filter(s=>s.done&&s.rpe)[0]||{}).rpe||'', '')}</div>
     </div>`:''}
-    ${en.note?`<div class="note" style="margin-top:12px"><b>Your note:</b> ${esc(en.note)}</div>`:''}
+    ${en.note?`<div class="note"><b>Your note:</b> ${esc(en.note)}</div>`:''}
     ${e&&e.prog?`<div style="margin-top:16px"><div class="card-t" style="margin-bottom:6px">Progression rule</div>
       <p style="font-size:12.5px;line-height:1.55;color:var(--text-3)">${esc(e.prog)}</p></div>`:''}
     ${en.subs?`<div style="margin-top:11px"><div class="card-t" style="margin-bottom:6px">If this is not working today</div>
@@ -9367,7 +9384,7 @@ function drawFinish(){
       <div style="font-size:27px;font-weight:850;letter-spacing:-.9px">Workout complete</div>
       <div style="font-size:13px;color:var(--text-3);margin-top:5px;font-weight:600">${esc(W.workoutName)} · ${esc((W.variant||'full').toUpperCase())}</div>
     </div>
-    <div class="stats c4" style="margin-top:18px">
+    <div class="stats c4">
       ${statTile('Duration',dur,'m','a')}
       ${statTile('Sets',setsDone,'','c')}
       ${statTile('Volume',rnd(vol,0),'','')}
