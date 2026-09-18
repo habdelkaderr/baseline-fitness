@@ -6472,6 +6472,8 @@ function feelRow(lab,val,cls,inverse){
 function weekStrip(d){
   const start=weekStartOf(d);
   const TAGS={lower:'Legs',upper:'Upper',power:'Power',core:'Core',run:'Run',bike:'Bike',mobility:'Mob',prep:'Prep',strength:'Str'};
+  /* one cycle context for all seven days, not one per day */
+  const mcc = mcOn()? mcCtx() : null;
   let h='<div class="card flush"><div style="display:grid;grid-template-columns:repeat(7,1fr)">';
   for(let i=0;i<7;i++){
     const day=addDays(start,i), isT=day===d;
@@ -6491,9 +6493,25 @@ function weekStrip(d){
       <div style="width:7px;height:7px;border-radius:50%;background:${col};margin:0 auto"></div>
       <div style="font-size:9.5px;color:var(--text-3);margin-top:5px;font-weight:700;line-height:1.2;min-height:20px">${esc(tag)}</div>
       ${cy&&cy.recovery!=null?`<div style="font-size:10px;font-weight:800;margin-top:2px;color:${cy.recovery>=67?'var(--green)':cy.recovery>=34?'var(--yellow)':'var(--red)'}">${cy.recovery}</div>`:'<div style="height:13px"></div>'}
+      ${mcc?(()=>{
+        /* cycle day for the week people actually look at. A logged bleeding
+           day is filled; everything else is just the number, quietly. */
+        const cd=mcDay(day,mcc);
+        const lg=mcLog(day);
+        const bleed=!!(lg&&lg.bleeding);
+        if(cd==null) return '<div style="height:16px"></div>';
+        return `<div style="margin-top:3px"><span style="display:inline-block;min-width:17px;
+          padding:1px 4px;border-radius:6px;font-size:9.5px;font-weight:800;line-height:13px;
+          ${bleed?'background:var(--pink);color:#fff'
+                 :'background:var(--surface-2);color:var(--text-3)'}"
+          >${cd}</span></div>`;
+      })():''}
     </div>`;
   }
-  return h+'</div><div style="padding:9px 14px;border-top:1px solid var(--border-soft);font-size:11px;color:var(--text-3);line-height:1.45">Nothing here is pre-scheduled. Each day is decided that morning from your readiness and what you have actually done.</div></div>';
+  return h+'</div><div style="padding:9px 14px;border-top:1px solid var(--border-soft);font-size:11px;color:var(--text-3);line-height:1.45">'
+    +'Nothing here is pre-scheduled. Each day is decided that morning from your readiness and what you have actually done.'
+    +(mcc?' The small number is your cycle day; a filled one is a day you logged bleeding.':'')
+    +'</div></div>';
 }
 
 function todayNoCheckin(d){
@@ -8661,15 +8679,13 @@ function settingsBody(v){
    <div class="card spane cycle">
      <div class="card-h"><div class="card-t accent">Cycle tracking</div>
        <span class="tag ${mcOn()?'g':'c'}">${mcOn()?'ON':'OFF'}</span></div>
-     <div class="hint" style="margin-bottom:12px">Optional. Off unless you turn
+     <div class="hint" style="margin-bottom:14px">Optional. Off unless you turn
        it on, and it changes nothing about your recommendations until your own
        logs show a repeated pattern — never because of the phase alone.</div>
-     <div class="seg acc" id="sMcOn">
-       <button data-v="1" class="${mcOn()?'on':''}">Track</button>
-       <button data-v="0" class="${mcOn()?'':'on'}">Off</button>
-     </div>
-     ${mcOn()?`
-     <div class="grid2" style="margin-top:14px">
+     ${!mcOn()?`
+     <button class="btn primary block" id="sMcEnable">Enable cycle tracking</button>`
+     :`
+     <div class="grid2">
        <div class="field"><label>Typical cycle length</label>
          <input class="inp num" type="number" inputmode="numeric" min="15" max="90"
                 id="sMcLen" value="${(DB.mcycle.typicalLen)||''}" placeholder="Not sure"></div>
@@ -8677,15 +8693,14 @@ function settingsBody(v){
          <input class="inp num" type="number" inputmode="numeric" min="1" max="15"
                 id="sMcPer" value="${(DB.mcycle.typicalPeriod)||''}" placeholder="Not sure"></div>
      </div>
-     <div class="field"><label>Add a period start date</label>
-       <input class="inp" type="date" id="sMcStart">
-       <div class="hint">Only needed to backfill. Marking "bleeding" in the daily log creates these for you.</div></div>
-     <button class="btn ghost block" id="sMcOpen">Open cycle log</button>
+     <div class="field"><label>Add a past period start</label>
+       <input class="inp" type="date" id="sMcStart" max="${todayISO()}">
+       <div class="hint">Only for filling in history. Marking "bleeding" in the
+         daily log creates these by itself — <span id="sMcCount">${
+           mcStarts().length} recorded so far</span>.</div></div>
      <div class="ruled">
-       <button class="btn danger block" id="sMcWipe">Delete all cycle data</button>
-       <div class="hint" style="margin-top:7px">Removes every cycle entry and
-         period date from this device. Your training history is untouched.</div>
-     </div>`:''}
+       <button class="btn ghost block" id="sMcOff">Disable cycle tracking</button>
+     </div>`}
    </div>
 
    <div class="card spane appearance">
@@ -8930,24 +8945,47 @@ function settingsBody(v){
   /* theme is applied immediately: a preference you cannot see is useless */
   pill('#sTheme', v=>{ setTheme(v); haptic(); });
   /* cycle tracking */
-  $$('#sMcOn button').forEach(b=>b.onclick=()=>{
-    DB.mcycle=DB.mcycle||{on:false,starts:[],typicalLen:null,typicalPeriod:null,askedAt:null};
-    DB.mcycle.on = b.dataset.v==='1';
-    save(true); haptic(); render();
-  });
+  const mcInit=()=>{ DB.mcycle=DB.mcycle||{on:false,starts:[],typicalLen:null,
+                                           typicalPeriod:null,askedAt:null}; };
+  const me=$('#sMcEnable');
+  if(me) me.onclick=()=>{ mcInit(); DB.mcycle.on=true; save(true); haptic(); render(); };
+
   const ml=$('#sMcLen'); if(ml) ml.onchange=()=>{
     DB.mcycle.typicalLen = ml.value===''?null:clamp(+ml.value,15,90); save(true); };
   const mp=$('#sMcPer'); if(mp) mp.onchange=()=>{
     DB.mcycle.typicalPeriod = mp.value===''?null:clamp(+mp.value,1,15); save(true); };
+
+  /* NO render() here. This handler belongs to the date input, and rendering
+     replaces the input mid-interaction - which closed the native picker the
+     moment a date was chosen. Patch the one line that changes instead. */
   const ms=$('#sMcStart'); if(ms) ms.onchange=()=>{
     const v=ms.value; if(!v) return;
+    if(v>todayISO()){ toast('That date is in the future','err'); ms.value=''; return; }
+    mcInit();
     if(DB.mcycle.starts.indexOf(v)<0) DB.mcycle.starts.push(v);
-    DB.mcycle.starts.sort(); save(true); toast('Period start added','ok'); render();
+    DB.mcycle.starts.sort(); save(true);
+    const c=$('#sMcCount');
+    if(c) c.textContent=mcStarts().length+' recorded so far';
+    ms.value='';
+    toast('Period start added','ok');
   };
-  const mo=$('#sMcOpen'); if(mo) mo.onclick=()=>openCycle();
-  const mw=$('#sMcWipe'); if(mw) mw.onclick=()=>confirmSheet('Delete all cycle data?',
-    'Every cycle entry, symptom and period date is removed from this device. This cannot be undone. Your sessions, activities and check-ins are kept.',
-    'Delete cycle data',()=>{ mcWipe(); save(true); toast('Cycle data deleted'); render(); },true);
+
+  /* one button at the bottom, and the choice of what to do with the data
+     lives inside it rather than as a second button beside it */
+  const mo2=$('#sMcOff');
+  if(mo2) mo2.onclick=()=>{
+    openSheet('Disable cycle tracking?',
+      `<p style="font-size:14.5px;line-height:1.6;color:var(--text-2)">Nothing
+        cycle-related will appear in the app, and it will stop affecting your
+        recommendations. Your entries can stay in case you turn it back on, or
+        be deleted for good.</p>`,
+      `<button class="btn ghost block" id="mcKeep">Stop tracking, keep my entries</button>
+       <button class="btn danger block" id="mcDel">Stop and delete everything</button>`);
+    $('#mcKeep').onclick=()=>{ DB.mcycle.on=false; save(true); closeSheet();
+      toast('Cycle tracking off'); setTimeout(render,220); };
+    $('#mcDel').onclick=()=>{ mcWipe(); save(true); closeSheet();
+      toast('Cycle data deleted'); setTimeout(render,220); };
+  };
   $('#sWizard').onclick=()=>{ persist(); startSetup(true); };
   /* injuries: add, edit, and mark recovered */
   const limAdd=$('#limAdd'); if(limAdd) limAdd.onclick=()=>limitSheet(null);
