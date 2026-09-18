@@ -417,7 +417,9 @@ button.card{padding-right:46px}      /* room for the tick */
 .stat .lab{font-size:11.5px;font-weight:550;letter-spacing:0;color:var(--text-3)}
 .stat .val{font-size:26px;font-weight:600;letter-spacing:-.9px;line-height:1.05;margin-top:6px}
 .stat .val small{font-size:12px;font-weight:650;color:var(--text-3);letter-spacing:0;margin-left:1px}
-.stat .dlt{font-size:10.5px;font-weight:700;margin-top:3px;color:var(--text-3)}
+.stat .dlt.up{color:var(--green)}
+.dlt.down{color:var(--orange)}
+.dlt{font-size:10.5px;font-weight:700;margin-top:3px;color:var(--text-3)}
 .stat.g .val{color:var(--green)} .stat.y .val{color:var(--yellow)}
 .stat.o .val{color:var(--orange)} .stat.r .val{color:var(--red)}
 .stat.a .val{color:var(--accent)} .stat.c .val{color:var(--cyan)}
@@ -2759,7 +2761,13 @@ function freshDB(){
       /* no sport, no goal, no schedule until the user says so */
       sports:[], sport:null,
       physiques:[], physique:null,
-      daysPerWeek:null
+      daysPerWeek:null,
+      /* deliberate breaks, so a gap in the log reads as "away" rather than
+         as a fortnight of missed training */
+      awayUntil:null, awayReason:'',
+      /* exercises that hurt, with an expiry. Lighter than an injury, which
+         is a body area and a date; this is "not this movement, for now". */
+      avoid:[]
     },
     meta:{ created:new Date().toISOString(), schema:SCHEMA_VERSION, lastBackup:null, lastBackupCount:null },
     /* Weekly GUIDELINES, not quotas. The daily engine decides the order and
@@ -2790,7 +2798,7 @@ function freshDB(){
     activities:[],
     tests:[],
     physique:[],
-    ui:{tab:'today', tourDone:false}
+    ui:{tab:'today', tourDone:false, digestSeen:null}
   };
 }
 
@@ -4023,6 +4031,19 @@ const userTier = ()=> (DB&&DB.profile&&DB.profile.tier!=null) ? DB.profile.tier 
    do. If they own more, offer the stronger option. Nothing is assumed. */
 function resolveExercise(exId){
   const e=exOf(exId); if(!e) return null;
+  /* An exercise the user said hurt is skipped for the same reason a limitation
+     is: there is no point prescribing the best variation of something that
+     hurt them last week. Same pattern first, so the session keeps its shape. */
+  if(isAvoided(e.id)){
+    const sub=DB.exercises
+      .filter(x=>x.id!==e.id && x.pat===e.pat && canDo(x) && !isAvoided(x.id))
+      .sort((a,b)=>(b.tier||0)-(a.tier||0))[0];
+    if(sub) return sub;
+    const near=DB.exercises
+      .filter(x=>canDo(x) && !isAvoided(x.id) &&
+                 (PAT_NEIGHBOURS[e.pat]||[]).indexOf(x.pat)>=0)[0];
+    if(near) return near;
+  }
   /* An active limitation outranks equipment: there is no point picking the
      best squat variation you own if your knee is the thing stopping you.
      Route to a neighbouring pattern that the limitation does not touch. */
@@ -4078,8 +4099,10 @@ function fallbackFor(e){
 }
 /* the strongest doable exercise for this pattern, when it beats the default */
 function bestForPattern(pat, current){
+  /* an exercise the user said hurt is off the menu until its date passes */
   if(!pat||pat==='mob'||pat==='cardio') return null;
-  const cands=DB.exercises.filter(x=>x.pat===pat && canDo(x) && (x.tier||0)>(current.tier||0));
+  const cands=DB.exercises.filter(x=>x.pat===pat && canDo(x) && !isAvoided(x.id)
+                                     && (x.tier||0)>(current.tier||0));
   if(!cands.length) return null;
   return cands.sort((a,b)=>(b.tier||0)-(a.tier||0))[0];
 }
@@ -4095,6 +4118,123 @@ function warmupFor(w){
      "build one for whatever this user actually plays" */
   if(w.warm==='sport'||w.warm==='tennis') return sportWarmup();
   return WARMUPS[w.warm]||WARMUPS.easy;
+}
+
+/* =========================================================================
+   FEEDBACK AND AVOIDANCE
+   Two one-tap inputs that make the app learn from outcomes rather than only
+   from what you type in the morning.
+   ====================================================================== */
+
+/* ---- C · "this hurt" ------------------------------------------------- */
+const AVOID_DAYS=21;
+function avoidList(date){
+  const d=date||todayISO();
+  return ((DB.profile&&DB.profile.avoid)||[]).filter(a=>a&&a.until>=d);
+}
+const isAvoided = (exId,date)=> avoidList(date).some(a=>a.exId===exId);
+function avoidExercise(exId, why){
+  DB.profile.avoid=(DB.profile.avoid||[]).filter(a=>a.exId!==exId);
+  DB.profile.avoid.push({exId:exId, from:todayISO(),
+                         until:addDays(todayISO(),AVOID_DAYS), why:why||''});
+  save(true);
+}
+function unavoid(exId){
+  DB.profile.avoid=((DB.profile.avoid)||[]).filter(a=>a.exId!==exId);
+  save(true);
+}
+
+/* ---- B · session feedback ------------------------------------------- */
+const FEEDBACK=[
+  {id:'easy',  name:'Too easy',    v:+1},
+  {id:'right', name:'About right', v:0},
+  {id:'hard',  name:'Too hard',    v:-1}
+];
+/* What the last few rated sessions say, if they say anything. Same gate shape
+   as the cycle signal: enough of them, and a clear enough lean, or nothing. */
+function feedbackBias(){
+  const rated=(DB.sessions||[]).filter(s=>s.done&&s.feedback)
+    .sort((a,b)=>a.date<b.date?1:-1).slice(0,5);
+  if(rated.length<3) return {n:rated.length, bias:0, line:null};
+  const vals=rated.map(s=>(FEEDBACK.find(f=>f.id===s.feedback)||{v:0}).v);
+  const m=mean(vals);
+  /* a clear lean is two thirds of the recent sessions agreeing */
+  if(Math.abs(m)<0.6) return {n:rated.length, bias:0, line:null};
+  const bias=m>0?1:-1;
+  return {n:rated.length, bias:bias,
+    line: bias>0
+      ? `Your last ${rated.length} rated sessions leaned <b>too easy</b>, so full versions are being favoured.`
+      : `Your last ${rated.length} rated sessions leaned <b>too hard</b>, so volume is being trimmed.`};
+}
+
+/* ---- G · why this exercise ----------------------------------------- */
+function exerciseWhy(en){
+  const e=exOf(en.exerciseId);
+  const bits=[];
+  if(e&&e.pat){
+    const p=PATTERNS&&PATTERNS[e.pat];
+    bits.push('Covers <b>'+esc((p&&p.name)||e.pat)+'</b> in today’s session.');
+  }
+  if(en.swapNote) bits.push(esc(en.swapNote));
+  const prev=lastPerformance(en.exerciseId, null, W?W.id:null);
+  if(prev){
+    const ago=daysBetween(prev.date, (W&&W.date)||todayISO());
+    bits.push('You last did it '+(ago<=0?'today':ago===1?'yesterday':ago+' days ago')+'.');
+  } else bits.push('You have not done this one before.');
+  if(e&&e.equip) bits.push('Needs: '+esc(gearNames(e.equip)||e.equip)+'.');
+  return bits;
+}
+
+/* ---- F · a session as plain text ------------------------------------ */
+function sessionText(s){
+  const L=[];
+  L.push('Baseline — '+(s.workoutName||'Session'));
+  L.push(fmtDate(s.date)+(s.durationMin?'  ·  '+s.durationMin+' min':''));
+  if(s.readinessScore!=null) L.push('Readiness '+s.readinessScore+' ('+(s.band||'')+')');
+  if(s.variant) L.push('Version: '+(VARIANT_NAME[s.variant]||s.variant));
+  L.push('');
+  (s.entries||[]).forEach(en=>{
+    const done=(en.sets||[]).filter(x=>x.done);
+    if(!done.length && !en.skipped) return;
+    L.push(en.name + (en.skipped?'  — skipped':''));
+    done.forEach((x,i)=>{
+      L.push('  set '+(i+1)+': '+(x.reps||'?')+' reps'
+        +(x.weight?' × '+x.weight+' kg':'')+(x.rpe?'  RPE '+x.rpe:''));
+    });
+    if(en.note) L.push('  note: '+en.note);
+  });
+  L.push('');
+  if(s.sessionRpe!=null) L.push('Session RPE: '+s.sessionRpe);
+  if(s.feedback) L.push('Felt: '+((FEEDBACK.find(f=>f.id===s.feedback)||{}).name||s.feedback));
+  if(s.notes) L.push('Notes: '+s.notes);
+  return L.join('\n');
+}
+function copySession(s){
+  const txt=sessionText(s);
+  const done=()=>toast('Session copied','ok');
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).then(done,()=>fallbackCopy(txt,done));
+      return;
+    }
+  }catch(e){}
+  fallbackCopy(txt,done);
+}
+function fallbackCopy(txt,done){
+  /* a textarea and execCommand still works where the clipboard API is
+     blocked, which it is on a file:// origin */
+  try{
+    const ta=document.createElement('textarea');
+    ta.value=txt; ta.setAttribute('readonly','');
+    ta.style.position='fixed'; ta.style.top='-1000px';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    done();
+  }catch(e){
+    openSheet('Session as text',
+      `<textarea class="inp" style="min-height:280px;font-size:12.5px">${esc(txt)}</textarea>`,
+      `<button class="btn primary big block" onclick="closeSheet()">Done</button>`);
+  }
 }
 
 /* =========================================================================
@@ -5121,6 +5261,22 @@ function recommend(date, ci, rd){
   if(win.c.sys==='expl'&&band==='green'&&rd.score<80) variant='full';
   if(yd.load>=14 && variant==='full' && ['lower','expl','upper'].indexOf(win.c.sys)>=0) variant='reduced';
 
+  /* ---- what you said about the last few sessions ----
+     One step, and only when the last three rated sessions agree. Harder is
+     allowed only from a green band, so a run of "too easy" can never put
+     volume onto a day the physiology is already arguing against. The band
+     itself is untouched, so every readiness rule and both pain caps stand. */
+  const VSTEP=['recovery','reduced','full'];
+  const fbias=feedbackBias();
+  if(fbias.bias && win.c.sys!=='rest' && win.c.sys!=='mobility'){
+    const at=VSTEP.indexOf(variant);
+    if(fbias.bias>0 && band==='green' && at<VSTEP.length-1){
+      variant=VSTEP[at+1]; why.push({t:fbias.line,k:'pos'});
+    } else if(fbias.bias<0 && at>0){
+      variant=VSTEP[at-1]; why.push({t:fbias.line,k:'warn'});
+    }
+  }
+
   /* ---- optional core add-on ---- */
   let addCore=false;
   const coreWk=DB.workouts.find(w=>w.id==='w_core');
@@ -5249,6 +5405,12 @@ function planFor(date, ci, rd){
 
 /* How many calendar weeks since the plan started actually contained training.
    A week counts if it holds one completed session or one logged activity. */
+/* A week the user told us they were away is not a week they skipped. */
+function awayWeek(weekStartISO){
+  const u=(DB.profile&&DB.profile.awayUntil)||null;
+  if(!u) return false;
+  return weekStartISO<=u;
+}
 function trainedWeeks(fromISO,toISO){
   if(!fromISO) return 0;
   let n=0, cur=weekStartOf(fromISO);
@@ -6215,6 +6377,137 @@ function wireRows(id,items){
 function greeting(){ const h=new Date().getHours(); return h<5?'Good night':h<12?'Good morning':h<18?'Good afternoon':'Good evening'; }
 
 /* =========================================================================
+   AWAY MODE
+   The plan already waits when nothing is logged - progression is earned by
+   work, not by the calendar. This makes the pause deliberate, so the app can
+   say "you were away" instead of leaving the user to wonder why week 3 lasted
+   a month.
+   ====================================================================== */
+const awayUntil = ()=> (DB.profile && DB.profile.awayUntil) || null;
+const isAway = (date)=> { const u=awayUntil(); return !!u && (date||todayISO())<=u; };
+function awayDaysLeft(date){
+  const u=awayUntil(); if(!u) return 0;
+  return Math.max(0, daysBetween(date||todayISO(), u));
+}
+function setAway(until, reason){
+  DB.profile.awayUntil = until || null;
+  DB.profile.awayReason = reason || '';
+  save(true);
+}
+
+/* =========================================================================
+   THE NOTICE SLOT
+   One row on Today, at most. Priority order, and each notice ends itself:
+   nothing here can accumulate.
+   ====================================================================== */
+function noticeRow(date){
+  const d=date||todayISO();
+
+  /* 1 · away: the most important thing to say, because it explains why the
+     rest of the screen looks paused */
+  if(isAway(d)){
+    const n=awayDaysLeft(d);
+    return {id:'away', icon:'moon', t:'Away until '+fmtDate(awayUntil()),
+      s:(DB.profile.awayReason? DB.profile.awayReason+' · ' : '')
+        +'Progression is paused'+(n?' · '+n+' day'+(n===1?'':'s')+' left':' · back tomorrow'),
+      go:()=>openAway()};
+  }
+
+  /* 2 · retest week: week 8 is a deload and retest, and nothing said so */
+  const ph=currentPhase();
+  if(ph.w===8){
+    const due=retestsDue();
+    if(due.length) return {id:'retest', icon:'target', t:'Retest week',
+      s:due.length+' test'+(due.length===1?'':'s')+' worth repeating this week',
+      go:()=>{ resetStack(); openPane('Tests','Retest and compare', paneTests); }};
+  }
+
+  /* 3 · the weekly digest, on the day the week turns over */
+  if(dowOf(d)===1){
+    const wkStart=weekStartOf(d);
+    if(!(DB.ui && DB.ui.digestSeen===wkStart) && hasHistory()){
+      return {id:'digest', icon:'chart', t:'Last week in review',
+        s:'A short summary of what you did and what moved',
+        go:()=>{ DB.ui=DB.ui||{}; DB.ui.digestSeen=wkStart; save();
+                 resetStack(); openPane('Last week','How the week went', paneWeek); }};
+    }
+  }
+
+  /* 4 · the walkthrough, while they are still new */
+  if(DB.profile.onboarded && !tourSeen() && loggedCount()===0){
+    return {id:'tour', icon:'info', t:'New here?',
+      s:'How Baseline works — about a minute', go:()=>openTour()};
+  }
+  return null;
+}
+function noticeHTML(date){
+  const n=noticeRow(date);
+  if(!n) return '';
+  return `<div class="rows" id="noticeRow" data-n="${n.id}">
+    <button data-r="0"><i class="rw-i">${svg(n.icon)}</i>
+      <span class="rw-x"><span class="rw-t">${esc(n.t)}</span>
+        <span class="rw-s">${esc(n.s)}</span></span>
+      <i class="rw-c">${svg('chev')}</i></button></div>`;
+}
+function wireNotice(date){
+  const b=$('#noticeRow button'); if(!b) return;
+  const n=noticeRow(date); if(!n) return;
+  b.onclick=()=>{ haptic(); n.go(); };
+}
+
+/* which tests are worth repeating: never done, or not for six weeks */
+function retestsDue(){
+  const out=[];
+  TESTS.forEach(t=>{
+    const rs=(DB.tests||[]).filter(x=>x.testId===t.id).sort((a,b)=>a.date<b.date?-1:1);
+    if(!rs.length){ out.push(t); return; }
+    if(daysBetween(rs[rs.length-1].date, todayISO())>=42) out.push(t);
+  });
+  return out;
+}
+
+/* the away sheet: one date, one optional word, and a way to come back early */
+function openAway(){
+  const cur=awayUntil();
+  openSheet(cur?'Away until '+fmtDate(cur):'Pause training',`
+   <p class="lede">Baseline will stop counting the days against your
+     progression. Nothing is lost — the plan waits where it is and picks up
+     when you are back.</p>
+   <div class="field" style="margin-top:18px"><label>Back on</label>
+     <input class="inp" type="date" id="awUntil" min="${todayISO()}"
+            value="${esc(cur||'')}"></div>
+   <div class="field"><label>Why <span style="text-transform:none;font-weight:600">(optional)</span></label>
+     <div class="pills" id="awWhy">
+       ${['Holiday','Travel','Illness','Injury','Busy'].map(x=>
+         `<button data-v="${x}" class="${DB.profile.awayReason===x?'on':''}">${x}</button>`).join('')}
+     </div></div>
+   <div class="hint">You can still log anything you do while away, and it
+     still counts. This only stops the progression clock.</div>
+  `, cur
+   ? `<button class="btn primary big block" id="awSave">Update</button>
+      <button class="btn ghost block" id="awEnd">I am back now</button>`
+   : `<button class="btn primary big block" id="awSave">Pause training</button>`);
+
+  $$('#awWhy button').forEach(b=>b.onclick=()=>{
+    const on=b.classList.contains('on');
+    $$('#awWhy button').forEach(x=>x.classList.remove('on'));
+    if(!on) b.classList.add('on');
+    haptic();
+  });
+  $('#awSave').onclick=()=>{
+    const u=$('#awUntil').value;
+    if(!u){ toast('Pick a date to come back','err'); return; }
+    if(u<todayISO()){ toast('That date has passed','err'); return; }
+    const w=$('#awWhy button.on');
+    setAway(u, w?w.dataset.v:'');
+    closeSheet(); toast('Training paused'); setTimeout(render,220);
+  };
+  const e=$('#awEnd');
+  if(e) e.onclick=()=>{ setAway(null,''); closeSheet(); toast('Welcome back','ok');
+                        setTimeout(render,220); };
+}
+
+/* =========================================================================
    FIRST-RUN WALKTHROUGH
    Six cards, plain language, no jargon, skippable on every one of them.
    Shown once after setup; reopenable from Settings > About.
@@ -6299,17 +6592,9 @@ function sinceText(n){
   if(n===1) return 'yesterday';
   return n+' days ago';
 }
-/* A quiet way back in for anyone who skipped it, while they are still new.
-   Removes itself as soon as the walkthrough has been seen or there is real
-   history to look at instead. */
-function tourRow(){
-  if(!DB.profile.onboarded || tourSeen() || loggedCount()>0) return '';
-  return `<div class="rows" id="tourRow">
-    <button data-r="0"><i class="rw-i">${svg('info')}</i>
-      <span class="rw-x"><span class="rw-t">New here?</span>
-        <span class="rw-s">How Baseline works — about a minute</span></span>
-      <i class="rw-c">${svg('chev')}</i></button></div>`;
-}
+/* The walkthrough offer is one of the notices now - see noticeRow(). Keeping a
+   second row that could appear beside it is how Today grows back into the
+   dashboard this redesign removed. */
 
 function viewToday(v){
   const d=todayISO(), ci=DB.checkins[d];
@@ -6338,7 +6623,7 @@ function viewToday(v){
     <i class="rw-c">${svg('chev')}</i>
   </button>
   ${mcRow(d)}
-  ${tourRow()}
+  ${noticeHTML(d)}
 
   ${done?`
   <div class="rec">
@@ -6370,8 +6655,7 @@ function viewToday(v){
     <div class="hint" style="margin-top:10px">Based on ${esc(rd.sources.label)}.</div>
   </div>
 
-  <button class="btn ghost block" id="btnSwap">Change today's plan</button>
-  ${wk?`<button class="tert" id="btnPreview">Preview session</button>`:''}`}
+  <button class="btn ghost block" id="btnSwap">Change today's plan</button>`}
 
   ${(pl.prep&&!done)?`
   <div class="rows" id="prepRows">
@@ -6426,11 +6710,15 @@ function pageReadiness(d){
 
     <div class="sec-t">What moved it</div>
     <div class="card"><ul class="whyl">${
-      (rd.parts||[]).filter(p=>p&&p.t).map(p=>
-        `<li class="${p.v>0?'pos':p.v<0?'neg':'info'}"><span class="dot"></span>
-          <span>${p.t}</span></li>`).join('')
-      || '<li class="info"><span class="dot"></span><span>Not enough history yet to attribute the score.</span></li>'
+      /* rd.why holds the sentences; rd.parts holds the numeric weights and
+         has no text at all, which is why this section used to be blank. */
+      (rd.why||[]).length
+        ? rd.why.map(w=>`<li class="${esc(w.k||'info')}"><span class="dot"></span>
+            <span>${w.t}</span></li>`).join('')
+        : '<li class="info"><span class="dot"></span><span>Nothing logged yet today, so there is nothing to attribute.</span></li>'
     }</ul></div>
+    ${(rd.parts||[]).length?`<div class="hint" style="margin-top:-2px">Weighted from ${
+      rd.parts.length} signal${rd.parts.length>1?'s':''} · ${esc(rd.sources.confidence)} confidence</div>`:''}
 
     <div class="sec-t">This morning</div>
     ${dev?`<div class="stats">
@@ -6466,9 +6754,13 @@ function pageReadiness(d){
 }
 
 function statTile(lab,val,unit,cls,delta){
+  /* delta stays escaped. A caller that wants direction says so with a leading
+     arrow, which is read here rather than passed through as markup. */
+  const d=delta==null?'':String(delta);
+  const dir = d.indexOf('\u25b2')===0 ? ' up' : d.indexOf('\u25bc')===0 ? ' down' : '';
   return `<div class="stat ${cls||''}"><div class="lab">${esc(lab)}</div>
     <div><div class="val num">${val==null?'—':esc(String(val))}${val!=null&&unit?`<small>${esc(unit)}</small>`:''}</div>
-    ${delta?`<div class="dlt">${esc(delta)}</div>`:''}</div></div>`;
+    ${d?`<div class="dlt${dir}">${esc(d)}</div>`:''}</div></div>`;
 }
 function feelRow(lab,val,cls,inverse){
   const pct=val==null?0:val*10;
@@ -6535,7 +6827,7 @@ function todayNoCheckin(d){
   <button class="btn primary big block" id="btnCheck">${svg('play')} Check in</button>
   ${cy?`<div class="hint" style="margin-top:11px;text-align:center">Your ${esc(SRC_NAME())} numbers for today are already there — they will be filled in for you.</div>`:''}
 
-  ${tourRow()}
+  ${noticeHTML(d)}
   <div class="sec-t">This week</div>
   ${weekStrip(d)}
   <button class="btn ghost block" id="btnQuickLog">${svg('plus')} Log an activity</button>`;
@@ -6609,7 +6901,7 @@ function wireToday(d){
   };
   const pr=$('#prepRows button'); if(pr) pr.onclick=()=>previewWorkout('w_prep','full');
   const mr=$('#mcRow button'); if(mr) mr.onclick=()=>openCycle();
-  const tr=$('#tourRow button'); if(tr) tr.onclick=()=>openTour();
+  wireNotice(d);
   on('btnCheck',()=>openCheckin(d));
   on('btnEditCi',()=>openCheckin(d));
   on('btnStart',()=>{ const p=todayPlan(d); startWorkout(p.workoutId,p.variant,d,p); });
@@ -6811,15 +7103,18 @@ function openCheckin(d){
    ${loggedTen?`<div class="note acc" style="margin-bottom:16px">
      ${esc(SPORT_LABEL())} already logged for today — the engine has taken it into account and will keep heavy legs, running and plyometrics off the menu.</div>`:''}
 
-   <div class="field"><label>Time available for training</label>
-     <div class="pills" id="ciTime">
-       ${[20,30,45,60,90].map(t=>`<button data-v="${t}" class="${(ex.availTime??DB.profile.sessionMin)==t?'on':''}">${t} min</button>`).join('')}
-     </div></div>
 
-   <button class="tert" id="ciNoteT" aria-expanded="${ex.notes?'true':'false'}">
-     ${ex.notes?'Note':'Add a note'} ${svg('down')}</button>
-   <div id="ciNoteB" ${ex.notes?'':'hidden'}>
-     <div class="field"><textarea class="inp" id="ciNotes" placeholder="Travel, illness, a tough match…">${esc(ex.notes||'')}</textarea></div>
+   <button class="tert" id="ciNoteT" aria-expanded="${(ex.notes||ex.availTime!=null)?'true':'false'}">
+     Anything unusual today? ${svg('down')}</button>
+   <div id="ciNoteB" ${(ex.notes||ex.availTime!=null)?'':'hidden'}>
+     <div class="field"><label>Time available</label>
+       <div class="pills" id="ciTime">
+         ${[20,30,45,60,90].map(t=>`<button data-v="${t}" class="${ex.availTime==t?'on':''}">${t} min</button>`).join('')}
+       </div>
+       <div class="hint">Only if today is different from your usual ${sessMin()} minutes.</div>
+     </div>
+     <div class="field"><label>Note</label>
+       <textarea class="inp" id="ciNotes" placeholder="Travel, illness, a tough match…">${esc(ex.notes||'')}</textarea></div>
    </div>
   `,`<button class="btn primary big block" id="ciSave">Save check-in</button>`);
 
@@ -6914,7 +7209,7 @@ function targetsCard(){
   const P=weekProgress(todayISO()), T=DB.targets;
   const M=targetMeta(), ks=targetKeys();
   return `<div class="card">
-    <div class="card-h"><div class="card-t accent">This week</div>
+    <div class="card-h"><div class="card-t accent">This week's targets</div>
       <button class="btn xs ghost" id="edSched">${svg('edit')} Edit</button></div>
     ${!ks.length ? '<div class="hint">No targets yet — they are built from the sports, goals, days and equipment you enter in setup.</div>'
       : ks.map(k=>{
@@ -7375,6 +7670,7 @@ function paneHistory(c){
 }
 function sessionDetail(sid){
   const s=DB.sessions.find(x=>x.id===sid); if(!s)return;
+  /* wired after the sheet renders, below */
   openSheet(s.workoutName||'Session',`
    <div class="stats c4" style="margin-bottom:16px">
      ${statTile('Duration',s.durationMin,'m','a')}
@@ -7392,9 +7688,11 @@ function sessionDetail(sid){
        ${en.note?`<div class="note" style="font-size:11.5px">${esc(en.note)}</div>`:''}
      </div>`;}).join('')}
    ${s.notes?`<div class="note acc"><b>Session notes:</b> ${esc(s.notes)}</div>`:''}
-  `,`<button class="btn danger block" id="sdDel">${svg('trash')} Delete session</button>`);
+  `,`<button class="btn danger block" id="sdDel">${svg('trash')} Delete session</button>`,
+    `<button class="btn ghost block" id="sdCopy">${svg('copy')} Copy as text</button><button class="btn primary big block" onclick="closeSheet()">Done</button>`);
   $('#sdDel').onclick=()=>confirmSheet('Delete session?','This removes it from your history and progress calculations permanently.','Delete',()=>{
     DB.sessions=DB.sessions.filter(x=>x.id!==sid); save(true); toast('Deleted'); render(); },true);
+  const cp=$('#sdCopy'); if(cp) cp.onclick=()=>copySession(s);
 }
 
 /* =========================================================================
@@ -7472,10 +7770,30 @@ function paneTimeline(c){
         </div>`).join('')
        :'<div style="font-size:12.5px;color:var(--text-3);padding:6px 0">Nothing logged.</div>'}
       ${dd.n?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:11px">
-        <span class="tag a">LEGS ${dd.lower}</span><span class="tag c">UPPER ${dd.upper}</span>
-        <span class="tag o">EXPLOSIVE ${dd.expl}</span><span class="tag r">IMPACT ${dd.impact}</span></div>`:''}
+        <button class="btn xs ghost" data-dd="${d}">What this loaded</button></div>`:''}
     </div>`;}).join('');
   $$('[data-aid]',c).forEach(r=>r.onclick=()=>activitySheet(r.dataset.aid));
+  /* the demand vector, on request rather than on every row */
+  $$('[data-dd]',c).forEach(b=>b.onclick=ev=>{
+    ev.stopPropagation();
+    const d=b.dataset.dd, dd=dayDemand(d), bd=loadBand(dd.load);
+    openSheet('What '+fmtDate(d)+' loaded',`
+      <div class="rec" style="margin-top:0">
+        <div class="rec-l">Total load</div>
+        <div class="rec-t" style="font-size:26px">${rnd(dd.load,1)}</div>
+        <div class="rec-m">${esc(bd.label)} — ${esc(bd.note)}</div>
+      </div>
+      <div class="sec-t">By system</div>
+      <div class="stats c2">
+        ${statTile('Legs',rnd(dd.lower,1),'','a')}
+        ${statTile('Upper',rnd(dd.upper,1),'','c')}
+        ${statTile('Explosive',rnd(dd.expl,1),'','o')}
+        ${statTile('Impact',rnd(dd.impact,1),'','r')}
+      </div>
+      <div class="hint">Estimated from the type, duration and effort you
+        logged — not measured. It is what tomorrow's recommendation reads.</div>`,
+      `<button class="btn primary big block" onclick="closeSheet()">Done</button>`);
+  });
 }
 
 /* ------------------------------------------------------- YOUR SPORT pane */
@@ -7859,8 +8177,12 @@ function weekReview(){
     };
   };
   const A=stat(wk), P=stat(pv);
+  /* plain text, not markup: statTile escapes its delta - correctly, it is
+     the only thing stopping a stray value becoming an injection - so anything
+     with tags in it was rendered to the user verbatim. The arrow is enough
+     for statTile to colour it. */
   const dl=(a,b,dp)=>{ if(a==null||b==null)return ''; const d=a-b;
-    return `<span class="${d>0?'up':d<0?'down':'flat'}">${d>0?'▲':d<0?'▼':'–'} ${Math.abs(rnd(d,dp||0))}</span>`; };
+    return `${d>0?'▲':d<0?'▼':'–'} ${Math.abs(rnd(d,dp||0))}`; };
 
   // target attainment across the whole week, plus genuinely blank days
   const T=DB.targets, WP=weekProgress(today), TK=targetKeys();
@@ -8106,6 +8428,44 @@ function mcLinksBlock(){
   </div>`;
 }
 
+/* How the last few sessions felt, which is the one thing the user tells the
+   app about outcomes rather than inputs. */
+function feedbackBlock(){
+  const rated=(DB.sessions||[]).filter(s=>s.done&&s.feedback);
+  if(!rated.length) return '';
+  const fb=feedbackBias();
+  const tally={};
+  FEEDBACK.forEach(f=>tally[f.id]=0);
+  rated.forEach(s=>{ if(tally[s.feedback]!=null) tally[s.feedback]++; });
+  return `<div class="sec-t">How sessions have felt</div>
+  <div class="card">
+    ${FEEDBACK.map(f=>`<div class="kv"><span class="k">${esc(f.name)}</span>
+      <span class="v num">${tally[f.id]}</span></div>`).join('')}
+    <div class="hint" style="margin-top:9px">${fb.line
+      ? fb.line+' It moves the version of the session by one step and nothing else — never the readiness score, and never past a pain cap.'
+      : 'Rate three sessions the same way and Baseline will start adjusting how much you get. Right now it is not.'}</div>
+  </div>`;
+}
+
+/* How the last few sessions felt, which is the one thing the user tells the
+   app about outcomes rather than inputs. */
+function feedbackBlock(){
+  const rated=(DB.sessions||[]).filter(s=>s.done&&s.feedback);
+  if(!rated.length) return '';
+  const fb=feedbackBias();
+  const tally={};
+  FEEDBACK.forEach(f=>tally[f.id]=0);
+  rated.forEach(s=>{ if(tally[s.feedback]!=null) tally[s.feedback]++; });
+  return `<div class="sec-t">How sessions have felt</div>
+  <div class="card">
+    ${FEEDBACK.map(f=>`<div class="kv"><span class="k">${esc(f.name)}</span>
+      <span class="v num">${tally[f.id]}</span></div>`).join('')}
+    <div class="hint" style="margin-top:9px">${fb.line
+      ? fb.line+' It moves the version of the session by one step and nothing else — never the readiness score, and never past a pain cap.'
+      : 'Rate three sessions the same way and Baseline will start adjusting how much you get. Right now it is not.'}</div>
+  </div>`;
+}
+
 function paneLinks(c){
   const cors=correlations();
   const rev=adviceReview();
@@ -8151,6 +8511,11 @@ function paneLinks(c){
      <div class="kv"><span class="k">Above 0.5</span><span class="v">Strong — still not causal</span></div>
      <div class="hint" style="margin-top:9px">Test enough relationships and some look meaningful by chance. A single strong one in a few months of data usually is.</div>
    </div>`:''}`;
+  /* Two more observation blocks belong here, with the same caveat as the
+     correlations above: what the user told us about outcomes, and the cycle
+     context if they track it. mcLinksBlock() was written in stage 6 and never
+     called - the cycle observations in Patterns were dead code. */
+  c.innerHTML += feedbackBlock() + mcLinksBlock();
 }
 
 /* =========================================================================
@@ -8728,6 +9093,15 @@ function settingsBody(v){
    </div>
 
    <div class="card spane training">
+     <div class="card-h"><div class="card-t accent">Breaks</div>
+       ${isAway()?`<span class="tag o">AWAY</span>`:''}</div>
+     <div class="hint" style="margin-bottom:12px">${isAway()
+       ? `Paused until <b>${fmtDate(awayUntil())}</b>. Progression is not counting the days.`
+       : 'Going on holiday or laid up? Pause the progression so the gap is not read as missed training.'}</div>
+     <button class="btn ghost block" id="sAway">${isAway()?'Change or end the break':'Pause training'}</button>
+   </div>
+
+   <div class="card spane training">
      <div class="card-t accent" style="margin-bottom:12px">Schedule</div>
      <div class="field"><label>Days per week</label>
        <div class="pills" id="sDays">${[2,3,4,5,6].map(n=>`<button data-v="${n}" class="${P.daysPerWeek===n?'on':''}">${n}</button>`).join('')}</div>
@@ -9098,6 +9472,7 @@ function settingsBody(v){
   $('#sSched').onclick=()=>{ persist(); editSchedule(); };
   $('#expJson').onclick=exportJSON;
   const tb=$('#sTour'); if(tb) tb.onclick=()=>openTour();
+  const ab=$('#sAway'); if(ab) ab.onclick=()=>openAway();
   $('#impJson').onclick=()=>$('#jsonIn').click();
   $('#expCsvS').onclick=exportSessionsCSV;
   $('#expCsvA').onclick=exportActivitiesCSV;
@@ -9157,6 +9532,9 @@ function exitWM(discard){
   if(discard||!anyDone) return fin();
   confirmSheet('Leave workout?','You have logged sets. Finish the session to save it, or discard and lose this log.','Discard',()=>{ fin(); },true);
 }
+/* "REDUCED" told a first-time user nothing. */
+const VARIANT_NAME={full:'Full session', reduced:'Reduced volume', recovery:'Recovery session'};
+
 function drawWM(){
   if(!W)return;
   const total=W.entries.length;
@@ -9171,7 +9549,7 @@ function drawWM(){
     <div style="flex:1;text-align:center">
       <div style="font-size:12.5px;font-weight:750;letter-spacing:-.1px">${esc(W.workoutName)}</div>
       <div style="font-size:10.5px;color:var(--text-3);font-weight:650;margin-top:1px">
-        ${esc((W.variant||'full').toUpperCase())} · ${i<0?'warm-up':`exercise ${i+1}/${total}`} · ${elapsed} min</div>
+        ${esc(VARIANT_NAME[W.variant]||'Full session')} · ${i<0?'warm-up':`exercise ${i+1}/${total}`} · ${elapsed} min</div>
     </div>
     <div class="icon-btn" style="font-size:11px;font-weight:800;color:var(--accent)">${doneSets}/${allSets}</div>`;
   $('#wmX').onclick=()=>exitWM();
@@ -9316,14 +9694,50 @@ function drawExercise(en,i,total){
   /* the three things you do between exercises, not during a set */
   $('#wmMore').onclick=()=>{
     openSheet(en.name,navRows('wmMoreRows',[
-      {t:'Replace exercise', s:'Something else for the same target', icon:'undo'},
-      {t:'Add a note',       s:en.note?'Note saved':'Form, how it felt', icon:'edit'},
+      {t:'Why this exercise?', s:'What it covers and why it was picked', icon:'info'},
+      {t:'Replace exercise',   s:'Something else for the same target', icon:'undo'},
+      {t:'This hurt',          s:'Keep it out of my sessions for 3 weeks', icon:'thermo'},
+      {t:'Add a note',         s:en.note?'Note saved':'Form, how it felt', icon:'edit'},
       {t:'Skip this exercise', s:'Recorded as skipped, not failed', icon:'x'}
     ]));
     $$('#wmMoreRows button').forEach(b=>b.onclick=()=>{
       const i=+b.dataset.r; closeSheet();
-      setTimeout(()=>{ if(i===0) wmSwap(); else if(i===1) wmNote(); else wmSkip(); },200);
+      setTimeout(()=>{ if(i===0) wmWhy(); else if(i===1) wmSwap();
+                       else if(i===2) wmHurt(); else if(i===3) wmNote(); else wmSkip(); },200);
     });
+  };
+  /* G · the resolver already knew all of this and never said it */
+  const wmWhy=()=>{
+    openSheet('Why this exercise?',
+      `<ul class="whyl">${exerciseWhy(en).map(b=>
+        `<li class="info"><span class="dot"></span><span>${b}</span></li>`).join('')}</ul>`,
+      `<button class="btn primary big block" onclick="closeSheet()">Got it</button>`);
+  };
+  /* C · lighter than declaring an injury, which is what this used to require */
+  const wmHurt=()=>{
+    confirmSheet('Keep this out for a while?',
+      `<b>${esc(en.name)}</b> will be left out of your sessions for three weeks
+       and something else covering the same pattern used instead. You can undo
+       it in Settings → Training at any time.<br><br>
+       Sharp or persistent pain is worth a word with a qualified healthcare
+       professional rather than only an app setting.`,
+      'Leave it out',()=>{
+        const hurt=en.exerciseId;
+        avoidExercise(hurt,'hurt during a session');
+        toast('Left out for 3 weeks');
+        /* swap it now so the session can carry on. resolveExercise already
+           knows how to route around an avoided movement, and returns an
+           exercise object rather than an id. */
+        const ne=resolveExercise(hurt);
+        if(ne && ne.id!==hurt){
+          en.exerciseId=ne.id; en.name=ne.name; en.cue=ne.cue||'';
+          en.plannedReps=ne.reps; en.plannedRpe=ne.rpe; en.plannedRest=ne.rest;
+          en.tempo=ne.tempo||'';
+          en.swapNote='Swapped in after you marked the previous one as painful.';
+          saveLive();
+        }
+        drawWM();
+      },true);
   };
   const wmSkip=()=>{ en.skipped=true; saveLive(); nextStep(); };
   const wmNote=()=>{
@@ -9354,10 +9768,18 @@ function stepper(n,k,val,placeholder){
     <button type="button" data-d="1" aria-label="Increase">+</button>
   </div>`;
 }
-/* 2.5 kg is the plate increment above 20 kg; below that it is dumbbells and
-   bands, which come in 1 kg steps. Reps and effort are always 1. */
+/* The increment that matches the kit the user said they own, rather than a
+   generic 2.5 everywhere. Someone with a 12 kg pair of dumbbells has no use
+   for 2.5 kg steps; someone with a barbell has no use for 1 kg ones. */
 function stepSize(k,cur){
   if(k!=='weight') return 1;
+  const gear=rawGear();
+  const plates = gear.indexOf('bb')>=0 || gear.indexOf('bar')>=0;
+  const dbMax = (DB.profile&&DB.profile.dbKg)||null;
+  /* barbell work moves in plate pairs once the bar is loaded */
+  if(plates && cur>=20) return 2.5;
+  /* dumbbells: 1 kg while light, 2 kg once past the middle of the rack */
+  if(dbMax && cur>=Math.min(20, dbMax*0.5)) return 2;
   return cur>=20 ? 2.5 : 1;
 }
 function nextStep(){ stopRest(); W.step++; drawWM(); $('#wmBody').scrollTop=0; }
@@ -9382,7 +9804,7 @@ function drawFinish(){
       <div style="width:64px;height:64px;border-radius:20px;background:var(--accent);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" style="width:32px;height:32px">${ICON.check}</svg></div>
       <div style="font-size:27px;font-weight:850;letter-spacing:-.9px">Workout complete</div>
-      <div style="font-size:13px;color:var(--text-3);margin-top:5px;font-weight:600">${esc(W.workoutName)} · ${esc((W.variant||'full').toUpperCase())}</div>
+      <div style="font-size:13px;color:var(--text-3);margin-top:5px;font-weight:600">${esc(W.workoutName)} · ${esc(VARIANT_NAME[W.variant]||'Full session')}</div>
     </div>
     <div class="stats c4">
       ${statTile('Duration',dur,'m','a')}
@@ -9404,14 +9826,23 @@ function drawFinish(){
         <div class="slider-top"><span class="l">Overall effort</span><span class="v num" id="fRpe_o">${avgRpe||7}</span></div>
         <input type="range" id="fRpe" min="1" max="10" step="1" value="${Math.round(avgRpe||7)}" data-out="fRpe_o">
         <div class="scale"><span>Very easy</span><span>Maximal</span></div></div></div>
+    <div class="field"><label>How was that?</label>
+      <div class="pills" id="fFeel">
+        ${FEEDBACK.map(f=>`<button data-v="${f.id}">${esc(f.name)}</button>`).join('')}
+      </div>
+      <div class="hint">One tap. It is the only thing here that changes what
+        you get next time.</div></div>
     <div class="field"><label>Session notes</label>
-      <textarea class="inp" id="fNotes" placeholder="How did it feel? Anything to remember for next time?"></textarea></div>
+      <textarea class="inp" id="fNotes" placeholder="Anything to remember for next time?"></textarea></div>
     ${skipped.length?`<div class="note warn">${skipped.length} exercise${skipped.length>1?'s':''} skipped. That is recorded rather than hidden — it is useful signal, not a failure.</div>`:''}`;
   $('#wmFoot').innerHTML=`<button class="btn primary big block" id="fSave">Save session</button>`;
   bindInputs($('#wmBody'));
   $('#fSave').onclick=()=>{
     W.done=true; W.endedAt=Date.now(); W.durationMin=dur; W.setsDone=setsDone; W.volume=rnd(vol,1);
     W.sessionRpe=+$('#fRpe').value; W.notes=$('#fNotes').value.trim();
+    /* one tap, and the only thing on that screen that changes what comes
+       next - see feedbackBias() */
+    W.feedback=(function(){ const b=$('#fFeel button.on'); return b?b.dataset.v:null; })();
     DB.sessions=DB.sessions.filter(s=>s.id!==W.id);
     DB.sessions.push(JSON.parse(JSON.stringify(W)));
     DB.sessions.sort((a,b)=>a.date<b.date?-1:1);
