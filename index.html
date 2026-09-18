@@ -1184,7 +1184,7 @@ const STORES={
   wImports  :{key:'at',   idx:[]}
 };
 /* singleton objects live in one keyed store */
-const KV_KEYS=['profile','settings','targets','baselines','plans','decisions','ui','meta'];
+const KV_KEYS=['profile','settings','targets','baselines','plans','decisions','ui','meta','mcycle'];
 /* =========================================================================
    THEME
    Light by default, dark when the system asks for it, and an explicit
@@ -2763,6 +2763,10 @@ function freshDB(){
       bands:{green:72,yellow:56,orange:42},
       autoAdjust:true, hardStrain:14, restTimerOn:true
     },
+    /* Optional cycle tracking. Off, with nothing in it, until the user says
+       otherwise. `starts` holds period start dates only; the daily entries
+       live on the check-in they belong to. */
+    mcycle:{on:false, starts:[], typicalLen:null, typicalPeriod:null, askedAt:null},
     plans:{},
     /* what the engine advised each day, written on the day. Kept separate
        from plans (which is your override) so adherence can be measured. */
@@ -2776,7 +2780,7 @@ function freshDB(){
     activities:[],
     tests:[],
     physique:[],
-    ui:{tab:'today'}
+    ui:{tab:'today', tourDone:false}
   };
 }
 
@@ -4612,14 +4616,21 @@ function readiness(date, ci){
   const hasSub = ci.energy!=null||ci.soreness!=null||ci.stress!=null||ci.motivation!=null;
   if(hasSub){
     const e=ci.energy??6, so=ci.soreness??3, st=ci.stress??4, mo=ci.motivation??6;
-    const s=clamp((e*.35+(10-so)*.32+(10-st)*.15+mo*.18)*10,0,100);
+    /* Cramps, when reported, are discomfort like soreness is discomfort: they
+       join this term rather than becoming a phase rule. Only counted if the
+       user actually entered a number. */
+    const cr=(ci.mc&&ci.mc.cramps!=null)?ci.mc.cramps:null;
+    const base=(e*.35+(10-so)*.32+(10-st)*.15+mo*.18)*10;
+    const s=clamp(cr!=null ? base*0.82 + (10-cr)*10*0.18 : base, 0, 100);
     const bits=[];
     if(e<=4)bits.push('energy low'); else if(e>=8)bits.push('energy high');
     if(so>=7)bits.push('<b>soreness high</b>'); else if(so<=2)bits.push('no soreness');
     if(st>=7)bits.push('stress high');
     if(mo<=3)bits.push('motivation low'); else if(mo>=8)bits.push('motivation high');
+    if(cr!=null&&cr>=7)bits.push('<b>cramps significant</b>'); else if(cr!=null&&cr>=4)bits.push('cramps present');
     add('subjective', s, subW,
-      `You reported energy ${e}/10, soreness ${so}/10, stress ${st}/10, motivation ${mo}/10${bits.length?' — '+bits.join(', ')+'.':'.'}`,
+      `You reported energy ${e}/10, soreness ${so}/10, stress ${st}/10, motivation ${mo}/10${
+        cr!=null?`, cramps ${cr}/10`:''}${bits.length?' — '+bits.join(', ')+'.':'.'}`,
       s>=70?'pos':s>=50?'info':'warn');
   }
 
@@ -4698,6 +4709,31 @@ function readiness(date, ci){
     const z=(ci.resp-B.respRate)/B.respSd;
     if(z>2.2){ score-=7; flags.push('resp'); why.push({t:`Respiratory rate <b>${rnd(ci.resp,1)}</b> vs a very stable ${rnd(B.respRate,1)} baseline. In your data this metric barely moves, so a jump is worth noting — if you also feel unwell, rest rather than train.`,k:'neg'}); }
   }
+  /* ---- Cycle context (optional, and only ever a nudge) ----
+     Two separate things, in the order the spec requires:
+       1. what the user SAID about today - their own report, which outranks
+          any estimate and is applied whenever they gave one;
+       2. an association found in their OWN history, applied only once it is
+          established, and capped at +/-5.
+     Both sit above the pain caps below, so neither can lift one. */
+  if(mcOn()){
+    /* one context for the feel line and the pattern check below */
+    const mcC=mcCtx();
+    const fe=mcFeelOf(date);
+    if(fe && fe.delta!==0){
+      score+=fe.delta;
+      flags.push('mcFeel');
+      why.push({t:`You reported feeling <b>${fe.name.toLowerCase()}</b> today, which is applied directly — what you are actually experiencing outranks any estimate.`,
+                k:fe.delta<0?'warn':'pos'});
+    }
+    const mcA=mcAdjust(date, mcC);
+    if(mcA.delta){
+      score+=mcA.delta;
+      flags.push('mcPattern');
+      why.push({t:mcA.line, k:mcA.kind});
+    }
+  }
+
   // Pain overrides
   let capBand=null;
   if(ci.pain==='Moderate'){ capBand='orange'; flags.push('pain'); why.push({t:`<b>Moderate pain reported</b> — capped at a low-readiness session and loaded movements removed for the painful area.`,k:'neg'}); }
@@ -4725,7 +4761,11 @@ function readiness(date, ci){
   sources.subjectiveBaseline = SB.ready ? SB.n : 0;
 
   return {score:rnd(score,0), band, parts, why, flags, acwr, streak, sources, weight:wt,
-          hrvZ:hrvZ!=null?rnd(hrvZ,2):null, rhrZ:rhrZ!=null?rnd(rhrZ,2):null, shortfall};
+          hrvZ:hrvZ!=null?rnd(hrvZ,2):null, rhrZ:rhrZ!=null?rnd(rhrZ,2):null, shortfall,
+          /* null unless tracking is on: nothing downstream can accidentally
+             read a cycle value for somebody who never enabled it */
+          mc: mcOn()? (function(){ const c=mcCtx();
+            return {phase:mcPhase(date,c), adjust:mcAdjust(date,c), feel:mcFeelOf(date)}; })() : null};
 }
 
 const BAND = {
@@ -5234,6 +5274,543 @@ function currentPhase(){
 }
 
 /* =========================================================================
+   MENSTRUAL CYCLE — OPTIONAL, AND A PERSONALISATION SIGNAL ONLY
+   ------------------------------------------------------------------------
+   Off unless the user turns it on. Nothing here runs, renders or influences a
+   recommendation while DB.mcycle.on is false.
+
+   The prefix is `mc` because "cycle" is already taken: cycleByDate() and
+   DB.whoop.cycles mean a WHOOP physiological cycle, i.e. one day of recovery
+   data. Reusing the word here would have produced two unrelated meanings in
+   the same scope.
+
+   THE RULE THIS MODULE EXISTS TO OBEY: cycle context never decides anything
+   on its own. It contributes a small, capped adjustment, and only once the
+   user's OWN logs show a repeated association between a phase and how they
+   actually report and perform. With no evidence the contribution is exactly
+   zero, and the recommendation is whatever it would have been anyway. It
+   cannot lift a pain cap, because the caps are applied after every modifier.
+
+   Nothing here infers fertility, pregnancy, or any medical condition, and
+   nothing is transmitted anywhere — there is no transport in this app.
+   ====================================================================== */
+
+const mcOn = ()=> !!(DB && DB.mcycle && DB.mcycle.on);
+
+/* the day's cycle entry, kept inside the check-in so it is covered by the
+   same storage, backup and restore as everything else */
+function mcLog(date){
+  const c=DB.checkins&&DB.checkins[date];
+  return (c&&c.mc)||null;
+}
+function mcSetLog(date, patch){
+  DB.checkins[date]=Object.assign({date:date},DB.checkins[date]||{});
+  DB.checkins[date].mc=Object.assign({},DB.checkins[date].mc||{},patch);
+  return DB.checkins[date].mc;
+}
+
+/* Every date the user marked as bleeding, ascending. */
+function mcBleedDays(){
+  const out=[];
+  Object.keys(DB.checkins||{}).forEach(d=>{
+    const m=DB.checkins[d]&&DB.checkins[d].mc;
+    if(m&&m.bleeding) out.push(d);
+  });
+  return out.sort();
+}
+
+/* Period start dates: whatever the user told setup, plus any bleeding day
+   that follows at least two clear days. Derived rather than asked for, so
+   marking "bleeding today" is the only input a cycle needs. */
+function mcStarts(){
+  const seeded=(DB.mcycle&&Array.isArray(DB.mcycle.starts))?DB.mcycle.starts.slice():[];
+  const bleed=mcBleedDays();
+  const set={};
+  seeded.forEach(d=>{ if(d) set[d]=1; });
+  bleed.forEach(d=>{
+    const prev1=addDays(d,-1), prev2=addDays(d,-2);
+    if(bleed.indexOf(prev1)<0 && bleed.indexOf(prev2)<0) set[d]=1;
+  });
+  return Object.keys(set).sort();
+}
+
+/* Observed cycle lengths, and how consistent they are. No 28-day assumption
+   anywhere: if the user has not produced enough history, this says so. */
+function mcStats(){
+  const st=mcStarts();
+  const lens=[];
+  for(let i=1;i<st.length;i++){
+    const n=daysBetween(st[i-1],st[i]);
+    /* a gap under 15 days is almost certainly two entries for one period,
+       and one over 90 is a break in logging rather than a cycle */
+    if(n>=15&&n<=90) lens.push(n);
+  }
+  const typical=(DB.mcycle&&DB.mcycle.typicalLen)||null;
+  const m=lens.length?mean(lens):null;
+  const s=lens.length>1?sd(lens):null;
+  /* confidence describes the ESTIMATE, not the user */
+  let conf='none';
+  if(lens.length>=3 && s!=null && s<=2.5) conf='high';
+  else if(lens.length>=2 && s!=null && s<=4.5) conf='moderate';
+  else if(lens.length>=1 || typical) conf='low';
+  return {
+    n:lens.length, lens:lens,
+    mean:m!=null?rnd(m,1):null,
+    sd:s!=null?rnd(s,1):null,
+    typical:typical,
+    /* the length used for estimating, in order of authority */
+    use: typical || (m!=null?Math.round(m):null),
+    regular: (s!=null && s<=4.5),
+    confidence:conf
+  };
+}
+
+/* Observed period length, from actual runs of bleeding days. */
+function mcPeriodLen(){
+  const stated=(DB.mcycle&&DB.mcycle.typicalPeriod)||null;
+  if(stated) return stated;
+  const bleed=mcBleedDays();
+  if(!bleed.length) return null;
+  const runs=[]; let run=0;
+  for(let i=0;i<bleed.length;i++){
+    run++;
+    if(i===bleed.length-1 || daysBetween(bleed[i],bleed[i+1])>1){ runs.push(run); run=0; }
+  }
+  return runs.length?Math.round(median(runs)):null;
+}
+
+/* The three invariants every phase calculation needs. Building them is a
+   full scan of the check-ins, so anything that asks about many dates builds
+   one of these and passes it down rather than paying per date. */
+function mcCtx(){
+  const starts=mcStarts();
+  return {starts:starts, stats:mcStats(), plen:mcPeriodLen()||5};
+}
+
+/* Cycle day, counting the first day of the most recent period as day 1. */
+function mcDay(date, ctx){
+  const st=(ctx&&ctx.starts)||mcStarts();
+  let last=null;
+  for(let i=0;i<st.length;i++) if(st[i]<=date) last=st[i];
+  if(!last) return null;
+  const n=daysBetween(last,date)+1;
+  return n>0?n:null;
+}
+
+/* ESTIMATED phase. Never a claim about physiology, and never forced: with
+   irregular or thin history this returns 'unknown' rather than guessing. */
+function mcPhase(date, ctx){
+  const out={day:null, phase:'unknown', confidence:'none', label:'Unknown', note:''};
+  if(!mcOn()) return out;
+  const day=mcDay(date, ctx);
+  if(day==null){
+    out.note='No period logged yet, so there is nothing to count from.';
+    return out;
+  }
+  out.day=day;
+  const S=(ctx&&ctx.stats)||mcStats();
+  const plen=(ctx&&ctx.plen)||mcPeriodLen()||5;
+  /* bleeding the user actually reported beats any estimate */
+  const today=mcLog(date);
+  if(today&&today.bleeding){
+    out.phase='menstrual'; out.label='Menstrual';
+    out.confidence='reported';
+    out.note='You logged bleeding today.';
+    return out;
+  }
+  if(day<=plen){
+    out.phase='menstrual'; out.label='Menstrual';
+    out.confidence=S.confidence==='none'?'low':S.confidence;
+    out.note='Estimated from your period start.';
+    return out;
+  }
+  const len=S.use;
+  if(!len){
+    out.note='Not enough cycle history yet to estimate a phase.';
+    return out;
+  }
+  if(day>len+10){
+    out.note='Day '+day+' is well past your usual length, so no phase is estimated.';
+    return out;
+  }
+  const ov=len-14;                      // luteal length is the stable part
+  if(ov<plen+2){                        // a very short cycle: do not pretend
+    out.note='Your usual cycle is too short for a reliable phase split.';
+    return out;
+  }
+  if(day>=ov-2 && day<=ov+1){ out.phase='ovulatory'; out.label='Ovulatory window'; }
+  else if(day<ov-2){ out.phase='follicular'; out.label='Follicular'; }
+  else { out.phase='luteal'; out.label='Luteal'; }
+  out.confidence = S.confidence==='none' ? 'low' : S.confidence;
+  out.note='Estimated from your logged cycle'+(S.n?'s ('+S.n+' recorded)':'')+'.';
+  /* an irregular history must not produce a confident-sounding phase */
+  if(!S.regular && S.n>=2){
+    out.confidence='low';
+    out.note='Your cycle length has varied by '+S.sd+' days, so this is a rough estimate.';
+  }
+  return out;
+}
+
+/* A short human line for the UI. */
+function mcSummary(date, ctx){
+  const p=mcPhase(date, ctx);
+  if(p.day==null) return {top:'Tracking enabled', sub:'Log today to start counting'};
+  if(p.phase==='unknown') return {top:'Day '+p.day, sub:'Phase estimate unavailable'};
+  return {top:'Day '+p.day+' · Estimated '+p.label.toLowerCase(),
+          sub:p.confidence==='reported'?'From what you logged today':'Based on your entries'};
+}
+
+/* =========================================================================
+   DID IT ACTUALLY MATTER, FOR THIS PERSON?
+   ------------------------------------------------------------------------
+   The question is never "what does the average person do in this phase".
+   It is "do THIS user's own logs show a repeated association between a phase
+   and how they report and perform". Until they do, the answer is no and the
+   influence is zero.
+   ====================================================================== */
+const MC_PHASES=['menstrual','follicular','ovulatory','luteal'];
+
+/* One 0-100 number per logged day, from the signals that exist. Deliberately
+   the same ingredients readiness already trusts, so an association here means
+   something about training rather than about mood alone. */
+function mcDayQuality(d, sessIdx){
+  const ci=DB.checkins[d]; if(!ci) return null;
+  const B=DB.baselines;
+  const bits=[], w=[];
+  if(ci.energy!=null){ bits.push(ci.energy*10); w.push(1); }
+  if(ci.soreness!=null){ bits.push((10-ci.soreness)*10); w.push(1); }
+  if(ci.motivation!=null){ bits.push(ci.motivation*10); w.push(0.6); }
+  const m=ci.mc||{};
+  if(m.cramps!=null){ bits.push((10-m.cramps)*10); w.push(1); }
+  if(ci.recovery!=null){ bits.push(clamp(ci.recovery,0,100)); w.push(1.4); }
+  if(ci.hrv!=null&&B.hrv&&B.hrvSd){
+    bits.push(clamp(50+((ci.hrv-B.hrv)/B.hrvSd)*22,0,100)); w.push(1.2);
+  }
+  /* what actually happened in training that day, when there is a session */
+  const s=sessIdx ? sessIdx[d]
+                  : (DB.sessions||[]).find(x=>x.date===d&&x.done);
+  if(s&&s.sessionRpe!=null){ bits.push(clamp((10-s.sessionRpe)*10,0,100)); w.push(0.8); }
+  if(!bits.length) return null;
+  let tot=0, tw=0;
+  bits.forEach((b,i)=>{ tot+=b*w[i]; tw+=w[i]; });
+  return tot/tw;
+}
+
+/* Per-phase observation: how this user's own days in that phase compare with
+   all their other logged days. Returns counts so thin evidence stays visibly
+   thin. */
+function mcEvidence(ctx){
+  const byPhase={}; const all=[];
+  /* one scan's worth of invariants for the whole loop, not one per day */
+  ctx = ctx || mcCtx();
+  /* sessions indexed once: the per-day lookup was a linear find */
+  const sess={};
+  (DB.sessions||[]).forEach(s=>{ if(s.done) sess[s.date]=s; });
+  MC_PHASES.forEach(p=>byPhase[p]=[]);
+  Object.keys(DB.checkins||{}).sort().forEach(d=>{
+    const q=mcDayQuality(d, sess); if(q==null) return;
+    all.push(q);
+    const p=mcPhase(d, ctx);
+    if(p.phase!=='unknown' && byPhase[p.phase]) byPhase[p.phase].push(q);
+  });
+  const S=ctx.stats;
+  const overallMean=all.length?mean(all):null;
+  const overallSd=all.length>1?sd(all):null;
+  const out={cycles:S.n, days:all.length, phases:{}, regular:S.regular};
+  MC_PHASES.forEach(p=>{
+    const v=byPhase[p];
+    const mu=v.length?mean(v):null;
+    /* Effect in standard deviations of this user's own day-to-day spread,
+       measured against the OTHER phases rather than against all days. The
+       all-days mean contains this phase, so a genuinely bad phase dragged the
+       comparison down and handed its complement a mirror-image positive. */
+    const others=[];
+    MC_PHASES.forEach(q=>{ if(q!==p) byPhase[q].forEach(x=>others.push(x)); });
+    const om=others.length?mean(others):null;
+    const z=(mu!=null&&om!=null&&overallSd>1)?(mu-om)/overallSd:null;
+    out.phases[p]={
+      n:v.length,
+      mean:mu!=null?rnd(mu,1):null,
+      /* still shown against the overall average, which is the number a
+         person can actually interpret */
+      diff:(mu!=null&&overallMean!=null)?rnd(mu-overallMean,1):null,
+      vsOthers:(mu!=null&&om!=null)?rnd(mu-om,1):null,
+      z:z!=null?rnd(z,2):null,
+      established:false      // decided below, once every phase has a z
+    };
+  });
+  /* At most ONE phase is established: the one with the clearest effect. The
+     question is whether a PARTICULAR cycle context matters for this person,
+     and two phases cannot both be the answer to that.
+     Requirements, all of them: enough recorded cycles, a cycle regular enough
+     for phase assignment to mean anything, enough days in the phase, and an
+     effect too big to be noise. */
+  if(S.n>=2 && S.regular){
+    let best=null;
+    MC_PHASES.forEach(p=>{
+      const e=out.phases[p];
+      if(e.n<6 || e.z==null || Math.abs(e.z)<0.40) return;
+      if(!best || Math.abs(e.z)>Math.abs(out.phases[best].z)) best=p;
+    });
+    if(best) out.phases[best].established=true;
+    out.dominant=best;
+  } else {
+    out.dominant=null;
+    /* why nothing is established, in a form the UI can repeat */
+    out.blocked = S.n<2 ? 'not enough recorded cycles yet'
+                        : 'your cycle length varies too much for phase estimates to mean much';
+  }
+  out.overall = overallMean!=null?rnd(overallMean,1):null;
+  return out;
+}
+
+/* The only place cycle context touches the recommendation.
+   Capped at +/-5 points on a 0-100 score, which cannot move a band on its own
+   from the middle of one to the middle of another, and is zero without
+   established personal evidence. */
+const MC_MAX_ADJUST=5;
+function mcAdjust(date, ctx){
+  const none={delta:0, line:null, phase:null};
+  if(!mcOn()) return none;
+  ctx = ctx || mcCtx();
+  const p=mcPhase(date, ctx);
+  if(p.phase==='unknown') return none;
+  const ev=mcEvidence(ctx);
+  const e=ev.phases[p.phase];
+  if(!e||!e.established) return none;
+  /* scale the observed effect, then clamp hard */
+  const delta=clamp(rnd(e.z*4,1), -MC_MAX_ADJUST, MC_MAX_ADJUST);
+  if(Math.abs(delta)<1) return none;
+  const worse=delta<0;
+  return {
+    delta, phase:p.phase,
+    /* correlation language only: an observation about their own logs, never a
+       claim about hormones or cause */
+    line:`Across ${e.n} logged days around your ${p.label.toLowerCase()} phase you have `+
+         `tended to report ${worse?'a harder time':'a better time'} than your own average. `+
+         `That observation is nudging today's score ${worse?'down':'up'} by ${Math.abs(delta)} `+
+         `— it is a pattern in your data, not a cause.`,
+    kind: worse?'warn':'pos'
+  };
+}
+
+/* What the user reported about today, in their own words, which outranks any
+   estimate (section 25: actual state beats prediction). */
+const MC_FEEL=[
+  {id:'strong',   name:'Strong',                 delta:4},
+  {id:'normal',   name:'Normal',                 delta:0},
+  {id:'low',      name:'Lower energy',           delta:-5},
+  {id:'discomfort',name:'Significant discomfort',delta:-10}
+];
+function mcFeelOf(date){
+  const m=mcLog(date);
+  if(!m||!m.feel) return null;
+  return MC_FEEL.find(f=>f.id===m.feel)||null;
+}
+
+/* Common symptoms, offered as chips. Nothing here is diagnostic. */
+const MC_SYMPTOMS=['Cramps','Headache','Bloating','Back pain','Breast tenderness',
+                   'Nausea','Low mood','Poor sleep','Food cravings','Acne'];
+
+/* Turning it off must be able to remove the data, not just hide it. */
+function mcWipe(){
+  if(DB.mcycle) DB.mcycle={on:false, starts:[], typicalLen:null, typicalPeriod:null, askedAt:null};
+  Object.keys(DB.checkins||{}).forEach(d=>{
+    if(DB.checkins[d] && DB.checkins[d].mc) delete DB.checkins[d].mc;
+  });
+}
+
+/* =========================================================================
+   CYCLE — INTERFACE
+   Small on purpose. One row on Today, one sheet to log, one page to look
+   back. No dashboard, and nothing at all when tracking is off.
+   ====================================================================== */
+
+/* The Today row. Returns '' when tracking is off, so Today is unchanged for
+   everybody who has not enabled it. */
+function mcRow(date){
+  if(!mcOn()) return '';
+  const s=mcSummary(date);
+  const logged=!!mcLog(date);
+  return `<div class="rows" style="margin-top:11px" id="mcRow">
+    <button data-r="0">
+      <i class="rw-i">${svg('drop')}</i>
+      <span class="rw-x"><span class="rw-t">${esc(s.top)}</span>
+        <span class="rw-s">${esc(logged? s.sub : 'Log today')}</span></span>
+      <i class="rw-c">${svg('chev')}</i>
+    </button></div>`;
+}
+
+/* The daily log. Deliberately does not ask for energy, soreness or
+   motivation: the check-in already does, and asking twice is how a one-minute
+   routine becomes a chore. */
+function mcSheet(date){
+  const m=mcLog(date)||{};
+  const p=mcPhase(date);
+  openSheet('Cycle · '+fmtDate(date),`
+   ${p.day!=null?`<div class="rec" style="margin-top:0">
+     <div class="rec-l">${p.phase==='unknown'?'Cycle':'Estimated'}</div>
+     <div class="rec-t" style="font-size:20px">Day ${p.day}${
+       p.phase==='unknown'?'':' · '+esc(p.label)}</div>
+     <div class="rec-m">${esc(p.note)}</div>
+   </div>`:''}
+
+   <div class="field" style="margin-top:16px">
+     <label>Bleeding today?</label>
+     <div class="seg acc" id="mcBleed">
+       <button data-v="1" class="${m.bleeding?'on':''}">Yes</button>
+       <button data-v="0" class="${m.bleeding===false?'on':''}">No</button>
+     </div>
+   </div>
+
+   <div class="field" id="mcFlowWrap" ${m.bleeding?'':'hidden'}>
+     <label>Flow</label>
+     <div class="pills" id="mcFlow">
+       ${['Light','Medium','Heavy'].map(f=>
+         `<button data-v="${f}" class="${m.flow===f?'on':''}">${f}</button>`).join('')}
+     </div>
+   </div>
+
+   <div class="field"><label>How does today feel?</label>
+     <div class="pills" id="mcFeel">
+       ${MC_FEEL.map(f=>`<button data-v="${f.id}" class="${m.feel===f.id?'on':''}">${esc(f.name)}</button>`).join('')}
+     </div>
+     <div class="hint">Applied to today's recommendation straight away. What
+       you are actually experiencing outranks any estimate.</div>
+   </div>
+
+   ${sliderHTML('mcCramps','Cramps or pain',m.cramps??0,'None','Severe')}
+
+   <div class="field"><label>Anything else</label>
+     ${chipPicker({id:'mcSym', allowEmpty:true, emptyText:'None',
+        chosen:(m.symptoms||[]), all:MC_SYMPTOMS.map(s=>({id:s,name:s}))})}
+   </div>
+
+   <button class="tert" id="mcNoteT">${m.note?'Note':'Add a note'} ${svg('down')}</button>
+   <div id="mcNoteB" ${m.note?'':'hidden'}>
+     <div class="field"><textarea class="inp" id="mcNote" placeholder="Anything worth remembering">${esc(m.note||'')}</textarea></div>
+   </div>
+
+   <div class="hint" style="margin-top:14px">Stored on this device only, with
+     the rest of your data. Baseline does not interpret this medically and
+     never estimates fertility or pregnancy.</div>
+  `,`<button class="btn primary big block" id="mcSave">Save</button>`);
+
+  let symChosen=(m.symptoms||[]).slice();
+  const pills=(sel,cb)=>$$(sel+' button').forEach(b=>b.onclick=()=>{
+    $$(sel+' button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); haptic(); if(cb)cb(b); });
+  pills('#mcBleed', b=>{
+    const w=$('#mcFlowWrap');
+    if(b.dataset.v==='1') w.removeAttribute('hidden'); else w.setAttribute('hidden','');
+  });
+  pills('#mcFlow'); pills('#mcFeel');
+  wirePicker('mcSym', symChosen, MC_SYMPTOMS.map(s=>({id:s,name:s})),
+    next=>{ symChosen=next; mcSheet(date); }, 'Symptoms', true);
+  const nt=$('#mcNoteT'), nb=$('#mcNoteB');
+  if(nt&&nb) nt.onclick=()=>{
+    const open=nb.hasAttribute('hidden');
+    if(open) nb.removeAttribute('hidden'); else nb.setAttribute('hidden','');
+    nt.classList.toggle('open',open);
+  };
+
+  $('#mcSave').onclick=()=>{
+    const gv=sel=>{ const b=$(sel+' button.on'); return b?b.dataset.v:null; };
+    const bl=gv('#mcBleed');
+    mcSetLog(date,{
+      bleeding: bl==null? null : bl==='1',
+      flow: bl==='1' ? gv('#mcFlow') : null,
+      feel: gv('#mcFeel'),
+      cramps: +$('#mcCramps').value,
+      symptoms: symChosen.slice(),
+      note: ($('#mcNote')||{value:''}).value.trim(),
+      at: new Date().toISOString()
+    });
+    save(true); closeSheet(); toast('Saved','ok');
+    setTimeout(render,220);
+  };
+}
+
+/* The page. Status, history, and what the user's own data does or does not
+   show - stated as an observation, with its sample size. */
+function paneCycle(c){
+  const d=todayISO();
+  const p=mcPhase(d), S=mcStats(), ev=mcEvidence();
+  const starts=mcStarts().slice().reverse().slice(0,6);
+  const recent=Object.keys(DB.checkins||{}).filter(k=>DB.checkins[k].mc).sort().reverse().slice(0,10);
+  const ctx=mcCtx();
+  c.innerHTML=`
+  <div class="rec" style="margin-top:0">
+    <div class="rec-l">${p.phase==='unknown'?'Cycle':'Estimated'}</div>
+    <div class="rec-t" style="font-size:24px">${p.day!=null?'Day '+p.day:'Not started'}${
+      p.phase==='unknown'?'':' · '+esc(p.label)}</div>
+    <div class="rec-m">${esc(p.note||'Log a period to start counting.')}</div>
+    ${p.phase!=='unknown'&&p.confidence!=='reported'
+      ? `<div class="rec-m" style="color:var(--text-3)">Estimate confidence: ${esc(p.confidence)}</div>`:''}
+  </div>
+  <button class="btn primary big block" id="mcLogBtn" style="margin-top:13px">
+    ${mcLog(d)?'Update today':'Log today'}</button>
+
+  <div class="sec-t">Your cycles</div>
+  <div class="card">
+    <div class="kv"><span class="k">Recorded cycles</span><span class="v num">${S.n}</span></div>
+    <div class="kv"><span class="k">Average length</span><span class="v num">${S.mean!=null?S.mean+' days':'—'}</span></div>
+    <div class="kv"><span class="k">Variation</span><span class="v num">${S.sd!=null?'±'+S.sd+' days':'—'}</span></div>
+    ${S.typical?`<div class="kv"><span class="k">You told us</span><span class="v num">${S.typical} days</span></div>`:''}
+    <div class="kv"><span class="k">Period length</span><span class="v num">${mcPeriodLen()!=null?mcPeriodLen()+' days':'—'}</span></div>
+    ${S.n<2?`<div class="hint" style="margin-top:8px">Two complete cycles are needed before any estimate becomes meaningful. Nothing is assumed in the meantime.</div>`
+      :!S.regular?`<div class="hint" style="margin-top:8px">Your cycle length varies, so estimates here stay low-confidence. That is a normal thing for a cycle to do and it costs you nothing in the app.</div>`:''}
+  </div>
+
+  <div class="sec-t">What your own data shows</div>
+  <div class="card">
+    ${(()=>{
+      const rows=MC_PHASES.filter(k=>ev.phases[k].n>0);
+      if(!rows.length) return '<div class="hint">Nothing logged against a phase yet.</div>';
+      return rows.map(k=>{
+        const e=ev.phases[k];
+        return `<div class="kv"><span class="k">${esc(k.charAt(0).toUpperCase()+k.slice(1))}
+          <span style="color:var(--text-3);font-weight:600">· ${e.n} day${e.n===1?'':'s'}</span></span>
+          <span class="v num" style="color:${e.established?(e.z<0?'var(--orange)':'var(--green)'):'var(--text-3)'}">${
+            e.diff==null?'—':(e.diff>0?'+':'')+e.diff}</span></div>`;
+      }).join('')
+      + `<div class="hint" style="margin-top:9px">Difference from your own average across all logged days, on a 0–100 scale built from what you reported and how sessions went. ${
+        ev.dominant
+          ? 'The highlighted figure is an <b>observed association in your data</b> and is nudging your readiness score by up to 5 points. It is a correlation, not a cause.'
+          : ev.blocked
+            ? 'None of this is affecting your recommendations — '+esc(ev.blocked)+'.'
+            : 'No single phase stands out clearly enough yet, so none of this is affecting your recommendations.'}</div>`;
+    })()}
+  </div>
+
+  ${recent.length?`<div class="sec-t">Recent entries</div>
+  <div class="card">
+    ${recent.map(k=>{ const m=DB.checkins[k].mc, ph=mcPhase(k,ctx);
+      return `<div class="kv"><span class="k">${fmtDate(k)}${ph.day!=null?` · day ${ph.day}`:''}</span>
+        <span class="v">${[m.bleeding?'bleeding'+(m.flow?' ('+esc(m.flow.toLowerCase())+')':''):null,
+          m.cramps?('cramps '+m.cramps+'/10'):null,
+          m.feel?esc((MC_FEEL.find(f=>f.id===m.feel)||{}).name||''):null,
+          (m.symptoms&&m.symptoms.length)?esc(m.symptoms.join(', ')):null
+        ].filter(Boolean).join(' · ')||'logged'}</span></div>`;}).join('')}
+  </div>`:''}
+
+  ${starts.length?`<div class="sec-t">Period starts</div>
+  <div class="card">${starts.map(s=>
+    `<div class="kv"><span class="k">${fmtDate(s)}</span><span class="v num">${
+      (()=>{ const st=mcStarts(); const i=st.indexOf(s);
+        return i>0? daysBetween(st[i-1],s)+' days later' : '—'; })()}</span></div>`).join('')}
+  </div>`:''}
+
+  <div class="note" style="margin-top:14px">Baseline is not a medical device.
+    It does not estimate fertility or pregnancy, does not diagnose anything,
+    and cannot tell you whether a cycle is healthy. Anything that concerns you
+    belongs with a qualified healthcare professional.</div>`;
+
+  const b=$('#mcLogBtn'); if(b) b.onclick=()=>mcSheet(d);
+}
+function openCycle(){ pushPage({build:c=>{ appbar('Cycle'); paneCycle(c); }}); }
+
+/* =========================================================================
    CHARTS (inline SVG, no libraries)
    ====================================================================== */
 /* viewBox width tracks the real container so strokes are not stretched
@@ -5627,6 +6204,103 @@ function wireRows(id,items){
    ====================================================================== */
 function greeting(){ const h=new Date().getHours(); return h<5?'Good night':h<12?'Good morning':h<18?'Good afternoon':'Good evening'; }
 
+/* =========================================================================
+   FIRST-RUN WALKTHROUGH
+   Six cards, plain language, no jargon, skippable on every one of them.
+   Shown once after setup; reopenable from Settings > About.
+
+   It exists because Baseline decides things, and a system that decides things
+   is confusing until you know what it is deciding from. Six screens of
+   explanation once is cheaper than a user assuming Tuesday's session is a bug.
+   ====================================================================== */
+const TOUR=[
+  {t:'Baseline picks one session a day',
+   b:'Not a plan written weeks ago. A decision made this morning, from how '+
+     'recovered you are and what you have actually been doing.'},
+  {t:'It needs about a minute from you',
+   b:'Each morning it asks how long you slept and how you feel. The sliders '+
+     'start where you left them last time, so most days are a nudge or two. '+
+     'If you wear a tracker, whatever it recorded is filled in for you.'},
+  {t:'Then you get one thing to do',
+   b:'One session, with a duration and an intensity. Tap Start and the screen '+
+     'becomes the workout: one exercise at a time, what you lifted last time, '+
+     'and buttons instead of a keyboard.'},
+  {t:'It shows you why',
+   b:'Tap "Why this?" to see what counted towards the decision and what it '+
+     'ruled out. Disagree? "Change today’s plan" is right underneath. '+
+     'Overriding is recorded and adapted to, never held against you.'},
+  {t:'Log anything you do',
+   b:'A match, a long walk, helping someone move house. Three taps. '+
+     'Unplanned activity is not a missed workout — tomorrow works around it.'},
+  {t:'It all stays on this device',
+   b:'Your data lives in this browser, on this phone. No account, no server, '+
+     'nothing uploaded anywhere. That also means a backup is the only copy '+
+     'there is: Settings → Data → Backup, every few weeks.'}
+];
+let TOURSTEP=0;
+
+function drawTour(){
+  const s=TOURSTEP, c=TOUR[s], last=s===TOUR.length-1;
+  const dots=TOUR.map((x,i)=>
+    `<div style="flex:1;height:3px;border-radius:9px;background:${
+      i<=s?'var(--accent)':'var(--surface-3)'}"></div>`).join('');
+  const body=`<div style="display:flex;gap:4px;margin-bottom:20px">${dots}</div>
+    <div style="font-size:22px;font-weight:850;letter-spacing:-.6px;line-height:1.2">${esc(c.t)}</div>
+    <p class="lede" style="margin-top:12px">${esc(c.b)}</p>`;
+  /* the same footer geometry as the setup wizard, for the same reason */
+  const foot=`<div class="btn-row setup-foot">
+    <button class="btn ghost" id="tourSkip">${last?'Back':'Skip'}</button>
+    <button class="btn primary" id="tourNext">${last?'Got it':'Next'}</button></div>`;
+  if($('#sheet').classList.contains('on')) updateSheet('How Baseline works', body, foot);
+  else openSheet('How Baseline works', body, foot, endTour);
+  $('#tourSkip').onclick=()=>{ if(last){ TOURSTEP--; drawTour(); } else { closeSheet(); } };
+  $('#tourNext').onclick=()=>{
+    if(last){ closeSheet(); return; }
+    TOURSTEP++; drawTour(); haptic();
+  };
+}
+/* seen is seen, whether it was read or skipped: nobody should be shown this
+   twice because they closed it */
+function endTour(){
+  DB.ui=DB.ui||{};
+  if(!DB.ui.tourDone){ DB.ui.tourDone=true; save(); }
+  try{ render(); }catch(e){}
+}
+function openTour(){ TOURSTEP=0; drawTour(); }
+const tourSeen = ()=> !!(DB.ui && DB.ui.tourDone);
+
+/* How much the engine has to work with. Decides whether a new user still
+   needs orienting: not a dismissible banner, it simply stops appearing once
+   there is enough history for the app to speak for itself. */
+function loggedCount(){
+  return (DB.sessions||[]).filter(s=>s.done).length
+       + (DB.activities||[]).length
+       + Object.keys(DB.checkins||{}).length;
+}
+
+/* has this device recorded anything at all? */
+function hasHistory(){
+  return (DB.sessions||[]).some(s=>s.done) || (DB.activities||[]).length>0 || DB.whoop.cycles.length>0;
+}
+/* honest wording: "never logged" is not the same as "over 2 weeks ago" */
+function sinceText(n){
+  if(!hasHistory()) return 'never logged';
+  if(n===99) return 'over 2 weeks ago';
+  if(n===1) return 'yesterday';
+  return n+' days ago';
+}
+/* A quiet way back in for anyone who skipped it, while they are still new.
+   Removes itself as soon as the walkthrough has been seen or there is real
+   history to look at instead. */
+function tourRow(){
+  if(!DB.profile.onboarded || tourSeen() || loggedCount()>0) return '';
+  return `<div class="rows" style="margin-top:11px" id="tourRow">
+    <button data-r="0"><i class="rw-i">${svg('info')}</i>
+      <span class="rw-x"><span class="rw-t">New here?</span>
+        <span class="rw-s">How Baseline works — about a minute</span></span>
+      <i class="rw-c">${svg('chev')}</i></button></div>`;
+}
+
 function viewToday(v){
   const d=todayISO(), ci=DB.checkins[d];
   const first=(DB.profile.name||'').trim().split(/\s+/)[0];
@@ -5653,6 +6327,8 @@ function viewToday(v){
       <span class="rd-w">${esc(B.label)}</span></span>
     <i class="rw-c">${svg('chev')}</i>
   </button>
+  ${mcRow(d)}
+  ${tourRow()}
 
   ${done?`
   <div class="rec">
@@ -5831,6 +6507,7 @@ function todayNoCheckin(d){
   <button class="btn primary big block" id="btnCheck" style="margin-top:13px">${svg('play')} Check in</button>
   ${cy?`<div class="hint" style="margin-top:11px;text-align:center">Your ${esc(SRC_NAME())} numbers for today are already there — they will be filled in for you.</div>`:''}
 
+  ${tourRow()}
   <div class="sec-t">This week</div>
   ${weekStrip(d)}
   <button class="btn ghost block" id="btnQuickLog" style="margin-top:11px">${svg('plus')} Log an activity</button>`;
@@ -5849,55 +6526,6 @@ function setupPrompt(){
     </div>
   </div>`;
 }
-/* How much the engine has to work with. Used to decide whether a new user
-   still needs orienting: it is not a dismissible banner, it simply stops
-   appearing once there is enough history for the app to speak for itself. */
-function loggedCount(){
-  return (DB.sessions||[]).filter(s=>s.done).length
-       + (DB.activities||[]).length
-       + Object.keys(DB.checkins||{}).length;
-}
-function firstWeekCard(){
-  if(!DB.profile.onboarded) return '';        // the setup prompt owns that case
-  const n=loggedCount();
-  if(n>=6) return '';                          // it can speak for itself now
-  const done=[
-    ['Check in each morning', Object.keys(DB.checkins||{}).length>0,
-     'Sixty seconds. It is what turns a generic plan into a decision about today.'],
-    ['Finish a session', (DB.sessions||[]).some(s=>s.done),
-     'Once one is logged, every exercise starts showing what you did last time.'],
-    ['Log anything else you do', (DB.activities||[]).length>0,
-     'A match, a run, a long walk. Unplanned activity is not a missed workout \u2014 the engine works around it.']
-  ];
-  const left=done.filter(x=>!x[1]).length;
-  return `<div class="card" style="border-color:var(--accent-line);background:var(--accent-wash)">
-    <div class="card-t accent">Getting started</div>
-    <div style="font-size:15px;font-weight:650;letter-spacing:-.2px;margin:7px 0 3px">
-      ${left===0?'That is everything \u2014 it only gets sharper from here'
-                :'Three things make this work'}</div>
-    <p style="font-size:12.5px;color:var(--text-2);line-height:1.5;margin-bottom:11px">
-      Right now it is working from ${n===0?'your setup alone':'very little history'}.</p>
-    ${done.map(([t,ok,why])=>`<div class="row" style="padding:9px 0">
-      <div style="flex:0 0 20px;color:${ok?'var(--accent)':'var(--text-3)'}">${svg(ok?'check':'chev')}</div>
-      <div class="rt"><div class="rn" style="font-size:13.5px;${ok?'color:var(--text-3)':''}">${esc(t)}</div>
-      ${ok?'':`<div class="rs">${why}</div>`}</div></div>`).join('')}
-    <div class="hint" style="margin-top:8px">Goes away once you have a few entries.</div>
-  </div>`;
-}
-
-/* has this device recorded anything at all? */
-function hasHistory(){
-  return (DB.sessions||[]).some(s=>s.done) || (DB.activities||[]).length>0 || DB.whoop.cycles.length>0;
-}
-/* honest wording: "never logged" is not the same as "over 2 weeks ago" */
-function sinceText(n){
-  if(!hasHistory()) return 'never logged';
-  if(n===99) return 'over 2 weeks ago';
-  if(n===1) return 'yesterday';
-  return n+' days ago';
-}
-
-/* ---- daily activity summary + tomorrow implication ---- */
 function dailySummaryCard(d){
   const dd=dayDemand(d);
   if(!dd.n) return `<div class="card tight"><div class="empty" style="padding:20px">
@@ -5952,6 +6580,8 @@ function wireToday(d){
     haptic();
   };
   const pr=$('#prepRows button'); if(pr) pr.onclick=()=>previewWorkout('w_prep','full');
+  const mr=$('#mcRow button'); if(mr) mr.onclick=()=>openCycle();
+  const tr=$('#tourRow button'); if(tr) tr.onclick=()=>openTour();
   on('btnCheck',()=>openCheckin(d));
   on('btnEditCi',()=>openCheckin(d));
   on('btnStart',()=>{ const p=todayPlan(d); startWorkout(p.workoutId,p.variant,d,p); });
@@ -7425,6 +8055,29 @@ function panePhysique(c){
 }
 
 /* ------------------------------------------------------------ LINKS */
+/* Cycle observations belong with the other correlations, and carry the same
+   warning: an association in your own data, never a cause. */
+function mcLinksBlock(){
+  if(!mcOn()) return '';
+  const ev=mcEvidence();
+  const rows=MC_PHASES.filter(k=>ev.phases[k].n>0);
+  if(!rows.length) return '';
+  const any=rows.some(k=>ev.phases[k].established);
+  return `<div class="sec-t">Cycle context</div>
+  <div class="card">
+    ${rows.map(k=>{ const e=ev.phases[k];
+      return `<div class="kv"><span class="k">${esc(k.charAt(0).toUpperCase()+k.slice(1))}
+        <span style="color:var(--text-3);font-weight:600">· ${e.n} day${e.n===1?'':'s'}</span></span>
+        <span class="v num" style="color:${e.established?(e.z<0?'var(--orange)':'var(--green)'):'var(--text-3)'}">${
+          e.diff==null?'—':(e.diff>0?'+':'')+e.diff}</span></div>`;}).join('')}
+    <div class="hint" style="margin-top:9px">${any
+      ? 'You have tended to report a measurably different day around the highlighted phase. Baseline treats that as one small input, capped at 5 points of readiness.'
+      : ev.blocked
+        ? 'Nothing here influences a recommendation — '+esc(ev.blocked)+'.'
+        : 'No single phase stands out clearly enough yet to influence a recommendation.'} A correlation in your own logs — not a cause, and not a medical finding.</div>
+  </div>`;
+}
+
 function paneLinks(c){
   const cors=correlations();
   const rev=adviceReview();
@@ -7933,6 +8586,7 @@ const SET_PANES=[
   {id:'wearables', name:'Wearables',  icon:'watch',   s:'Your device and what it provides'},
   {id:'data',      name:'Data',       icon:'dl',      s:'Backup, restore, erase'},
   {id:'appearance',name:'Appearance', icon:'moon',    s:'Light, dark or follow the system'},
+  {id:'cycle',     name:'Cycle',      icon:'drop',    s:'Optional menstrual cycle tracking'},
   {id:'about',     name:'About',      icon:'info',    s:'Version, diagnostics, install, privacy'}
 ];
 let SETTAB='profile';
@@ -8002,6 +8656,36 @@ function settingsBody(v){
      <div class="field"><label>Units</label>
        <div class="seg acc" id="sUnits"><button data-v="metric" class="${P.units==='metric'?'on':''}">Metric (kg/km)</button>
        <button data-v="imperial" class="${P.units==='imperial'?'on':''}">Imperial (lb/mi)</button></div></div>
+   </div>
+
+   <div class="card spane cycle">
+     <div class="card-h"><div class="card-t accent">Cycle tracking</div>
+       <span class="tag ${mcOn()?'g':'c'}">${mcOn()?'ON':'OFF'}</span></div>
+     <div class="hint" style="margin-bottom:12px">Optional. Off unless you turn
+       it on, and it changes nothing about your recommendations until your own
+       logs show a repeated pattern — never because of the phase alone.</div>
+     <div class="seg acc" id="sMcOn">
+       <button data-v="1" class="${mcOn()?'on':''}">Track</button>
+       <button data-v="0" class="${mcOn()?'':'on'}">Off</button>
+     </div>
+     ${mcOn()?`
+     <div class="grid2" style="margin-top:14px">
+       <div class="field"><label>Typical cycle length</label>
+         <input class="inp num" type="number" inputmode="numeric" min="15" max="90"
+                id="sMcLen" value="${(DB.mcycle.typicalLen)||''}" placeholder="Not sure"></div>
+       <div class="field"><label>Typical period length</label>
+         <input class="inp num" type="number" inputmode="numeric" min="1" max="15"
+                id="sMcPer" value="${(DB.mcycle.typicalPeriod)||''}" placeholder="Not sure"></div>
+     </div>
+     <div class="field"><label>Add a period start date</label>
+       <input class="inp" type="date" id="sMcStart">
+       <div class="hint">Only needed to backfill. Marking "bleeding" in the daily log creates these for you.</div></div>
+     <button class="btn ghost block" id="sMcOpen">Open cycle log</button>
+     <div class="ruled">
+       <button class="btn danger block" id="sMcWipe">Delete all cycle data</button>
+       <div class="hint" style="margin-top:7px">Removes every cycle entry and
+         period date from this device. Your training history is untouched.</div>
+     </div>`:''}
    </div>
 
    <div class="card spane appearance">
@@ -8198,7 +8882,8 @@ function settingsBody(v){
         ((window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)||window.navigator.standalone===true)
           ? 'Installed app' : 'Browser tab'}</span></div>
      <div class="hint" style="margin-top:8px">Quote the build number in any bug report.</div>
-     <button class="btn ghost block" id="sDiag" style="margin-top:12px">${svg('copy')} Copy diagnostics</button>
+     <button class="btn ghost block" id="sTour" style="margin-top:12px">${svg('info')} How Baseline works</button>
+     <button class="btn ghost block" id="sDiag">${svg('copy')} Copy diagnostics</button>
      <div class="hint" style="margin-top:8px">Device, browser, storage and how much you have logged. <b>Counts only</b>, never what you entered.</div>
    </div>
    <div class="card spane data">
@@ -8244,6 +8929,25 @@ function settingsBody(v){
   pill('#sDur'); pill('#sUnits'); pill('#sDays');
   /* theme is applied immediately: a preference you cannot see is useless */
   pill('#sTheme', v=>{ setTheme(v); haptic(); });
+  /* cycle tracking */
+  $$('#sMcOn button').forEach(b=>b.onclick=()=>{
+    DB.mcycle=DB.mcycle||{on:false,starts:[],typicalLen:null,typicalPeriod:null,askedAt:null};
+    DB.mcycle.on = b.dataset.v==='1';
+    save(true); haptic(); render();
+  });
+  const ml=$('#sMcLen'); if(ml) ml.onchange=()=>{
+    DB.mcycle.typicalLen = ml.value===''?null:clamp(+ml.value,15,90); save(true); };
+  const mp=$('#sMcPer'); if(mp) mp.onchange=()=>{
+    DB.mcycle.typicalPeriod = mp.value===''?null:clamp(+mp.value,1,15); save(true); };
+  const ms=$('#sMcStart'); if(ms) ms.onchange=()=>{
+    const v=ms.value; if(!v) return;
+    if(DB.mcycle.starts.indexOf(v)<0) DB.mcycle.starts.push(v);
+    DB.mcycle.starts.sort(); save(true); toast('Period start added','ok'); render();
+  };
+  const mo=$('#sMcOpen'); if(mo) mo.onclick=()=>openCycle();
+  const mw=$('#sMcWipe'); if(mw) mw.onclick=()=>confirmSheet('Delete all cycle data?',
+    'Every cycle entry, symptom and period date is removed from this device. This cannot be undone. Your sessions, activities and check-ins are kept.',
+    'Delete cycle data',()=>{ mcWipe(); save(true); toast('Cycle data deleted'); render(); },true);
   $('#sWizard').onclick=()=>{ persist(); startSetup(true); };
   /* injuries: add, edit, and mark recovered */
   const limAdd=$('#limAdd'); if(limAdd) limAdd.onclick=()=>limitSheet(null);
@@ -8338,6 +9042,7 @@ function settingsBody(v){
   });
   $('#sSched').onclick=()=>{ persist(); editSchedule(); };
   $('#expJson').onclick=exportJSON;
+  const tb=$('#sTour'); if(tb) tb.onclick=()=>openTour();
   $('#impJson').onclick=()=>$('#jsonIn').click();
   $('#expCsvS').onclick=exportSessionsCSV;
   $('#expCsvA').onclick=exportActivitiesCSV;
@@ -8700,6 +9405,14 @@ function exportJSON(){
     _exported:new Date().toISOString(),
     _counts:c,
     _note:'Private local backup from Baseline. Contains your own fitness data only. Nothing was uploaded anywhere.',
+    /* say plainly what sensitive categories are in the file, so nobody
+       forwards one without knowing */
+    _contains: (function(){
+      const k=['training history','daily check-ins'];
+      if(DB.whoop&&DB.whoop.cycles&&DB.whoop.cycles.length) k.push('imported wearable data');
+      if(DB.mcycle&&DB.mcycle.on) k.push('MENSTRUAL CYCLE DATA');
+      return k;
+    })(),
     data:DB
   };
   download('baseline-backup-'+todayISO()+'.json',JSON.stringify(payload,null,1));
@@ -8772,6 +9485,10 @@ function migrate(d){
   out.baselines=Object.assign({},f.baselines,d.baselines||{});
   out.whoop=Object.assign({cycles:[],workouts:[],journal:[],imports:[]},d.whoop||{});
   out.targets=Object.assign({},f.targets,d.targets||{});
+  /* an install that predates cycle tracking gets it switched off, which is
+     the same state a fresh install has */
+  out.mcycle=Object.assign({},f.mcycle,d.mcycle||{});
+  if(!Array.isArray(out.mcycle.starts)) out.mcycle.starts=[];
   /* the fixed weekly calendar was replaced by the daily decision engine */
   delete out.schedule; delete out.altSchedule; delete out.tennisDays;
   ['exercises','workouts','sessions','tests','physique','activities'].forEach(k=>{
@@ -9042,6 +9759,10 @@ function startSetup(fromSettings){
     dbKg:DB.profile.dbKg||null,
     tier:DB.profile.tier==null?0:DB.profile.tier,
     name:DB.profile.name||'',
+    mcOn:!!(DB.mcycle&&DB.mcycle.on),
+    mcStart:(DB.mcycle&&DB.mcycle.starts&&DB.mcycle.starts[DB.mcycle.starts.length-1])||'',
+    mcLen:(DB.mcycle&&DB.mcycle.typicalLen)||null,
+    mcPeriod:(DB.mcycle&&DB.mcycle.typicalPeriod)||null,
     sports:rawSports().slice(),
     physiques:rawGoals().slice(),
     daysPerWeek:rawDays(), sessionMin:rawMin(),
@@ -9229,6 +9950,39 @@ function drawSetup(){
          <input class="inp num setF" data-k="weightKg" type="number" inputmode="decimal"
                 step="0.1" min="30" max="250" value="${d.weightKg||''}" placeholder="—"></div>
      </div>
+     <div class="field"><label>Sex <span style="text-transform:none;font-weight:600">(optional)</span></label>
+       <div class="pills" id="setSex">
+         ${['Female','Male','Prefer not to say'].map(x=>
+           `<button data-v="${x}" class="${d.sex===x?'on':''}">${x}</button>`).join('')}
+       </div>
+       <div class="hint">Used for body-composition context only. It does not change the training program.</div>
+     </div>
+
+     ${d.sex==='Female'?`
+     <div class="ruled">
+       <div class="field"><label>Track menstrual cycle?</label>
+         <div class="seg acc" id="setMc">
+           <button data-v="1" class="${d.mcOn?'on':''}">Yes</button>
+           <button data-v="0" class="${d.mcOn?'':'on'}">Not now</button>
+         </div>
+         <div class="hint">Entirely optional, and you can turn it on or off later in Settings.
+           Baseline treats it as context about you, never as a rule about what you can train.</div>
+       </div>
+       ${d.mcOn?`
+       <div class="field"><label>First day of your most recent period</label>
+         <input class="inp setF" data-k="mcStart" type="date" value="${esc(d.mcStart||'')}">
+         <div class="hint">Skip it if you would rather just start logging from today.</div></div>
+       <div class="grid2">
+         <div class="field"><label>Typical cycle length</label>
+           <input class="inp num setF" data-k="mcLen" type="number" inputmode="numeric"
+                  min="15" max="90" value="${d.mcLen||''}" placeholder="Not sure"></div>
+         <div class="field"><label>Typical period length</label>
+           <input class="inp num setF" data-k="mcPeriod" type="number" inputmode="numeric"
+                  min="1" max="15" value="${d.mcPeriod||''}" placeholder="Not sure"></div>
+       </div>
+       <div class="hint">Both optional. Baseline will work them out from what you log.</div>`:''}
+     </div>`:''}
+
      ${d.age?`<div class="hint">Estimated max heart rate about
        <b>${Math.round(208-0.7*d.age)} bpm</b>. An estimate, not a measurement.</div>`:''}`;
   }
@@ -9316,7 +10070,9 @@ function drawSetup(){
       /* a pill tap involves no keyboard, so the step can redraw and drop the
          "left blank, it assumes..." disclosure it no longer needs */
       if(redraw) drawSetup(); else refreshSetupNext(); }); };
-  pill('#setSex','sex'); pill('#setUnits','units');
+  /* choosing a sex reveals or hides the cycle question, so it redraws */
+  pill('#setSex','sex',false,true); pill('#setUnits','units');
+  pill('#setMc','mcOn',false,true);
   pill('#setDays','daysPerWeek',true,true); pill('#setMin','sessionMin',true,true);
 
   const bk=$('#setBack');
@@ -9343,6 +10099,16 @@ function finishSetup(){
   P.gear=d.gear.slice(); P.dbKg=d.dbKg||null;
   P.tier=tierOf(d.gear);                                   // derived, not chosen
   P.name=(d.name||'').trim();
+  /* cycle tracking: only ever what was actually answered */
+  DB.mcycle=DB.mcycle||{on:false,starts:[],typicalLen:null,typicalPeriod:null,askedAt:null};
+  DB.mcycle.on = d.sex==='Female' && (d.mcOn==='1'||d.mcOn===true);
+  DB.mcycle.askedAt = d.sex==='Female' ? new Date().toISOString() : DB.mcycle.askedAt;
+  if(DB.mcycle.on){
+    DB.mcycle.typicalLen = d.mcLen||null;
+    DB.mcycle.typicalPeriod = d.mcPeriod||null;
+    if(d.mcStart && DB.mcycle.starts.indexOf(d.mcStart)<0) DB.mcycle.starts.push(d.mcStart);
+    DB.mcycle.starts.sort();
+  }
   P.sports=d.sports.slice(); P.sport=d.sports[0]||null;    // sport = the leading one
   P.physiques=d.physiques.slice(); P.physique=d.physiques[0]||null;
   P.daysPerWeek=d.daysPerWeek; P.sessionMin=d.sessionMin; P.units=d.units;
@@ -9359,8 +10125,9 @@ function finishSetup(){
     const src=sourceOf(d.source);
     if(src.importer && !hasWhoop()){ HTAB='import'; openMetrics(); toast(`Import your ${src.name} data to finish`); }
     else { go('today'); toast('Setup complete','ok'); }
-    /* no welcome sheet: Today opens with "Good morning, <name>", which is
-       the same information without a dialog to dismiss */
+    /* the walkthrough, once, for a genuinely new install. Not shown when
+       setup was reopened from Settings to change something. */
+    if(!wasSettings && !tourSeen()) setTimeout(openTour,500);
   },240);
 }
 /* built strictly from what was ticked — nothing inferred */
@@ -9476,34 +10243,6 @@ function targetMeta(){
   };
 }
 
-function welcome(){
-  openSheet('Welcome to Baseline',`
-   <p style="font-size:14.5px;line-height:1.6;color:var(--text-2)">A training system built around <b>your</b> physiology, your sport and the equipment you actually own. Nothing here is assumed — it is all set in the wizard and changeable afterwards.</p>
-   <div class="card tight" style="margin-top:16px">
-     <div class="card-t accent" style="margin-bottom:9px">What you get</div>
-     <div class="kv"><span class="k">Exercises</span><span class="v">${DB.exercises.length}, filtered to your kit</span></div>
-     <div class="kv"><span class="k">Sessions</span><span class="v">${DB.workouts.length} with full/reduced/recovery versions</span></div>
-     <div class="kv"><span class="k">Daily engine</span><span class="v">Picks one session for you</span></div>
-     <div class="kv"><span class="k">Activity log</span><span class="v">${Object.keys(ACT_TYPES).length} activity types</span></div>
-     <div class="hint" style="margin-top:9px">${(DB.profile.gear||[]).length
-        ? 'Built around '+esc(gearNames())+'. Change it any time in Settings.'
-        : 'Bodyweight and a floor are assumed; everything else you tick in setup. Nothing is prescribed that you cannot actually do.'}</div>
-   </div>
-   <div style="margin-top:16px">
-     <div class="card-t" style="margin-bottom:10px">Three things to do first</div>
-     <ul class="why" style="border:none;padding:0;margin:0">
-       ${Store.durable
-         ? `<li class="info"><span class="dot"></span><span><b>Settings → Setup</b> — add this to your Home Screen so it runs full-screen like an app.</span></li>`
-         : `<li class="neg"><span class="dot"></span><span><b>Settings → Setup</b> — storage is currently blocked, so nothing will be saved. Fix this first; it takes two minutes.</span></li>`}
-       <li class="info"><span class="dot"></span><span><b>WHOOP → Import</b> — optional. Load a CSV export and your baselines become measured rather than estimated.</span></li>
-       <li class="info"><span class="dot"></span><span><b>Today → Daily check-in</b> — 60 seconds, and the engine tells you exactly what to train.</span></li>
-     </ul>
-   </div>
-   <div class="note warn" style="margin-top:16px">Not a medical device. It does not diagnose anything. Persistent pain, symptoms or unusual readings belong with a qualified healthcare professional, separately from any training decision.</div>
-  `,`<div class="btn-row"><button class="btn ghost" id="wlSetup">Setup</button>
-     <button class="btn primary" style="flex:2" onclick="closeSheet()">Get started</button></div>`);
-  $('#wlSetup').onclick=()=>{ closeSheet(); setTimeout(()=>openSetup(),260); };
-}
 
 /* ---- iOS lifecycle ----
    Safari suspends background tabs and does not reliably fire beforeunload, so

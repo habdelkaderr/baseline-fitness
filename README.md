@@ -21,25 +21,32 @@ gives you one session, and tells you what it ruled out and why.
    was ruled out. Tap **Change today's plan** if you disagree; overriding is
    recorded and adapted to, not punished.
 5. **Start session.** The screen becomes the workout: one exercise at a time,
-   what you lifted last time, plus and minus buttons for reps and weight, and
-   a rest timer that starts itself when you finish a set.
-6. Played football instead? **Log activity** takes three taps. It feeds
-   straight into tomorrow's recommendation.
+   what you lifted last time, plus and minus buttons for reps and weight — no
+   keyboard — and a rest timer that starts itself when you finish a set.
+6. Played football instead? **Log activity** is three answers — what, how
+   long, how hard — and feeds straight into tomorrow's recommendation.
+   Anything not in the list, you can just type, and it suggests as you go.
 
 ## Finding your way around
 
-Four sections along the bottom:
+Four sections along the bottom. Each one **opens with the thing it is for**,
+and keeps everything else one tap away rather than on the same screen.
 
-| | |
-|---|---|
-| **Today** | Readiness, today's session, log an activity |
-| **Train** | Your programme, exercise library, warm-ups, history |
-| **Activity** | Everything you have done, planned or not |
-| **Progress** | Weekly review, strength, tests, measurements, patterns |
+| | Opens with | One tap away |
+|---|---|---|
+| **Today** | Today's session, and one Start button | Why this · Change the plan · Readiness detail |
+| **Train** | This week's targets, and which of the 8 progression weeks you are in | Workouts · Exercises · Warm-ups · History |
+| **Activity** | Log an activity, then what you have done recently | All activity · Totals · your sport |
+| **Progress** | How the week went, and the load chart | Strength · Tests · Physique · Patterns |
 
-**Settings** is the gear in the top right. Wearable numbers and trends live
-behind the readiness row on Today, so if you do not use a tracker you never see
-an empty chart.
+**Settings** is the gear in the top right, grouped as **Profile · Training ·
+Wearables · Data · Appearance · Cycle · About**.
+
+Wearable numbers and trends live behind the readiness row on Today, so if you
+do not use a tracker you never see an empty chart. Nothing about cycle
+tracking appears anywhere unless you switch it on.
+
+Every screen has a back button, and the phone's own back gesture works too.
 
 ## What it does
 
@@ -109,6 +116,53 @@ the Home Screen it is treated as a real app and kept.
 
 Installed versions share the same local data as the browser tab.
 
+## Cycle tracking (optional)
+
+Off unless you turn it on, in **Settings → Cycle**. Nothing cycle-related
+appears anywhere in the app until you do.
+
+What it does:
+
+- One row on Today: *"Day 12 · Estimated follicular"*, and a short daily log —
+  bleeding, how today feels, cramps, symptoms, a note. All optional, and it
+  does not ask again for energy or soreness because the check-in already did.
+- Period start dates are worked out from the days you mark as bleeding, so
+  marking "bleeding today" is the only input a cycle needs.
+- Phases are **estimates**, labelled as such, with a confidence. If your
+  history is thin or your cycle length varies, it says *"phase estimate
+  unavailable"* rather than guessing.
+
+What it deliberately does **not** do:
+
+- It has no rule saying a phase means train less. Nothing like *"luteal =
+  reduce volume"* exists in the code.
+- Cycle context changes your readiness score **only** once your own logs show
+  a repeated association for one particular phase — at least two recorded
+  cycles, a cycle regular enough for phases to mean anything, at least six
+  logged days in that phase, and an effect too large to be noise. Until all of
+  that holds, the effect is exactly zero and your recommendations are
+  identical to having the feature off.
+- When it does apply, it is capped at **5 points out of 100**, and only one
+  phase can ever carry it.
+- It can never lift a pain cap. Report moderate or significant pain and the
+  session is reduced regardless of anything cycle-related.
+- What you report about today outranks any estimate. *"Feeling strong"* raises
+  the score even in a phase your history flags; *"significant discomfort"*
+  lowers it in one it does not.
+- It never estimates fertility or ovulation dates as fact, never infers
+  pregnancy, and never diagnoses anything.
+
+Anything the app observes is described as a correlation in your own logs. It
+will say *"you have tended to report a harder time around this phase"* — never
+that hormones are causing anything.
+
+Privacy is the same as everything else, which is to say total: it is stored in
+your browser on your device, it is never uploaded, and it is not in this
+repository. A backup file lists **MENSTRUAL CYCLE DATA** in its header when it
+contains any, so you know what you are sending if you ever send one.
+**Settings → Cycle → Delete all cycle data** removes every entry and date and
+keeps your training history.
+
 ## Back up
 
 **Settings → Data → Backup** writes one file containing everything;
@@ -128,7 +182,7 @@ anyway.
 
 ## Reporting a problem
 
-**Settings → App** shows the build number and a **Copy diagnostics** button.
+**Settings → About** shows the build number and a **Copy diagnostics** button.
 That copies device, browser, storage state and how many things you have logged —
 counts only, never what you entered. Paste it into your bug report; the build
 number is most of the diagnosis.
@@ -137,7 +191,7 @@ number is most of the diagnosis.
 
 Replace the files below and commit. Then close the app fully and reopen it
 **twice** — a service worker hands over on the second launch. Confirm the new
-build under **Settings → App**.
+build under **Settings → About**.
 
 ## Deploying your own copy
 
