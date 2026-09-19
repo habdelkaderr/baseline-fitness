@@ -850,6 +850,85 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
   font-weight:650;line-height:1.35}
 .wrest .btn{margin-bottom:0}
 
+/* ---------- Rings: a score is a proportion, so it is drawn as one ----------
+   Three across at every width. The stroke is rotated to start at twelve
+   o'clock; the value sits inside as SVG text so it scales with the ring
+   instead of needing its own positioning rules. */
+.rings{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;
+  margin-bottom:var(--sp-2)}
+.ringb{display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:12px 4px;border-radius:var(--r-lg);background:var(--surface);
+  border:1px solid var(--border-soft);cursor:pointer;font-family:inherit;
+  min-height:44px}
+.ringb:active{background:var(--surface-2)}
+.ring{display:flex;flex-direction:column;align-items:center;gap:6px;width:100%}
+.ring-s{width:72px;height:72px;max-width:100%;display:block;
+  transform:rotate(-90deg)}
+.ring-bg{fill:none;stroke:var(--surface-3);stroke-width:6}
+.ring-fg{fill:none;stroke-width:6;stroke-linecap:round;
+  transition:stroke-dashoffset .5s ease}
+.ring-t{font-size:17px;font-weight:850;letter-spacing:-.6px;
+  font-family:inherit;transform:rotate(90deg);transform-origin:32px 32px}
+.ring-l{font-size:10.5px;font-weight:750;letter-spacing:.4px;
+  text-transform:uppercase;color:var(--text-3)}
+@media (max-width:340px){
+  .ring-s{width:60px;height:60px}
+  .ring-t{font-size:15px}
+  .ring-l{font-size:9.5px}
+}
+
+/* ---------- The day's activities ---------- */
+.card.acts{padding-bottom:14px}
+.actrow{display:flex;align-items:center;gap:11px;width:100%;
+  padding:9px 0;background:none;border:0;border-bottom:1px solid var(--border-soft);
+  font-family:inherit;color:var(--text);text-align:left;cursor:pointer;min-height:48px}
+.actrow:active{background:var(--surface-2)}
+.ac-s{flex:0 0 46px;height:34px;border-radius:9px;display:flex;
+  align-items:center;justify-content:center;font-size:13px;font-weight:850;
+  font-variant-numeric:tabular-nums;background:var(--surface-3);color:var(--text-2)}
+.ac-s.g{background:var(--green-wash);color:var(--green)}
+.ac-s.c{background:var(--cyan-wash);color:var(--cyan)}
+.ac-s.o{background:var(--orange-wash);color:var(--orange)}
+.ac-s.r{background:var(--red-wash);color:var(--red)}
+.ac-x{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.ac-t{font-size:14px;font-weight:700;overflow-wrap:anywhere}
+.ac-m{font-size:11.5px;color:var(--text-3);font-weight:600}
+.ac-w{flex:0 0 auto;font-size:11px;color:var(--text-3);font-weight:650;
+  text-align:right;line-height:1.5;font-variant-numeric:tabular-nums}
+.card.acts .btn-row{margin-top:12px}
+
+/* ---------- The activity picker ---------- */
+.pa-q{margin-bottom:14px}
+.pa-h{font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;
+  color:var(--text-3);padding:4px 2px 7px;border-bottom:1px solid var(--border-soft);
+  margin-bottom:4px}
+.pa-h[hidden],.pa-g[hidden],.parow[hidden]{display:none}
+.pa-g{margin-bottom:16px}
+.parow{display:flex;align-items:center;gap:12px;width:100%;
+  padding:11px 2px;background:none;border:0;font-family:inherit;
+  color:var(--text);text-align:left;cursor:pointer;min-height:48px;
+  border-bottom:1px solid var(--border-soft)}
+.parow:last-child{border-bottom:none}
+.parow:active{background:var(--surface-2)}
+.pa-i{flex:0 0 24px;width:24px;height:24px;color:var(--text-2);opacity:.85}
+.pa-i svg{width:24px;height:24px;display:block}
+.pa-t{flex:1;min-width:0;font-size:14.5px;font-weight:650;overflow-wrap:anywhere}
+
+/* a single row that stands in for a whole picker */
+.selrow{display:flex;align-items:center;gap:12px;width:100%;
+  padding:13px 14px;border-radius:var(--r-md);background:var(--surface-2);
+  border:1px solid var(--border);font-family:inherit;color:var(--text);
+  text-align:left;cursor:pointer;min-height:52px}
+.selrow:active{background:var(--surface-3)}
+
+/* ---------- About to start ---------- */
+.prestart{display:flex;flex-direction:column;align-items:center;gap:8px;
+  padding:6px 0 18px}
+.ps-i{width:52px;height:52px;color:var(--accent)}
+.ps-i svg{width:52px;height:52px;display:block}
+.ps-n{font-size:23px;font-weight:850;letter-spacing:-.7px;text-align:center}
+.prestart .tert{margin:0}
+
 /* ---------- A session on a clock ---------- */
 .wnow.live{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
 .clock{display:flex;flex-direction:column;align-items:center;gap:10px;
@@ -7408,12 +7487,7 @@ function viewToday(v){
 
   v.innerHTML=setupPrompt()+`
 
-  <button class="rdrow" id="rdRow" aria-label="Readiness ${rd.score} of 100, ${esc(B.label)}. View details">
-    <span class="rd-n" style="color:${B.color}">${rd.score}</span>
-    <span class="rd-x"><span class="rd-l">Readiness</span>
-      <span class="rd-w">${esc(B.label)}</span></span>
-    <i class="rw-c">${svg('chev')}</i>
-  </button>
+  ${ringRow(d)}
   ${mcRow(d)}
   ${noticeHTML(d)}
 
@@ -7423,7 +7497,7 @@ function viewToday(v){
     <div class="rec-t">${esc(done.workoutName||'Session complete')}</div>
     <div class="rec-m">${done.durationMin||0} min${done.setsDone?' · '+done.setsDone+' sets':''}</div>
   </div>
-  <button class="btn ghost block" id="btnQuickLog">${svg('plus')} Log an activity</button>`
+  `
   :`
   <div class="rec">
     <div class="rec-l">Today</div>
@@ -7459,28 +7533,77 @@ function viewToday(v){
   <div class="sec-t">This week</div>
   ${weekStrip(d)}
 
-  <button class="btn ghost block" id="btnQuickLog${done?'2':''}">${svg('plus')} Log an activity</button>
-  ${loggedToday(d)}`;
+  ${activitiesCard(d)}`;
 
   wireToday(d);
 }
 
-/* What has actually been logged today, and nothing at all when nothing has.
-   The old version printed a paragraph of encouragement into an empty state. */
-function loggedToday(d){
-  const dd=dayDemand(d);
-  if(!dd.n) return '';
-  const groups={};
-  dd.items.forEach(i=>{
-    const k = i.kind==='session' ? 'Strength' : (ACT_TYPES[i.type]||ACT_TYPES.other).name;
-    groups[k]=groups[k]||0; groups[k]+=i.min||0;
-  });
-  return `<div class="rows">`+
-    Object.keys(groups).map(k=>
-      `<div class="rw-flat"><span class="rw-t">${esc(k)}</span>
-        <span class="rw-b">${Math.round(groups[k])} min</span></div>`).join('')+
-    `</div>`;
+
+/* =========================================================================
+   RINGS
+   A score is a proportion of something. A ring says that in a glance where a
+   bare number has to be read and compared against a maximum you are expected
+   to remember. `pct` null means there is nothing to draw - an em-dash, not a
+   ring at zero, because those are different statements.
+   ====================================================================== */
+const RING_R=26, RING_C=2*Math.PI*RING_R;
+function ringHTML(o){
+  const has=o.pct!=null && !isNaN(o.pct);
+  const p=has? clamp(o.pct,0,100) : 0;
+  const off=(RING_C*(1-p/100)).toFixed(1);
+  return `<span class="ring">
+    <svg viewBox="0 0 64 64" class="ring-s" aria-hidden="true">
+      <circle class="ring-bg" cx="32" cy="32" r="${RING_R}"></circle>
+      ${has?`<circle class="ring-fg" cx="32" cy="32" r="${RING_R}"
+        style="stroke:${o.color||'var(--accent)'}"
+        stroke-dasharray="${RING_C.toFixed(1)}" stroke-dashoffset="${off}"></circle>`:''}
+      <text class="ring-t" x="32" y="32" text-anchor="middle" dominant-baseline="central"
+            style="fill:${has?(o.color||'var(--accent)'):'var(--text-3)'}">${esc(o.value)}</text>
+    </svg>
+    <span class="ring-l">${esc(o.label)}</span>
+  </span>`;
 }
+
+/* The three numbers that describe a day, as three rings. Each is a button to
+   the screen that explains it. */
+function ringRow(d){
+  const ci=DB.checkins[d];
+  const rd=ci? readiness(d,ci) : null;
+  const B=rd? BAND[rd.band] : null;
+  const dd=dayDemand(d);
+  const load=dd.load||0;
+  /* sleep against what this profile actually needs, not a fixed eight hours */
+  const need=(ci && ci.sleepNeed) ? ci.sleepNeed : 480;
+  const slept=(ci && ci.sleepMin!=null) ? ci.sleepMin : null;
+
+  return `<div class="rings">
+    <button class="ringb" id="rdRow" aria-label="Readiness ${rd?rd.score:'unknown'} of 100${
+      B?', '+esc(B.label):''}. View details">
+      ${ringHTML({pct: rd? rd.score : null, value: rd? rd.score : '—',
+                  label:'Readiness', color: B? B.color : null})}
+    </button>
+    <button class="ringb" id="ringStrain" aria-label="Strain today ${rnd(load,1)} of 21. View the day">
+      ${ringHTML({pct: load? Math.min(100, load/21*100) : null,
+                  value: load? rnd(load,1) : '—',
+                  label:'Strain', color:'var(--cyan)'})}
+    </button>
+    <button class="ringb" id="ringSleep" aria-label="${slept!=null?'Slept '+fmtMin(slept):'Sleep not recorded'}">
+      ${ringHTML({pct: slept!=null? Math.min(100, slept/need*100) : null,
+                  value: slept!=null? (Math.round(slept/60*10)/10)+'h' : '—',
+                  label:'Sleep', color:'var(--violet)'})}
+    </button>
+  </div>`;
+}
+function wireRings(d){
+  /* #rdRow is wired by wireToday's own `on('rdRow', ...)`, which already knows
+     pushPage's shape. Binding it again here replaced a correct handler with a
+     differently-shaped one - and silently, because onclick just overwrites. */
+  const s=$('#ringStrain');
+  if(s) s.onclick=()=>{ const c=$('#actsCard'); if(c) c.scrollIntoView({behavior:'smooth',block:'center'}); };
+  const z=$('#ringSleep');
+  if(z) z.onclick=()=>openCheckin(d);
+}
+
 
 /* ---------------------------------------------------------------- READINESS
    The contributors behind the number, on their own screen. Garmin and Oura
@@ -7622,7 +7745,7 @@ function todayNoCheckin(d){
   ${noticeHTML(d)}
   <div class="sec-t">This week</div>
   ${weekStrip(d)}
-  <button class="btn ghost block" id="btnQuickLog">${svg('plus')} Log an activity</button>`;
+  ${activitiesCard(d)}`;
 }
 
 function setupPrompt(){
@@ -7700,8 +7823,8 @@ function wireToday(d){
   on('btnPreview',()=>{ const p=todayPlan(d); previewWorkout(p.workoutId,p.variant,p); });
   on('btnSwap',()=>changePlan(d));
   on('btnPrep',()=>previewWorkout('w_prep','full'));
-  on('btnQuickLog',()=>activitySheet(null,d));
-  on('btnQuickLog2',()=>activitySheet(null,d));
+  wireRings(d);
+  wireActivitiesCard(d);
   on('btnAddWhoop',()=>{ if(usesDevice()){ HTAB='import'; openMetrics(); } else startSetup(true); });
   on('setupGo',()=>startSetup());
   on('setupDismiss',()=>{
@@ -8550,14 +8673,10 @@ function viewTennis(v){
      go:()=>openPane(SPORT_LABEL(), null, paneTennis)} : null
   ];
   v.innerHTML=
-    `<button class="btn primary big block" id="aStart">${svg('play')} Start activity</button>
-     <button class="btn ghost block" id="aAdd">${svg('plus')} Add a completed activity</button>
+    `${activitiesCard(todayISO())}
      <div class="sec-t">Recent</div><div id="aBody"></div>
      <div class="sec-t">More</div>${navRows('aRows',rows)}`;
-  /* Playing tennis used to be something you could only tell the app about
-     afterwards, from memory. */
-  $('#aStart').onclick=()=>startActivitySheet();
-  $('#aAdd').onclick=()=>activitySheet(null,todayISO());
+  wireActivitiesCard(todayISO());
   paneTimeline($('#aBody'));
   wireRows('aRows',rows);
   bindInputs(v);
@@ -8799,11 +8918,151 @@ function otherSuggestions(){
   return mine.concat(OTHER_SUGGESTIONS.filter(s=>mine.indexOf(s)<0));
 }
 
-function activitySheet(id,defDate){
+
+/* =========================================================================
+   THE ACTIVITY PICKER
+   ------------------------------------------------------------------------
+   One list, searchable, shared by every flow that needs to know what you are
+   doing. It used to be a wall of pills, duplicated: once in the logging form
+   and again in the start-a-session sheet. Thirty types is a list you search,
+   not a grid you scan.
+   ====================================================================== */
+
+/* An honest icon or a generic one. Inventing a distinct glyph per sport would
+   mean thirty drawings, most of them guesses; these are the ones the icon set
+   genuinely has. */
+function ACT_ICON(k){
+  if(/tennis|padel|squash|badminton/.test(k)) return 'tennis';
+  if(k==='cycling') return 'bike';
+  if(/running|walking|hiking|triathlon/.test(k)) return 'run';
+  if(k==='swimming') return 'drop';
+  if(/strength|gym|climbing/.test(k)) return 'dumbbell';
+  if(/yoga|mobility|stretch/.test(k)) return 'heart';
+  if(k==='rowing') return 'pulse';
+  return 'flame';
+}
+
+/* What you have actually been doing, newest first. A profile that names
+   sports supplies the shortlist until there is history to supply it. */
+function recentActTypes(n){
+  const out=[];
+  (DB.activities||[]).slice()
+    .sort((a,b)=>(a.date===b.date? 0 : (a.date<b.date?1:-1)))
+    .forEach(a=>{ if(a.type && ACT_TYPES[a.type] && out.indexOf(a.type)<0) out.push(a.type); });
+  if(!out.length) mainSportActs().forEach(k=>{ if(ACT_TYPES[k] && out.indexOf(k)<0) out.push(k); });
+  return out.slice(0, n||6);
+}
+
+function pickActivity(onPick, title){
+  const recent=recentActTypes();
+  const heading=(DB.activities||[]).length? 'Most recent' : 'Your sports';
+  const all=Object.keys(ACT_TYPES).sort((a,b)=>
+    ACT_TYPES[a].name.localeCompare(ACT_TYPES[b].name));
+  const row=k=>`<button class="parow" data-k="${esc(k)}"
+      data-n="${esc(ACT_TYPES[k].name.toLowerCase())}">
+      <i class="pa-i">${svg(ACT_ICON(k))}</i>
+      <span class="pa-t">${esc(ACT_TYPES[k].name)}</span>
+      <i class="rw-c">${svg('chev')}</i></button>`;
+
+  openSheet(title||'Select activity',`
+    <input class="inp pa-q" id="paQ" type="search" autocomplete="off"
+           placeholder="Search activities" aria-label="Search activities">
+    ${recent.length?`<div class="pa-h" data-sec="recent">${heading}</div>
+      <div class="pa-g" data-sec="recent">${recent.map(row).join('')}</div>`:''}
+    <div class="pa-h" data-sec="all">All A–Z</div>
+    <div class="pa-g" data-sec="all">${all.map(row).join('')}</div>
+    <div class="hint" id="paNone" hidden style="text-align:center;padding:18px 0">
+      Nothing matches. Everything is loggable — pick <b>Other</b> and name it yourself.
+    </div>`,'');
+
+  /* Straight through, with no close-and-reopen hop: every caller answers by
+     opening a sheet of its own, so the panel stays put and its contents
+     change - which is what picking from a list should feel like, and what
+     makes the step testable without waiting on an animation. */
+  $$('#sheetBody .parow').forEach(b=>b.onclick=()=>onPick(b.dataset.k));
+
+  /* Filter by hiding rows rather than re-rendering: re-rendering from a
+     search field's own handler destroys the field being typed into. */
+  const q=$('#paQ');
+  if(q) q.addEventListener('input',()=>{
+    const s=q.value.trim().toLowerCase();
+    let n=0;
+    $$('#sheetBody .parow').forEach(b=>{
+      const hit=!s || b.dataset.n.indexOf(s)>=0;
+      b.hidden=!hit; if(hit) n++;
+    });
+    $$('#sheetBody .pa-g').forEach(g=>{
+      const any=Array.prototype.some.call(g.querySelectorAll('.parow'),x=>!x.hidden);
+      g.hidden=!any;
+      const h=document.querySelector('#sheetBody .pa-h[data-sec="'+g.dataset.sec+'"]');
+      if(h) h.hidden=!any;
+    });
+    const none=$('#paNone'); if(none) none.hidden = n>0;
+  });
+}
+
+/* =========================================================================
+   WHAT IS ON TODAY
+   ------------------------------------------------------------------------
+   One card listing what the day already holds - each thing with the strain it
+   came to and the span it ran over - and the two ways to add to it. This
+   replaces five separate "Log an activity" buttons: three of them rendered by
+   different branches of the Today screen and two more on the Activity tab,
+   all doing one of two things.
+   ====================================================================== */
+function actRowHTML(i){
+  const isS = i.kind==='session';
+  const name = isS ? (i.name||'Session') : (ACT_TYPES[i.type]||ACT_TYPES.other).name;
+  const from = i.time || '';
+  const to   = i.endTime || (from && i.min ? timePlus(from, i.min) : '');
+  const L    = i.load!=null ? rnd(i.load,1) : null;
+  return `<button class="actrow" data-${isS?'sid':'aid'}="${esc(i.id)}"
+      aria-label="${esc(name)}${L!=null?', strain '+L:''}">
+    <span class="ac-s ${L!=null?loadBand(L).cls:''}">${L==null?'—':L}</span>
+    <span class="ac-x"><span class="ac-t">${esc(name)}</span>
+      <span class="ac-m">${i.min?fmtMin(i.min):''}${isS?' · session':''}</span></span>
+    <span class="ac-w">${from?esc(from):''}${to?'<br>'+esc(to):''}</span>
+  </button>`;
+}
+function activitiesCard(d){
+  const date=d||todayISO();
+  const dd=dayDemand(date);
+  const items=dd.items||[];
+  return `<div class="card acts" id="actsCard">
+    <div class="card-h"><div class="card-t">${date===todayISO()?"Today's activities":'Activities'}</div>
+      ${dd.load?`<span class="tag ${loadBand(dd.load).cls}">${rnd(dd.load,1)} strain</span>`:''}</div>
+    ${items.length
+      ? items.map(actRowHTML).join('')
+      : `<div class="hint" style="margin:0 0 12px">Nothing logged yet.</div>`}
+    <div class="btn-row" style="margin-bottom:0">
+      <button class="btn ghost" id="acAdd">${svg('plus')} Add activity</button>
+      <button class="btn ghost" id="acStart">${svg('timer')} Start activity</button>
+    </div>
+  </div>`;
+}
+function wireActivitiesCard(d){
+  const date=d||todayISO();
+  const add=$('#acAdd');   if(add)   add.onclick=()=>addActivityFlow(date);
+  const st =$('#acStart'); if(st)    st.onclick=()=>startActivityFlow();
+  $$('#actsCard [data-aid]').forEach(b=>b.onclick=()=>activitySheet(b.dataset.aid));
+  $$('#actsCard [data-sid]').forEach(b=>b.onclick=()=>{
+    const s=(DB.sessions||[]).find(x=>x.id===b.dataset.sid);
+    if(s && typeof sessionDetail==='function'){ resetStack(); sessionDetail(s); }
+  });
+}
+/* the two things those buttons do, in one place each */
+function addActivityFlow(d){
+  pickActivity(k=>activitySheet(null, d||todayISO(), k), 'Add activity');
+}
+function startActivityFlow(){
+  pickActivity(k=>preStartSheet(k), 'Start activity');
+}
+
+function activitySheet(id,defDate,preset){
   const ex = id? DB.activities.find(a=>a.id===id) : null;
   /* No pre-selected type: "what did you do" is the question, and answering it
      for the user is how you end up with a log full of tennis. */
-  let type = ex? ex.type : null;
+  let type = ex? ex.type : (preset||null);
   let more = !!ex;           // editing opens with the details already visible
 
   /* Something that already happened has a start and an end, so those are the
@@ -8870,9 +9129,11 @@ function activitySheet(id,defDate){
 
     openSheet(ex?'Edit activity':'Log activity',`
      <div class="field"><label>What did you do?</label>
-       <div class="pills" id="asType">
-         ${order.map(k=>`<button data-v="${k}" class="${k===type?'on':''}">${esc(ACT_TYPES[k].name)}</button>`).join('')}
-       </div></div>
+       <button class="selrow" id="asPick">
+         <i class="rw-i">${svg(type?ACT_ICON(type):'plus')}</i>
+         <span class="rw-x"><span class="rw-t">${type?esc(ACT_TYPES[type].name):'Select activity'}</span></span>
+         <i class="rw-c">${svg('chev')}</i>
+       </button></div>
 
      ${type?`
      <div class="field"><label>When was it?</label>
@@ -9007,7 +9268,8 @@ function activitySheet(id,defDate){
       }
     }
 
-    $$('#asType button').forEach(b=>b.onclick=()=>{ type=b.dataset.v; draw(); });
+    const pk=$('#asPick');
+    if(pk) pk.onclick=()=>pickActivity(k=>{ type=k; draw(); },'Select activity');
 
     const mt=$('#asMoreT'), mb=$('#asMore');
     if(mt&&mb) mt.onclick=()=>{ more=!more; draw(); };
@@ -11532,6 +11794,14 @@ function cardTick(){
   const mins=Math.max(1, Math.round(min));
   if(en.sets[0]){ en.sets[0].reps=String(mins); en.sets[0].touched=true; }
   const mv=$('#cardMin'); if(mv && document.activeElement!==mv) mv.value=String(mins);
+  /* the target, if one was set: the same chime and alert the rest timer uses */
+  if(W && W.strainTarget && !W.targetHit && cardStrain(en)>=W.strainTarget){
+    W.targetHit=true;
+    haptic(); SOUND.rest();
+    notify('Strain target reached', W.strainTarget+' · '+(en.name||''));
+    toast('Strain target reached — '+W.strainTarget);
+    saveLive(); drawWM();
+  }
   if(++cardSaveN%20===0) saveLive();
 }
 function cardStartClock(en){
@@ -11597,7 +11867,8 @@ function drawCardioStep(en,i,total){
             Math.min(100, spec.targetMin? min/spec.targetMin*100 : 0)}%"></i></div>`:''}
           <div class="cmeta">
             <span>${spec.targetMin?'Target '+spec.targetMin+' min':'No target'}</span>
-            <span>Strain <b class="num" id="cardS">${cardStrain(en).toFixed(1)}</b></span>
+            <span>Strain <b class="num" id="cardS">${cardStrain(en).toFixed(1)}</b>${
+              W.strainTarget? ' of '+W.strainTarget : ''}</span>
           </div>
           ${done?'' : running
             ? `<div class="btn-row" style="margin:0">
@@ -11695,7 +11966,7 @@ function drawCardioStep(en,i,total){
 
 /* ---- starting something that is not in the plan ----
    Playing tennis could only ever be told to the app afterwards, from memory. */
-function startLiveActivity(type,intensity){
+function startLiveActivity(type,intensity,strainTarget){
   /* No intensity until they say so at the end: while the clock runs the
      strain estimate uses the neutral middle of the scale, and the screen says
      that it is an estimate rather than pretending to know. */
@@ -11706,6 +11977,7 @@ function startLiveActivity(type,intensity){
     id:'s'+uid(), date:d, kind:'activity', saveAs:'activity',
     actType:type, workoutName:T.name, variant:'full',
     category:ACT_CAT(type), intensity:intensity||null,
+    strainTarget:(strainTarget!=null? +strainTarget : null), targetHit:false,
     startedAt:Date.now(), time:new Date().toTimeString().slice(0,5),
     band:rd?rd.band:null, readinessScore:rd?rd.score:null,
     step:0, addCore:false, recId:null, overridden:false,
@@ -11723,32 +11995,75 @@ function startLiveActivity(type,intensity){
   clearInterval(cardTimer); cardTimer=setInterval(cardTick,500);
   saveLive(); drawWM();
 }
+/* Choosing what you are doing and starting it are different moments. This is
+   the second one: the activity, an optional strain target, and one button.
+
+   The target is not a decoration - the clock chimes and the phone alerts when
+   the live strain crosses it, using the same sound and notification machinery
+   the rest timer uses. Off unless asked for, and pre-filled from what the
+   same activity came to last time, which is the only figure the app can
+   honestly suggest. */
+function preStartSheet(type){
+  const T=ACT_TYPES[type]||ACT_TYPES.other;
+  const prev=lastEffort({type:type, date:todayISO()});
+  let target=null;
+
+  const draw=()=>{
+    updateSheet(T.name,`
+      <div class="prestart">
+        <i class="ps-i">${svg(ACT_ICON(type))}</i>
+        <div class="ps-n">${esc(T.name)}</div>
+        <button class="tert" id="psChange">Choose something else</button>
+      </div>
+      <div class="ruled" style="display:flex;align-items:center;gap:12px">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:700">Strain target</div>
+          <div style="font-size:11.5px;color:var(--text-3);margin-top:2px">${
+            target!=null? 'You will be told when you reach it.'
+            : prev? 'Last time this came to '+rnd(prev.strain,1)+'.'
+            : 'Optional. Nothing is set.'}</div>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="psOn" ${target!=null?'checked':''}
+                 style="width:22px;height:22px;accent-color:var(--accent)">
+        </label>
+      </div>
+      ${target!=null?`<div class="field">
+        <div class="fine">
+          <input class="inp num" type="number" inputmode="decimal" step="0.1"
+                 min="1" max="21" id="psT" value="${target}">
+          <span class="hint" style="margin:0;white-space:nowrap">of 21</span>
+        </div></div>`:''}
+      <div class="hint">The clock and the strain both run from the moment you
+        start. How hard it was is asked at the end.</div>`,
+      `<button class="btn primary big block" id="psGo">${svg('play')} Start activity</button>`);
+
+    const on=$('#psOn');
+    if(on) on.onchange=()=>{
+      target = on.checked ? (prev? rnd(prev.strain,1) : 10) : null;
+      draw();
+    };
+    const tv=$('#psT');
+    if(tv) tv.addEventListener('input',()=>{ target=tv.value===''?null:clamp(+tv.value,1,21); });
+    const ch=$('#psChange');
+    if(ch) ch.onclick=()=>{ closeSheet(); setTimeout(()=>startActivityFlow(),200); };
+    const go=$('#psGo');
+    if(go) go.onclick=()=>{
+      const t=target;
+      closeSheet();
+      setTimeout(()=>startLiveActivity(type,null,t),220);
+    };
+  };
+  openSheet(T.name,'','');
+  draw();
+}
+
 /* The one question worth asking before a clock starts.
    It used to also ask how hard you expected it to be, which is a prediction
    nobody can make standing at the door with their shoes on. That question is
    a memory at the end and a guess at the start, so it is asked at the end. */
-function startActivitySheet(){
-  let type=null;
-  const draw=()=>{
-    const mine=mainSportActs().concat(['running','cycling','walking','strength'])
-      .filter((x,i,a)=>ACT_TYPES[x] && a.indexOf(x)===i);
-    const rest=Object.keys(ACT_TYPES).filter(k=>mine.indexOf(k)<0);
-    updateSheet('Start activity',`
-      <div class="field"><label>What are you doing?</label>
-        <div class="pills" id="stType">${mine.concat(rest).map(k=>
-          `<button data-v="${k}" class="${k===type?'on':''}">${esc(ACT_TYPES[k].name)}</button>`).join('')}</div>
-      </div>
-      ${type?`<div class="hint">The clock and the strain both run from the
-        moment you press start. How hard it was is asked at the end.</div>`:''}`,
-      type?`<button class="btn primary big block" id="stGo">${svg('play')} Start the clock</button>`:'');
-    $$('#stType button').forEach(b=>b.onclick=()=>{ type=b.dataset.v; draw(); });
-    const g=$('#stGo');
-    if(g) g.onclick=()=>{ closeSheet(); setTimeout(()=>startLiveActivity(type),220); };
-  };
-  openSheet('Start activity','','');
-  draw();
-}
-
+/* the name the rest of the app calls: the picker, then the pre-start screen */
+function startActivitySheet(){ return startActivityFlow(); }
 /* ---- what it came to, and how that compares ---- */
 function effortCompare(o){
   const prev=lastEffort(o);
