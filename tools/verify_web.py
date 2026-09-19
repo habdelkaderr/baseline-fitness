@@ -3,8 +3,7 @@ import os as _os
 _HERE = _os.path.dirname(_os.path.abspath(__file__))
 PROJECT = _os.path.dirname(_HERE)
 
-# The published files are at the project root — see the note in make_web.py.
-W=PROJECT
+W=_os.path.join(PROJECT,"site")
 idx=os.path.join(W,"index.html")
 t=io.open(idx,encoding="utf-8").read()
 

@@ -6,23 +6,9 @@ PROJECT = _os.path.dirname(_HERE)
 
 
 SRC = _os.path.join(PROJECT,"build","baseline.html")
-
-# The published files sit at the PROJECT ROOT, beside src/ and tools/, because
-# that is where GitHub Pages serves them from ("Branch: main, Folder: / (root)").
-# Keeping them in a site/ subfolder meant the local tree and the repository
-# disagreed about where index.html lives, and `git add -A` would then have added
-# site/index.html while deleting the one Pages actually serves.
-OUT = PROJECT
+OUT = _os.path.join(PROJECT,"site")
 ICO = os.path.join(OUT, "icons")
-
-# Clear ONLY what this script generates. The previous version did
-# shutil.rmtree(OUT), which was safe while OUT was a folder of its own and would
-# now delete the entire project, sources and all.
-GENERATED = ["index.html", "sw.js", "manifest.webmanifest", ".nojekyll", "README.md"]
-for _f in GENERATED:
-    _p = os.path.join(OUT, _f)
-    if os.path.isfile(_p): os.remove(_p)
-if os.path.isdir(ICO): shutil.rmtree(ICO)
+if os.path.isdir(OUT): shutil.rmtree(OUT)
 os.makedirs(ICO, exist_ok=True)
 
 SRC_ICON = _os.path.join(PROJECT,"brand","icon-source.png")
@@ -139,7 +125,7 @@ SW = r"""/* Baseline service worker — offline support for the app shell.
    No user data passes through here. WHOOP files are parsed in the page and
    training data lives in IndexedDB, neither of which the Cache API can see.
    Nothing is ever sent anywhere: there is no server to send it to. */
-const CACHE = 'baseline-v6';
+const CACHE = 'baseline-v7';
 const SHELL = [
   './',
   './index.html',

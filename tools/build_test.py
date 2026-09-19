@@ -3853,32 +3853,69 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   ok('removing the main sport promotes the next', DB.profile.sports.length===1 && DB.profile.sport===DB.profile.sports[0],
      DB.profile.sports.join(','));
 
-  // equipment is the same picker, and may legitimately end up empty
-  DB.profile.gear=['db','band'];
+  // EQUIPMENT: the same editor the wizard uses, reachable after setup is over.
+  // Settings used to render a flat chip picker instead, so the gym/home
+  // question and its weight fields existed ONLY during onboarding. Anyone who
+  // had already finished setup could not reach any of it, and a freshly
+  // deployed build looked identical to the one before it.
+  DB.profile.gear=['db','band']; DB.profile.place='home';
   SETTINGS_ALL();
   ok('equipment is not free-text', !document.getElementById('sEq'));
-  ok('equipment shows only what you own', document.querySelectorAll('#gearPick .chipblk').length===2,
-     document.querySelectorAll('#gearPick .chipblk').length);
-  ok('equipment offers a + to add more', !!document.querySelector('#gearPick [data-add]'));
-  document.querySelector('#gearPick [data-add]').click();
-  ok('+ lists all the equipment there is',
-     document.querySelectorAll('.pickrow').length===EQUIP_ITEMS.length,
-     document.querySelectorAll('.pickrow').length);
-  document.querySelector('.pickrow[data-v=bike]').click();
-  document.getElementById('pkDone').click();
+  ok('settings uses the shared gear editor, not the old chip picker',
+     !!document.getElementById('setsGear_root') && !document.getElementById('gearPick'));
+  ok('at home, the whole home list is offered',
+     document.querySelectorAll('#setsGear_root .gr').length===HOME_GEAR.length,
+     document.querySelectorAll('#setsGear_root .gr').length);
+  ok('what you already own is ticked',
+     document.querySelectorAll('#setsGear_root .gr.on').length===2,
+     document.querySelectorAll('#setsGear_root .gr.on').length);
+  document.querySelector('#setsGear_root .gr[data-g=bike]').click();
   ok('adding equipment writes through', DB.profile.gear.indexOf('bike')>=0, DB.profile.gear.join(','));
   ok('equipment list is rebuilt from the blocks',
      DB.profile.equipment[0]==='Bodyweight' && /Bicycle/i.test(DB.profile.equipment.join(' ')),
      JSON.stringify(DB.profile.equipment));
-  // unlike sports, equipment can go to zero — bodyweight only is a real answer
+
+  // a weight belongs to the item, and only appears once that item is ticked
   SETTINGS_ALL();
-  while(document.querySelector('#gearPick [data-rm]')){
-    document.querySelector('#gearPick [data-rm]').click();
+  ok('a ticked weighted item offers a weight',
+     !!document.querySelector('#setsGear_root .gwrap .gr-w'));
+  ok('an unticked item offers no weight field',
+     document.querySelectorAll('#setsGear_root .gr-w').length
+       <= document.querySelectorAll('#setsGear_root .gr.on').length,
+     document.querySelectorAll('#setsGear_root .gr-w').length);
+  var kgIn=document.querySelector('#setsGear_root .gr-w input');
+  kgIn.value='24'; kgIn.dispatchEvent(new Event('input',{bubbles:true}));
+  ok('the weight is stored beside the item it belongs to', gearKg('db')===24, gearKg('db'));
+  ok('the dumbbell weight stays in step with dbKg', DB.profile.dbKg===24, DB.profile.dbKg);
+
+  // AT A GYM: everything is assumed, and the list is opt-OUT rather than opt-in
+  SETTINGS_ALL();
+  document.getElementById('setsGear_back').click();
+  SETTINGS_ALL();
+  ok('changing where you train asks the question again',
+     !!document.getElementById('setsGear_place'));
+  document.querySelector('#setsGear_place button[data-p=gym]').click();
+  ok('a gym is assumed to have everything',
+     DB.profile.gear.length===GYM_GEAR.length, DB.profile.gear.length);
+  SETTINGS_ALL();
+  ok('the gym list is not shown unless asked for', !document.getElementById('setsGear_list'));
+  document.getElementById('setsGear_more').click();
+  SETTINGS_ALL();
+  ok('a gym can be told what it lacks', !!document.getElementById('setsGear_list'));
+  ok('where you train is remembered', DB.profile.place==='gym', DB.profile.place);
+
+  // unlike sports, equipment can go to zero — bodyweight only is a real answer
+  DB.profile.place='home'; SETTINGS_ALL();
+  var guard=0;
+  while(document.querySelector('#setsGear_root .gr.on') && guard++ < 40){
+    document.querySelector('#setsGear_root .gr.on').click();
     SETTINGS_ALL();
   }
   ok('equipment can be emptied to bodyweight only', DB.profile.gear.length===0, DB.profile.gear.join(','));
   ok('emptying equipment drops the targets it made impossible',
      !DB.targets.bike, JSON.stringify(DB.targets));
+  ok('with nothing ticked, the question comes back', placeOf(DB.profile)===null || DB.profile.place==='home',
+     placeOf(DB.profile));
 
   DB.settings=keepS; DB.profile=keepP; applyGoalTargets();
 })();
