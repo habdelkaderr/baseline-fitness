@@ -1,0 +1,2019 @@
+
+/* =========================================================================
+   EQUIPMENT TIERS & MOVEMENT PATTERNS
+   Every exercise is tagged with the movement pattern it trains and the
+   minimum equipment tier it needs. The program structure stays identical for
+   everyone — the app just picks the best exercise the user can actually do.
+     tier 0  minimal : bodyweight, light dumbbells, a band, open space
+     tier 1  home    : + bench/step, pull-up bar, adjustable dumbbells
+     tier 2  gym     : + barbell, rack, cables, machines
+   ====================================================================== */
+const TIERS=[
+  {id:0,name:'No gym',       short:'Minimal', desc:'Bodyweight and small home kit only.'},
+  {id:1,name:'Home setup',   short:'Home',    desc:'A bench or sturdy step, a pull-up bar, adjustable dumbbells.'},
+  {id:2,name:'Full gym',     short:'Gym',     desc:'Barbell, rack, cables and machines.'}
+];
+
+/* =========================================================================
+   WHAT YOU ACTUALLY OWN
+   Tiers are too coarse to prescribe from: "no gym" does not tell us whether
+   you have dumbbells. Every exercise declares the items it needs, and you are
+   only ever given exercises whose items you have ticked. Bodyweight and a
+   floor are assumed; nothing else is.
+   ====================================================================== */
+/* `home` decides whether an item appears in the at-home list; `gym` whether a
+   gym is assumed to have it. `kg` marks the three things worth a number: it is
+   what lets the app step a load in 2 kg instead of guessing.
+
+   No gym-machine ids were invented. "Leg press" and "lat pulldown" as separate
+   toggles would look thorough and do nothing, because no exercise in the
+   library asks for them - they are all gated by `cable`. The hints name the
+   real machines each category covers instead. */
+const EQUIP_ITEMS=[
+  {id:'db',    name:'Dumbbells',          hint:'Any pair, fixed or adjustable', tier:0, icon:'dumbbell',
+   home:true, gym:true, kg:'Heaviest pair'},
+  {id:'band',  name:'Resistance band',    hint:'One loop or tube band',         tier:0, icon:'eband',
+   home:true, gym:true},
+  {id:'bench', name:'Bench, step or sturdy chair', hint:'Something stable to elevate a foot or lie on', tier:1, icon:'bench',
+   home:true, gym:true},
+  {id:'bar',   name:'Pull-up bar',        hint:'Doorway frame, wall-mounted, or a rack',  tier:1, icon:'pullbar',
+   home:true, gym:true},
+  {id:'kb',    name:'Kettlebell',         hint:'One or a set',                  tier:1, icon:'kettle',
+   home:true, gym:true, kg:'Heaviest'},
+  {id:'ball',  name:'Medicine ball',      hint:'Plus a wall you can throw at',  tier:1, icon:'medball',
+   home:true, gym:true, kg:'Heaviest'},
+  {id:'bb',    name:'Barbell and rack',   hint:'Olympic bar, plates, squat rack or Smith machine', tier:2, icon:'barbell',
+   home:true, gym:true},
+  {id:'cable', name:'Cables and machines',
+   hint:'Cable stack, lat pulldown, seated row, leg press, leg curl — or a home multi-gym',
+   tier:2, icon:'cable', home:true, gym:true},
+  {id:'bike',  name:'Bicycle or stationary bike', hint:'Road bike, turbo, spin or air bike', tier:0, icon:'bike',
+   home:true, gym:true},
+  {id:'run',   name:'Somewhere to run',   hint:'Outdoors or a treadmill',       tier:0, icon:'run',
+   home:true, gym:true}
+];
+/* What a gym is assumed to have until the user says otherwise. */
+const GYM_GEAR = EQUIP_ITEMS.filter(x=>x.gym).map(x=>x.id);
+const HOME_GEAR= EQUIP_ITEMS.filter(x=>x.home);
+/* the three items a weight means something for */
+const GEAR_KG  = EQUIP_ITEMS.filter(x=>x.kg).map(x=>x.id);
+
+/* One weight per weighted item, kept beside the gear list. `dbKg` stays in
+   step with the dumbbell figure because stepSize() and older saved profiles
+   both read it. */
+function gearKg(id){
+  const P=(DB&&DB.profile)||{};
+  const m=P.gearKg||{};
+  if(m[id]!=null) return m[id];
+  if(id==='db' && P.dbKg!=null) return P.dbKg;
+  return null;
+}
+function setGearKg(id, v, prof){
+  const P=prof||(DB&&DB.profile);
+  if(!P) return;
+  P.gearKg=P.gearKg||{};
+  if(v==null || v==='' || isNaN(+v)) delete P.gearKg[id];
+  else P.gearKg[id]=clamp(+v,1,300);
+  if(id==='db') P.dbKg = P.gearKg[id]!=null ? P.gearKg[id] : null;
+}
+
+/* =========================================================================
+   THE EQUIPMENT EDITOR
+   One component, used by the setup wizard and by Settings, so the two cannot
+   drift apart. `place` decides which way round the question is asked.
+   ====================================================================== */
+function gearEditorHTML(o){
+  const gear=o.gear||[];
+  const place=o.place||null;
+  const open=!!o.open;
+
+  if(!place) return `
+    <div class="rows" id="${o.id}_place">
+      <button data-p="home"><i class="rw-i">${svg('today')}</i>
+        <span class="rw-x"><span class="rw-t">At home</span>
+          <span class="rw-s">You pick what you have — nothing is assumed</span></span>
+        <i class="rw-c">${svg('chev')}</i></button>
+      <button data-p="gym"><i class="rw-i">${svg('barbell')}</i>
+        <span class="rw-x"><span class="rw-t">At a gym</span>
+          <span class="rw-s">Everything available — remove anything yours lacks</span></span>
+        <i class="rw-c">${svg('chev')}</i></button>
+    </div>`;
+
+  const row=it=>{
+    const on=gear.indexOf(it.id)>=0;
+    const kg=gearKg(it.id);
+    return `<div class="gwrap">
+      <button class="gr${on?' on':''}" data-g="${it.id}" aria-pressed="${on?'true':'false'}">
+        <i class="gr-i">${svg(it.icon)}</i>
+        <span class="gr-x"><span class="gr-t">${esc(it.name)}</span>
+          ${it.hint?`<span class="gr-s">${esc(it.hint)}</span>`:''}</span>
+        <i class="gr-c">${on?svg('check'):svg('plus')}</i>
+      </button>
+      ${(on && it.kg)?`<div class="gr-w">
+        <span class="gr-wl">${esc(it.kg)}</span>
+        ${stepper(-1,'gkg',kg==null?'':kg,'—',null,it.name+' weight in kilograms')
+            .replace('data-k="gkg"','data-k="gkg" data-gid="'+it.id+'"')}
+        <span class="gr-wu">kg</span>
+      </div>`:''}
+    </div>`;
+  };
+
+  if(place==='gym') return `
+    <div class="note acc"><b>Everything is available.</b> A commercial gym has
+      the lot, so Baseline assumes it rather than making you tick fifteen boxes.</div>
+    <button class="tert" id="${o.id}_more" aria-expanded="${open?'true':'false'}">
+      ${open?'Hide the list':'Something missing from your gym?'} ${svg('down')}</button>
+    ${open?`<div id="${o.id}_list">
+      <div class="hint" style="margin:2px 0 10px">Tap anything your gym does not have.</div>
+      ${EQUIP_ITEMS.filter(x=>x.gym).map(row).join('')}
+    </div>`:''}
+    <button class="tert" id="${o.id}_back">Train at home instead</button>`;
+
+  return `
+    <div class="hint" style="margin-bottom:10px">Tick what you actually have.
+      Bodyweight and a floor are assumed.</div>
+    ${HOME_GEAR.map(row).join('')}
+    <button class="tert" id="${o.id}_back">Train at a gym instead</button>`;
+}
+
+/* `apply` receives {gear, place} and is responsible for storing and redrawing. */
+function wireGearEditor(o){
+  const id=o.id, apply=o.apply;
+  $$('#'+id+'_place button').forEach(b=>b.onclick=()=>{
+    haptic();
+    const p=b.dataset.p;
+    apply({place:p, gear: p==='gym' ? GYM_GEAR.slice() : []});
+  });
+  const more=$('#'+id+'_more');
+  if(more) more.onclick=()=>{ haptic(); apply({openList:!o.open}); };
+  const back=$('#'+id+'_back');
+  if(back) back.onclick=()=>{ haptic(); apply({place:null, gear:[]}); };
+  $$('#'+id+'_root .gr, #'+id+'_list .gr, .gwrap .gr').forEach(b=>b.onclick=()=>{
+    haptic();
+    const g=(o.gear||[]).slice();
+    const i=g.indexOf(b.dataset.g);
+    if(i>=0) g.splice(i,1); else g.push(b.dataset.g);
+    apply({gear:g});
+  });
+  /* the weight steppers, which only exist for ticked weighted items */
+  $$('.gr-w .stp').forEach(wrap=>{
+    const inp=wrap.querySelector('input');
+    if(!inp) return;
+    const gid=inp.dataset.gid;
+    const write=v=>{ apply({kg:{id:gid, v:v}}); };
+    inp.addEventListener('input',()=>write(inp.value));
+    wrap.querySelectorAll('button').forEach(b=>b.onclick=ev=>{
+      ev.stopPropagation();
+      const cur=parseFloat(inp.value)||0;
+      let next=cur + (+b.dataset.d)*(gid==='db'?2:4);
+      if(next<0) next=0;
+      inp.value=String(next);
+      write(inp.value);
+    });
+  });
+}
+const ALWAYS_HAVE=['bw','floor','wall','towel'];   // assumed for everyone
+
+/* work out which items an exercise needs from its equipment description */
+function deriveNeeds(e){
+  const s=((e.equip||'')+' '+(e.name||'')).toLowerCase();
+  const n=[];
+  const add=x=>{ if(n.indexOf(x)<0) n.push(x); };
+  if(/\bdb\b|dumbbell|goblet|suitcase|farmer/.test(s)) add('db');
+  if(/band/.test(s)) add('band');
+  if(/chair|bench|step|box|incline/.test(s)) add('bench');
+  if(/pull-?up bar|hanging|\bhang\b/.test(s)) add('bar');
+  if(/kettlebell/.test(s)) add('kb');
+  if(/medicine ball|med ball/.test(s)) add('ball');
+  if(/barbell|trap bar|\brack\b/.test(s)) add('bb');
+  if(/cable|machine|leg press|pulldown/.test(s)) add('cable');
+  if(/bike|bicycle|cycling|spin/.test(s)) add('bike');
+  if(/\brun\b|running|open ground|sprint|treadmill|jog|hill/.test(s)) add('run');
+  if(/anchor|partner/.test(s)) add('anchor');
+  return n;
+}
+/* does the user own everything this exercise needs? */
+function gearList(){
+  const g=(DB&&DB.profile&&Array.isArray(DB.profile.gear))?DB.profile.gear:[];
+  return g;
+}
+/* "dumbbells, a band and a bicycle" — written from what is actually ticked */
+function gearNames(){
+  const n=gearList().map(id=>(EQUIP_ITEMS.find(x=>x.id===id)||{name:id}).name.toLowerCase());
+  if(!n.length) return 'bodyweight only';
+  if(n.length===1) return 'bodyweight and '+n[0];
+  return 'bodyweight, '+n.slice(0,-1).join(', ')+' and '+n[n.length-1];
+}
+function canDo(e){
+  const needs=e.needs||[];
+  if(!needs.length) return true;                 // bodyweight only
+  const have=gearList();
+  return needs.every(x=>{
+    if(x==='anchor') return have.indexOf('bench')>=0 || have.indexOf('bb')>=0;  // something to hook under
+    return have.indexOf(x)>=0;
+  });
+}
+/* =========================================================================
+   DATA SOURCES (WEARABLES)
+   A device is described by the numbers it can actually give you. Everything
+   downstream is driven by this table — what the morning check-in asks for,
+   what the readiness score is allowed to use, what the metrics tab is called —
+   so WHOOP is one row here, not a special case in the code.
+
+   Field names are canonical: every device's "recovery score", "readiness
+   score", "Body Battery" and "Energy Score" land in the same `recovery` slot,
+   with `labels` giving each device its own wording. That is what lets the
+   engine work identically whatever you wear.
+   ====================================================================== */
+const DATA_FIELDS={
+  recovery :{name:'Recovery',        unit:'%',  lo:0,  hi:100, icon:'heart', hint:'A 0–100 daily readiness score'},
+  hrv      :{name:'HRV',             unit:'ms', lo:5,  hi:250, icon:'pulse', hint:'Overnight heart-rate variability'},
+  rhr      :{name:'Resting HR',      unit:'bpm',lo:25, hi:120, icon:'heart', hint:'Overnight resting heart rate'},
+  sleep    :{name:'Sleep',           unit:'h',  lo:0,  hi:16,  icon:'moon', hint:'Time actually asleep'},
+  sleepNeed:{name:'Sleep need',      unit:'h',  lo:4,  hi:14,  icon:'moon', hint:'What your device says you needed'},
+  strain   :{name:'Strain / load',   unit:'',   lo:0,  hi:21,  icon:'flame', hint:"Yesterday's cardiovascular load"},
+  resp     :{name:'Respiratory rate',unit:'rpm',lo:6,  hi:30, icon:'pulse'},
+  spo2     :{name:'Blood oxygen',    unit:'%',  lo:70, hi:100, icon:'drop'},
+  temp     :{name:'Skin temp change',unit:'°C', lo:-5, hi:5, icon:'thermo'},
+  steps    :{name:'Steps',           unit:'',   lo:0,  hi:80000, icon:'run'}
+};
+/* `importer`: 'whoop' = the built-in CSV parser for WHOOP's export format;
+   'csv' = the generic column-mapping importer; null = type it in each day. */
+const SOURCES=[
+  {id:'whoop', name:'WHOOP', kind:'band', tint:'#D8232A', importer:'whoop',
+   fields:['recovery','hrv','rhr','sleep','sleepNeed','strain','resp','spo2','temp'],
+   how:'WHOOP app → More → Data Export. You are emailed a ZIP of CSV files; import physiological_cycles.csv and workouts.csv here.'},
+  {id:'garmin', name:'Garmin', kind:'watch', tint:'#007CC3', importer:'csv',
+   fields:['recovery','hrv','rhr','sleep','strain','steps'],
+   labels:{recovery:'Body Battery / Training Readiness', strain:'Training Load'},
+   how:'Garmin Connect on the web → Reports → export CSV. Or just type the numbers in each morning.'},
+  {id:'oura', name:'Oura Ring', kind:'ringfull', tint:'#6E5BD9', importer:'csv',
+   fields:['recovery','hrv','rhr','sleep','temp'],
+   labels:{recovery:'Readiness Score', temp:'Temperature deviation'},
+   how:'Oura web dashboard → Account → Export Data. Or type the numbers in each morning.'},
+  {id:'fitbit', name:'Fitbit', kind:'band', tint:'#00B0B9', importer:'csv',
+   fields:['recovery','hrv','rhr','sleep','spo2','steps'],
+   labels:{recovery:'Daily Readiness Score'},
+   how:'Google Takeout → Fitbit. Or type the numbers in each morning.'},
+  {id:'apple', name:'Apple Watch', kind:'watch', tint:'#7D7D82', importer:'csv',
+   fields:['hrv','rhr','sleep','spo2','steps'],
+   how:'Health app → your profile → Export All Health Data. Apple gives no recovery score, so readiness is built from HRV, resting HR and sleep instead — which is what the score is made of anyway.'},
+  {id:'samsung', name:'Samsung Galaxy Watch', kind:'watch', tint:'#1428A0', importer:'csv',
+   fields:['recovery','hrv','rhr','sleep','steps'],
+   labels:{recovery:'Energy Score'},
+   how:'Samsung Health → Settings → Download personal data.'},
+  {id:'polar', name:'Polar', kind:'watch', tint:'#E4002B', importer:'csv',
+   fields:['recovery','hrv','rhr','sleep','strain'],
+   labels:{recovery:'Nightly Recharge', strain:'Cardio Load'},
+   how:'Polar Flow → Settings → Export your data.'},
+  {id:'coros', name:'COROS', kind:'watch', tint:'#F05A28', importer:'csv',
+   fields:['hrv','rhr','sleep','strain'],
+   labels:{strain:'Training Load'},
+   how:'COROS web → Profile → Data export.'},
+  {id:'other', name:'Another wearable', kind:'watch', tint:'var(--text-3)', importer:'csv', pickFields:true,
+   fields:['recovery','hrv','rhr','sleep','sleepNeed','strain','resp','spo2','temp','steps'],
+   how:'Tick the numbers your device actually shows you. Anything you do not tick is never asked for and never assumed.'},
+  {id:'none', name:'No wearable', kind:null, tint:'var(--text-3)', importer:null, fields:[],
+   how:'Everything runs from what you log plus a short daily check-in: energy, soreness, stress, motivation and sleep. That is enough for the engine to work.'}
+];
+/* the device's mark: its type glyph in its own brand colour. Not a logo. */
+function srcMark(id,px){
+  const s=sourceOf(id); if(!s.kind) return '';
+  return `<i class="srcmark" style="color:${s.tint||'var(--text-3)'};${px?`--sz:${px}px`:''}">${svg(s.kind)}</i>`;
+}
+const sourceOf = id => SOURCES.find(s=>s.id===(id!=null?id:(DB&&DB.profile&&DB.profile.source)))||SOURCES[SOURCES.length-1];
+/* the fields actually in play: what the device offers, narrowed to what the
+   user confirmed if they picked their own */
+function srcFields(id){
+  const s=sourceOf(id);
+  const chosen=(DB&&DB.profile&&Array.isArray(DB.profile.sourceFields))?DB.profile.sourceFields:null;
+  if(s.pickFields&&chosen) return s.fields.filter(f=>chosen.indexOf(f)>=0);
+  return s.fields.slice();
+}
+const hasField  = f => srcFields().indexOf(f)>=0;
+const fieldLabel= (f,id)=> (sourceOf(id).labels||{})[f] || (DATA_FIELDS[f]||{name:f}).name;
+const fieldUnit = f => (DATA_FIELDS[f]||{}).unit||'';
+const SRC_NAME  = ()=> sourceOf().name;
+const usesDevice= ()=> srcFields().length>0;
+/* the label on the last step of the wizard */
+function finishLabel(d){
+  const s=sourceOf(d&&d.source);
+  return s.importer ? `Finish & import ${s.name}` : 'Finish setup';
+}
+
+/* =========================================================================
+   SPORT PROFILES
+   Everything sport-specific is derived from here, so choosing football or
+   swimming reshapes the warm-ups, weekly targets and priorities exactly the
+   way tennis does. Nothing about tennis is special in the code.
+   ====================================================================== */
+const SPORT_PROFILES={
+  tennis:    {act:['tennis','padel','squash'], explosive:true, impact:'high', overhead:true,
+              prep:['lateral','rotation','shoulder','reactive'],
+              focus:['jump','lateral','accel','decel','cod','sleg','core','shoulder','protect','cond'],
+              qualities:'lateral movement, rotational power and repeated change of direction'},
+  padel:     {act:['padel','tennis','squash'], explosive:true, impact:'high', overhead:true,
+              prep:['lateral','rotation','shoulder','reactive'],
+              focus:['lateral','accel','decel','cod','sleg','core','shoulder','protect','cond'],
+              qualities:'lateral movement, rotation and quick reactions'},
+  racquet:   {act:['tennis','padel','squash'], explosive:true, impact:'high', overhead:true,
+              prep:['lateral','rotation','shoulder','reactive'],
+              focus:['jump','lateral','accel','decel','cod','sleg','core','shoulder','protect','cond'],
+              qualities:'lateral movement, rotational power and shoulder durability'},
+  football:  {act:['football'], explosive:true, impact:'high', overhead:false,
+              prep:['sprint','lateral','hamstring','reactive'],
+              focus:['accel','decel','cod','sleg','core','protect','calf','cond'],
+              qualities:'repeated sprinting, acceleration and hamstring resilience'},
+  basketball:{act:['basketball'], explosive:true, impact:'high', overhead:true,
+              prep:['jump','lateral','landing','reactive'],
+              focus:['jump','landing','lateral','accel','decel','cod','sleg','core','shoulder','cond'],
+              qualities:'jump power, landing mechanics and lateral movement'},
+  running:   {act:['running'], explosive:false, impact:'high', overhead:false,
+              prep:['sprint','hamstring','calf'],
+              focus:['sleg','protect','calf','core','aerobic','mob'],
+              qualities:'aerobic base, running economy and tendon resilience'},
+  cycling:   {act:['cycling'], explosive:false, impact:'low', overhead:false,
+              prep:['hip','calf'],
+              focus:['legend','sleg','core','aerobic','mob'],
+              qualities:'aerobic base and leg strength endurance'},
+  squash:    {act:['squash','tennis','padel'], explosive:true, impact:'high', overhead:true,
+              prep:['lateral','rotation','shoulder','reactive'],
+              focus:['lateral','accel','decel','cod','sleg','core','shoulder','protect','cond'],
+              qualities:'repeated lunging, rotation and fast direction changes'},
+  volleyball:{act:['volleyball','basketball'], explosive:true, impact:'high', overhead:true,
+              prep:['jump','landing','shoulder','lateral'],
+              focus:['jump','landing','lateral','sleg','core','shoulder','protect','cond'],
+              qualities:'jump height, landing control and overhead power'},
+  martial:   {act:['martial'], explosive:true, impact:'high', overhead:false,
+              prep:['rotation','hip','reactive','lateral'],
+              focus:['accel','decel','cod','core','sleg','protect','cond'],
+              qualities:'rotational power, repeated efforts and change of direction'},
+  swimming:  {act:['swimming'], explosive:false, impact:'low', overhead:true,
+              prep:['shoulder','rotation'],
+              focus:['shoulder','core','protect','aerobic','mob'],
+              qualities:'shoulder durability, trunk control and aerobic capacity'},
+  triathlon: {act:['running','cycling','swimming'], explosive:false, impact:'mixed', overhead:false,
+              prep:['hip','calf','hamstring'],
+              focus:['sleg','calf','core','aerobic','mob','protect'],
+              qualities:'aerobic base across three disciplines and tendon resilience'},
+  rowing:    {act:['rowing'], explosive:false, impact:'low', overhead:false,
+              prep:['hip','hamstring','shoulder'],
+              focus:['sleg','core','protect','aerobic','mob'],
+              qualities:'hip hinge strength, trunk endurance and aerobic capacity'},
+  climbing:  {act:['climbing'], explosive:false, impact:'low', overhead:true,
+              prep:['shoulder','hip'],
+              focus:['shoulder','core','protect','sleg','mob'],
+              qualities:'pulling strength, shoulder stability and body tension'},
+  skiing:    {act:['skiing'], explosive:true, impact:'high', overhead:false,
+              prep:['lateral','hip','landing'],
+              focus:['sleg','lateral','decel','landing','core','calf','protect','cond'],
+              qualities:'eccentric leg strength, lateral control and sustained effort'},
+  hiking:    {act:['hiking','walking'], explosive:false, impact:'mixed', overhead:false,
+              prep:['hip','calf'],
+              focus:['sleg','calf','core','aerobic','mob'],
+              qualities:'leg endurance, ankle resilience and aerobic capacity'},
+  golf:      {act:['golf'], explosive:true, impact:'low', overhead:false,
+              prep:['rotation','shoulder','hip'],
+              focus:['core','shoulder','sleg','mob','protect'],
+              qualities:'rotational speed, hip mobility and trunk control'},
+  gym:       {act:['strength'], explosive:false, impact:'low', overhead:true,
+              prep:['hip','shoulder'],
+              focus:['sleg','core','shoulder','protect','mob'],
+              qualities:'balanced strength and movement quality'},
+  general:   {act:[], explosive:false, impact:'mixed', overhead:false,
+              prep:['hip','shoulder'],
+              focus:['sleg','core','aerobic','mob'],
+              qualities:'balanced strength, conditioning and movement quality'}
+};
+/* -------------------------------------------------------------------------
+   RAW vs WORKING values.
+
+   Nothing in this app assumes a sport, a goal, a training frequency or a
+   session length. The RAW value is what the user actually chose, and [] or
+   null are legitimate answers that the interface renders as "None".
+
+   The WORKING value is what the recommendation engine needs in order to
+   produce a session at all, and it falls back to a documented neutral
+   default rather than to a preference the user never expressed.
+
+   So: hasSport() asks what the user said. sportsOf() asks what to train.
+   Never use a working accessor to decide what to *display* about the user.
+   --------------------------------------------------------------------- */
+const P_ = ()=> (DB&&DB.profile)||{};
+const rawSports = ()=> Array.isArray(P_().sports) ? P_().sports : [];
+const hasSport  = ()=> rawSports().length>0;
+const sportsOf  = ()=> hasSport() ? rawSports() : ['general'];
+const rawGoals  = ()=> Array.isArray(P_().physiques) ? P_().physiques : [];
+const hasGoal   = ()=> rawGoals().length>0;
+const goalsOf   = ()=> hasGoal() ? rawGoals() : ['athletic'];
+/* frequency and duration are the two things the engine cannot work without,
+   so they keep the old defaults as WORKING values while the stored value
+   stays null until the user answers. DEFAULT_* exists so the number appears
+   once rather than as a literal scattered across the file. */
+const DEFAULT_DAYS = 4, DEFAULT_SESSION_MIN = 50;
+const rawDays  = ()=> P_().daysPerWeek==null ? null : +P_().daysPerWeek;
+const hasDays  = ()=> rawDays()!=null;
+const trainDays= ()=> hasDays() ? rawDays() : DEFAULT_DAYS;
+const rawMin   = ()=> P_().sessionMin==null ? null : +P_().sessionMin;
+const hasMin   = ()=> rawMin()!=null;
+const sessMin  = ()=> hasMin() ? rawMin() : DEFAULT_SESSION_MIN;
+const rawGear  = ()=> Array.isArray(P_().gear) ? P_().gear : [];
+const hasGear  = ()=> rawGear().length>0;
+const mainSport  = ()=> sportsOf()[0];
+const sportProf  = id => SPORT_PROFILES[id||mainSport()]||SPORT_PROFILES.general;
+const SPORT_LABEL= ()=> (SPORTS.find(s=>s.id===mainSport())||{name:'Your sport'}).name;
+/* activity types that count as "your sport" for the engine's guards */
+function mainSportActs(){
+  /* No sport chosen means no activity is "your sport". The old fallback here
+     was a hardcoded racquet/ball list, which made the engine guard against
+     tennis for someone who had never said they play it. */
+  if(!hasSport()) return [];
+  const set=[];
+  sportsOf().forEach(id=>(sportProf(id).act||[]).forEach(a=>{ if(set.indexOf(a)<0) set.push(a); }));
+  return set;
+}
+const isMainSportAct = t => mainSportActs().indexOf(t)>=0;
+/* does any chosen sport have this property? */
+const anySport = f => sportsOf().some(id=>f(sportProf(id)));
+/* -------------------------------------------------------------------------
+   Derived prose. Every sentence the UI would otherwise hardcode is built
+   here from the sports the user actually chose, so nothing in the interface
+   claims to know something the setup did not tell it.
+   --------------------------------------------------------------------- */
+const sportLC    = ()=> SPORT_LABEL().toLowerCase();
+/* SPORT_EMOJI is gone: the app has no emoji. Where a single cell has to
+   stand for "you played your sport", the week strip uses the activity's
+   three-letter short label instead. */
+/* target keys in the order they should be shown, filtered to what exists */
+const TARGET_ORDER=['lower','upper','power','core','run','bike','mobility'];
+const TARGET_BAR={lower:'a',upper:'c',power:'o',core:'v',run:'g',bike:'c',mobility:'g'};
+/* slider bounds for the target editor */
+const TARGET_MAX={lower:5,upper:5,power:3,core:6,run:5,bike:6,mobility:7};
+function targetKeys(){
+  const T=(DB&&DB.targets)||{};
+  const inOrder=TARGET_ORDER.filter(k=>T[k]>0);
+  Object.keys(T).forEach(k=>{ if(T[k]>0&&inOrder.indexOf(k)<0) inOrder.push(k); });
+  return inOrder;
+}
+/* "tennis", or "tennis and football", or "tennis, football and swimming" */
+function sportsText(){
+  const n=sportsOf().map(id=>(SPORTS.find(s=>s.id===id)||{name:id}).name.toLowerCase());
+  if(n.length<=1) return n[0]||'your sport';
+  return n.slice(0,-1).join(', ')+' and '+n[n.length-1];
+}
+/* picking "no specific sport" is a real answer; picking nothing is not */
+const hasSportChosen = ()=> rawSports().some(id=>id!=='general');
+/* why a given training system matters, phrased for the chosen sport */
+function sysGoalText(sys){
+  const p=sportProf(), sp=sportLC(), q=p.qualities;
+  const gen=!hasSportChosen();
+  switch(sys){
+    case 'lower':  return gen ? 'Lower-body strength is the base everything else is built on.'
+      : `Leg strength sits directly under ${sp} — it underpins every push-off, first step and landing.`;
+    case 'expl':   return gen ? 'Explosive work keeps you fast and springy rather than only strong.'
+      : `Builds the explosive qualities ${sp} runs on: ${q}.`;
+    case 'core':   return gen ? 'Core strength transfers force between your legs and upper body.'
+      : `Core strength transfers leg drive into the rest of the body and stabilises ${sp} positions.`;
+    case 'upper':  return (anySport(x=>x.overhead)
+      ? 'Keeps the overhead shoulder durable and '
+      : 'Balances the strength work and ')+'drives the physique side of your goals.';
+    case 'run':    return gen ? 'Builds the aerobic base that makes everything else easier.'
+      : `Aerobic base so your level holds late in ${sp}.`;
+    case 'bike':   return 'Aerobic fitness with almost no impact cost — the right call when legs are loaded but you are recovered.';
+    case 'mobility':return 'Protects the hard days. Movement quality without adding fatigue.';
+    default: return '';
+  }
+}
+/* the decision priority list, ordered by what this user said they want */
+function priorityList(){
+  const goals=rawGoals();
+  const L=['Safety and recovery'];
+  if(hasSportChosen()) L.push(SPORT_LABEL()+' performance');
+  L.push('Leg strength','Core strength');
+  if(anySport(x=>x.explosive)) L.push('Explosive power');
+  L.push('Appropriate conditioning');
+  L.push(goals.indexOf('muscle')>=0 ? 'Upper body / muscle' : 'Upper body / physique');
+  L.push('Weekly completion');
+  return L;
+}
+
+/* =========================================================================
+   SPORT-SPECIFIC WARM-UP
+   Assembled from the prep qualities the chosen sport actually needs, rather
+   than a fixed tennis routine. A footballer gets sprint and hamstring prep;
+   a swimmer gets shoulders; a cyclist gets hips.
+   ====================================================================== */
+const PREP_BLOCKS={
+  lateral:   [{n:'Lateral shuffle + crossover',d:'2 × 10 m each way'},
+              {n:'90/90 hip switch',d:'8 each side'}],
+  rotation:  [{n:'Thoracic rotation (open book)',d:'8 each side'},
+              {n:'Shadow swings / rotational throws',d:'10 building to 80%'}],
+  shoulder:  [{n:'Band pull-apart',d:'20'},
+              {n:'Band face pull',d:'15'},
+              {n:'Shoulder CARs',d:'3 each side, slow'}],
+  reactive:  [{n:'Split step + first step',d:'6 reactions'},
+              {n:'Build-up sprints',d:'3 × 10 m'}],
+  sprint:    [{n:'A-skips',d:'2 × 15 m'},
+              {n:'High knees',d:'2 × 15 m'},
+              {n:'Build-up runs',d:'3 × 20 m at 60/75/85%'}],
+  hamstring: [{n:'Leg swings front/back',d:'12 each leg'},
+              {n:'Single-leg RDL (bodyweight)',d:'8 each side, slow'}],
+  jump:      [{n:'Pogo hops',d:'2 × 20'},
+              {n:'Countermovement jumps',d:'3 sub-maximal'}],
+  landing:   [{n:'Drop and stick',d:'4 reps, silent landings'}],
+  calf:      [{n:'Calf raises',d:'15 slow'},
+              {n:'Ankle dorsiflexion rock',d:'10 each side'}],
+  hip:       [{n:'Hip circles + leg swings',d:'10 each'},
+              {n:"World's greatest stretch",d:'4 each side'}]
+};
+/* =========================================================================
+   WHAT EACH SPORT NEEDS FROM THE PROGRAM
+   The Activity tab shows "how your training serves your sport". The rows are
+   assembled from these blocks according to the chosen sport, so a footballer
+   sees sprinting and hamstrings where a basketballer sees jumping and landing.
+   ====================================================================== */
+const FOCUS_BLOCKS={
+  jump:    ['Jump power','Countermovement Jump, Squat Jump, Single-Leg Calf Raise','w_power'],
+  lateral: ['Lateral movement','Lateral Bound, Lateral Lunge, Cossack Squat, Lateral Shuffle','w_power'],
+  accel:   ['Acceleration','Acceleration Sprints, Crossover Step Start, Split-Step Reaction','w_power'],
+  decel:   ['Deceleration','Deceleration Drill, Depth Drop & Stick, Tibialis Raise','w_power'],
+  cod:     ['Change of direction','5-10-5 Pro Agility, Spider Drill','w_power'],
+  landing: ['Landing mechanics','Depth Drop & Stick, Skater Squat','w_power'],
+  sleg:    ['Single-leg strength','Bulgarian Split Squat, Skater Squat, Single-Leg RDL','w_lowerA'],
+  core:    ['Core force transfer','Pallof Press, Band Rotational Press, Suitcase Carry','w_core'],
+  shoulder:['Shoulder durability','Band Face Pull, Pull-Apart, Prone Y-T-W','w_upperB'],
+  protect: ['Groin & hamstring protection','Copenhagen Plank, Nordic Curl, Single-Leg RDL','w_lowerB'],
+  calf:    ['Calf & tendon resilience','Single-Leg Calf Raise, Tibialis Raise, Pogo Hops','w_lowerB'],
+  legend:  ['Leg strength endurance','Goblet Squat, Step-Up, Wall Sit','w_lowerA'],
+  cond:    ['Conditioning','Interval running (20s/40s), Zone 2','w_runInt'],
+  aerobic: ['Aerobic base','Zone 2 runs and rides','w_runEasy'],
+  mob:     ['Movement quality','Mobility & recovery session','w_recovery']
+};
+function sportFocus(){
+  const seen=[], out=[];
+  sportsOf().forEach(id=>((SPORT_PROFILES[id]||{}).focus||[]).forEach(k=>{
+    if(FOCUS_BLOCKS[k]&&seen.indexOf(k)<0){ seen.push(k); out.push(FOCUS_BLOCKS[k]); }
+  }));
+  if(!out.length) ['sleg','core','aerobic','mob'].forEach(k=>out.push(FOCUS_BLOCKS[k]));
+  return out;
+}
+function sportWarmup(id){
+  const p=sportProf(id), s=SPORTS.find(x=>x.id===(id||mainSport()));
+  const items=[{n:'Easy jog, spin or brisk walk',d:'3 min — raise temperature'}];
+  (p.prep||[]).forEach(k=>(PREP_BLOCKS[k]||[]).forEach(it=>{
+    if(!items.some(x=>x.n===it.n)) items.push(it);
+  }));
+  return {name:`Pre-${(s&&s.name.split(' ')[0].toLowerCase())||'session'} prep`,
+          dur:Math.max(6,Math.min(12,3+items.length)), items};
+}
+
+/* =========================================================================
+   IS THE ADVICE ANY GOOD?
+   The engine scores options with hand-tuned weights and explains itself well,
+   which is not the same as being right. This compares days you followed the
+   recommendation against days you did not, using whatever outcome measure you
+   actually have — next-morning recovery if you wear something, next-morning
+   energy if you do not. It reports nothing until there is enough of both to
+   compare, and it never claims cause.
+   ====================================================================== */
+function whatHappened(date){
+  const sess=(DB.sessions||[]).filter(s=>s.done && s.date===date);
+  const acts=(DB.activities||[]).filter(a=>a.date===date);
+  if(!sess.length && !acts.length) return {kind:'nothing', cats:[]};
+  const cats=sess.map(s=>s.category||catOfWorkout(DB.workouts.find(w=>w.id===s.workoutId)))
+    .concat(acts.map(a=>ACT_CAT(a.type)));
+  return {kind:'trained', cats, sessions:sess, activities:acts};
+}
+/* did the day match what was advised? */
+function followedAdvice(date){
+  const dec=(DB.decisions||{})[date];
+  if(!dec) return null;
+  const did=whatHappened(date);
+  if(dec.id==='rest') return {followed: did.kind==='nothing', advised:dec.id, did};
+  if(dec.id==='mobility') return {followed: did.cats.indexOf('mobility')>=0, advised:dec.id, did};
+  /* the candidate ids map onto session categories */
+  const want={lower:'lower',upper:'upper',power:'power',core:'core',bike:'bike',
+              run_e:'run',run_q:'run',run_int:'run'}[dec.id]||dec.id;
+  return {followed: did.cats.indexOf(want)>=0, advised:dec.id, did};
+}
+/* the best outcome measure this user actually has for the morning after */
+function outcomeFor(date){
+  const next=addDays(date,1);
+  const cy=cycleByDate(next);
+  if(cy && cy.recovery!=null) return {v:cy.recovery, unit:'%', label:'next-day recovery'};
+  const ci=(DB.checkins||{})[next];
+  if(ci && ci.energy!=null) return {v:ci.energy*10, unit:'/100', label:'next-day energy'};
+  return null;
+}
+function adviceReview(){
+  const dec=DB.decisions||{};
+  const kept=[], ignored=[];
+  let restKept=[], restIgnored=[], nFollowed=0, nTotal=0;
+  Object.keys(dec).forEach(d=>{
+    const f=followedAdvice(d); if(!f) return;
+    /* adherence needs no outcome measure — it is simply whether you did the
+       thing. Only the comparison below needs a morning-after number. */
+    nTotal++; if(f.followed) nFollowed++;
+    const o=outcomeFor(d); if(!o) return;
+    (f.followed?kept:ignored).push({date:d, v:o.v, advised:f.advised, label:o.label});
+    if(f.advised==='rest'||f.advised==='mobility') (f.followed?restKept:restIgnored).push(o.v);
+  });
+  const MIN=5;                       // below this, any difference is noise
+  const label=(kept[0]||ignored[0]||{}).label||'next-day recovery';
+  const out={n:nTotal, nOutcome:kept.length+ignored.length,
+             nKept:kept.length, nIgnored:ignored.length,
+             min:MIN, label, ready:false};
+  if(kept.length>=MIN && ignored.length>=MIN){
+    out.ready=true;
+    out.keptAvg=mean(kept.map(x=>x.v));
+    out.ignoredAvg=mean(ignored.map(x=>x.v));
+    out.diff=rnd(out.keptAvg-out.ignoredAvg,1);
+  }
+  if(restKept.length>=MIN && restIgnored.length>=MIN){
+    out.restReady=true;
+    out.restKeptAvg=mean(restKept);
+    out.restIgnoredAvg=mean(restIgnored);
+    out.restDiff=rnd(out.restKeptAvg-out.restIgnoredAvg,1);
+  }
+  /* plain adherence is worth knowing on its own, long before the outcome is */
+  out.adherence = nTotal ? Math.round(nFollowed/nTotal*100) : null;
+  return out;
+}
+
+/* =========================================================================
+   INJURIES & LIMITATIONS
+   A sore knee is not a one-morning event. Pain in the daily check-in blocks
+   today and nothing more, which meant the only way to represent "my left knee
+   has been bad for a fortnight" was to re-report pain every day and accept a
+   blanket block. A limitation instead names a body area and an end date, and
+   the movement patterns that load it are avoided until it expires.
+
+   `avoid` is the list of movement patterns to drop entirely.
+   `caution` is patterns kept but capped, because total avoidance deconditions.
+   ====================================================================== */
+const BODY_AREAS=[
+  {id:'knee',     name:'Knee',              avoid:['jump','bound','land','sprint','cod','slsquat'],
+   caution:['squat','lunge'],  sys:['expl'],  hint:'Jumping, cutting and deep single-leg work'},
+  {id:'ankle',    name:'Ankle / foot',      avoid:['jump','bound','land','sprint','cod','calf'],
+   caution:['lunge','slsquat'],sys:['expl','run'], hint:'Impact, push-off and calf work'},
+  {id:'hamstring',name:'Hamstring',         avoid:['sprint','hamcurl','bound'],
+   caution:['hinge','lunge'],  sys:['expl','run'], hint:'Sprinting and lengthened hip-hinge work'},
+  {id:'groin',    name:'Groin / adductor',  avoid:['adduct','bound','cod'],
+   caution:['lunge','squat'],  sys:['expl'],  hint:'Lateral work and wide stances'},
+  {id:'hip',      name:'Hip',               avoid:['bound','cod'],
+   caution:['hinge','squat','lunge'], sys:['expl'], hint:'Deep flexion and rotation'},
+  {id:'calf',     name:'Calf / Achilles',   avoid:['jump','bound','sprint','calf','land'],
+   caution:['cod'],            sys:['expl','run'], hint:'Anything springy or fast'},
+  {id:'back',     name:'Lower back',        avoid:['hinge','rotate'],
+   caution:['squat','antiext','antilat'], sys:[], hint:'Loaded hinging and rotation'},
+  {id:'shoulder', name:'Shoulder',          avoid:['pushv','latraise'],
+   caution:['pushh','pullv','pullh'], sys:[], hint:'Overhead pressing and raises'},
+  {id:'elbow',    name:'Elbow / wrist',     avoid:['biceps','triceps'],
+   caution:['pushh','pullh','pullv'], sys:[], hint:'Direct arm work and heavy gripping'},
+  {id:'neck',     name:'Neck',              avoid:['pushv'],
+   caution:['pullv','antiext'],sys:[], hint:'Overhead loading'}
+];
+const areaOf = id => BODY_AREAS.find(a=>a.id===id)||null;
+/* limitations that have not expired, as of a given date */
+function activeLimits(date){
+  const d=date||todayISO();
+  return ((DB&&DB.profile&&DB.profile.limits)||[]).filter(l=>l&&l.area&&(!l.until||l.until>=d));
+}
+const hasLimits = date => activeLimits(date).length>0;
+/* movement patterns to drop, and those to keep but cap */
+function limitPatterns(date){
+  const avoid=[], caution=[];
+  activeLimits(date).forEach(l=>{
+    const a=areaOf(l.area); if(!a) return;
+    /* a limitation logged as severe removes the cautioned patterns too */
+    (a.avoid||[]).forEach(p=>{ if(avoid.indexOf(p)<0) avoid.push(p); });
+    (a.caution||[]).forEach(p=>{
+      if(l.severity==='high'){ if(avoid.indexOf(p)<0) avoid.push(p); }
+      else if(caution.indexOf(p)<0) caution.push(p);
+    });
+  });
+  return {avoid, caution:caution.filter(p=>avoid.indexOf(p)<0)};
+}
+/* training systems the engine should steer away from while limited */
+function limitSystems(date){
+  const out=[];
+  activeLimits(date).forEach(l=>{
+    const a=areaOf(l.area); if(!a) return;
+    (a.sys||[]).forEach(s=>{ if(out.indexOf(s)<0) out.push(s); });
+  });
+  return out;
+}
+/* is this exercise off-limits right now? */
+function limitBlocks(ex, date){
+  if(!ex) return false;
+  const pat=(EX_META[ex.id]||[])[0] || ex.pattern;
+  if(!pat) return false;
+  return limitPatterns(date).avoid.indexOf(pat)>=0;
+}
+const limitsText = date => activeLimits(date)
+  .map(l=>{ const a=areaOf(l.area); return a?(l.side?l.side+' ':'')+a.name.toLowerCase():l.area; })
+  .join(', ');
+
+/* =========================================================================
+   WHAT YOU DID LAST TIME
+   Every set's reps, weight and RPE is already recorded. Progressive overload
+   is the whole mechanism of getting stronger, and you cannot beat last week
+   if you cannot see last week — so the last performance of an exercise is
+   looked up and shown while you are standing in front of it.
+   ====================================================================== */
+function lastPerformance(exId, beforeDate, excludeSessionId){
+  if(!exId || !DB || !DB.sessions) return null;
+  const done=DB.sessions.filter(s=>s.done && s.id!==excludeSessionId &&
+    (!beforeDate || s.date<=beforeDate) && Array.isArray(s.entries));
+  /* newest first — date, then insertion order for two sessions in one day */
+  for(let i=done.length-1;i>=0;i--){
+    const s=done[i];
+    const en=s.entries.find(e=>e.exerciseId===exId && e.sets && e.sets.some(x=>x.done));
+    if(!en) continue;
+    const sets=en.sets.filter(x=>x.done);
+    const w=sets.map(x=>parseFloat(x.weight)).filter(v=>!isNaN(v));
+    const r=sets.map(x=>parseFloat(x.reps)).filter(v=>!isNaN(v));
+    const p=sets.map(x=>parseFloat(x.rpe)).filter(v=>!isNaN(v));
+    return {
+      date:s.date, sessionName:s.workoutName||'', sets,
+      /* what was ASKED of you that day, so "did you finish it" is answerable.
+         Without this, progression can only see what went in, never whether
+         what went in was the whole of it. */
+      plannedSets: (+en.plannedSets)||sets.length,
+      plannedReps: en.plannedReps||'',
+      plannedRpe:  en.plannedRpe||'',
+      skipped:     !!en.skipped,
+      topWeight: w.length?Math.max(...w):null,
+      topReps:   r.length?Math.max(...r):null,
+      bestRpe:   p.length?Math.max(...p):null,
+      /* load is the honest comparator: bodyweight work progresses by reps,
+         loaded work by weight, and volume covers both */
+      volume: sets.reduce((a,x)=>{
+        const rr=parseFloat(x.reps), ww=parseFloat(x.weight);
+        return a + (isNaN(rr)?0:rr)*(isNaN(ww)?1:Math.max(ww,1));
+      },0)
+    };
+  }
+  return null;
+}
+/* "3 × 10 @ 12 kg" from a set list, collapsing identical sets. `timed` makes
+   it "3 × 40s": a hold recorded as the number 40 must never read as 40 reps. */
+function setsSummary(sets,timed){
+  if(!sets||!sets.length) return '';
+  const parts=sets.map(s=>{
+    const r=(s.reps||s.reps===0)?String(s.reps)+(timed?'s':''):'—';
+    const w=(s.weight!==''&&s.weight!=null)?(' @ '+s.weight+' kg'):'';
+    return r+w;
+  });
+  const all=parts.every(x=>x===parts[0]);
+  return all ? `${parts.length} × ${parts[0]}` : parts.join(', ');
+}
+/* did this session beat the previous one on the same exercise? */
+function progressVs(prev, entry){
+  if(!prev || !entry) return null;
+  const done=entry.sets.filter(s=>s.done);
+  if(!done.length) return null;
+  const vol=done.reduce((a,x)=>{
+    const rr=parseFloat(x.reps), ww=parseFloat(x.weight);
+    return a + (isNaN(rr)?0:rr)*(isNaN(ww)?1:Math.max(ww,1));
+  },0);
+  if(!prev.volume) return null;
+  const pct=(vol-prev.volume)/prev.volume*100;
+  if(pct>=2)  return {up:true,  pct:Math.round(pct), vol};
+  if(pct<=-8) return {up:false, pct:Math.round(pct), vol};
+  return {up:null, pct:Math.round(pct), vol};
+}
+
+
+/* =========================================================================
+   PROGRESSIVE OVERLOAD, EARNED
+   ------------------------------------------------------------------------
+   See the note above shapeBlock for what the block plan does. This half is
+   about the numbers on one exercise, and about the gate that governs every
+   upward lever in the app.
+
+   The gate exists because overload on top of a plan nobody completes is not
+   progression, it is a number going up. It is measured from what is already
+   recorded per set - planned sets against sets actually logged - and it
+   always says why it is open or shut.
+   ====================================================================== */
+const PROG_WINDOW=14;        // days of history the gate looks at
+const PROG_MIN_SESSIONS=2;   // before there is anything to measure
+const PROG_SET_PCT=0.85;     // of the prescribed sets, actually logged
+const HOLD_STEP=5;           // seconds a hold grows by when it is earned
+
+/* =========================================================================
+   IS THIS A HOLD?
+   ------------------------------------------------------------------------
+   Derived from the prescription rather than listed, so a new exercise is
+   classified without anyone maintaining a table. The block tables contain
+   both per-set holds and whole-session durations and they are not the same
+   thing: '30–45s' and '40s / side' are holds you can put a countdown on,
+   while '20 min', '20s hard / 40s easy' and '5 × 8s' are a ride, an interval
+   structure and a rep-and-hold hybrid. So: seconds only, three minutes or
+   less, and no interval structure.
+   ====================================================================== */
+const HOLD_MAX_SEC=180;
+function setSecs(reps){
+  const txt=String(reps==null?'':reps);
+  if(!txt) return null;
+  /* anything with a second unit of time, a distance, or an effort structure
+     is not one number with a countdown on it */
+  if(/min|hour|hard|easy|×|\bx\s*[0-9]|reaction|\bm\b|metre|meter|jump/i.test(txt)) return null;
+  const m=txt.match(/([0-9]+)\s*(?:[–-]\s*([0-9]+)\s*)?s(?:ec|econds?)?\b/i);
+  if(!m) return null;
+  const a=+m[1], b=m[2]?+m[2]:+m[1];
+  const lo=Math.min(a,b), hi=Math.max(a,b);
+  if(!(hi>0) || hi>HOLD_MAX_SEC) return null;
+  return {lo:lo, hi:hi, perSide:/\/\s*(side|leg|arm)|each/i.test(txt)};
+}
+/* "30–45 seconds per side", for a screen that must not say "reps" */
+function secsLabel(t){
+  if(!t) return '';
+  return (t.lo===t.hi? t.hi+' seconds' : t.lo+'–'+t.hi+' seconds')
+       + (t.perSide? ' per side' : '');
+}
+
+/* A rep prescription as numbers, or null when it is not reps at all:
+   '30–40 min', '45s' and 'per side' are all in the block tables. */
+function repRange(reps){
+  const txt=String(reps==null?'':reps);
+  if(/min|sec|hour/i.test(txt)) return null;
+  const ns=txt.match(/[0-9]+/g);
+  if(!ns||!ns.length) return null;
+  const lo=+ns[0], hi=ns.length>1?+ns[1]:+ns[0];
+  if(!(lo>0)) return null;
+  return {lo:Math.min(lo,hi), hi:Math.max(lo,hi)};
+}
+
+/* How much of what was prescribed actually got logged, over the last
+   fortnight. Sets, not sessions: turning up and doing half of it is the case
+   this has to catch. */
+function completionRate(date){
+  const to=date||todayISO(), from=addDays(to,-(PROG_WINDOW-1));
+  const ss=(DB.sessions||[]).filter(s=>s.done && s.date>=from && s.date<=to
+                                      && Array.isArray(s.entries));
+  let planned=0, logged=0, skipped=0;
+  ss.forEach(s=>s.entries.forEach(e=>{
+    const ps=(+e.plannedSets)||((e.sets||[]).length);
+    planned+=ps;
+    logged+=(e.sets||[]).filter(x=>x.done).length;
+    if(e.skipped) skipped++;
+  }));
+  return {sessions:ss.length, planned:planned, logged:logged, skipped:skipped,
+          pct: planned? logged/planned : null};
+}
+
+/* Is anything allowed to get harder? One answer, one reason, used by every
+   upward lever so they cannot disagree with each other. */
+function progressGate(date){
+  const c=completionRate(date);
+  const pc=c.pct==null?0:Math.round(c.pct*100);
+  if(c.sessions<PROG_MIN_SESSIONS)
+    return Object.assign({ok:false, line:'Nothing is being pushed up yet: there '
+      +(c.sessions===1?'is 1 finished session':'are '+c.sessions+' finished sessions')
+      +' in the last two weeks and it takes '+PROG_MIN_SESSIONS+' to measure anything.'}, c);
+  if(c.pct==null || c.pct<PROG_SET_PCT)
+    return Object.assign({ok:false, line:'Holding the numbers where they are: '
+      +pc+'% of the sets prescribed in the last two weeks went in. Overload '
+      +'resumes at '+Math.round(PROG_SET_PCT*100)+'%.'}, c);
+  return Object.assign({ok:true, line:'You logged '+pc+'% of the sets prescribed '
+    +'in the last two weeks, so the numbers are moving up.'}, c);
+}
+
+/* The eight-week cycle repeats, and the progression card has always said
+   "same structure, harder variations". This is what makes the second time
+   round harder. Capped at two extra sets, never in a deload week, and never
+   without the gate. */
+function blockBonus(ph, date){
+  if(!ph || !(ph.block>1)) return 0;
+  if(ph.vol<1) return 0;
+  if(!progressGate(date).ok) return 0;
+  return Math.min(2, ph.block-1);
+}
+
+/* An RPE prescription, capped. 'RPE 8–9' under a cap of 6 must not read
+   'RPE 6–6'. */
+function capRpe(s, cap){
+  if(!cap) return s;
+  const txt=String(s==null?'':s);
+  if(!/[0-9]/.test(txt)) return s;
+  let hit=false;
+  let out=txt.replace(/[0-9]+/g, n=>{ if(+n>cap){ hit=true; return String(cap); } return n; });
+  if(!hit) return s;
+  return out.replace(/([0-9]+)\s*[–-]\s*\1/g, '$1');
+}
+
+/* =========================================================================
+   The block plan, finally applied.
+   PHASES[].vol and PHASES[].rpeCap were displayed to the user for every one
+   of the eight weeks and read by nothing. A deload week was prescribed
+   identically to a peak week. Bounded to one set either way so the change is
+   predictable: a re-entry or deload week takes a set off each multi-set
+   movement and lowers the prescribed effort, and that is all.
+   ====================================================================== */
+function shapeBlock(b, ph){
+  if(!ph) return b;
+  const nb=Object.assign({},b);
+  if(typeof nb.sets==='number' && nb.sets>=2 && ph.vol && ph.vol!==1){
+    const want=clamp(Math.round(nb.sets*ph.vol), nb.sets-1, nb.sets+1);
+    if(want!==nb.sets && want>=1){
+      nb.progNote='Week '+ph.absWeek+' is '+ph.name+' — '
+        +(want<nb.sets? nb.sets+' sets cut to '+want : 'one set added')+'.';
+      nb.sets=want;
+    }
+  }
+  const rp=capRpe(nb.rpe, ph.rpeCap);
+  if(rp!==nb.rpe){
+    nb.progNote=(nb.progNote?nb.progNote+' ':'')
+      +'Effort capped at RPE '+ph.rpeCap+' this week.';
+    nb.rpe=rp;
+  }
+  return nb;
+}
+
+/* =========================================================================
+   What today's numbers should be, and why.
+   Double progression: reps inside the range first, then load with the reps
+   back at the bottom. Every step has to be earned twice - once by the gate,
+   once by what actually happened on this exercise last time.
+   ====================================================================== */
+function nextTarget(en, date){
+  const out={kind:'hold', reps:null, weight:null, line:null};
+  if(!en) return out;
+  const rng=repRange(en.plannedReps);
+  const live=(typeof W!=='undefined'&&W)?W.id:null;
+  const prev=lastPerformance(en.exerciseId, null, live);
+
+  if(!prev) return Object.assign(out,{kind:'new',
+    line:'First time on this one — today sets the baseline to beat.'});
+  /* a hold progresses in seconds, and nothing on its screen may say "reps" */
+  const hold=setSecs(en.plannedReps);
+  if(hold){
+    const gateH=progressGate(date);
+    const secs=prev.sets.map(s=>parseFloat(s.reps)).filter(v=>!isNaN(v));
+    const lowS=secs.length?Math.min.apply(null,secs):null;
+    const needH=prev.plannedSets||prev.sets.length;
+    if(!gateH.ok)  return Object.assign(out,{kind:'hold', line:gateH.line, gate:gateH});
+    if(prev.skipped) return Object.assign(out,{kind:'hold',
+      line:'You skipped this last time, so the target is unchanged.'});
+    if(prev.sets.length<needH) return Object.assign(out,{kind:'hold',
+      line:'Last time '+prev.sets.length+' of '+needH+' sets went in, so the target is the same again.'});
+    if(lowS==null) return out;
+    if(lowS<hold.hi) return Object.assign(out,{kind:'secs',
+      reps:String(Math.min(hold.hi, lowS+HOLD_STEP)),
+      line:'Target '+Math.min(hold.hi,lowS+HOLD_STEP)+' seconds — '+HOLD_STEP
+        +' more than every set held last time.'});
+    return Object.assign(out,{kind:'secs', reps:String(lowS+HOLD_STEP),
+      line:'Target '+(lowS+HOLD_STEP)+' seconds — you held '+lowS
+        +' on every set last time, so the hold gets longer.'});
+  }
+  if(!rng) return Object.assign(out,{kind:'na',
+    line:'Held at the prescribed effort — this one is not counted in reps.'});
+
+  const gate=progressGate(date);
+  const sets=prev.sets;                                   // logged sets only
+  const reps=sets.map(s=>parseFloat(s.reps)).filter(v=>!isNaN(v));
+  const wts =sets.map(s=>parseFloat(s.weight)).filter(v=>!isNaN(v));
+  const lowReps=reps.length?Math.min.apply(null,reps):null;
+  const topW   =wts.length?Math.max.apply(null,wts):null;
+  const need   =prev.plannedSets||sets.length;
+  const pRpeM  =String(prev.plannedRpe||en.plannedRpe||'').match(/([0-9]+)/);
+  const pRpe   =pRpeM?+pRpeM[1]:null;
+
+  if(!gate.ok)            return Object.assign(out,{kind:'hold', line:gate.line, gate:gate});
+  if(prev.skipped)        return Object.assign(out,{kind:'hold',
+    line:'You skipped this last time, so the target is unchanged.'});
+  if(sets.length<need)    return Object.assign(out,{kind:'hold',
+    line:'Last time '+sets.length+' of '+need+' sets went in, so the target is the same again.'});
+  if(lowReps==null)       return out;
+
+  /* short of the top of the range: one more rep, on every set */
+  if(lowReps<rng.hi){
+    const want=Math.min(rng.hi, lowReps+1);
+    return Object.assign(out,{kind:'reps', reps:String(want),
+      weight: topW!=null?String(topW):null,
+      line:'Target '+want+' reps — one more than every set managed last time.'});
+  }
+  /* at the top of the range, but it cost more than it was supposed to */
+  if(pRpe!=null && prev.bestRpe!=null && prev.bestRpe>pRpe){
+    return Object.assign(out,{kind:'hold',
+      line:'You reached '+rng.hi+' last time but at RPE '+prev.bestRpe
+        +'. Same numbers again until it comes in at '+pRpe+'.'});
+  }
+  /* earned: add load, reps back to the bottom of the range */
+  if(topW!=null && topW>0){
+    const step=stepSize('weight', topW);
+    const nw=Math.round((topW+step)*100)/100;
+    return Object.assign(out,{kind:'load', weight:String(nw), reps:String(rng.lo),
+      line:'+'+step+' kg on last time — you hit '+rng.hi+' on every set'
+        +(prev.bestRpe!=null?' at RPE '+prev.bestRpe:'')+'.'});
+  }
+  /* nothing to load, so the reps keep going past the range */
+  return Object.assign(out,{kind:'reps', reps:String(lowReps+1),
+    line:'No load to add on this one, so the target is '+(lowReps+1)
+      +' reps — one past last time.'});
+}
+
+
+/* =========================================================================
+   A BLOCK MEASURED IN TIME
+   ------------------------------------------------------------------------
+   Running, riding and playing a sport are measured in minutes, and the block
+   tables already prescribe them that way. Which blocks those are is derived
+   from the exercise's own category and its prescription, so nothing has to be
+   maintained by hand and the awkward cases fall out correctly:
+
+     cd01 '25–45 min'              -> a clock, 35 minutes
+     cd03 '20s hard / 40s easy' ×8 -> a clock, 8 minutes
+     cd04 '10–15s uphill'       ×6 -> NOT a clock; hill sprints are reps
+     lx18 '20'                     -> NOT a clock; calf raises are reps
+   ====================================================================== */
+function cardioActOf(ex){
+  if(!ex || ex.cat!=='cardio') return null;
+  const eq=String(ex.equip||'').toUpperCase();
+  const nm=String(ex.name||'');
+  if(/WALK/i.test(nm)) return 'walking';
+  if(/BIKE|CYCL|SPIN/.test(eq) || /Bike|Spin|Cycl/i.test(nm)) return 'cycling';
+  if(/ROW/.test(eq)) return 'other';
+  return 'running';
+}
+/* What the prescription actually comes to, in minutes, or null when it is not
+   a span of time at all. */
+function cardioMinutes(b){
+  const txt=String((b&&b.reps)||'');
+  const sets=+((b&&b.sets))||1;
+  if(!txt) return null;
+
+  /* '2 × 8 min, 3 min easy between' — the repeats are inside the text */
+  let m=txt.match(/([0-9]+)\s*×\s*([0-9]+)\s*min/i);
+  if(m){
+    const n=+m[1], per=+m[2];
+    const gap=txt.match(/,\s*([0-9]+)\s*min/i);
+    return n*per + (gap? (+gap[1])*Math.max(0,n-1) : 0);
+  }
+  /* an interval structure: '20s hard / 40s easy', '1 min hard / 2 min easy'.
+     One `sets` is one work-plus-recovery cycle. */
+  if(/hard|easy|\bon\b|\boff\b/i.test(txt)){
+    const iv=txt.match(/([0-9]+)\s*(s|sec|min)[^0-9]*?([0-9]+)\s*(s|sec|min)/i);
+    if(iv){
+      const toS=(v,u)=>/min/i.test(u)? v*60 : v;
+      const per=toS(+iv[1],iv[2])+toS(+iv[3],iv[4]);
+      return Math.max(1, Math.round(per*sets/60));
+    }
+  }
+  /* '25–45 min', '18–25 min at tempo', '30 min' */
+  m=txt.match(/([0-9]+)\s*(?:[–-]\s*([0-9]+)\s*)?min/i);
+  if(m){ const lo=+m[1], hi=m[2]?+m[2]:+m[1]; return Math.round((lo+hi)/2); }
+  return null;
+}
+/* the two together: the clock spec for a block, or null */
+function cardioSpec(b, ex){
+  const act=cardioActOf(ex);
+  if(!act) return null;
+  const min=cardioMinutes(b && b.reps!=null ? b : ex);
+  if(!min) return null;
+  return {act:act, targetMin:min};
+}
+
+/* How hard, as a number the strain curve understands. The activity form
+   records a word; the block tables record an RPE; both end up here. */
+const INT_RPE={Easy:4, Moderate:6, Hard:8, Maximal:9};
+function effortRpe(intensity, plannedRpe){
+  if(intensity && INT_RPE[intensity]!=null) return INT_RPE[intensity];
+  const m=String(plannedRpe==null?'':plannedRpe).match(/([0-9]+)/);
+  return m? clamp(+m[1],1,10) : 6;
+}
+/* Strain for an effort in progress, on the same 0–21 curve every saved
+   activity uses, so the number ticking up during a run and the number in the
+   history mean the same thing. */
+function liveStrain(type, min, rpe){
+  return activityLoad({type:type, min:min, rpe:rpe});
+}
+
+/* =========================================================================
+   THE LAST COMPARABLE EFFORT
+   What "comparable" means depends on where the effort came from: a planned
+   session compares with the last time you did that same session, a logged
+   activity with the last one of the same kind.
+   ====================================================================== */
+function lastEffort(o){
+  const date=o.date||todayISO();
+  let best=null;
+  if(o.workoutId){
+    (DB.sessions||[]).filter(s=>s.done && s.id!==o.excludeId
+        && s.workoutId===o.workoutId && s.date<=date)
+      .forEach(s=>{ if(!best||s.date>best.date) best={
+        date:s.date, min:s.durationMin||0, dist:s.distKm||null,
+        strain:sessionLoad(s).load, name:s.workoutName||''}; });
+  }
+  if(!best && o.type){
+    (DB.activities||[]).filter(a=>a.type===o.type && a.id!==o.excludeId && a.date<=date)
+      .forEach(a=>{ if(!best||a.date>best.date) best={
+        date:a.date, min:a.min||0, dist:a.dist||null,
+        strain:activityLoad(a), name:(ACT_TYPES[a.type]||{}).name||''}; });
+  }
+  if(best) best.pace=(best.dist&&best.min)? best.min/best.dist : null;
+  return best;
+}
+/* One row of the comparison. `lowerIsBetter` exists for pace, where a smaller
+   number is the good news and an arrow pointing down must not read as a loss. */
+function cmpRow(label, now, was, unit, dp, lowerIsBetter, fmt){
+  const f=fmt||(v=>v==null?'—':rnd(v,dp||0)+(unit?' '+unit:''));
+  if(now==null) return '';
+  let delta='';
+  if(was!=null && was!==0){
+    const d=now-was;
+    const good = lowerIsBetter ? d<0 : d>0;
+    const same = Math.abs(d) < (dp? Math.pow(10,-dp)/2 : 0.5);
+    delta = same ? `<span class="cd flat">no change</span>`
+      : `<span class="cd ${good?'up':'down'}">${d>0?'+':'−'}${f(Math.abs(d))}</span>`;
+  }
+  return `<div class="cmp"><span class="cl">${esc(label)}</span>
+    <span class="cn">${esc(String(f(now)))}</span>
+    <span class="cw">${was==null?'':'was '+esc(String(f(was)))}</span>
+    ${delta}</div>`;
+}
+
+/* the tier implied by what is ticked — used only for labelling */
+function tierFromGear(){
+  const have=gearList();
+  if(have.indexOf('bb')>=0||have.indexOf('cable')>=0) return 2;
+  if(have.indexOf('bench')>=0||have.indexOf('bar')>=0||have.indexOf('kb')>=0) return 1;
+  return 0;
+}
+const PATTERNS={
+  squat:'Squat', hinge:'Hip hinge', lunge:'Split/lunge', slsquat:'Single-leg squat',
+  hipext:'Hip extension', hamcurl:'Hamstring curl', calf:'Calf', tib:'Tibialis',
+  adduct:'Adductor', pushh:'Horizontal push', pushv:'Vertical push',
+  pullh:'Horizontal pull', pullv:'Vertical pull', latraise:'Lateral raise',
+  reardelt:'Rear delt', biceps:'Biceps', triceps:'Triceps',
+  antiext:'Anti-extension', antirot:'Anti-rotation', antilat:'Anti-lateral flexion',
+  rotate:'Rotational', jump:'Jump', bound:'Lateral bound', land:'Landing',
+  sprint:'Sprint', cod:'Change of direction', mob:'Mobility', cardio:'Cardio'
+};
+/* id -> [pattern, tier] for the built-in library */
+const EX_META={
+  lx01:['squat',0],  lx02:['lunge',1],  lx03:['lunge',0],  lx04:['lunge',0],
+  lx05:['lunge',0],  lx06:['lunge',0],  lx07:['slsquat',0],lx08:['lunge',1],
+  lx09:['hinge',0],  lx10:['hinge',0],  lx11:['hamcurl',0],lx12:['hamcurl',0],
+  lx13:['hipext',0], lx14:['hipext',1], lx15:['squat',0],  lx16:['calf',0],
+  lx17:['calf',0],   lx18:['tib',0],    lx19:['adduct',1], lx20:['adduct',0],
+  pl01:['jump',0],   pl02:['jump',0],   pl03:['jump',0],   pl04:['bound',0],
+  pl05:['jump',0],   pl06:['land',1],   pl07:['jump',0],   pl08:['bound',0],
+  pl09:['jump',0],   pl10:['jump',0],
+  sp01:['cod',0],    sp02:['sprint',0], sp03:['cod',0],    sp04:['cod',0],
+  sp05:['cod',0],    sp06:['cod',0],    sp07:['cod',0],
+  co01:['antiext',0],co02:['antiext',0],co03:['antilat',0],co04:['antilat',0],
+  co05:['antiext',0],co06:['antirot',0],co07:['antiext',0],co08:['antiext',0],
+  co09:['antirot',0],co10:['antirot',0],co11:['rotate',0], co12:['rotate',0],
+  co13:['antilat',0],co14:['antilat',0],co15:['antiext',0],co16:['antiext',0],
+  co17:['antiext',0],
+  up01:['pushh',0],  up02:['pushh',1],  up03:['pushh',0],  up04:['triceps',0],
+  up05:['pushv',0],  up06:['pushv',1],  up07:['pushh',0],  up08:['pushv',0],
+  up09:['pushv',0],  up10:['latraise',0],up11:['latraise',0],up12:['latraise',0],
+  up13:['pushv',0],  up14:['triceps',0],up15:['triceps',0],
+  ul01:['pullh',0],  ul02:['pullh',0],  ul03:['pullh',0],  ul04:['pullh',1],
+  ul05:['pullh',1],  ul06:['pullv',0],  ul07:['pullv',0],  ul08:['reardelt',0],
+  ul09:['reardelt',0],ul10:['reardelt',0],ul11:['reardelt',0],ul12:['biceps',0],
+  ul13:['biceps',0], ul14:['biceps',0], ul15:['pullh',0],
+  mo01:['mob',0],mo02:['mob',0],mo03:['mob',0],mo04:['mob',0],mo05:['mob',0],
+  mo06:['mob',0],mo07:['mob',0],mo08:['mob',0],mo09:['mob',0],mo10:['mob',0],
+  mo11:['mob',0],mo12:['mob',0],mo13:['mob',0],
+  cd01:['cardio',0],cd02:['cardio',0],cd03:['cardio',0],cd04:['cardio',0],
+  cd05:['cardio',0],cd06:['cardio',0],cd07:['cardio',0],cd08:['cardio',0]
+};
+
+/* Exercises unlocked by a bench/bar (tier 1) or a full gym (tier 2).
+   Same patterns as the tier-0 library, so the program never changes shape. */
+function gymExercises(){ return [
+{id:'g01',name:'Barbell Back Squat',cat:'lower',pat:'squat',tier:2,muscles:'Quads, glutes, trunk',equip:'Barbell + rack',sets:4,reps:'5–8',rpe:'RPE 8 (2 RIR)',rest:'2–3 min',tempo:'3-1-1-0',
+ how:'Bar on the upper back, feet shoulder-width. Sit down and slightly back to at least parallel, then drive up through the whole foot.',
+ cue:'Brace before you unrack. Knees track over the middle toes, chest stays proud out of the hole.',
+ prog:'Add 2.5 kg when you hit the top of the rep range at the target RPE two sessions running.',
+ reg:'Goblet Squat, or box squat to a controlled depth.',
+ subs:'Goblet Squat · Bulgarian Split Squat'},
+{id:'g02',name:'Barbell Romanian Deadlift',cat:'lower',pat:'hinge',tier:2,muscles:'Hamstrings, glutes, erectors',equip:'Barbell',sets:3,reps:'6–10',rpe:'RPE 8',rest:'2 min',tempo:'3-1-1-0',
+ how:'Hinge at the hips with a long spine, bar sliding down the thighs until the hamstrings load, then drive the hips forward.',
+ cue:'Push the hips back, do not bend the knees to lower the bar. Stop where your back would otherwise round.',
+ prog:'Add load once you own the top of the range at RPE 8.',
+ reg:'DB Romanian Deadlift.',
+ subs:'DB Romanian Deadlift · Single-Leg RDL'},
+{id:'g03',name:'Barbell Hip Thrust',cat:'lower',pat:'hipext',tier:2,muscles:'Glutes',equip:'Barbell + bench',sets:3,reps:'8–12',rpe:'RPE 8',rest:'90s',tempo:'2-0-1-2',
+ how:'Upper back on a bench, bar across the hips on a pad. Drive to full extension, pause, lower under control.',
+ cue:'Finish with a hard glute squeeze and a tucked chin — do not hyperextend the lower back.',
+ prog:'Add load, then add a 2-second pause at lockout.',
+ reg:'Floor Hip Thrust · Single-Leg Glute Bridge.',
+ subs:'Floor Hip Thrust'},
+{id:'g04',name:'Leg Press',cat:'lower',pat:'squat',tier:2,muscles:'Quads, glutes',equip:'Machine',sets:3,reps:'10–15',rpe:'RPE 8',rest:'90s',tempo:'3-0-1-0',
+ how:'Feet shoulder-width on the platform, lower until the knees reach about 90° without the lower back lifting.',
+ cue:'Do not lock the knees hard at the top. Control the negative.',
+ prog:'Add load or reps within the range.',
+ reg:'Goblet Squat.',
+ subs:'Barbell Back Squat · Goblet Squat'},
+{id:'g05',name:'Seated Leg Curl',cat:'lower',pat:'hamcurl',tier:2,muscles:'Hamstrings',equip:'Machine',sets:3,reps:'10–15',rpe:'RPE 9',rest:'75s',tempo:'2-0-3-0',
+ how:'Curl the pad down, squeeze, then resist through a slow return.',
+ cue:'The slow eccentric is the point. Hamstring strength is the best protection against sprint injuries.',
+ prog:'Add load, then slow the eccentric to 4 seconds.',
+ reg:'Sliding Leg Curl.',
+ subs:'Nordic Curl Eccentric · Sliding Leg Curl'},
+{id:'g06',name:'Standing Calf Raise (machine)',cat:'lower',pat:'calf',tier:2,muscles:'Gastrocnemius, soleus',equip:'Machine',sets:4,reps:'10–15',rpe:'RPE 9',rest:'60s',tempo:'2-1-2-2',
+ how:'Full stretch at the bottom, full contraction at the top, with a pause at each end.',
+ cue:'Most people cut both ends of the range and get nothing. Do not.',
+ prog:'Add load, keep the pauses.',
+ reg:'Single-Leg Calf Raise.',
+ subs:'Single-Leg Calf Raise'},
+{id:'g07',name:'Walking Lunge (loaded)',cat:'lower',pat:'lunge',tier:1,muscles:'Quads, glutes',equip:'Dumbbells',sets:3,reps:'10–14 / leg',rpe:'RPE 8',rest:'90s',tempo:'2-0-1-0',
+ how:'Dumbbell in each hand. Step forward into a lunge, lower the back knee close to the floor, drive through the front heel into the next step.',
+ cue:'Torso tall, long strides. Let the front glute do the work.',
+ prog:'Add load or distance.',
+ reg:'Bodyweight reverse lunge.',
+ subs:'Reverse Lunge · Bulgarian Split Squat'},
+{id:'g08',name:'Barbell Bench Press',cat:'push',pat:'pushh',tier:2,muscles:'Chest, front delts, triceps',equip:'Barbell + bench',sets:4,reps:'5–8',rpe:'RPE 8',rest:'2–3 min',tempo:'3-1-1-0',
+ how:'Shoulder blades retracted, feet planted. Lower to the lower chest under control, press back to lockout.',
+ cue:'Elbows about 45° from the torso, not flared. Keep the bar path over the shoulder joint.',
+ prog:'Add 2.5 kg when the top of the range is comfortable at RPE 8.',
+ reg:'DB Floor Press · Push-Up.',
+ subs:'DB Bench Press · Push-Up'},
+{id:'g09',name:'DB Bench Press',cat:'push',pat:'pushh',tier:1,muscles:'Chest, front delts, triceps',equip:'Dumbbells + bench',sets:3,reps:'8–12',rpe:'RPE 8',rest:'90s',tempo:'3-1-1-0',
+ how:'Press from a deep stretch at chest level to lockout without banging the dumbbells together.',
+ cue:'Deeper range than a barbell allows — use it.',
+ prog:'Add load or reps.',
+ reg:'DB Floor Press.',
+ subs:'Barbell Bench Press · Push-Up'},
+{id:'g10',name:'Overhead Press (barbell)',cat:'push',pat:'pushv',tier:2,muscles:'Delts, triceps, trunk',equip:'Barbell',sets:4,reps:'5–8',rpe:'RPE 8',rest:'2 min',tempo:'3-0-1-0',
+ how:'Bar at the collarbone, brace hard, press overhead and finish with the bar over the mid-foot.',
+ cue:'Ribs down, glutes tight. Do not lean back to make the press easier.',
+ prog:'Add 1–2.5 kg when the top of the range feels controlled.',
+ reg:'DB Overhead Press · Pike Push-Up.',
+ subs:'DB Overhead Press · Pike Push-Up'},
+{id:'g11',name:'Cable Lateral Raise',cat:'push',pat:'latraise',tier:2,muscles:'Side delts',equip:'Cable',sets:4,reps:'12–18',rpe:'RPE 9',rest:'45s',tempo:'2-1-3-0',
+ how:'Cable from the low pulley behind you, raise to shoulder height leading with the elbow.',
+ cue:'Constant tension through the whole range — that is the advantage over dumbbells.',
+ prog:'Add load or reps, keep the slow lower.',
+ reg:'DB Lateral Raise.',
+ subs:'DB Lateral Raise · Band Lateral Raise'},
+{id:'g12',name:'Pull-Up',cat:'pull',pat:'pullv',tier:1,muscles:'Lats, upper back, biceps',equip:'Pull-up bar',sets:4,reps:'4–10',rpe:'RPE 8',rest:'2 min',tempo:'2-1-2-0',
+ how:'Hang from a full stretch, pull until the chin clears the bar, lower under control to a dead hang.',
+ cue:'Start each rep from a genuine dead hang. Pull the elbows down and back.',
+ prog:'Reps → add load in a belt → slower eccentric.',
+ reg:'Band-assisted pull-up, or Band Lat Pulldown.',
+ subs:'Lat Pulldown · Band Lat Pulldown'},
+{id:'g13',name:'Lat Pulldown',cat:'pull',pat:'pullv',tier:2,muscles:'Lats — V-taper width',equip:'Cable machine',sets:3,reps:'8–12',rpe:'RPE 8',rest:'90s',tempo:'2-1-2-0',
+ how:'Pull the bar to the upper chest, driving the elbows down and back, then control the return to a full stretch.',
+ cue:'Feel it under the armpits, not in the forearms.',
+ prog:'Add load or reps.',
+ reg:'Band Lat Pulldown.',
+ subs:'Pull-Up · Band Lat Pulldown'},
+{id:'g14',name:'Barbell Row',cat:'pull',pat:'pullh',tier:2,muscles:'Lats, rhomboids, rear delts',equip:'Barbell',sets:4,reps:'6–10',rpe:'RPE 8',rest:'2 min',tempo:'2-1-2-0',
+ how:'Hinge to roughly 45°, flat back, row the bar to the lower ribs and control it down.',
+ cue:'No jerking with the lower back. The torso angle should not change during the set.',
+ prog:'Add load when the top of the range is clean.',
+ reg:'Chest-supported row or DB row.',
+ subs:'DB Bent-Over Row · Seated Cable Row'},
+{id:'g15',name:'Seated Cable Row',cat:'pull',pat:'pullh',tier:2,muscles:'Mid-back, lats',equip:'Cable machine',sets:3,reps:'10–14',rpe:'RPE 8',rest:'90s',tempo:'2-1-2-0',
+ how:'Row to the abdomen with a tall chest, let the shoulder blades travel forward on the return.',
+ cue:'Squeeze for a full second at the back of every rep.',
+ prog:'Add load or reps.',
+ reg:'Band Row.',
+ subs:'Barbell Row · Band Row'},
+{id:'g16',name:'Cable Face Pull',cat:'pull',pat:'reardelt',tier:2,muscles:'Rear delts, external rotators',equip:'Cable machine',sets:3,reps:'15–20',rpe:'RPE 7',rest:'45s',tempo:'2-1-2-0',
+ how:'Rope at face height, pull towards the forehead and rotate so the knuckles finish pointing behind you.',
+ cue:'Finish in a double-biceps position. This is shoulder insurance for any overhead athlete.',
+ prog:'Add load or a 2-second end-range hold.',
+ reg:'Band Face Pull.',
+ subs:'Band Face Pull'},
+{id:'g17',name:'Cable Pallof Press',cat:'core',pat:'antirot',tier:2,muscles:'Anti-rotation — force transfer',equip:'Cable machine',sets:3,reps:'10–14 / side',rpe:'RPE 7',rest:'45s',tempo:'2-2-2-0',
+ how:'Cable at chest height to your side. Press straight out, hold, return without letting the torso turn.',
+ cue:'Resist the rotation completely. Hips and shoulders stay square.',
+ prog:'Load → step further from the stack → half-kneeling.',
+ reg:'Band Pallof Press.',
+ subs:'Band Pallof Press'},
+{id:'g18',name:'Cable Woodchop',cat:'core',pat:'rotate',tier:2,muscles:'Rotational control, obliques',equip:'Cable machine',sets:3,reps:'10–12 / side',rpe:'RPE 7',rest:'45s',tempo:'2-0-2-0',
+ how:'Rotate through the back hip and pull diagonally across the body, controlling the return.',
+ cue:'Power comes from the hip, not the arms — the same sequence as a groundstroke.',
+ prog:'Load → speed → add a step into it.',
+ reg:'Band Rotational Press.',
+ subs:'Band Rotational Press · Half-Kneeling Band Chop'},
+{id:'g19',name:'Hanging Leg Raise',cat:'core',pat:'antiext',tier:1,muscles:'Lower abs, hip flexors',equip:'Pull-up bar',sets:3,reps:'8–15',rpe:'RPE 8',rest:'60s',tempo:'2-0-3-0',
+ how:'Hang, then curl the pelvis up so the hips travel towards the ribs. Lower slowly without swinging.',
+ cue:'Curl the pelvis — do not just lift the legs.',
+ prog:'Bent knee → straight leg → toes to bar.',
+ reg:'Reverse Crunch.',
+ subs:'Reverse Crunch · Hollow Body Hold'},
+{id:'g20',name:'Trap Bar Jump',cat:'plyo',pat:'jump',tier:2,muscles:'Triple extension power',equip:'Trap bar',sets:4,reps:'3–5',rpe:'Max quality',rest:'2 min',tempo:'Explosive',
+ how:'Light load in a trap bar, jump as high as possible, land softly and reset every rep.',
+ cue:'Keep the load light — around 20–30% of a heavy deadlift. Speed is the point, not weight.',
+ prog:'Track jump height. Progress by jumping higher, never by adding volume.',
+ reg:'Countermovement Jump.',
+ subs:'Countermovement Jump · Squat Jump',
+ notes:'Only worthwhile if the load actually moves fast. If it looks like a deadlift, it is too heavy.'},
+{id:'g21',name:'Incline DB Press',cat:'push',pat:'pushh',tier:1,muscles:'Upper chest, front delts',equip:'Dumbbells + bench',sets:3,reps:'8–12',rpe:'RPE 8',rest:'90s',tempo:'3-1-1-0',
+ how:'Bench at about 30°, press from a stretch at the upper chest to lockout.',
+ cue:'30° is enough — steeper turns it into a shoulder press.',
+ prog:'Add load or reps.',
+ reg:'Push-Up.',
+ subs:'DB Bench Press · Feet-Elevated Push-Up'},
+{id:'g22',name:'Chest-Supported DB Row',cat:'pull',pat:'pullh',tier:1,muscles:'Mid-back, rear delts',equip:'Dumbbells + incline bench',sets:3,reps:'10–14',rpe:'RPE 8',rest:'75s',tempo:'2-1-2-0',
+ how:'Chest on an incline bench, row the dumbbells to the ribs and squeeze.',
+ cue:'The bench removes all cheating — the back has to do it.',
+ prog:'Add load or reps.',
+ reg:'DB Bent-Over Row.',
+ subs:'DB Bent-Over Row · Seated Cable Row'},
+{id:'g23',name:'Bulgarian Split Squat (loaded)',cat:'lower',pat:'lunge',tier:1,muscles:'Quads, glutes, stabilisers',equip:'Dumbbells + bench',sets:3,reps:'6–10 / leg',rpe:'RPE 8',rest:'90s / leg',tempo:'3-1-1-0',
+ how:'Rear foot on a bench, dumbbells at the sides, lower until the front thigh is near parallel and drive up.',
+ cue:'90% of the load in the front leg. This is the most transferable single-leg strength builder there is.',
+ prog:'Add load, then add a 2-second pause at the bottom.',
+ reg:'Bodyweight Bulgarian Split Squat.',
+ subs:'Bulgarian Split Squat · Skater Squat'},
+{id:'g24',name:'Nordic Curl (anchored)',cat:'lower',pat:'hamcurl',tier:1,muscles:'Hamstrings (eccentric)',equip:'Ankle anchor / partner',sets:3,reps:'4–6',rpe:'RPE 9',rest:'2 min',tempo:'5-0-X-0',
+ how:'Kneel with the ankles anchored, lower the torso as slowly as possible, catch with the hands and push back.',
+ cue:'Hips stay extended throughout. Fight the whole descent.',
+ prog:'Lengthen the controlled portion before adding reps.',
+ reg:'Band-assisted, or Sliding Leg Curl.',
+ subs:'Nordic Curl Eccentric · Seated Leg Curl',
+ notes:'Very high stimulus and very high soreness. Never within 48h of a match.'},
+{id:'g25',name:'Farmer Carry',cat:'core',pat:'antilat',tier:1,muscles:'Trunk, grip, traps',equip:'Heavy dumbbells',sets:3,reps:'30–45s',rpe:'RPE 8',rest:'75s',tempo:'Walk',
+ how:'Heavy dumbbell in each hand, walk tall and controlled.',
+ cue:'Ribs down, shoulders level, no leaning. Breathe.',
+ prog:'Add load, then distance.',
+ reg:'Suitcase Carry with one dumbbell.',
+ subs:'Suitcase Carry'},
+{id:'g26',name:'Box Jump',cat:'plyo',pat:'jump',tier:1,muscles:'Jump power, landing',equip:'Box/step',sets:4,reps:'3–5',rpe:'Max quality',rest:'90s',tempo:'Explosive',
+ how:'Jump onto a box at a height you can land softly on in a quarter squat. Step down, never jump down.',
+ cue:'Box height flatters bad landings — choose a height you land on quietly and in control.',
+ prog:'Height, only while landing quality holds.',
+ reg:'Countermovement Jump.',
+ subs:'Countermovement Jump'},
+{id:'g27',name:'Med Ball Rotational Throw',cat:'core',pat:'rotate',tier:1,muscles:'Rotational power',equip:'Medicine ball + wall',sets:4,reps:'5–8 / side',rpe:'Explosive',rest:'60s',tempo:'Max intent',
+ how:'Athletic stance side-on to a wall, rotate through the back hip and throw the ball hard into the wall.',
+ cue:'Ground up: back foot, hip, torso, arms. Exactly the groundstroke sequence, at full speed.',
+ prog:'Ball weight or throw velocity — never volume.',
+ reg:'Band Rotational Press.',
+ subs:'Band Rotational Press',
+ notes:'The single best rotational power exercise, and it needs almost no equipment.'},
+{id:'g28',name:'Treadmill / Rower Intervals',cat:'cardio',pat:'cardio',tier:1,muscles:'Repeat-sprint ability',equip:'Treadmill, rower or bike',sets:10,reps:'20s hard / 40s easy',rpe:'RPE 8',rest:'Built in',tempo:'Intervals',
+ how:'10–12 rounds of 20 seconds hard and 40 seconds easy on any machine.',
+ cue:'The 20:40 structure mirrors real match play. Last round should look like the first.',
+ prog:'Add rounds to 12, then extend the work interval.',
+ reg:'Fewer rounds.',
+ subs:'Tennis Interval Run · Bike Intervals'}
+];}
+
+/* attach pattern / tier / equipment-needs metadata to the library */
+
+/* =========================================================================
+   ADDITIONAL EXERCISES
+   Chosen to fill the thinnest movement patterns rather than to pad the total.
+   Before these, `squat`, `hinge` and `slsquat` had two options or fewer each,
+   which left the injury router and the equipment substitution with nowhere to
+   go: if the one available hinge needed a dumbbell you did not own, or loaded
+   a back you were resting, there was no alternative to fall back to.
+
+   Weighted towards bodyweight, because that is the only kit a no-gym user is
+   guaranteed to have, and because every pattern needs at least one option
+   that survives having no equipment at all.
+   ====================================================================== */
+function extraExercises(){ return [
+
+/* ---------------- SQUAT ---------------- */
+{id:'x01',name:'Prisoner Squat',cat:'lower',pat:'squat',tier:0,muscles:'Quads, glutes, upper back',equip:'BW',sets:3,reps:'15–25',rpe:'RPE 7',rest:'60s',tempo:'3-1-1-0',
+ how:'Hands behind the head, elbows wide. Squat to the deepest position you can hold without the lower back rounding, then stand.',
+ cue:'Elbows stay back all the way down — that is what stops the chest folding forward.',
+ prog:'Add reps to 25, then move to the 1.5-Rep Squat, then add load.',
+ reg:'Hold a doorframe lightly for balance, or reduce depth.',
+ subs:'Tempo Goblet Squat · Wall Sit'},
+
+{id:'x02',name:'1.5-Rep Squat',cat:'lower',pat:'squat',tier:0,muscles:'Quads, glutes',equip:'BW',sets:3,reps:'8–12',rpe:'RPE 8',rest:'75s',tempo:'Controlled',
+ how:'Squat down, come up only halfway, sit back down to the bottom, then stand fully. That whole sequence is one rep.',
+ cue:'The half rep is the point. Do not rush through the bottom — it is where the work is.',
+ prog:'Add reps, then hold a dumbbell at the chest.',
+ reg:'Reduce depth, or do straight reps.',
+ subs:'Prisoner Squat · Tempo Goblet Squat',
+ notes:'The extra time in the hardest position is how you keep loading the quads without extra weight.'},
+
+{id:'x03',name:'Heels-Elevated Goblet Squat',cat:'lower',pat:'squat',tier:0,muscles:'Quads, glutes',equip:'DB',sets:3,reps:'8–12',rpe:'RPE 8',rest:'75s',tempo:'3-1-1-0',
+ how:'Stand with your heels on a book or folded mat, toes flat. Hold a dumbbell at the chest and squat deep.',
+ cue:'Raising the heels lets the knees travel further forward, which loads the quads harder and lets you sit deeper.',
+ prog:'Add reps, then load, then reduce the heel lift as ankle range improves.',
+ reg:'Lower the heel lift, or hold nothing.',
+ subs:'Tempo Goblet Squat · 1.5-Rep Squat'},
+
+{id:'x04',name:'Kettlebell Front Squat',cat:'lower',pat:'squat',tier:1,muscles:'Quads, glutes, trunk',equip:'Kettlebell',sets:3,reps:'6–10',rpe:'RPE 8',rest:'90s',tempo:'3-0-1-0',
+ how:'Hold one kettlebell in both hands at the chest, elbows tucked in. Squat to depth and drive up.',
+ cue:'Keep the weight glued to the sternum. If it drifts away the lower back takes over.',
+ prog:'Add reps, then a heavier bell, then move to two bells or a barbell.',
+ reg:'Goblet Squat with a dumbbell.',
+ subs:'Tempo Goblet Squat · Barbell Back Squat'},
+
+/* ---------------- HINGE ---------------- */
+{id:'x05',name:'Single-Leg Hip Hinge (Airplane)',cat:'lower',pat:'hinge',tier:0,muscles:'Hamstrings, glutes, balance',equip:'BW',sets:3,reps:'8–12 / leg',rpe:'RPE 7',rest:'45s / leg',tempo:'3-1-2-0',
+ how:'Stand on one leg. Hinge at the hip until the torso and the free leg form one line parallel to the floor, arms out to the sides. Return.',
+ cue:'Hips stay level — do not let the free-leg hip rotate open to the ceiling.',
+ prog:'Add reps, then add a slow 5-second lower, then hold a dumbbell.',
+ reg:'Touch a wall with one hand for balance.',
+ subs:'Single-Leg RDL · DB Romanian Deadlift'},
+
+{id:'x06',name:'Band Pull-Through',cat:'lower',pat:'hinge',tier:0,muscles:'Glutes, hamstrings',equip:'BAND',sets:3,reps:'12–20',rpe:'RPE 7',rest:'60s',tempo:'2-0-1-1',
+ how:'Anchor a band low behind you, face away, and pass the band between your legs. Hinge forward, then stand by driving the hips forward against the band.',
+ cue:'This is a hip movement, not an arm movement. Your hands just hold on.',
+ prog:'Shorten the band or step further away for more tension.',
+ reg:'Step closer to the anchor.',
+ subs:'DB Romanian Deadlift · Floor Hip Thrust',
+ notes:'The easiest way to learn what a hinge should feel like, because the band pulls you into the right shape.'},
+
+{id:'x07',name:'Banded Good Morning',cat:'lower',pat:'hinge',tier:0,muscles:'Hamstrings, glutes, erectors',equip:'BAND',sets:3,reps:'12–20',rpe:'RPE 7',rest:'60s',tempo:'3-1-1-0',
+ how:'Stand on a band and loop the top behind your neck across the upper back. Hinge forward with a flat back until you feel the hamstrings, then stand.',
+ cue:'Push the hips back rather than bending the spine. Knees stay softly bent throughout.',
+ prog:'Add reps, then use a heavier band.',
+ reg:'Reduce range, or do it with no band.',
+ subs:'DB Romanian Deadlift · Band Pull-Through'},
+
+{id:'x08',name:'Kettlebell Swing',cat:'lower',pat:'hinge',tier:1,muscles:'Glutes, hamstrings, trunk',equip:'Kettlebell',sets:4,reps:'12–20',rpe:'RPE 7',rest:'60s',tempo:'Ballistic',
+ how:'Hinge and hike the bell back between the legs, then snap the hips forward so the bell floats to chest height. Let it fall and repeat.',
+ cue:'The arms do nothing. It is a hinge that happens fast, not a front raise.',
+ prog:'Add reps, then a heavier bell, then single-arm.',
+ reg:'Learn the Band Pull-Through first.',
+ subs:'Band Pull-Through · Broad Jump',
+ notes:'Counts as both hinge strength and conditioning. Stop the set the moment the hips stop snapping.'},
+
+/* ---------------- SINGLE-LEG SQUAT ---------------- */
+{id:'x09',name:'Step-Down (Eccentric)',cat:'lower',pat:'slsquat',tier:1,muscles:'Quads, glutes, knee control',equip:'Step or bench',sets:3,reps:'6–10 / leg',rpe:'RPE 8',rest:'60s / leg',tempo:'5-0-1-0',
+ how:'Stand on a step on one leg, the other hanging off the side. Lower that heel towards the floor over 5 seconds, tap lightly, then push back up.',
+ cue:'The knee of the working leg must not collapse inward. Watch it, and stop the set when it does.',
+ prog:'Use a higher step, then hold a dumbbell.',
+ reg:'Lower step, or hold a support.',
+ subs:'Skater Squat · Bulgarian Split Squat',
+ notes:'The single best exercise for knee control, and the one physios reach for first.'},
+
+{id:'x10',name:'Shrimp Squat',cat:'lower',pat:'slsquat',tier:0,muscles:'Quads, glutes, balance',equip:'BW',sets:3,reps:'4–8 / leg',rpe:'RPE 8',rest:'75s / leg',tempo:'3-0-1-0',
+ how:'Stand on one leg, bend the other knee and hold that foot behind you. Squat down until the trailing knee touches the floor, then stand.',
+ cue:'Stay upright. Reach the arms forward as a counterweight if you need to.',
+ prog:'Progress towards holding the foot with both hands, then to a pistol.',
+ reg:'Do not hold the foot; let the back leg trail freely (Skater Squat).',
+ subs:'Skater Squat · Step-Down (Eccentric)'},
+
+{id:'x11',name:'Pistol Squat Progression',cat:'lower',pat:'slsquat',tier:0,muscles:'Quads, glutes, ankle range',equip:'BW',sets:3,reps:'3–8 / leg',rpe:'RPE 8',rest:'90s / leg',tempo:'3-1-1-0',
+ how:'Stand on one leg with the other extended in front. Lower as far as you can control, then stand. Hold a doorframe with one hand at first and take less support over time.',
+ cue:'Heel stays down. If it lifts, you have gone past your ankle range for today.',
+ prog:'Take progressively less hand support, then none.',
+ reg:'Sit back to a chair and stand from it on one leg.',
+ subs:'Skater Squat · Shrimp Squat',
+ notes:'A long project. Treat it as a skill you practise, not a set you grind.'},
+
+/* ---------------- HIP EXTENSION ---------------- */
+{id:'x12',name:'Frog Pump',cat:'lower',pat:'hipext',tier:0,muscles:'Glutes',equip:'BW',sets:3,reps:'20–30',rpe:'RPE 7',rest:'45s',tempo:'1-0-1-1',
+ how:'Lie on your back, heels together, knees wide and turned out. Drive the hips up, squeeze hard at the top, lower.',
+ cue:'The turned-out position takes the hamstrings out of it, so the glutes have to do the work.',
+ prog:'Add reps to 30, then a band across the hips.',
+ reg:'Reduce range.',
+ subs:'Floor Hip Thrust · Single-Leg Glute Bridge'},
+
+{id:'x13',name:'Banded Glute Bridge',cat:'lower',pat:'hipext',tier:0,muscles:'Glutes, hamstrings',equip:'BAND',sets:3,reps:'15–25',rpe:'RPE 7',rest:'45s',tempo:'2-0-1-2',
+ how:'Loop a band just above the knees. Lie on your back, feet flat, and bridge up while pushing the knees out against the band.',
+ cue:'Push out against the band the whole time — that is what makes this different from a plain bridge.',
+ prog:'Add reps, heavier band, then single-leg.',
+ reg:'Remove the band.',
+ subs:'Floor Hip Thrust · Frog Pump'},
+
+{id:'x14',name:'Hip Thrust March',cat:'lower',pat:'hipext',tier:0,muscles:'Glutes, trunk stability',equip:'BW',sets:3,reps:'8–12 / side',rpe:'RPE 7',rest:'60s',tempo:'Controlled',
+ how:'Hold a bridge at the top. Without letting the hips drop or tilt, lift one knee towards the chest, replace it, then the other.',
+ cue:'Put a hand on each hip bone — they should stay perfectly level as you march.',
+ prog:'Slow the march down, or hold each knee up for 2 seconds.',
+ reg:'Hold a plain bridge with both feet down.',
+ subs:'Single-Leg Glute Bridge · Floor Hip Thrust'},
+
+/* ---------------- HAMSTRING CURL ---------------- */
+{id:'x15',name:'Band Leg Curl',cat:'lower',pat:'hamcurl',tier:0,muscles:'Hamstrings',equip:'BAND',sets:3,reps:'12–20 / leg',rpe:'RPE 7',rest:'45s',tempo:'2-0-2-0',
+ how:'Anchor a band low in front of you and hook it around one ankle. Lie face down and curl the heel towards your backside against the tension.',
+ cue:'Keep the hips pressed down. If they lift, the band is too heavy.',
+ prog:'Step further from the anchor, or use a heavier band.',
+ reg:'Lighter band or shorter range.',
+ subs:'Sliding Leg Curl · Nordic Curl Eccentric'},
+
+{id:'x16',name:'Long-Lever Bridge Walkout',cat:'lower',pat:'hamcurl',tier:0,muscles:'Hamstrings, glutes',equip:'BW',sets:3,reps:'6–10',rpe:'RPE 8',rest:'60s',tempo:'Slow',
+ how:'Bridge up with feet flat. Walk the feet out a few inches at a time, keeping the hips high, until the legs are nearly straight. Walk back in.',
+ cue:'The further the feet travel, the harder the hamstrings work. Stop before the hips sag.',
+ prog:'Walk out further, or one leg at a time.',
+ reg:'Fewer steps out.',
+ subs:'Sliding Leg Curl · Single-Leg Glute Bridge',
+ notes:'A hamstring curl for people with no equipment at all.'},
+
+{id:'x17',name:'Single-Leg Bridge Curl',cat:'lower',pat:'hamcurl',tier:0,muscles:'Hamstrings',equip:'TOWEL',sets:3,reps:'8–12 / leg',rpe:'RPE 8',rest:'60s / leg',tempo:'2-0-3-0',
+ how:'One heel on a towel on a smooth floor, other leg held up. Bridge the hips and slide the heel out until the leg is straight, then drag it back in without dropping the hips.',
+ cue:'Dragging back in is the working half. Do it slowly.',
+ prog:'Slow the return further, then add reps.',
+ reg:'Use both legs.',
+ subs:'Sliding Leg Curl · Nordic Curl Eccentric'},
+
+/* ---------------- CALF & TIBIALIS ---------------- */
+{id:'x18',name:'Bent-Knee Calf Raise',cat:'lower',pat:'calf',tier:0,muscles:'Soleus',equip:'BW',sets:3,reps:'15–25',rpe:'RPE 8',rest:'45s',tempo:'2-1-2-1',
+ how:'Stand with knees bent to about 30 degrees and hold that angle. Rise onto the toes and lower slowly without straightening the knees.',
+ cue:'Bending the knee shifts the work from the calf to the soleus underneath it — the muscle that matters for running and repeated push-off.',
+ prog:'Add reps, then do it one leg at a time.',
+ reg:'Hold a wall for balance.',
+ subs:'Standing Calf Raise · Single-Leg Calf Raise',
+ notes:'Straight-leg raises miss the soleus almost entirely, which is why this earns its own slot.'},
+
+{id:'x19',name:'Eccentric Heel Lower',cat:'lower',pat:'calf',tier:0,muscles:'Calves, Achilles tendon',equip:'BW',sets:3,reps:'8–12 / leg',rpe:'RPE 7',rest:'60s',tempo:'1-0-6-0',
+ how:'Rise onto both toes, shift your weight onto one leg, then lower that heel to the floor over 6 seconds. Use both legs to rise again.',
+ cue:'Slow and even. No sudden drop at the end.',
+ prog:'Add reps, then a small heel lift, then hold a dumbbell.',
+ reg:'Lower over 3 seconds instead.',
+ subs:'Single-Leg Calf Raise · Standing Calf Raise',
+ notes:'The classic tendon-loading protocol. Slow eccentrics are what tendons respond to.'},
+
+{id:'x20',name:'Toe Walk',cat:'lower',pat:'tib',tier:0,muscles:'Tibialis anterior, foot',equip:'BW',sets:3,reps:'30–45 s',rpe:'RPE 6',rest:'45s',tempo:'Steady',
+ how:'Walk forwards on your heels with the toes pulled up as high as they will go.',
+ cue:'Pull the toes towards the shin hard enough that the front of the shin burns.',
+ prog:'Longer walks, then add a light band around the forefoot.',
+ reg:'Shorter bouts.',
+ subs:'Tibialis Raise'},
+
+{id:'x21',name:'Tibialis Wall Raise',cat:'lower',pat:'tib',tier:0,muscles:'Tibialis anterior',equip:'WALL',sets:3,reps:'15–25',rpe:'RPE 7',rest:'45s',tempo:'2-0-3-0',
+ how:'Lean your back against a wall with the feet a step out in front. Keeping the heels planted, pull the toes up towards the shins, then lower slowly.',
+ cue:'Walk the feet further out to make it harder.',
+ prog:'Feet further from the wall, then add reps.',
+ reg:'Feet closer in.',
+ subs:'Tibialis Raise · Toe Walk',
+ notes:'Trains the muscle that decelerates the foot on landing — thin on most programmes and cheap insurance for the shins.'},
+
+/* ---------------- ADDUCTOR ---------------- */
+{id:'x22',name:'Side-Lying Adductor Raise',cat:'lower',pat:'adduct',tier:0,muscles:'Adductors',equip:'BW',sets:3,reps:'12–20 / side',rpe:'RPE 7',rest:'45s',tempo:'2-1-2-0',
+ how:'Lie on your side with the top leg bent and resting forward. Keep the bottom leg straight and lift it towards the ceiling, then lower slowly.',
+ cue:'Small range, no momentum. You should feel it on the inside of the thigh, not the hip.',
+ prog:'Add reps, then a pause at the top, then an ankle weight.',
+ reg:'Reduce range.',
+ subs:'Copenhagen Plank · Adductor Squeeze',
+ notes:'A gentler entry than the Copenhagen for anyone with a groin that is still grumbling.'},
+
+{id:'x23',name:'Adductor Slide-Out',cat:'lower',pat:'adduct',tier:0,muscles:'Adductors, groin',equip:'TOWEL',sets:3,reps:'8–12 / side',rpe:'RPE 7',rest:'60s',tempo:'3-0-2-0',
+ how:'Stand with one foot on a towel on a smooth floor. Slide that leg out to the side, keeping the other knee slightly bent, then drag it back in.',
+ cue:'Pull back in with the inner thigh, not by shifting your body weight across.',
+ prog:'Slide further out, then slow the return.',
+ reg:'Shorter slide.',
+ subs:'Cossack Squat · Copenhagen Plank'},
+
+/* ---------------- VERTICAL PULL ---------------- */
+{id:'x24',name:'Chin-Up',cat:'pull',pat:'pullv',tier:1,muscles:'Lats, biceps, upper back',equip:'Pull-up bar',sets:4,reps:'4–10',rpe:'RPE 8',rest:'2 min',tempo:'2-0-2-0',
+ how:'Hang from a bar with an underhand grip, hands about shoulder width. Pull until the chin clears the bar, lower under control.',
+ cue:'Start each rep from a dead hang with the shoulders set down, not shrugged up.',
+ prog:'Add reps, then weight, then move towards the wider Pull-Up.',
+ reg:'Negative Pull-Up or Band Lat Pulldown.',
+ subs:'Pull-Up · Band Lat Pulldown',
+ notes:'The underhand grip lets most people get more reps than a pull-up, which makes it the better starting point.'},
+
+{id:'x25',name:'Negative Pull-Up',cat:'pull',pat:'pullv',tier:1,muscles:'Lats, biceps',equip:'Pull-up bar',sets:4,reps:'3–6',rpe:'RPE 8',rest:'90s',tempo:'0-0-6-0',
+ how:'Jump or step up so your chin is over the bar, then lower yourself to a full hang over 6 seconds. Step up again for the next rep.',
+ cue:'Fight the whole way down. If you drop through the bottom half, shorten the count.',
+ prog:'Lengthen the lower to 8–10 seconds, then attempt full chin-ups.',
+ reg:'Band Lat Pulldown.',
+ subs:'Chin-Up · Inverted Row',
+ notes:'The fastest route to a first pull-up for most people.'},
+
+{id:'x26',name:'Band Kneeling Lat Pull',cat:'pull',pat:'pullv',tier:0,muscles:'Lats, upper back',equip:'BAND',sets:3,reps:'12–20',rpe:'RPE 7',rest:'60s',tempo:'2-0-2-1',
+ how:'Anchor a band high, kneel facing it, and pull the band down to the chest with straight-ish arms, leading with the elbows.',
+ cue:'Think about pulling your elbows into your back pockets.',
+ prog:'Heavier band, or kneel further back.',
+ reg:'Lighter band.',
+ subs:'Band Lat Pulldown · Chin-Up'},
+
+/* ---------------- ROTATION ---------------- */
+{id:'x27',name:'Half-Kneeling Band Rotation',cat:'core',pat:'rotate',tier:0,muscles:'Obliques, trunk rotators',equip:'BAND',sets:3,reps:'10–15 / side',rpe:'RPE 7',rest:'45s',tempo:'1-0-2-0',
+ how:'Anchor a band at chest height to your side. Kneel on the inside knee, hold the band with both hands at the chest, and rotate the torso away from the anchor.',
+ cue:'Rotate through the ribs, not by swinging the arms or shifting the hips.',
+ prog:'Heavier band, or step further from the anchor.',
+ reg:'Lighter band, smaller range.',
+ subs:'Band Rotational Press · Half-Kneeling Band Chop'},
+
+{id:'x28',name:'Standing Band Woodchop',cat:'core',pat:'rotate',tier:0,muscles:'Obliques, trunk',equip:'BAND',sets:3,reps:'10–15 / side',rpe:'RPE 7',rest:'45s',tempo:'1-0-2-0',
+ how:'Anchor a band high to one side. Standing tall, pull it down and across the body to the opposite hip, then return slowly.',
+ cue:'Let the hips turn with the movement — this is a whole-body rotation, not an arm pull.',
+ prog:'Heavier band, then add speed while keeping control on the return.',
+ reg:'Lighter band.',
+ subs:'Cable Woodchop · Band Rotational Press'},
+
+/* ---------------- LANDING ---------------- */
+{id:'x29',name:'Snap-Down',cat:'plyo',pat:'land',tier:0,muscles:'Landing mechanics, trunk',equip:'BW',sets:4,reps:'5',rpe:'RPE 6',rest:'60s',tempo:'Fast down, hold',
+ how:'Stand tall on the balls of your feet with arms overhead. Snap down into a quarter-squat athletic position and freeze there, arms driving back.',
+ cue:'Land silently and stop dead. No wobble, no second dip.',
+ prog:'Move to Depth Drop and Stick once you can freeze every rep.',
+ reg:'Slow the drop down.',
+ subs:'Depth Drop & Stick · Single-Leg Hop & Stick',
+ notes:'Teaches the landing position before you ever fall from a height. Do it before any jumping work.'},
+
+{id:'x30',name:'Single-Leg Drop Landing',cat:'plyo',pat:'land',tier:0,muscles:'Knee and ankle control',equip:'BW',sets:3,reps:'4–6 / leg',rpe:'RPE 6',rest:'60s',tempo:'Land and hold',
+ how:'Stand on one leg, hop a few inches off the floor, and land on the same leg. Hold the landing for two seconds.',
+ cue:'The knee must not travel inward on landing. If it does, you are done for that set.',
+ prog:'Small step down, then a slightly higher drop.',
+ reg:'Two-footed landings first.',
+ subs:'Single-Leg Hop & Stick · Snap-Down',
+ notes:'Most non-contact knee injuries happen on a single-leg landing. This is the rehearsal.'},
+
+{id:'x31',name:'Lateral Drop & Stick',cat:'plyo',pat:'land',tier:0,muscles:'Hip control, lateral stability',equip:'BW',sets:3,reps:'4–6 / side',rpe:'RPE 7',rest:'60s',tempo:'Land and hold',
+ how:'Hop sideways onto one leg and freeze the landing for two seconds before hopping back.',
+ cue:'Absorb through the hip, not by letting the ankle roll or the knee fall in.',
+ prog:'Hop further, then land from a small step.',
+ reg:'Shorter hop, two-footed.',
+ subs:'Lateral Bound (Skater) · Single-Leg Hop & Stick'},
+
+/* ---------------- BOUNDING ---------------- */
+{id:'x32',name:'Continuous Skater Bounds',cat:'plyo',pat:'bound',tier:0,muscles:'Glutes, lateral power',equip:'BW',sets:4,reps:'6–10 / side',rpe:'RPE 8',rest:'90s',tempo:'Reactive',
+ how:'Bound side to side, landing on one leg and immediately pushing off again without pausing.',
+ cue:'Minimum ground contact. If you are pausing to balance, do the Lateral Bound with a stick landing instead.',
+ prog:'Bound further, or add reps.',
+ reg:'Lateral Bound (Skater) with a held landing.',
+ subs:'Lateral Bound (Skater) · Lateral Drop & Stick',
+ notes:'Quality first: stop the set the moment distance drops off, not when you are tired.'},
+
+{id:'x33',name:'Standing Triple Jump',cat:'plyo',pat:'bound',tier:0,muscles:'Glutes, hamstrings, calves',equip:'Open ground',sets:4,reps:'3 sets of 3 jumps',rpe:'RPE 8',rest:'2 min',tempo:'Maximal',
+ how:'From standing, make three continuous forward bounds — left, right, then land on both feet. Mark the distance.',
+ cue:'Reach forward with each bound rather than hopping upwards.',
+ prog:'Chase the distance mark, not more reps.',
+ reg:'Two bounds, or Broad Jump.',
+ subs:'Broad Jump · Continuous Skater Bounds'},
+
+/* ---------------- SPRINT ---------------- */
+{id:'x34',name:'Wall Acceleration Drill',cat:'speed',pat:'sprint',tier:0,muscles:'Hip flexors, mechanics',equip:'WALL',sets:4,reps:'6–8 / leg',rpe:'RPE 7',rest:'60s',tempo:'Sharp',
+ how:'Lean into a wall with the body in one straight line from head to the support foot. Drive one knee up and punch the foot back down to the floor.',
+ cue:'Body stays in one line — no bending at the hips. Punch the foot down, do not reach it out.',
+ prog:'Add reps, then alternate legs at speed.',
+ reg:'Do it slowly, one position at a time.',
+ subs:'Acceleration Sprints (10–20 m)',
+ notes:'Lets you practise sprint mechanics without the soft-tissue cost of actually sprinting — useful on a low-readiness day.'},
+
+{id:'x35',name:'Flying Sprints (20 m)',cat:'speed',pat:'sprint',tier:0,muscles:'Top speed, hamstrings',equip:'RUN',sets:4,reps:'20 m at full speed',rpe:'RPE 9',rest:'2–3 min',tempo:'Maximal',
+ how:'Build up over 20 m, hold maximum speed for 20 m, then slow down over 20 m. The timed part is only the middle.',
+ cue:'Relax the face and hands. Trying harder at top speed usually makes you slower.',
+ prog:'Add one rep per week to a maximum of six.',
+ reg:'Acceleration Sprints from a standstill.',
+ subs:'Acceleration Sprints (10–20 m) · Hill Sprints',
+ notes:'Genuinely high risk if the hamstrings are not warm. Never do this on a yellow or worse day, and never without a full warm-up.'},
+
+{id:'x36',name:'Resisted Sprint Starts',cat:'speed',pat:'sprint',tier:0,muscles:'Acceleration, glutes',equip:'BAND + RUN',sets:5,reps:'10 m',rpe:'RPE 8',rest:'90s',tempo:'Maximal',
+ how:'Loop a band around your waist with a partner or fixed anchor behind you. Drive out for 10 m against the resistance.',
+ cue:'Big forward lean out of the first three steps, long pushes behind you.',
+ prog:'Heavier band, or add reps.',
+ reg:'Unresisted Acceleration Sprints.',
+ subs:'Acceleration Sprints (10–20 m) · Hill Sprints'},
+
+{id:'x37',name:'Hill Bounds',cat:'plyo',pat:'bound',tier:0,muscles:'Glutes, calves, power',equip:'Hill',sets:4,reps:'15–20 m',rpe:'RPE 8',rest:'2 min',tempo:'Powerful',
+ how:'Bound up a moderate hill, driving one knee at a time and covering as much ground per stride as you can.',
+ cue:'Long, powerful strides. This is bounding, not running up a hill.',
+ prog:'Longer distance, or a steeper hill.',
+ reg:'Hill Sprints, or flat bounding.',
+ subs:'Hill Sprints · Standing Triple Jump',
+ notes:'The incline reduces impact on landing while raising the force needed to push off — a safer way to bound.'},
+
+/* ---------------- BODYWEIGHT COVER FOR THE LAST FOUR PATTERNS ----------------
+   Added because a test asserted that every strength pattern must have at least
+   one option needing no equipment, and these four failed it. Without them a
+   user who ticked nothing lost vertical pulling, lateral raises, biceps and
+   trunk rotation from their programme with no explanation. */
+{id:'x38',name:'Wall Isometric Lateral Raise',cat:'push',pat:'latraise',tier:0,muscles:'Side deltoids',equip:'WALL',sets:3,reps:'20–40 s / side',rpe:'RPE 8',rest:'45s',tempo:'Isometric',
+ how:'Stand side-on in a doorway or beside a wall, arm straight down with the back of the hand against the surface. Press outwards as hard as you can hold, without moving.',
+ cue:'Press through the back of the wrist, not the palm. The shoulder should burn within 20 seconds.',
+ prog:'Hold longer, then press harder, then do it at 45 degrees of abduction as well.',
+ reg:'Shorter holds, less force.',
+ subs:'DB Lateral Raise · Band Lateral Raise',
+ notes:'An isometric cannot replace loaded raises forever, but it means shoulder width is still trainable with nothing at all.'},
+
+{id:'x39',name:'Self-Resisted Curl',cat:'pull',pat:'biceps',tier:0,muscles:'Biceps, forearms',equip:'TOWEL',sets:3,reps:'8–12 / arm',rpe:'RPE 8',rest:'45s',tempo:'3-0-4-0',
+ how:'Hold one end of a towel in the curling hand and the other end in the opposite hand below it. Curl up against resistance from your own arm, then resist on the way down.',
+ cue:'Give just enough resistance that the last two reps are genuinely hard. The lowering half should be slower than the lift.',
+ prog:'Resist harder, and lengthen the lowering to 5 seconds.',
+ reg:'Less resistance.',
+ subs:'DB Bicep Curl · Band Curl',
+ notes:'Crude, but self-resistance works if you are honest about how hard you push.'},
+
+{id:'x40',name:'Lying Windshield Wiper',cat:'core',pat:'rotate',tier:0,muscles:'Obliques, trunk rotators',equip:'FLOOR',sets:3,reps:'8–12 / side',rpe:'RPE 7',rest:'45s',tempo:'2-0-3-0',
+ how:'Lie on your back, arms out wide, legs up and knees bent to 90 degrees. Lower both knees slowly to one side without letting the opposite shoulder lift, then return through the middle.',
+ cue:'Both shoulders stay pinned to the floor. That is what makes it rotation rather than a hip swing.',
+ prog:'Straighten the legs to lengthen the lever, then slow the return.',
+ reg:'Smaller range, feet resting down between reps.',
+ subs:'Half-Kneeling Band Rotation · Cable Woodchop'},
+
+{id:'x41',name:'Prone Sliding Lat Pull',cat:'pull',pat:'pullv',tier:0,muscles:'Lats, upper back',equip:'TOWEL',sets:3,reps:'10–15',rpe:'RPE 7',rest:'60s',tempo:'2-0-3-0',
+ how:'Lie face down with a hand on a towel on each side. Slide both arms overhead, then pull them down towards your hips, pressing into the floor hard enough that the lats have to do the work.',
+ cue:'Press down into the floor as you pull. Without that pressure it is just an arm sweep.',
+ prog:'Press harder, slow the pull, then lift the chest slightly off the floor as you pull.',
+ reg:'Smaller range, less downward pressure.',
+ subs:'Band Lat Pulldown · Chin-Up',
+ notes:'Not a substitute for a pull-up, but it keeps the vertical pull pattern trainable with no bar and no band.'}
+
+];}
+
+/* The whole built-in library, in one place. freshDB and migrate both go
+   through this, so a new group of exercises can never again be added to one
+   and forgotten in the other. */
+function builtInExercises(){
+  return applyExMeta(seedExercises().concat(gymExercises()).concat(extraExercises()));
+}
+
+function applyExMeta(list){
+  list.forEach(e=>{
+    const m=EX_META[e.id];
+    if(m){ if(!e.pat) e.pat=m[0]; if(e.tier==null) e.tier=m[1]; }
+    if(!e.pat) e.pat='other';
+    if(e.tier==null) e.tier=0;
+    if(!Array.isArray(e.needs)) e.needs=deriveNeeds(e);
+  });
+  return list;
+}
+const userTier = ()=> (DB&&DB.profile&&DB.profile.tier!=null) ? DB.profile.tier : tierFromGear();
+
+/* Pick the best exercise the user can ACTUALLY perform. If the prescribed one
+   needs kit they do not own, swap to the same movement pattern using kit they
+   do. If they own more, offer the stronger option. Nothing is assumed. */
+/* Which exercises are already placed in the session being built. The
+   resolver consults this so that three different movements the user cannot do
+   do not all collapse onto the same substitute - which is how one session
+   ended up prescribing the same movement three times.
+
+   It is a PREFERENCE. resolveExercise computes the unrestricted answer too,
+   so an exercise with no distinct alternative still resolves to something
+   rather than disappearing. */
+let RESOLVE_TAKEN=null;
+const notTaken = x => !RESOLVE_TAKEN || !RESOLVE_TAKEN.has(x.id);
+
+function resolveExercise(exId, taken){
+  /* first pass: avoid anything already in the session */
+  if(taken && taken.size){
+    RESOLVE_TAKEN=taken;
+    let first=null;
+    try{ first=resolveOne(exId); }finally{ RESOLVE_TAKEN=null; }
+    if(first && !taken.has(first.id)) return first;
+  }
+  /* second pass, or no session context: the answer as it always was */
+  return resolveOne(exId);
+}
+function resolveOne(exId){
+  const e=exOf(exId); if(!e) return null;
+  /* An exercise the user said hurt is skipped for the same reason a limitation
+     is: there is no point prescribing the best variation of something that
+     hurt them last week. Same pattern first, so the session keeps its shape. */
+  if(isAvoided(e.id)){
+    const sub=DB.exercises
+      .filter(x=>x.id!==e.id && x.pat===e.pat && canDo(x) && !isAvoided(x.id) && notTaken(x))
+      .sort((a,b)=>(b.tier||0)-(a.tier||0))[0];
+    if(sub) return sub;
+    const near=DB.exercises
+      .filter(x=>canDo(x) && !isAvoided(x.id) && notTaken(x) &&
+                 (PAT_NEIGHBOURS[e.pat]||[]).indexOf(x.pat)>=0)[0];
+    if(near) return near;
+  }
+  /* An active limitation outranks equipment: there is no point picking the
+     best squat variation you own if your knee is the thing stopping you.
+     Route to a neighbouring pattern that the limitation does not touch. */
+  const lim=limitPatterns();
+  const blocked=p=>lim.avoid.indexOf(p)>=0;
+  if(blocked(e.pat)){
+    const swap=DB.exercises.filter(x=>canDo(x) && !blocked(x.pat) && notTaken(x) &&
+      (PAT_NEIGHBOURS[e.pat]||[]).indexOf(x.pat)>=0)
+      .sort((a,b)=>(PAT_NEIGHBOURS[e.pat].indexOf(a.pat)-PAT_NEIGHBOURS[e.pat].indexOf(b.pat))
+                   || ((a.tier||0)-(b.tier||0)))[0];
+    if(swap) return swap;
+    /* nothing neighbouring is safe either — fall through to mobility rather
+       than prescribing the thing that hurts */
+    const safe=DB.exercises.filter(x=>canDo(x) && x.cat==='mobility' && !blocked(x.pat) && notTaken(x))[0];
+    if(safe) return safe;
+  }
+  if(canDo(e)){
+    const up=(DB.profile.preferBest!==false) ? bestForPattern(e.pat, e) : null;
+    return (up && !blocked(up.pat)) ? up : e;
+  }
+  /* same movement pattern first, then same category, then anything that
+     trains the same broad quality. There is always something you can do. */
+  const alt=DB.exercises
+    .filter(x=>x.pat===e.pat && x.id!==e.id && canDo(x) && !blocked(x.pat) && notTaken(x))
+    .sort((a,b)=>(b.tier||0)-(a.tier||0))[0];
+  return alt||fallbackFor(e)||e;
+}
+/* graceful degradation when a whole pattern is unavailable — e.g. no space to
+   run means sprint work becomes the nearest doable explosive/leg option */
+const PAT_NEIGHBOURS={
+  sprint:['jump','bound','lunge','slsquat'], cod:['bound','jump','lunge','slsquat'],
+  jump:['bound','slsquat','squat','lunge'], bound:['jump','slsquat','lunge'],
+  land:['jump','slsquat','squat'],
+  pullv:['pullh','reardelt'], pullh:['pullv','reardelt'],
+  pushv:['pushh','triceps'], pushh:['pushv','triceps'],
+  hinge:['hipext','hamcurl','slsquat'], hamcurl:['hinge','hipext'],
+  hipext:['hinge','squat'], squat:['lunge','slsquat'], lunge:['squat','slsquat'],
+  slsquat:['lunge','squat'], latraise:['pushv'], biceps:['pullh'], triceps:['pushh'],
+  antirot:['antiext','antilat'], rotate:['antirot','antiext'],
+  antiext:['antilat','antirot'], antilat:['antiext','antirot'],
+  adduct:['lunge','antilat'], calf:['jump','slsquat'], tib:['calf'],
+  cardio:['cardio'], mob:['mob']
+};
+function fallbackFor(e){
+  const near=PAT_NEIGHBOURS[e.pat]||[];
+  for(const p of near){
+    const hit=DB.exercises.filter(x=>x.pat===p&&canDo(x)).sort((a,b)=>(b.tier||0)-(a.tier||0))[0];
+    if(hit) return hit;
+  }
+  return DB.exercises.find(x=>x.cat===e.cat&&canDo(x))
+      || DB.exercises.find(x=>canDo(x)&&(!x.needs||!x.needs.length))
+      || null;
+}
+/* the strongest doable exercise for this pattern, when it beats the default */
+function bestForPattern(pat, current){
+  /* an exercise the user said hurt is off the menu until its date passes */
+  if(!pat||pat==='mob'||pat==='cardio') return null;
+  const cands=DB.exercises.filter(x=>x.pat===pat && canDo(x) && !isAvoided(x.id)
+                                     && notTaken(x)
+                                     && (x.tier||0)>(current.tier||0));
+  if(!cands.length) return null;
+  return cands.sort((a,b)=>(b.tier||0)-(a.tier||0))[0];
+}
+/* last resort: any exercise needing nothing at all, same category */
+function bodyweightFallback(e){
+  return DB.exercises.find(x=>x.cat===e.cat && (!x.needs||!x.needs.length)
+                              && x.id!==e.id && notTaken(x))
+      || DB.exercises.find(x=>x.cat===e.cat && (!x.needs||!x.needs.length) && x.id!==e.id)
+      || null;
+}
+
+/* a workout's warm-up: sport-specific when the workout is sport prep */
+function warmupFor(w){
+  if(!w) return WARMUPS.easy;
+  /* 'sport' (and the legacy 'tennis' key from older saved workouts) means
+     "build one for whatever this user actually plays" */
+  if(w.warm==='sport'||w.warm==='tennis') return sportWarmup();
+  return WARMUPS[w.warm]||WARMUPS.easy;
+}
+
+/* =========================================================================
+   FEEDBACK AND AVOIDANCE
+   Two one-tap inputs that make the app learn from outcomes rather than only
+   from what you type in the morning.
+   ====================================================================== */
+
+/* ---- C · "this hurt" ------------------------------------------------- */
+const AVOID_DAYS=21;
+function avoidList(date){
+  const d=date||todayISO();
+  return ((DB.profile&&DB.profile.avoid)||[]).filter(a=>a&&a.until>=d);
+}
+/* Can this exercise carry a number of kilograms? Derived from what it needs,
+   so a new exercise is classified without anyone maintaining a list. A band
+   has no kg value and bodyweight has no kg value; a dumbbell, kettlebell,
+   barbell, cable stack or medicine ball does. */
+/* The first sentence of how to do it. A name is not an instruction, and
+   somebody who has never done a tempo goblet squat should not have to open a
+   sheet to find out what one is. The full text, the progression rule and the
+   alternatives stay one tap away under More: the point is to answer "what am
+   I doing" without turning the set screen back into a reference manual. */
+function briefHow(ex){
+  if(!ex) return '';
+  const src=String(ex.how||'').trim();
+  if(!src) return String(ex.cue||'').trim();
+  const m=src.match(/^[^.!?]+[.!?]/);
+  let s=(m? m[0] : src).trim();
+  if(s.length>140) s=s.slice(0,137).replace(/\s+\S*$/,'')+'…';
+  return s;
+}
+
+const LOADABLE_NEEDS={db:1, kb:1, bb:1, cable:1, ball:1};
+function exLoadable(ex){
+  if(!ex) return false;
+  return (deriveNeeds(ex)||[]).some(n=>LOADABLE_NEEDS[n]);
+}
+
+const isAvoided = (exId,date)=> avoidList(date).some(a=>a.exId===exId);
+function avoidExercise(exId, why){
+  DB.profile.avoid=(DB.profile.avoid||[]).filter(a=>a.exId!==exId);
+  DB.profile.avoid.push({exId:exId, from:todayISO(),
+                         until:addDays(todayISO(),AVOID_DAYS), why:why||''});
+  save(true);
+}
+function unavoid(exId){
+  DB.profile.avoid=((DB.profile.avoid)||[]).filter(a=>a.exId!==exId);
+  save(true);
+}
+
+/* ---- B · session feedback ------------------------------------------- */
+const FEEDBACK=[
+  {id:'easy',  name:'Too easy',    v:+1},
+  {id:'right', name:'About right', v:0},
+  {id:'hard',  name:'Too hard',    v:-1}
+];
+/* What the last few rated sessions say, if they say anything. Same gate shape
+   as the cycle signal: enough of them, and a clear enough lean, or nothing. */
+function feedbackBias(){
+  const rated=(DB.sessions||[]).filter(s=>s.done&&s.feedback)
+    .sort((a,b)=>a.date<b.date?1:-1).slice(0,5);
+  if(rated.length<3) return {n:rated.length, bias:0, line:null};
+  const vals=rated.map(s=>(FEEDBACK.find(f=>f.id===s.feedback)||{v:0}).v);
+  const m=mean(vals);
+  /* a clear lean is two thirds of the recent sessions agreeing */
+  if(Math.abs(m)<0.6) return {n:rated.length, bias:0, line:null};
+  const bias=m>0?1:-1;
+  return {n:rated.length, bias:bias,
+    line: bias>0
+      ? `Your last ${rated.length} rated sessions leaned <b>too easy</b>, so full versions are being favoured.`
+      : `Your last ${rated.length} rated sessions leaned <b>too hard</b>, so volume is being trimmed.`};
+}
+
+/* ---- G · why this exercise ----------------------------------------- */
+function exerciseWhy(en){
+  const e=exOf(en.exerciseId);
+  const bits=[];
+  if(e&&e.pat){
+    const p=PATTERNS&&PATTERNS[e.pat];
+    bits.push('Covers <b>'+esc((p&&p.name)||e.pat)+'</b> in today’s session.');
+  }
+  if(en.swapNote) bits.push(esc(en.swapNote));
+  const prev=lastPerformance(en.exerciseId, null, W?W.id:null);
+  if(prev){
+    const ago=daysBetween(prev.date, (W&&W.date)||todayISO());
+    bits.push('You last did it '+(ago<=0?'today':ago===1?'yesterday':ago+' days ago')+'.');
+  } else bits.push('You have not done this one before.');
+  if(e&&e.equip) bits.push('Needs: '+esc(gearNames(e.equip)||e.equip)+'.');
+  return bits;
+}
+
+/* ---- F · a session as plain text ------------------------------------ */
+function sessionText(s){
+  const L=[];
+  L.push('Baseline — '+(s.workoutName||'Session'));
+  L.push(fmtDate(s.date)+(s.durationMin?'  ·  '+s.durationMin+' min':''));
+  if(s.readinessScore!=null) L.push('Readiness '+s.readinessScore+' ('+(s.band||'')+')');
+  if(s.variant) L.push('Version: '+(VARIANT_NAME[s.variant]||s.variant));
+  L.push('');
+  (s.entries||[]).forEach(en=>{
+    const done=(en.sets||[]).filter(x=>x.done);
+    if(!done.length && !en.skipped) return;
+    L.push(en.name + (en.skipped?'  — skipped':''));
+    done.forEach((x,i)=>{
+      L.push('  set '+(i+1)+': '+(x.reps||'?')+' reps'
+        +(x.weight?' × '+x.weight+' kg':'')+(x.rpe?'  RPE '+x.rpe:''));
+    });
+    if(en.note) L.push('  note: '+en.note);
+  });
+  L.push('');
+  if(s.sessionRpe!=null) L.push('Session RPE: '+s.sessionRpe);
+  if(s.feedback) L.push('Felt: '+((FEEDBACK.find(f=>f.id===s.feedback)||{}).name||s.feedback));
+  if(s.notes) L.push('Notes: '+s.notes);
+  return L.join('\n');
+}
+function copySession(s){
+  const txt=sessionText(s);
+  const done=()=>toast('Session copied','ok');
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).then(done,()=>fallbackCopy(txt,done));
+      return;
+    }
+  }catch(e){}
+  fallbackCopy(txt,done);
+}
+function fallbackCopy(txt,done){
+  /* a textarea and execCommand still works where the clipboard API is
+     blocked, which it is on a file:// origin */
+  try{
+    const ta=document.createElement('textarea');
+    ta.value=txt; ta.setAttribute('readonly','');
+    ta.style.position='fixed'; ta.style.top='-1000px';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    done();
+  }catch(e){
+    openSheet('Session as text',
+      `<textarea class="inp" style="min-height:280px;font-size:12.5px">${esc(txt)}</textarea>`,
+      `<button class="btn primary big block" onclick="closeSheet()">Done</button>`);
+  }
+}
+
+/* =========================================================================
+   UNITS
+   Height and weight are STORED in metric, always, and converted only for
+   display and entry. Flipping the toggle never rewrites a stored number, so
+   switching back and forth loses nothing and the engine - which reads
+   heightCm and weightKg - never has to care which unit the user prefers.
+   ====================================================================== */
+const KG_PER_LB=0.45359237, CM_PER_IN=2.54;
+const isImperial = ()=> ((DB&&DB.profile&&DB.profile.units)||'metric')==='imperial';
+
+const kgToLb = kg => kg==null?null : Math.round(kg/KG_PER_LB*10)/10;
+const lbToKg = lb => lb==null?null : Math.round(lb*KG_PER_LB*10)/10;
+function cmToFtIn(cm){
+  if(cm==null) return null;
+  const totalIn=Math.round(cm/CM_PER_IN);
+  return {ft:Math.floor(totalIn/12), inch:totalIn%12};
+}
+function ftInToCm(ft,inch){
+  if((ft==null||ft==='') && (inch==null||inch==='')) return null;
+  return Math.round(((+ft||0)*12+(+inch||0))*CM_PER_IN);
+}
+/* what to show, in whichever unit is chosen */
+function showWeight(kg){
+  if(kg==null) return '—';
+  return isImperial() ? kgToLb(kg)+' lb' : kg+' kg';
+}
+function showHeight(cm){
+  if(cm==null) return '—';
+  if(!isImperial()) return cm+' cm';
+  const f=cmToFtIn(cm);
+  return f.ft+'′ '+f.inch+'″';
+}
+const unitName = u => (u||'metric')==='imperial' ? 'Imperial (lb, ft/in)' : 'Metric (kg, cm)';

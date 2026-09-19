@@ -1,0 +1,1298 @@
+
+/* =========================================================================
+   INJURY SHEET
+   Naming the area and an end date is the whole interaction. Everything else —
+   which exercises disappear, which sessions get pushed down — follows from
+   BODY_AREAS, so the user is never asked to translate a sore knee into
+   movement patterns themselves.
+   ====================================================================== */
+function limitSheet(id){
+  const P=DB.profile;
+  if(!Array.isArray(P.limits)) P.limits=[];
+  const ex=id?P.limits.find(l=>l.id===id):null;
+  const d=ex||{id:'lim'+uid(),area:null,side:'',severity:'mod',
+               until:addDays(todayISO(),14),note:''};
+  const draw=()=>{
+    const a=d.area?areaOf(d.area):null;
+    const body=`
+     <p class="hint" style="margin-bottom:14px">What is bothering you, and until when. Movements that load it are dropped; the rest stays. Not medical advice.</p>
+     <div class="field"><label>Where</label>
+       
+       ${BODY_AREAS.map(x=>`<button class="card tight limArea ${d.area===x.id?'on':''}" data-v="${x.id}"
+           style="display:block;width:100%;text-align:left;margin-bottom:7px">
+           <div style="font-weight:750;font-size:14.5px">${esc(x.name)}</div>
+           <div style="font-size:11.5px;color:var(--text-3);margin-top:3px">${esc(x.hint)} would be avoided</div>
+         </button>`).join('')}
+     </div>
+     ${a?`
+     <div class="field"><label>Side</label>
+       <div class="pills" id="limSide">${['','Left','Right','Both'].map(s=>
+         `<button data-v="${s}" class="${(d.side||'')===s?'on':''}">${s||'Not specific'}</button>`).join('')}</div></div>
+     <div class="field"><label>How limiting is it?</label>
+       <div class="pills" id="limSev">
+         <button data-v="mod" class="${d.severity!=='high'?'on':''}">Managing it</button>
+         <button data-v="high" class="${d.severity==='high'?'on':''}">Significant</button>
+       </div>
+       <div class="hint">Managing it caps the risky movements. Significant blocks them.</div></div>
+     <div class="field"><label>Until</label>
+       <input class="inp" type="date" id="limUntil" value="${esc(d.until||'')}">
+       <div class="hint">Expires on its own. Mark it better early if it clears up.</div></div>
+     <div class="field"><label>Note (optional)</label>
+       <input class="inp" id="limNote" value="${esc(d.note||'')}" placeholder="e.g. physio said avoid deep flexion"></div>
+     <div class="note warn">While this is active: <b>${esc((a.avoid||[]).map(p=>PATTERNS[p]||p).join(', '))}</b> is dropped${
+        (a.caution||[]).length?`, and <b>${esc(a.caution.map(p=>PATTERNS[p]||p).join(', '))}</b> ${d.severity==='high'?'is dropped too':'is kept but capped'}`:''}.</div>
+     `:''}`;
+    const foot=`<div class="btn-row">
+      ${ex?`<button class="btn ghost" id="limDel">Remove</button>`:''}
+      <button class="btn primary" id="limSave" style="flex:2">${ex?'Save':'Add limitation'}</button></div>`;
+    if($('#sheet').classList.contains('on')) updateSheet(ex?'Edit limitation':'Add a limitation', body, foot);
+    else openSheet(ex?'Edit limitation':'Add a limitation', body, foot);
+
+    $$('.limArea').forEach(b=>b.onclick=()=>{ d.area=b.dataset.v; haptic(); draw(); });
+    const pill=(sel,k)=>{ const el=$(sel); if(!el)return;
+      $$(sel+' button').forEach(b=>b.onclick=()=>{ d[k]=b.dataset.v; haptic(); draw(); }); };
+    pill('#limSide','side'); pill('#limSev','severity');
+    const del=$('#limDel');
+    if(del) del.onclick=()=>{ DB.profile.limits=P.limits.filter(l=>l.id!==d.id);
+      save(true); closeSheet(); toast('Limitation removed'); setTimeout(render,240); };
+    $('#limSave').onclick=()=>{
+      if(!d.area){ toast('Pick an area first','err'); return; }
+      const u=$('#limUntil'); if(u) d.until=u.value||null;
+      const n=$('#limNote'); if(n) d.note=n.value.trim();
+      if(!ex) P.limits.push(d);
+      save(true); closeSheet(); toast('Saved — sessions will route around it','ok');
+      setTimeout(render,240);
+    };
+  };
+  draw();
+}
+
+/* =========================================================================
+   VIEW: METRICS  (import · baselines · trends · sleep)
+   ====================================================================== */
+let HTAB='trends';
+function viewWhoop(v){
+  const n=DB.whoop.cycles.length;
+  /* generic heading; the device's name belongs in the subtitle, where it is
+     context rather than a label that changes shape per user */
+  appbar('Metrics',
+    n ? `${esc(usesDevice()?SRC_NAME():'Manual')} · ${n} days · ${DB.whoop.cycles[0].date} → ${DB.whoop.cycles[n-1].date}`
+      : (usesDevice() ? `${esc(SRC_NAME())} · nothing imported yet`
+                      : 'No wearable — running from your check-ins'));
+  /* Nothing to chart and no device to chart it from. The panes used to carry
+     this message via needImport(); with the sub-tabs gone the index has to
+     carry it, or someone with no wearable gets four rows leading to four
+     empty screens. */
+  if(!usesDevice() && !DB.whoop.cycles.length){
+    v.innerHTML=`<div class="empty"><h4>No wearable connected</h4>
+      <p>These pages chart a device's overnight metrics. Baseline runs from your
+         daily check-in and training log instead, and does not need one.</p>
+      <button class="btn primary" id="mAdd" style="margin-top:16px">Add a wearable</button></div>
+      <div class="rows" id="hRows" hidden></div>`;
+    $('#mAdd').onclick=()=>startSetup(true);
+    bindInputs(v);
+    return;
+  }
+  /* HTAB survives so the places that deep-link here ("Import your data")
+     still land on the right pane; it simply picks a page now instead of a tab. */
+  const rows=[
+    {t:'Trends', icon:'chart', s: n? `${n} days of history` : 'Nothing imported yet',
+     go:()=>openPane('Trends', null, paneTrends)},
+    {t:'Sleep', icon:'moon', s: n? 'Duration against your need' : 'Nothing imported yet',
+     go:()=>openPane('Sleep', null, paneSleep)},
+    {t:'Baselines', icon:'target',
+     s: DB.baselines.computed? 'Your own normal, not a population average' : 'Not established yet',
+     go:()=>openPane('Baselines', null, paneBaselines)},
+    {t:'Import', icon:'ul', s: usesDevice()? `Add a ${esc(SRC_NAME())} export` : 'Add a wearable export',
+     go:()=>openPane('Import', null, paneImport)}
+  ];
+  v.innerHTML=navRows('hRows',rows);
+  wireRows('hRows',rows);
+  /* a deep link opens its pane straight away rather than the index */
+  if(HTAB){
+    const want={trends:0,sleep:1,baselines:2,import:3}[HTAB];
+    if(want!=null && HTAB!=='trends'){ HTAB=null; rows[want].go(); return; }
+    HTAB=null;
+  }
+  bindInputs(v);
+}
+function needImport(c){
+  c.innerHTML=usesDevice()
+    ? `<div class="empty"><div class="ei">${svg('chart')}</div><h4>No ${esc(SRC_NAME())} data yet</h4>
+       <p>Import an export from ${esc(SRC_NAME())} to unlock trends, baselines and correlations — or type this morning's numbers into the daily check-in.</p>
+       <button class="btn primary" id="niGo" style="margin-top:16px">Go to import</button></div>`
+    : `<div class="empty"><div class="ei">${svg('edit')}</div><h4>No wearable connected</h4>
+       <p>Trends here are built from a device's overnight metrics. You told setup you do not use one, so there is nothing to chart — the daily engine runs from your check-ins and training log instead.</p>
+       <button class="btn primary" id="niGo" style="margin-top:16px">Add a wearable</button></div>`;
+  $('#niGo').onclick=()=>{ if(usesDevice()){ HTAB='import'; render(); } else startSetup(true); };
+}
+function paneTrends(c){
+  const C=DB.whoop.cycles; if(!C.length) return needImport(c);
+  const N=Math.min(60,C.length), R=C.slice(-N);
+  const B=DB.baselines;
+  const last7=C.slice(-7), prev7=C.slice(-14,-7);
+  const d=(k,dp)=>{ const a=mean(last7.map(x=>x[k])), b=mean(prev7.map(x=>x[k]));
+    if(a==null||b==null)return ''; const v=a-b; return `${v>0?'▲':v<0?'▼':'–'} ${Math.abs(rnd(v,dp||0))} vs prev 7d`; };
+  c.innerHTML=`
+   <div class="stats">
+     ${statTile('Recovery',rnd(mean(last7.map(x=>x.recovery)),0),'%','a',d('recovery'))}
+     ${statTile('HRV',rnd(mean(last7.map(x=>x.hrv)),0),'ms','c',d('hrv'))}
+     ${statTile('RHR',rnd(mean(last7.map(x=>x.rhr)),1),'bpm','',d('rhr',1))}
+   </div>
+   <div class="card" style="margin-top:12px">
+     <div class="card-h"><div class="card-t accent">Recovery — last ${N} days</div></div>
+     <div class="chart-wrap">${lineChart([{pts:R.map(x=>({v:x.recovery})),color:'var(--accent)',area:true}],{h:104,min:0,max:100,baseline:B.recovery})}</div>
+     <div class="legend"><span><i style="background:var(--accent)"></i>Daily recovery</span><span><i style="background:var(--text-3)"></i>Your ${dv(B.recovery,0)}% average</span></div>
+   </div>
+   <div class="card">
+     <div class="card-h"><div class="card-t">HRV vs baseline</div><span class="tag c">${dv(B.hrv,0)} MS ± ${dv(B.hrvSd,0)}</span></div>
+     <div class="chart-wrap">${lineChart([
+       {pts:R.map(x=>({v:x.hrv})),color:'var(--cyan)',area:true},
+       {pts:R.map((x,i)=>({v:mean(R.slice(Math.max(0,i-6),i+1).map(y=>y.hrv))})),color:'var(--violet)',dots:false,w:1.6,dash:true}
+     ],{h:104,baseline:B.hrv})}</div>
+     <div class="legend"><span><i style="background:var(--cyan)"></i>Daily HRV</span><span><i style="background:var(--violet)"></i>7-day average</span><span><i style="background:var(--text-3)"></i>Baseline</span></div>
+   </div>
+   <div class="card">
+     <div class="card-h"><div class="card-t">Resting heart rate</div><span class="tag">${dv(B.rhr,1)} BPM ± ${dv(B.rhrSd,1)}</span></div>
+     <div class="chart-wrap">${lineChart([{pts:R.map(x=>({v:x.rhr})),color:'var(--orange)',area:true}],{h:92,baseline:B.rhr,dp:0})}</div>
+   </div>
+   <div class="card">
+     <div class="card-h"><div class="card-t">Respiratory rate</div><span class="tag">${dv(B.respRate,1)} RPM ± ${dv(B.respSd,2)}</span></div>
+     <div class="chart-wrap">${lineChart([{pts:R.map(x=>({v:x.resp})),color:'var(--violet)',area:true}],{h:84,dp:1,baseline:B.respRate})}</div>
+     <div class="hint" style="margin-top:6px">Normally very stable. A sustained jump is a health signal, not a training one.</div>
+   </div>
+   <div class="card">
+     <div class="card-h"><div class="card-t">Day strain</div></div>
+     <div class="chart-wrap">${barChart(C.slice(-28).map(x=>({v:x.strain,color:x.strain>=14?'var(--orange)':x.strain>=10?'var(--accent)':'var(--surface-3)'})),{h:84,max:21})}</div>
+     <div class="hint" style="margin-top:6px">Orange bars are strain ${DB.settings.hardStrain}+, the level you have set as a hard day.${(()=>{
+       const pairs=[]; C.forEach((x,i)=>{ const n=C[i+1];
+         if(n&&x.strain!=null&&n.recovery!=null) pairs.push({hard:x.strain>=DB.settings.hardStrain,r:n.recovery}); });
+       const h=pairs.filter(x=>x.hard).map(x=>x.r), l=pairs.filter(x=>!x.hard).map(x=>x.r);
+       if(h.length<5||l.length<5) return ' Once you have a few weeks of data here, this will say what they actually cost you.';
+       return ` In your own data they are followed by <b>${rnd(mean(h),1)}%</b> recovery against <b>${rnd(mean(l),1)}%</b> after easier days.`;})()}</div>
+   </div>
+   <div class="card">
+     <div class="card-h"><div class="card-t">Recovery band mix — last 30 days</div></div>
+     ${(()=>{const l=C.slice(-30).filter(x=>x.recovery!=null);
+       const g=l.filter(x=>x.recovery>=67).length,y=l.filter(x=>x.recovery>=34&&x.recovery<67).length,r=l.filter(x=>x.recovery<34).length;
+       const t=l.length||1;
+       return `<div style="display:flex;height:11px;border-radius:99px;overflow:hidden;margin-bottom:11px">
+         <div style="width:${g/t*100}%;background:var(--green)"></div>
+         <div style="width:${y/t*100}%;background:var(--yellow)"></div>
+         <div style="width:${r/t*100}%;background:var(--red)"></div></div>
+         <div class="kv"><span class="k" style="color:var(--green)">Green (67+)</span><span class="v">${g} days · ${Math.round(g/t*100)}%</span></div>
+         <div class="kv"><span class="k" style="color:var(--yellow)">Yellow (34–66)</span><span class="v">${y} days · ${Math.round(y/t*100)}%</span></div>
+         <div class="kv"><span class="k" style="color:var(--red)">Red (under 34)</span><span class="v">${r} days · ${Math.round(r/t*100)}%</span></div>`;})()}
+   </div>`;
+}
+function paneSleep(c){
+  const C=DB.whoop.cycles.filter(x=>x.sleepMin!=null); if(!C.length) return needImport(c);
+  const R=C.slice(-45), B=DB.baselines;
+  const shortfalls=C.map(x=>(x.sleepNeed||B.sleepNeed)-x.sleepMin);
+  const under=shortfalls.filter(s=>s>0);
+  const buckets=[{l:'Met need',f:s=>s<=0},{l:'0–60 min short',f:s=>s>0&&s<=60},
+                 {l:'60–120 min short',f:s=>s>60&&s<=120},{l:'120+ min short',f:s=>s>120}];
+  c.innerHTML=`
+   <div class="stats">
+     ${statTile('Avg sleep',fmtMin(mean(C.map(x=>x.sleepMin))),'','c')}
+     ${statTile('Sleep need',fmtMin(B.sleepNeed),'','a')}
+     ${statTile('Efficiency',rnd(mean(C.map(x=>x.sleepEff)),0),'%','g')}
+   </div>
+   <div class="card" style="margin-top:12px">
+     <div class="card-h"><div class="card-t accent">Sleep vs need — last ${R.length} nights</div></div>
+     <div class="chart-wrap">${lineChart([
+       {pts:R.map(x=>({v:x.sleepMin})),color:'var(--cyan)',area:true},
+       {pts:R.map(x=>({v:x.sleepNeed||B.sleepNeed})),color:'var(--accent)',dots:false,dash:true,w:1.6}],{h:104,l:34})}</div>
+     <div class="legend"><span><i style="background:var(--cyan)"></i>Slept</span><span><i style="background:var(--accent)"></i>Need</span></div>
+     <div class="note ${mean(under)>60?'warn':'acc'}">
+       You were short of need on <b>${under.length} of ${C.length}</b> nights (${Math.round(under.length/C.length*100)}%), by an average of <b>${rnd(mean(under),0)} min</b> when short.</div>
+   </div>
+   <div class="card">
+     <div class="card-h"><div class="card-t">The 60-minute cliff</div></div>
+     ${buckets.map(b=>{
+       const rows=C.filter(x=>b.f((x.sleepNeed||B.sleepNeed)-x.sleepMin));
+       const rec=mean(rows.map(x=>x.recovery));
+       return `<div style="margin-bottom:12px">
+         <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:5px">
+           <span style="font-weight:650;color:var(--text-2)">${b.l} <span style="color:var(--text-3);font-weight:600">· ${rows.length} nights</span></span>
+           <span class="num" style="font-weight:800;color:${rec>=67?'var(--green)':rec>=55?'var(--yellow)':'var(--orange)'}">${rec!=null?rnd(rec,1)+'%':'—'}</span></div>
+         <div class="bar ${rec>=67?'g':rec>=55?'y':'o'}"><i style="width:${rec?clamp(rec,0,100):0}%"></i></div></div>`;}).join('')}
+     <div class="note acc">Average recovery by how short of your sleep need you slept. More than an hour short is where it starts to show.</div>
+   </div>
+   <div class="card">
+     <div class="card-h"><div class="card-t">Sleep stages — last ${Math.min(30,R.length)} nights</div></div>
+     ${['deep','rem','light'].map((k,i)=>{
+       const v=mean(C.slice(-30).map(x=>x[k]));
+       return `<div class="kv"><span class="k">${['Deep (SWS)','REM','Light'][i]}</span><span class="v">${fmtMin(v)} avg</span></div>`;}).join('')}
+     <div class="kv"><span class="k">Awake</span><span class="v">${fmtMin(mean(C.slice(-30).map(x=>x.awake)))} avg</span></div>
+     <div class="kv"><span class="k">Sleep consistency</span><span class="v">${rnd(mean(C.slice(-30).map(x=>x.sleepCons)),0)}%</span></div>
+   </div>
+   <div class="card">
+     <div class="card-h"><div class="card-t">Sleep &amp; recovery</div></div>
+     <div class="chart-wrap">${lineChart([
+       {pts:R.map(x=>({v:x.recovery})),color:'var(--accent)'},
+       {pts:R.map(x=>({v:x.sleepMin!=null?clamp(x.sleepMin/600*100,0,100):null})),color:'var(--cyan)'}],{h:96,min:0,max:100})}</div>
+     <div class="legend"><span><i style="background:var(--accent)"></i>Recovery %</span><span><i style="background:var(--cyan)"></i>Sleep (scaled)</span></div>
+   </div>`;
+}
+function paneBaselines(c){
+  const B=DB.baselines;
+  c.innerHTML=`
+   <div class="note ${B.computed?'acc':''}" style="margin-bottom:14px">${esc(B.source)}</div>
+   <div class="card">
+     <div class="card-h"><div class="card-t accent">Your personal baselines</div>
+       <button class="btn xs ghost" id="bRecalc">Recalculate</button></div>
+     ${[['HRV','hrv','ms',0],['HRV variability (SD)','hrvSd','ms',1],
+        ['Resting HR','rhr','bpm',1],['RHR variability (SD)','rhrSd','bpm',1],
+        ['Typical recovery','recovery','%',1],['Recovery variability (SD)','recoverySd','%',1],
+        ['Sleep need','sleepNeed','min',0],['Typical sleep','sleepMean','min',0],
+        ['Respiratory rate','respRate','rpm',2],['Typical day strain','strainMean','',1]]
+       .map(([l,k,u,dp])=>`<div class="kv"><span class="k">${l}</span><span class="v num">${B[k]!=null?rnd(B[k],dp):'—'} ${u}</span></div>`).join('')}
+   </div>
+   <div class="card">
+     <div class="card-t" style="margin-bottom:10px">How the engine uses these</div>
+     <div class="kv"><span class="k">HRV alert threshold</span><span class="v">below ${rnd(B.hrv-1.5*B.hrvSd,0)} ms</span></div>
+     <div class="kv"><span class="k">RHR alert threshold</span><span class="v">above ${rnd(B.rhr+1.5*B.rhrSd,0)} bpm</span></div>
+     <div class="kv"><span class="k">Sleep floor (no penalty)</span><span class="v">${fmtMin(B.sleepNeed-60)}</span></div>
+     <div class="kv"><span class="k">Hard-strain threshold</span><span class="v">${DB.settings.hardStrain}+</span></div>
+     
+   </div>
+   <div class="card">
+     <div class="card-t" style="margin-bottom:10px">Data inventory</div>
+     <div class="kv"><span class="k">Days imported</span><span class="v">${DB.whoop.cycles.length}</span></div>
+     <div class="kv"><span class="k">Workouts imported</span><span class="v">${DB.whoop.workouts.length}</span></div>
+     <div class="kv"><span class="k">Journal entries</span><span class="v">${DB.whoop.journal.length}</span></div>
+     <div class="kv"><span class="k">Your check-ins</span><span class="v">${Object.keys(DB.checkins).length}</span></div>
+     <div class="kv"><span class="k">Your completed sessions</span><span class="v">${DB.sessions.filter(s=>s.done).length}</span></div>
+     <div class="kv"><span class="k">Your logged activities</span><span class="v">${DB.activities.length}</span></div>
+   </div>
+   ${DB.whoop.journal.length?journalCard():''}`;
+  $('#bRecalc').onclick=()=>{ recomputeBaselines(); save(true); toast('Baselines recalculated','ok'); render(); };
+}
+function journalCard(){
+  const J=DB.whoop.journal, qs={};
+  J.forEach(j=>{ qs[j.q]=qs[j.q]||{n:0,y:0}; qs[j.q].n++; if(j.yes)qs[j.q].y++; });
+  const rows=Object.entries(qs).map(([q,v])=>({q,n:v.n,pct:v.y/v.n*100}))
+    .filter(r=>r.n>=10).sort((a,b)=>Math.abs(50-a.pct)-Math.abs(50-b.pct));
+  const useful=rows.filter(r=>r.pct>3&&r.pct<97);
+  return `<div class="card">
+    <div class="card-h"><div class="card-t">Journal behaviours</div><span class="tag">${rows.length} QUESTIONS</span></div>
+    <div class="hint" style="margin-bottom:11px">${rows.length-useful.length} of ${rows.length} questions almost never vary, so they carry no information.</div>
+    ${useful.slice(0,14).map(r=>`<div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+        <span style="color:var(--text-2);font-weight:600;flex:1;padding-right:8px">${esc(r.q)}</span>
+        <span class="num" style="font-weight:750">${rnd(r.pct,0)}%</span></div>
+      <div class="bar c"><i style="width:${r.pct}%"></i></div></div>`).join('')}
+    
+  </div>`;
+}
+
+/* =========================================================================
+   DELETING IMPORTED DATA
+   ------------------------------------------------------------------------
+   Everything derived from an import goes with it: the days, the workouts, the
+   journal rows, the record of the imports themselves, and the baselines that
+   were computed from them. The device stops being named as a source, so the
+   app does not go on claiming a wearable it no longer has data from.
+
+   Store.purgeLegacy() is the part that is easy to miss. Store.write() prefers
+   IndexedDB and only falls back to a whole-DB JSON blob in localStorage when
+   IndexedDB is unavailable. A device that hit that fallback once has health
+   data in that blob, and a delete that goes through the normal write path
+   never touches it - so the app would have told the user their data was gone
+   while a copy of it sat in localStorage.
+
+   What is NOT deleted: the user's own sessions, activities, check-ins,
+   settings and program. They did not come from the import and deleting them
+   is not what was asked for.
+   ====================================================================== */
+function importedCounts(){
+  const w=(DB&&DB.whoop)||{};
+  return {days:(w.cycles||[]).length, workouts:(w.workouts||[]).length,
+          journal:(w.journal||[]).length, imports:(w.imports||[]).length};
+}
+function deleteImportedData(){
+  const gone=importedCounts();
+  DB.whoop={cycles:[],workouts:[],journal:[],imports:[]};
+  DB.baselines=Object.assign({},SEED_BASE);
+  DB.profile.mode='manual';
+  DB.profile.source='none';
+  DB.profile.sourceFields=null;
+  saveWhoop();
+  Store.purgeLegacy();
+  return gone;
+}
+
+/* ------------------------------------------------------------ IMPORT */
+function paneImport(c){
+  const im=DB.whoop.imports.slice().reverse();
+  c.innerHTML=`
+   <div class="card">
+     <div class="card-t accent" style="margin-bottom:10px">Import your ${esc(SRC_NAME())} data export</div>
+     <p style="font-size:13.5px;line-height:1.6;color:var(--text-2)">${esc(sourceOf().how)}</p>
+     ${sourceOf().id==='whoop'?`<div style="margin-top:12px">
+       ${[['physiological_cycles.csv','Recovery, HRV, RHR, strain, sleep — the main file'],
+          ['sleeps.csv','Sleep detail and naps'],
+          ['workouts.csv','Individual activities and their strain'],
+          ['journal_entries.csv','Behaviour log']].map(([f,d])=>
+         `<div class="kv"><span class="k mono">${f}</span><span class="v" style="font-weight:600;font-size:11.5px;color:var(--text-3);max-width:52%">${d}</span></div>`).join('')}
+     </div>`:`<div class="note acc">
+       Any daily CSV with a date column and columns it recognises: ${esc(srcFields().map(f=>fieldLabel(f).toLowerCase()).join(', '))}. Headers are matched loosely.
+     </div>`}
+     <div class="note acc" style="margin-top:14px">
+       Your imported fitness data is used to personalise Baseline's readiness and training recommendations. Only upload data you are authorised to provide. You can delete your imported data at any time.
+     </div>
+     <button class="tert" id="impHowT" aria-expanded="false" aria-controls="impHow">
+       How your data is used ${svg('down')}</button>
+     <div class="whybox" id="impHow" hidden>
+       <div class="kv"><span class="k">What is read</span><span class="v">The CSV files you choose</span></div>
+       <div class="kv"><span class="k">What is kept</span><span class="v">Daily figures only</span></div>
+       <div class="kv"><span class="k">Where it is processed</span><span class="v">In this browser</span></div>
+       <div class="kv"><span class="k">Where it is stored</span><span class="v">On this device</span></div>
+       <div class="kv"><span class="k">Sent anywhere</span><span class="v">No</span></div>
+       <ul class="why" style="border:none;padding:10px 0 0;margin:0">
+         <li class="pos"><span class="dot"></span><span>The file itself is <b>never stored</b>. It is read into memory,
+           the figures Baseline understands are taken out of it, and the text is discarded.</span></li>
+         <li class="pos"><span class="dot"></span><span>Only what the engine uses is kept: a date, and the recovery,
+           HRV, resting heart rate, sleep and strain figures for that date.
+           Free-text journal notes are <b>not</b> kept.</span></li>
+         <li class="pos"><span class="dot"></span><span>Nothing is uploaded. Baseline has no account, no server and no
+           analytics, and the page makes no network requests once it has loaded.</span></li>
+         <li class="pos"><span class="dot"></span><span>It is stored in this browser's own database on this device.
+           Clearing the site's data, or <b>Delete imported data</b> in Settings, removes it.</span></li>
+         <li class="warn"><span class="dot"></span><span>Anyone who can unlock this device can open the app. Baseline
+           has no passcode of its own.</span></li>
+       </ul>
+     </div>
+     <button class="btn primary big block" id="impGo" style="margin-top:12px">${svg('ul')} Choose CSV files</button>
+     <div class="hint" style="margin-top:9px">Read in your browser only. Re-importing is safe — duplicates are skipped.
+       Up to ${IMPORT_MAX_MB} MB per file.</div>
+   </div>
+   ${DB.whoop.cycles.length?`<div class="card">
+     <div class="card-h"><div class="card-t">Imported data on this device</div></div>
+     <div class="kv"><span class="k">Cycles</span><span class="v">${DB.whoop.cycles.length} (${DB.whoop.cycles[0].date} → ${DB.whoop.cycles[DB.whoop.cycles.length-1].date})</span></div>
+     <div class="kv"><span class="k">Workouts</span><span class="v">${DB.whoop.workouts.length}</span></div>
+     <div class="kv"><span class="k">Journal rows</span><span class="v">${DB.whoop.journal.length}</span></div>
+   </div>`:''}
+   ${im.length?`<div class="card">
+     <div class="card-h"><div class="card-t">Import history</div></div>
+     ${im.slice(0,8).map(x=>`<div class="kv"><span class="k">${new Date(x.at).toLocaleString()}</span>
+       <span class="v" style="font-size:11.5px">${x.results.map(r=>r.error?`<span style="color:var(--red)">${esc(r.file)}: ${esc(r.error)}</span>`:`${esc(r.kind)} +${r.added}${r.dupes?` (${r.dupes} dup)`:''}`).join('<br>')}</span></div>`).join('')}
+   </div>`:''}
+   <div class="card">
+     <div class="card-t" style="margin-bottom:9px">Safety rules this importer follows</div>
+     <ul class="why" style="border:none;padding:0;margin:0">
+       <li class="pos"><span class="dot"></span><span>File type is detected from the <b>headers</b>, not the filename — renamed files still work.</span></li>
+       <li class="pos"><span class="dot"></span><span>Column names are matched loosely and against several vendors' wording, so a renamed header still resolves instead of silently producing blanks.</span></li>
+       <li class="pos"><span class="dot"></span><span>Cycles are keyed by date, workouts by start time + activity, journal rows by date + question — re-importing never duplicates.</span></li>
+       <li class="pos"><span class="dot"></span><span>Existing values are never overwritten; a re-import only fills gaps.</span></li>
+       <li class="pos"><span class="dot"></span><span>Naps are skipped so they cannot overwrite a main sleep.</span></li>
+       <li class="warn"><span class="dot"></span><span>If a file cannot be recognised it is <b>rejected with a message</b> rather than imported as wrong data.</span></li>
+     </ul>
+   </div>`;
+  $('#impGo').onclick=()=>$('#fileIn').click();
+  const ht=$('#impHowT'), hb=$('#impHow');
+  if(ht&&hb) ht.onclick=()=>{
+    const open=hb.hasAttribute('hidden');
+    if(open) hb.removeAttribute('hidden'); else hb.setAttribute('hidden','');
+    ht.classList.toggle('open',open);
+    ht.setAttribute('aria-expanded',open?'true':'false');
+    haptic();
+  };
+}
+$('#fileIn').addEventListener('change',async e=>{
+  const files=Array.from(e.target.files||[]); if(!files.length)return;
+  toast('Reading '+files.length+' file'+(files.length>1?'s':'')+'…');
+  const results=[];
+  for(const f of files){
+    /* the picker's accept= is a hint; this is the check */
+    const bad=importFileCheck(f);
+    if(bad){ results.push({file:f.name,error:bad,added:0,dupes:0,rows:0}); continue; }
+    try{ const txt=await f.text(); results.push(importWhoopFile(f.name,txt)); }
+    catch(err){
+      /* deliberately not the thrown message: a browser's file error can
+         quote the path it failed on */
+      results.push({file:f.name,error:'Could not read that file',added:0,dupes:0,rows:0});
+    }
+  }
+  DB.whoop.imports.push({at:new Date().toISOString(),results});
+  recomputeBaselines(); saveWhoop();
+  e.target.value='';
+  const ok=results.filter(r=>!r.error), bad=results.filter(r=>r.error);
+  const added=sum(ok.map(r=>r.added)), dup=sum(ok.map(r=>r.dupes));
+  openSheet('Import complete',`
+    ${bad.length?`<div class="note warn"><b>${bad.length} file${bad.length>1?'s were':' was'} not imported.</b>
+       ${bad.map(r=>esc(r.file)+' — '+esc(r.error)).join('<br>')}</div>`:''}
+    ${ok.map(r=>`<div class="card tight"><div style="font-weight:750;font-size:14px">${esc(r.file)}</div>
+      <div class="kv"><span class="k">Detected as</span><span class="v">${esc(r.kind||'—')}</span></div>
+      <div class="kv"><span class="k">Rows in file</span><span class="v">${r.rows}</span></div>
+      <div class="kv"><span class="k">New records added</span><span class="v" style="color:var(--accent)">${r.added}</span></div>
+      ${r.merged?`<div class="kv"><span class="k">Merged into an existing day</span><span class="v">${r.merged}</span></div>`:''}
+      <div class="kv"><span class="k">Duplicates skipped</span><span class="v">${r.dupes}</span></div>
+      ${r.naps?`<div class="kv"><span class="k">Naps skipped</span><span class="v">${r.naps}</span></div>`:''}
+      ${r.bad?`<div class="kv"><span class="k">Rows without a usable date</span><span class="v">${r.bad}</span></div>`:''}
+      ${r.days?`<div class="kv"><span class="k">Total days now held</span><span class="v">${r.days}</span></div>`:''}
+    </div>`).join('')}
+    ${ok.some(r=>r.merged)?`<div class="note">Two cycles in one calendar day were merged — one decision per day. That is why days can be fewer than rows.</div>`:''}
+    ${bad.map(r=>`<div class="card tight" style="border-color:var(--red-line)">
+      <div style="font-weight:750;font-size:14px">${esc(r.file)}</div>
+      <div class="note red">${esc(r.error)}</div></div>`).join('')}
+    <div class="note acc"><b>${added}</b> new rows imported, <b>${dup}</b> duplicates skipped. Baselines have been recalculated from your most recent 90 cycles.</div>
+  `,`<button class="btn primary big block" onclick="closeSheet()">Done</button>`,()=>render());
+});
+
+/* =========================================================================
+   SETUP / INSTALL — iPhone Safari reality check
+   ====================================================================== */
+function openSetup(auto){
+  const ok=Store.durable, https=ENV.isHttps, file=ENV.isFile, sa=ENV.standalone;
+  const row=(good,label,detail)=>`<div class="row" style="padding:11px 0">
+    <div style="width:24px;flex:0 0 24px;color:${good?'var(--green)':'var(--orange)'};font-size:15px;font-weight:800">${good?svg('check'):svg('info')}</div>
+    <div class="rt"><div class="rn" style="font-size:13.5px">${label}</div>
+    <div class="rs">${detail}</div></div></div>`;
+  openSheet(auto?'Read this first':'Setup & install',`
+   ${!ok?`<div class="note red" style="margin-bottom:14px"><b>Your data will not survive closing this tab.</b>
+     Safari is refusing storage for this page. That is a Safari rule about how the file was opened, not a bug in the app — and it is fixable in about two minutes below.</div>`:''}
+
+   <div class="card tight" style="margin-bottom:14px">
+     <div class="card-t" style="margin-bottom:6px">Current state</div>
+     ${row(ok,'Data storage', ok?`Working — using ${Store.mode}${Store.idb?' (mirrored to IndexedDB)':''}`:'Blocked by Safari — nothing will persist')}
+     ${row(https,'Served over https', file?'No — opened as a local file (file://)':https?'Yes':'Unknown origin')}
+     ${row(sa,'Installed to Home Screen', sa?'Yes — running as a standalone app':'No — running in a Safari tab')}
+     ${row(SW.state==='active'||SW.state==='registered'||SW.state==='update-ready','Offline support',
+        SW.state==='active'||SW.state==='registered'?'Service worker active — opens without internet':
+        SW.state==='update-ready'?'Update ready — reopen the app':
+        SW.state==='not-deployed'?'sw.js not found — upload it next to index.html':
+        SW.state==='insecure-origin'?'Needs https — unavailable on a local file':
+        SW.state==='unsupported'?'Not supported by this browser':'Starting…')}
+     ${row(Store.persisted!==false,'Eviction protection', Store.persisted===true?'Granted':Store.persisted===false?'Not granted — back up weekly':'Not reported by this browser')}
+   </div>
+
+   <div class="card tight" style="margin-bottom:14px">
+     <div class="card-t" style="margin-bottom:6px">Is my data actually persistent?</div>
+     <p style="font-size:13px;line-height:1.6;color:var(--text-2)">Check it yourself in 20 seconds: make any change (a check-in slider, a note), <b>fully close the tab or app</b>, reopen it, and confirm the change is still there. If it is, storage is working.</p>
+     <div class="note warn"><b>What clears it:</b> clearing website data, or iOS evicting a site left unopened. Deleting the Home Screen icon does not. A backup survives all three.</p>
+   </div>
+
+   ${file?`
+   <div class="card">
+     <div class="card-t accent" style="margin-bottom:10px">Why a local file behaves differently</div>
+     <p style="font-size:13.5px;line-height:1.6;color:var(--text-2)">Opening an <span class="mono">.html</span> file from the Files app gives the page an <b>opaque origin</b>. On an opaque origin Safari grants <b>no persistent storage</b>, refuses to register a <b>service worker</b>, will not load a <b>manifest</b>, and does not offer <b>Add to Home Screen</b> at all. The app still runs — it simply cannot remember anything, cannot go offline, and cannot be installed.</p>
+     
+     <div class="note warn">Until you deploy, <b>back up before closing the tab</b>.</div>
+   </div>
+
+   <div class="card">
+     <div class="card-t accent" style="margin-bottom:10px">Fix it — Netlify Drop, about 3 minutes</div>
+     <div style="font-size:13px;color:var(--text-2);line-height:1.7">
+       <div class="kv"><span class="k">1.</span><span class="v" style="text-align:left;font-weight:600">Open <b>app.netlify.com/drop</b> in Safari</span></div>
+       <div class="kv"><span class="k">2.</span><span class="v" style="text-align:left;font-weight:600">Upload the whole <b>baseline-deploy</b> folder — not just one file</span></div>
+       <div class="kv"><span class="k">3.</span><span class="v" style="text-align:left;font-weight:600">Sign up and <b>Claim</b> the site so the link is permanent</span></div>
+       <div class="kv"><span class="k">4.</span><span class="v" style="text-align:left;font-weight:600">Open the link, then Share → <b>Add to Home Screen</b></span></div>
+     </div>
+     <div class="note red"><b>Claim the site before entering any data.</b> Browser storage is tied to the exact address. If the link changes later, your history is stranded on the old one.</div>
+     
+   </div>
+
+   <div class="card">
+     <div class="card-t" style="margin-bottom:10px">Other options</div>
+     <div style="font-size:13px;color:var(--text-2);line-height:1.6;margin-bottom:12px">
+       <b>Cloudflare Pages</b> — same drag-and-drop idea, free, needs an account.</div>
+     <div style="font-size:13px;color:var(--text-2);line-height:1.6">
+       <b>A local web server</b> — most private, nothing leaves your network, but needs a computer awake on the same Wi-Fi, so it is the least convenient day to day.</div>
+   </div>`:''}
+
+   ${https&&!sa?`
+   <div class="card">
+     <div class="card-t accent" style="margin-bottom:10px">Add to Home Screen</div>
+     <p style="font-size:13.5px;line-height:1.6;color:var(--text-2)">You are on https, so installing works and is worth doing — it runs full-screen with no Safari chrome, keeps its own storage, and behaves like a normal app.</p>
+     <div style="margin-top:12px">
+       <div class="kv"><span class="k">1.</span><span class="v" style="text-align:left;font-weight:600">Tap the <b>Share</b> button (□↑) in Safari's toolbar</span></div>
+       <div class="kv"><span class="k">2.</span><span class="v" style="text-align:left;font-weight:600">Scroll and tap <b>Add to Home Screen</b></span></div>
+       <div class="kv"><span class="k">3.</span><span class="v" style="text-align:left;font-weight:600">Tap <b>Add</b></span></div>
+     </div>
+     <div class="note acc">Open it from the Home Screen icon from then on.</div>
+   </div>`:''}
+
+   ${sa?`<div class="card" style="border-color:var(--green-line);background:var(--green-wash)">
+     <div style="font-weight:750;font-size:15px">Installed and storing correctly</div>
+     <div style="font-size:13px;color:var(--text-2);margin-top:6px;line-height:1.55">Running standalone from your Home Screen with working storage. Nothing else to do — just export a JSON backup now and then.</div>
+   </div>`:''}
+
+   <div class="card">
+     <div class="card-t" style="margin-bottom:9px">Backups are the real safety net</div>
+     <p style="font-size:13px;line-height:1.6;color:var(--text-2)">Even with storage working, iOS can clear website data for sites you have not opened in a while, and "Clear History and Website Data" erases it instantly. A JSON backup takes five seconds and restores everything.</p>
+     <button class="btn primary block" id="suBk">${svg('dl')} Export backup now</button>
+   </div>
+  `,`<button class="btn ${ok?'primary':'ghost'} big block" onclick="closeSheet()">${ok?'Got it':'Continue anyway'}</button>`);
+  const b=$('#suBk'); if(b)b.onclick=exportJSON;
+}
+
+/* =========================================================================
+   VIEW: SETTINGS
+   ====================================================================== */
+/* Six groups, each a pushed page. The order is the order of likelihood that
+   somebody is looking for it, not the order the code happens to be in. */
+/* `sec` groups the index into headings. The order here is still the order the
+   groups appear in, so anything addressing a group by position sees no
+   change - and nothing should be addressing them by position anyway. */
+const SET_PANES=[
+  {id:'profile',   name:'Profile',    icon:'today',   sec:'you',
+   s:'Name, age, height, weight'},
+  {id:'appearance',name:'Appearance', icon:'moon',    sec:'you',
+   s:'Light, dark or follow the system'},
+  {id:'training',  name:'Training',   icon:'dumbbell',sec:'training',
+   s:'Equipment, sport, goals, schedule, injuries'},
+  {id:'alerts',    name:'Sound & alerts', icon:'timer', sec:'training',
+   s:'Rest timer, tones, and being told when it ends'},
+  {id:'cycle',     name:'Cycle',      icon:'drop',    sec:'training',
+   s:'Optional menstrual cycle tracking'},
+  {id:'wearables', name:'Wearables',  icon:'watch',   sec:'data',
+   s:'Your device and what it provides'},
+  {id:'data',      name:'Data',       icon:'dl',      sec:'data',
+   s:'Backup, restore, erase'},
+  {id:'about',     name:'About',      icon:'info',    sec:'about',
+   s:'Version, diagnostics, install, privacy'}
+];
+const SET_SECTIONS=[
+  {id:'you',      t:'You'},
+  {id:'training', t:'Training'},
+  {id:'data',     t:'Your data'},
+  {id:'about',    t:null}
+];
+let SETTAB='profile';
+/* Shows one group and hides the rest. The segment bar it used to also
+   update is gone; $$ on a missing selector is simply empty. */
+function setPane(id){
+  SETTAB=id;
+  $$('#view .spane').forEach(el=>el.classList.toggle('on', el.classList.contains(id)));
+  $$('#setSeg button').forEach(b=>b.classList.toggle('on', b.dataset.p===id));
+  const v=$('#view'); if(v) v.scrollTop=0;
+  window.scrollTo(0,0);
+}
+/* Settings and Metrics are reached, not navigated to. Keeping them as page
+   builders means the whole of both screens works unchanged. */
+/* A destination, not a page pushed on top of wherever you were. go() resets
+   the stack, so this always lands on the Settings index rather than inside
+   whichever pane was open last time. */
+function openSettings(){ go('settings'); }
+function openMetrics(){ pushPage({build:viewWhoop}); }
+
+/* The index. Each row pushes the group it names. */
+/* =========================================================================
+   PROFILE CARD
+   Read-only until you ask to edit it. Every other field in Settings saves as
+   you touch it, which suits a toggle and does not suit a number you are half
+   way through typing.
+   ====================================================================== */
+let PROF_EDIT=false, PROF_DRAFT=null;
+
+function profileCard(){
+  const P=DB.profile;
+  const D=PROF_EDIT?PROF_DRAFT:P;
+  const imp=(D.units||'metric')==='imperial';
+  const hrNote = D.age
+    ? `<div class="note">Estimated max HR ≈ <b>${Math.round(208-0.7*D.age)} bpm</b>; Zone 2 roughly ${Math.round((208-0.7*D.age)*0.65)}–${Math.round((208-0.7*D.age)*0.75)} bpm. A formula estimate, not a measurement.</div>`
+    : '';
+
+  if(!PROF_EDIT){
+    return `<div class="card spane profile">
+      <div class="card-h"><div class="card-t accent">Profile</div>
+        <button class="btn xs ghost" id="profEdit">${svg('edit')} Edit</button></div>
+      <div class="kv"><span class="k">Name</span><span class="v">${esc(P.name||'—')}</span></div>
+      <div class="kv"><span class="k">Age</span><span class="v num">${P.age||'—'}</span></div>
+      <div class="kv"><span class="k">Height</span><span class="v num">${esc(showHeight(P.heightCm))}</span></div>
+      <div class="kv"><span class="k">Weight</span><span class="v num">${esc(showWeight(P.weightKg))}</span></div>
+      <div class="kv"><span class="k">Sex</span><span class="v">${esc(P.sex||'—')}</span></div>
+      <div class="kv"><span class="k">Units</span><span class="v">${esc(unitName(P.units))}</span></div>
+      ${hrNote}
+    </div>`;
+  }
+
+  const ft = imp ? cmToFtIn(D.heightCm) : null;
+  return `<div class="card spane profile" style="border-color:var(--accent-line)">
+    <div class="card-h"><div class="card-t accent">Editing profile</div></div>
+    <div class="field"><label>Name</label>
+      <input class="inp" id="sName" value="${esc(D.name||'')}" placeholder="Your name"></div>
+    <div class="grid2">
+      <div class="field"><label>Age</label>
+        <input class="inp num" type="number" inputmode="numeric" id="sAge" value="${D.age||''}"></div>
+      <div class="field"><label>Sex</label><select class="inp" id="sSex">
+        ${['','Male','Female','Prefer not to say'].map(x=>
+          `<option value="${esc(x)}" ${D.sex===x?'selected':''}>${x||'—'}</option>`).join('')}
+      </select></div>
+    </div>
+    ${imp?`
+    <div class="field"><label>Height</label>
+      <div class="grid2">
+        <input class="inp num" type="number" inputmode="numeric" id="sHtFt"
+               value="${ft?ft.ft:''}" placeholder="ft">
+        <input class="inp num" type="number" inputmode="numeric" id="sHtIn"
+               value="${ft?ft.inch:''}" placeholder="in">
+      </div></div>
+    <div class="field"><label>Weight (lb)</label>
+      <input class="inp num" type="number" inputmode="decimal" step="0.1" id="sWtLb"
+             value="${D.weightKg!=null?kgToLb(D.weightKg):''}"></div>`
+    :`
+    <div class="grid2">
+      <div class="field"><label>Height (cm)</label>
+        <input class="inp num" type="number" inputmode="numeric" id="sHt" value="${D.heightCm||''}"></div>
+      <div class="field"><label>Weight (kg)</label>
+        <input class="inp num" type="number" inputmode="decimal" step="0.1" id="sWt" value="${D.weightKg||''}"></div>
+    </div>`}
+    <div class="field"><label>Units</label>
+      <div class="seg acc" id="sUnits">
+        <button data-v="metric" class="${imp?'':'on'}">Metric (kg, cm)</button>
+        <button data-v="imperial" class="${imp?'on':''}">Imperial (lb, ft/in)</button>
+      </div>
+      <div class="hint">Your figures are kept the same and simply shown in the
+        unit you choose — switching back and forth changes nothing.</div></div>
+    ${hrNote}
+    <div class="btn-row">
+      <button class="btn ghost" id="profCancel" style="flex:1">Cancel</button>
+      <button class="btn primary" id="profSave" style="flex:2">Save changes</button>
+    </div>
+  </div>`;
+}
+
+/* read whatever is on screen into the draft, in metric */
+function profRead(){
+  if(!PROF_EDIT||!PROF_DRAFT) return;
+  const g=id=>{ const e=$('#'+id); return e?e.value:null; };
+  const n=id=>{ const x=g(id); return (x==null||x==='')?null:parseFloat(x); };
+  const nm=g('sName'); if(nm!=null) PROF_DRAFT.name=nm.trim();
+  const ag=n('sAge');  if($('#sAge')) PROF_DRAFT.age=ag;
+  const sx=g('sSex');  if(sx!=null) PROF_DRAFT.sex=sx||null;
+  if($('#sHtFt')||$('#sHtIn')) PROF_DRAFT.heightCm=ftInToCm(n('sHtFt'),n('sHtIn'));
+  else if($('#sHt'))           PROF_DRAFT.heightCm=n('sHt');
+  if($('#sWtLb'))              PROF_DRAFT.weightKg=lbToKg(n('sWtLb'));
+  else if($('#sWt'))           PROF_DRAFT.weightKg=n('sWt');
+}
+function profileWire(){
+  const e=$('#profEdit');
+  if(e) e.onclick=()=>{
+    const P=DB.profile;
+    PROF_DRAFT={name:P.name,age:P.age,heightCm:P.heightCm,weightKg:P.weightKg,
+                sex:P.sex,units:P.units||'metric'};
+    PROF_EDIT=true; haptic(); render();
+  };
+  const c=$('#profCancel');
+  if(c) c.onclick=()=>{ PROF_EDIT=false; PROF_DRAFT=null; render(); };
+  const s=$('#profSave');
+  if(s) s.onclick=()=>{
+    profRead();
+    const P=DB.profile;
+    P.name=(PROF_DRAFT.name||'').trim();
+    P.age=PROF_DRAFT.age; P.sex=PROF_DRAFT.sex;
+    P.heightCm=PROF_DRAFT.heightCm; P.weightKg=PROF_DRAFT.weightKg;
+    P.units=PROF_DRAFT.units||'metric';
+    PROF_EDIT=false; PROF_DRAFT=null;
+    save(true); toast('Profile saved','ok'); render();
+  };
+  /* switching units mid-edit keeps whatever has been typed and simply shows
+     it the other way round */
+  $$('#sUnits button').forEach(b=>b.onclick=()=>{
+    if(!PROF_EDIT) return;
+    profRead();
+    PROF_DRAFT.units=b.dataset.v;
+    haptic(); render();
+  });
+}
+
+function viewSettings(v){
+  appbar('Settings');
+  const rows=SET_PANES.map(g=>({
+    t:g.name, s:g.s, icon:g.icon,
+    go:()=>pushPage({build:c=>{ SETTAB=g.id; settingsBody(c); }})
+  }));
+  /* the build, where somebody looking for "what version am I on" looks */
+  /* Who this copy belongs to, and where its data actually lives: the two
+     questions a settings screen is most often opened to answer. */
+  const who=(DB.profile.name||'').trim();
+  const c=Store.counts();
+  const head=`<div class="set-head">
+    <div class="set-who">${who?esc(who):'Baseline'}</div>
+    <div class="set-sub">${
+      [c.sessions+' session'+(c.sessions===1?'':'s'),
+       c.activities+' activit'+(c.activities===1?'y':'ies'),
+       c.cycles? c.cycles+' imported day'+(c.cycles===1?'':'s') : null
+      ].filter(Boolean).join(' · ')}</div>
+    <div class="set-store">${svg(Store.durable?'check':'x')}
+      <span>${Store.durable
+        ? 'Stored on this device · '+esc(Store.mode)
+        : 'Not storing — this browser is blocking storage'}</span></div>
+  </div>`;
+
+  /* One list became one list per heading, because "Profile" and "Wearables"
+     are not the same kind of thing and eight identical rows said they were. */
+  const body='<div id="setRows">'+SET_SECTIONS.map(sec=>{
+    const mine=rows.filter(r=>(SET_PANES.find(g=>g.name===r.t)||{}).sec===sec.id);
+    if(!mine.length) return '';
+    return (sec.t?`<div class="sec-t">${esc(sec.t)}</div>`:'')
+         + navRows('setRows_'+sec.id, mine);
+  }).join('')+'</div>';
+
+  v.innerHTML=head+body
+    + `<div style="text-align:center;padding:18px 0 4px;color:var(--text-3);
+         font-size:11.5px;line-height:1.6">
+         Baseline · version ${esc(APP_BUILD)}<br>
+         <span style="opacity:.75">Storage format v${SCHEMA_VERSION} ·
+           ${esc(Store.mode||'local')}</span>
+       </div>`;
+  /* #setRows is the id everything else - and every test - uses to mean "the
+     settings index". It is now several lists, so one wrapper carries the id
+     and the sections live inside it. */
+  SET_SECTIONS.forEach(sec=>{
+    const mine=rows.filter(r=>(SET_PANES.find(g=>g.name===r.t)||{}).sec===sec.id);
+    if(mine.length) wireRows('setRows_'+sec.id, mine);
+  });
+  bindInputs(v);
+}
+
+function settingsBody(v){
+  const g=SET_PANES.find(x=>x.id===SETTAB)||SET_PANES[0];
+  appbar(g.name);
+  const P=DB.profile,S=DB.settings;
+  v.innerHTML=`
+   <div class="card spane training">
+     <div class="card-h"><div class="card-t accent">Equipment</div>
+       <span class="tag a">${countDoable(P.gear||[])} / ${DB.exercises.length} EXERCISES</span></div>
+     <div class="hint" style="margin-bottom:12px">Bodyweight, a floor and a wall are assumed. Nothing else is.</div>
+     ${''/* replaced by the shared editor below */}${chipPicker({id:'gearPick', chosen:(P.gear||[]),
+        all:EQUIP_ITEMS.map(x=>({id:x.id,name:x.name,hint:x.hint})), allowEmpty:true})}
+     
+     ${(P.gear||[]).indexOf('db')>=0?`
+     <div class="field" style="margin-top:14px"><label>Heaviest dumbbell (kg, each)</label>
+       <input class="inp num" type="number" inputmode="decimal" step="0.5" id="sDbKg" value="${P.dbKg||''}" placeholder="—">
+       <div class="hint">Under 10 kg, progression comes from tempo and single-leg work.</div></div>`:''}
+     <div class="field" style="margin-top:12px"><label>Anything else</label>
+       <input class="inp" id="sEqNote" value="${esc(P.equipNote||'')}" placeholder="e.g. TRX, rowing machine"></div>
+     <div style="margin-top:6px"><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
+       <input type="checkbox" id="sBest" ${P.preferBest!==false?'checked':''} style="width:22px;height:22px;accent-color:var(--accent)">
+       Use the best exercise my equipment allows</label>
+       <div class="hint">On: the best variation your kit allows. Off: always the base exercise.</div></div>
+     
+   </div>
+
+   ${profileCard()}
+
+   <div class="card spane cycle">
+     <div class="card-h"><div class="card-t accent">Cycle tracking</div>
+       <span class="tag ${mcOn()?'g':'c'}">${mcOn()?'ON':'OFF'}</span></div>
+     <div class="hint" style="margin-bottom:14px">Optional. Off unless you turn
+       it on, and it changes nothing about your recommendations until your own
+       logs show a repeated pattern — never because of the phase alone.</div>
+     ${!mcOn()?`
+     <button class="btn primary block" id="sMcEnable">Enable cycle tracking</button>`
+     :`
+     <div class="grid2">
+       <div class="field"><label>Typical cycle length</label>
+         <input class="inp num" type="number" inputmode="numeric" min="15" max="90"
+                id="sMcLen" value="${(DB.mcycle.typicalLen)||''}" placeholder="Not sure"></div>
+       <div class="field"><label>Typical period length</label>
+         <input class="inp num" type="number" inputmode="numeric" min="1" max="15"
+                id="sMcPer" value="${(DB.mcycle.typicalPeriod)||''}" placeholder="Not sure"></div>
+     </div>
+     <div class="field"><label>Add a past period start</label>
+       <input class="inp" type="date" id="sMcStart" max="${todayISO()}">
+       <div class="hint">Only for filling in history. Marking "bleeding" in the
+         daily log creates these by itself — <span id="sMcCount">${
+           mcStarts().length} recorded so far</span>.</div></div>
+     <div class="ruled">
+       <button class="btn ghost block" id="sMcOff">Disable cycle tracking</button>
+     </div>`}
+   </div>
+
+   <div class="card spane appearance">
+     <div class="card-t accent" style="margin-bottom:12px">Appearance</div>
+     <div class="seg acc" id="sTheme">${THEMES.map(x=>
+       `<button data-v="${x.id}" class="${themePref()===x.id?'on':''}">${esc(x.name)}</button>`).join('')}</div>
+     <div class="hint" style="margin-top:9px">Following the system is the default. Pin one if you would rather it stayed put.</div>
+   </div>
+
+   <div class="card spane training">
+     <div class="card-h"><div class="card-t accent">Breaks</div>
+       ${isAway()?`<span class="tag o">AWAY</span>`:''}</div>
+     <div class="hint" style="margin-bottom:12px">${isAway()
+       ? `Paused until <b>${fmtDate(awayUntil())}</b>. Progression is not counting the days.`
+       : 'Going on holiday or laid up? Pause the progression so the gap is not read as missed training.'}</div>
+     <button class="btn ghost block" id="sAway">${isAway()?'Change or end the break':'Pause training'}</button>
+   </div>
+
+   <div class="card spane training">
+     <div class="card-t accent" style="margin-bottom:12px">Schedule</div>
+     <div class="field"><label>Days per week</label>
+       <div class="pills" id="sDays">${[2,3,4,5,6].map(n=>`<button data-v="${n}" class="${P.daysPerWeek===n?'on':''}">${n}</button>`).join('')}</div>
+       ${!hasDays()?`<div class="hint">Not set — Baseline is assuming ${DEFAULT_DAYS}.</div>`:''}</div>
+     <div class="field"><label>Usual session length</label>
+       <div class="pills" id="sDur">${[20,30,45,60,75].map(m=>`<button data-v="${m}" class="${P.sessionMin===m?'on':''}">${m} min</button>`).join('')}</div>
+       ${!hasMin()?`<div class="hint">Not set — Baseline is assuming ${DEFAULT_SESSION_MIN} minutes.</div>`:''}</div>
+   </div>
+
+   <div class="card spane training">
+     <div class="card-h"><div class="card-t accent">Injuries &amp; limitations</div>
+       <button class="btn xs ghost" id="limAdd">${svg('plus')} Add</button></div>
+     ${(() => { const act=activeLimits(), past=(P.limits||[]).filter(l=>act.indexOf(l)<0);
+       if(!act.length) return `<div class="hint">Nothing flagged. Add anything that is bothering you and sessions route around it.</div>`;
+       return act.map(l=>{ const a=areaOf(l.area)||{name:l.area,hint:''};
+         const left=l.until?daysBetween(todayISO(),l.until):null;
+         return `<div class="row" style="padding:12px 0">
+           <div class="rt"><div class="rn">${esc((l.side?l.side+' ':'')+a.name)}
+             <span class="tag ${l.severity==='high'?'r':'o'}" style="margin-left:6px">${l.severity==='high'?'SIGNIFICANT':'MANAGING'}</span></div>
+             <div class="rs">${esc(a.hint)} avoided${left!=null?` · ${left<=0?'expires today':left+' day'+(left>1?'s':'')+' left'}`:' · no end date'}</div>
+             ${l.note?`<div class="rs" style="color:var(--text-2)">${esc(l.note)}</div>`:''}</div>
+           <button class="btn xs ghost" data-limed="${esc(l.id)}">Edit</button>
+           <button class="btn xs ghost" data-limrm="${esc(l.id)}">${svg('check')} Better</button>
+         </div>`;}).join('')
+         + `<div class="hint" style="margin-top:8px">Movements these load are dropped. Everything else carries on.</div>`
+         + (past.length?`<div class="hint" style="margin-top:6px">${past.length} expired limitation${past.length>1?'s':''} kept in your history.</div>`:'');
+     })()}
+   </div>
+
+   <div class="card spane training">
+     <div class="card-t accent" style="margin-bottom:6px">What you are training for</div>
+     
+     ${chipPicker({id:'sportPick', lead:true,
+        chosen:(P.sports&&P.sports.length)?P.sports:[P.sport],
+        all:SPORTS.map(x=>({id:x.id,name:x.name,hint:x.focus}))})}
+     <div class="hint" style="margin-top:8px">The one marked MAIN leads. Remove it and the next becomes main.</div>
+
+     <div class="card-t accent" style="margin:18px 0 6px">What you want from it</div>
+     ${chipPicker({id:'goalPick',
+        chosen:(P.physiques&&P.physiques.length)?P.physiques:[P.physique],
+        all:PHYSIQUES.map(x=>({id:x.id,name:x.name,hint:x.desc}))})}
+     ${(P.physiques||[]).indexOf('muscle')>=0&&(P.physiques||[]).indexOf('lean')>=0
+       ? `<div class="note warn">Building muscle and getting leaner pull against each other — progress on both will be slower than picking one.</div>`:''}
+
+     <div class="divider"></div>
+     <div class="kv"><span class="k">Weekly targets from this</span><span class="v">${
+        targetKeys().map(k=>`${DB.targets[k]} ${(targetMeta()[k]||[k])[0].toLowerCase()}`).join(' · ')||'none yet'}</span></div>
+     <div class="hint" style="margin-top:6px">Fine-tune under Train → Program.</div>
+   </div>
+
+   <div class="card spane training">
+     <div class="card-h"><div class="card-t accent">Your setup</div>
+       <button class="btn xs ghost" id="sWizard">Re-run setup</button></div>
+     <div class="kv"><span class="k">Training for</span><span class="v">${esc(
+        ((P.sports&&P.sports.length)?P.sports:[P.sport]).map(id=>(SPORTS.find(x=>x.id===id)||{}).name).filter(Boolean).join(', ')||'—')}</span></div>
+     <div class="kv"><span class="k">Goals</span><span class="v">${esc(
+        ((P.physiques&&P.physiques.length)?P.physiques:[P.physique]).map(id=>(PHYSIQUES.find(x=>x.id===id)||{}).name).filter(Boolean).join(', ')||'—')}</span></div>
+     <div class="kv"><span class="k">Equipment</span><span class="v">${esc((TIERS[P.tier||0]||TIERS[0]).name)}</span></div>
+     <div class="kv"><span class="k">Exercises available</span><span class="v">${DB.exercises.filter(e=>(e.tier||0)<=(P.tier||0)).length} of ${DB.exercises.length}</span></div>
+     <div class="kv"><span class="k">Schedule</span><span class="v">${P.daysPerWeek||4} days × ${P.sessionMin} min</span></div>
+   </div>
+
+   <div class="card spane training">
+     <div class="card-t accent" style="margin-bottom:6px">How cautious should the engine be?</div>
+     <div class="hint" style="margin-bottom:14px">Where each readiness band starts.</div>
+
+     <div style="display:flex;height:26px;border-radius:8px;overflow:hidden;margin-bottom:6px;font-size:9.5px;font-weight:800;letter-spacing:.4px">
+       <div style="width:${S.bands.orange}%;background:var(--red);display:flex;align-items:center;justify-content:center;color:var(--on-band)">RED</div>
+       <div style="width:${S.bands.yellow-S.bands.orange}%;background:var(--orange);display:flex;align-items:center;justify-content:center;color:var(--on-band)">ORANGE</div>
+       <div style="width:${S.bands.green-S.bands.yellow}%;background:var(--yellow);display:flex;align-items:center;justify-content:center;color:var(--on-band)">YELLOW</div>
+       <div style="width:${100-S.bands.green}%;background:var(--green);display:flex;align-items:center;justify-content:center;color:var(--on-band)">GREEN</div>
+     </div>
+     <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-3);font-weight:700;margin-bottom:16px">
+       <span>0</span><span>${S.bands.orange}</span><span>${S.bands.yellow}</span><span>${S.bands.green}</span><span>100</span>
+     </div>
+
+     ${[['green','Green starts at','var(--green)','Full session at the prescribed effort'],
+        ['yellow','Yellow starts at','var(--yellow)','Same session, fewer sets, effort capped'],
+        ['orange','Orange starts at','var(--orange)','Recovery-focused session, no fatigue']]
+       .map(([k,l,col,what])=>`<div class="slider-row">
+         <div class="slider-top">
+           <span class="l" style="color:${col}">${l}</span>
+           <span class="v num" id="sb_${k}_o">${S.bands[k]}</span></div>
+         <input type="range" id="sb_${k}" min="20" max="90" step="1" value="${S.bands[k]}" data-out="sb_${k}_o">
+         <div class="scale"><span>drag to adjust</span><span style="color:var(--text-3)">${what}</span></div>
+       </div>`).join('')}
+     <div class="note" style="margin-bottom:16px">Anything below ${S.bands.orange} is <b>red</b> — mobility or rest only.
+       Raise these numbers to make the engine more cautious; lower them to train through more.</div>
+
+     <div class="slider-row">
+       <div class="slider-top"><span class="l">Hard day threshold</span><span class="v num" id="sHs_o">${S.hardStrain}</span></div>
+       <input type="range" id="sHs" min="8" max="20" step="0.5" value="${S.hardStrain}" data-out="sHs_o">
+       <div class="scale"><span>drag to adjust</span><span style="color:var(--text-3)">strain counted as a hard day</span></div>
+     </div>
+     <div class="hint">Yesterday at or above this counts as a hard day, and today gets pulled back.</div>
+     <button class="btn ghost sm block" id="sbReset">Reset to defaults (72 / 56 / 42)</button>
+   </div>
+
+   <div class="card spane training">
+     <div class="card-t accent" style="margin-bottom:12px">Program</div>
+     <div class="field"><label>Plan start date</label><input class="inp" type="date" id="sStart" value="${esc(P.planStart)}">
+       <div class="hint">Currently <b>week ${currentPhase().absWeek}</b> — ${esc(currentPhase().name)}.</div></div>
+     <button class="btn ghost block" id="sSched">${svg('edit')} Edit weekly targets</button>
+     
+     <div style="margin-top:12px"><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
+       <input type="checkbox" id="sAuto" ${S.autoAdjust?'checked':''} style="width:22px;height:22px;accent-color:var(--accent)">
+       Let readiness reduce session volume</label>
+       <div class="hint">Off: the chosen session always comes at full volume.</div></div>
+   </div>
+
+   <div class="card spane alerts">
+     <div class="card-t accent" style="margin-bottom:12px">While you train</div>
+     <div><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
+       <input type="checkbox" id="sRest" ${S.restTimerOn?'checked':''} style="width:22px;height:22px;accent-color:var(--accent)">
+       Rest timer between sets</label>
+       <div class="hint">Counts down in the card for the set you just finished.</div></div>
+     <div style="margin-top:14px"><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
+       <input type="checkbox" id="sSound" ${S.sound!==false?'checked':''} style="width:22px;height:22px;accent-color:var(--accent)">
+       Sound</label>
+       <div class="hint">Three ticks as a rest runs out, a chime when it ends, a click
+         when a set goes in. The app makes the tones itself — nothing is downloaded
+         and they work offline.</div></div>
+   </div>
+
+   <div class="card spane alerts">
+     <div class="card-t accent" style="margin-bottom:12px">When the screen is off</div>
+     <div><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
+       <input type="checkbox" id="sNotify" ${S.notify?'checked':''} ${notifyState()==='unsupported'?'disabled':''} style="width:22px;height:22px;accent-color:var(--accent)">
+       Alert me when a rest timer finishes</label>
+       <div class="hint" id="sNotifyH">${
+         notifyState()==='unsupported' ? 'This browser cannot show alerts.'
+         : notifyState()==='denied' ? 'Your browser has blocked alerts for this app. Turn them back on in its site settings, then try again.'
+         : 'Lets you put the phone down mid-session. Your browser will ask permission the first time.'}</div></div>
+     <div class="note acc" style="margin-top:12px">
+       This is a <b>local</b> alert: your own device raising a notification for a
+       timer your own device is running. It is not a push notification — there is
+       no server, no subscription, and nothing about you leaves the phone.
+     </div>
+   </div>
+
+   <div class="card spane about" style="${Store.durable?'':'border-color:var(--red-line)'}">
+     <div class="card-h"><div class="card-t accent">Setup &amp; install</div>
+       <span class="tag ${Store.durable?'g':'r'}">${Store.durable?'STORING OK':'NOT STORING'}</span></div>
+     <div class="kv"><span class="k">Storage</span><span class="v">${esc(Store.mode)}</span></div>
+     <div class="kv"><span class="k">Opened from</span><span class="v">${ENV.isFile?'local file (file://)':ENV.isHttps?'https':esc(ENV.proto)}</span></div>
+     <div class="kv"><span class="k">Mode</span><span class="v">${ENV.standalone?'Home Screen app':'Safari tab'}</span></div>
+     <button class="btn ${Store.durable?'ghost':'primary'} block" id="sSetup">
+       ${Store.durable?'Add to Home Screen &amp; storage details':'Fix storage — how to install properly'}</button>
+   </div>
+
+   <div class="card spane wearables">
+     <div class="card-h"><div class="card-t accent">Your wearable</div>
+       <span class="tag ${hasWhoop()?'g':'c'}">${hasWhoop()?esc(SRC_NAME().toUpperCase())+' CONNECTED':(usesDevice()?'NOT IMPORTED YET':'MANUAL ONLY')}</span></div>
+     <div class="kv"><span class="k">Wearable</span><span class="v">${srcMark()}${esc(sourceOf().name)}</span></div>
+     ${srcFields().length?`<div class="kv"><span class="k">Numbers it provides</span><span class="v">${
+        esc(srcFields().map(f=>fieldLabel(f)).join(' · '))}</span></div>`:''}
+     <div class="kv"><span class="k">Days on this device</span><span class="v">${DB.whoop.cycles.length}</span></div>
+     <div class="kv"><span class="k">Baselines</span><span class="v">${DB.baselines.computed?'Computed from your data':'Not established'}</span></div>
+     <div class="btn-row">
+       <button class="btn ghost sm" id="sImpWhoop">${svg('ul')} ${usesDevice()?'Import '+esc(SRC_NAME())+' CSV':'Add a wearable'}</button>
+       ${DB.whoop.cycles.length?`<button class="btn ghost sm" id="sDelWhoop">Remove imported data</button>`:''}
+     </div>
+     <div class="hint" style="margin-top:9px">${hasWhoop()
+       ? `The engine uses the baselines computed from your ${esc(SRC_NAME())} data alongside everything you log. Remove it and the app carries on from your logs alone.`
+       : usesDevice()
+         ? `The app works fully without importing anything — you can type this morning's numbers into the check-in instead. Importing adds history, so your baselines are yours rather than general ranges.`
+         : 'The app is running entirely from your check-ins and training log, which is enough. Add a wearable any time and its numbers join the daily decision.'}</div>
+   </div>
+
+   <div class="card spane data">
+     <div class="card-t accent" style="margin-bottom:12px">Your data</div>
+     <div class="kv"><span class="k">Stored in</span><span class="v">${esc(Store.mode)}, this browser only</span></div>
+     <div class="kv"><span class="k">Approx. size</span><span class="v" id="sSize">—</span></div>
+     <div class="kv"><span class="k">Last backup</span><span class="v" style="color:${DB.meta.lastBackup?'var(--text-2)':'var(--orange)'}">${
+        DB.meta.lastBackup?esc(new Date(DB.meta.lastBackup).toLocaleString()):'never'}</span></div>
+     <div class="btn-row">
+       <button class="btn ${DB.meta.lastBackup?'ghost':'primary'} sm" id="expJson">${svg('dl')} Backup JSON</button>
+       <button class="btn ghost sm" id="impJson">${svg('ul')} Restore JSON</button>
+     </div>
+     <div class="btn-row">
+       <button class="btn ghost sm" id="expCsvS">Sessions CSV</button>
+       <button class="btn ghost sm" id="expCsvA">Activities CSV</button>
+       ${DB.whoop.cycles.length?`<button class="btn ghost sm" id="expCsvW">Metrics CSV</button>`:''}
+     </div>
+     <div class="note warn"><b>Your data is stored locally on this device.</b> If you clear browser data or change devices, restore your backup to recover it. Clearing website data erases everything instantly, and no copy exists anywhere else.</div>
+   </div>
+
+   <div class="card spane data">
+     <div class="card-t" style="margin-bottom:10px">Using more than one device</div>
+     <p style="font-size:13px;line-height:1.6;color:var(--text-2)">Each browser on each device keeps its <b>own separate</b> dataset. Your phone's history is not on your PC, and there is no sync — that is the price of having no account and no server.</p>
+     <div class="kv" style="margin-top:8px"><span class="k">To move data across</span><span class="v">Export JSON → send the file → Import JSON</span></div>
+     <div class="hint" style="margin-top:6px">That is a one-time snapshot. Changes made afterwards on either device will not appear on the other.</div>
+   </div>
+
+   <div class="card spane about">
+     <div class="card-t" style="margin-bottom:10px">Privacy</div>
+     <ul class="why" style="border:none;padding:0;margin:0">
+       <li class="pos"><span class="dot"></span><span>No analytics, no tracking, no advertising, no external services.</span></li>
+       <li class="pos"><span class="dot"></span><span>No network requests of any kind — the app works fully offline.</span></li>
+       <li class="pos"><span class="dot"></span><span>CSV exports are parsed in your browser; the files never leave your device.</span></li>
+       <li class="pos"><span class="dot"></span><span>All data sits in <span class="mono">localStorage</span> (mirrored to <span class="mono">IndexedDB</span>) under the key <span class="mono">baseline.tps.v1</span>.</span></li>
+     </ul>
+   </div>
+
+
+   <div class="card spane about">
+     <div class="card-t accent" style="margin-bottom:10px">Version &amp; problem reports</div>
+     <div class="kv"><span class="k">Build</span><span class="v num">${esc(APP_BUILD)}</span></div>
+     <div class="kv"><span class="k">Storage format</span><span class="v num">v${SCHEMA_VERSION}</span></div>
+     <div class="kv"><span class="k">Running as</span><span class="v">${
+        ((window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)||window.navigator.standalone===true)
+          ? 'Installed app' : 'Browser tab'}</span></div>
+     <div class="hint" style="margin-top:8px">Quote the build number in any bug report.</div>
+     <button class="btn ghost block" id="sTour">${svg('info')} How Baseline works</button>
+     <button class="btn ghost block" id="sDiag">${svg('copy')} Copy diagnostics</button>
+     <div class="hint" style="margin-top:8px">Device, browser, storage and how much you have logged. <b>Counts only</b>, never what you entered.</div>
+   </div>
+   <div class="card spane data">
+     <div class="card-t" style="margin-bottom:10px;color:var(--red)">Danger zone</div>
+     <button class="btn danger block" id="rsProg">Reset program to defaults</button>
+     <div class="hint" style="margin-top:7px;margin-bottom:14px">Restores the default
+       workouts, exercises and weekly targets. <b>Your history is kept.</b></div>
+     <button class="btn danger block" id="rsAll">Erase all data</button>
+     <div class="hint" style="margin-top:7px">Deletes everything on this device —
+       check-ins, sessions, activities, tests, measurements and any imported
+       wearable data. <b>This cannot be undone.</b></div>
+   </div>
+
+   <div class="spane about" style="text-align:center;padding:20px 0 8px;color:var(--text-3);font-size:11px">
+     Baseline · Adaptive Training System<br>
+     <span style="color:var(--text-3);opacity:.7">Not a medical device. Nothing here diagnoses or treats any condition.<br>
+     Persistent symptoms, pain, or unusual physiological readings belong with a qualified healthcare professional.</span>
+   </div>`;
+
+  try{ const c=Store.counts();
+    $('#sSize').textContent=`${c.sessions} sessions · ${c.activities} activities · ${c.cycles} device days`;
+    Store.estimate().then(e=>{ if(e&&e.usage&&$('#sSize')) $('#sSize').textContent=
+      `${Math.round(e.usage/1024)} KB · ${c.sessions} sessions · ${c.activities} activities · ${c.cycles} device days`; });
+  }catch(e){}
+  $('#sSetup').onclick=()=>openSetup();
+  $('#sImpWhoop').onclick=()=>{ if(usesDevice()){ HTAB='import'; openMetrics(); } else startSetup(true); };
+  const dw=$('#sDelWhoop');
+  if(dw) dw.onclick=()=>{
+    const n=importedCounts();
+    confirmSheet('Delete imported data?',
+      `<b>${n.days}</b> imported days, <b>${n.workouts}</b> imported workouts and
+       <b>${n.journal}</b> journal rows will be deleted from this device, along with
+       the baselines calculated from them and the record of when you imported.<br><br>
+       Your own sessions, activities, check-ins and settings are kept, and the app
+       carries on using them.`,
+      'Delete imported data',()=>{
+        const gone=deleteImportedData();
+        /* say what went, not what was going to go */
+        openSheet('Imported data deleted',`
+          <div class="card tight">
+            <div class="kv"><span class="k">Imported days</span><span class="v">${gone.days} deleted</span></div>
+            <div class="kv"><span class="k">Imported workouts</span><span class="v">${gone.workouts} deleted</span></div>
+            <div class="kv"><span class="k">Journal rows</span><span class="v">${gone.journal} deleted</span></div>
+            <div class="kv"><span class="k">Import history</span><span class="v">${gone.imports} deleted</span></div>
+            <div class="kv"><span class="k">Baselines from that data</span><span class="v">Reset</span></div>
+          </div>
+          <div class="note acc">Your own sessions, activities, check-ins and settings were
+            not touched. Readiness now comes from your daily check-ins alone.</div>`,
+          `<button class="btn primary big block" onclick="closeSheet()">Done</button>`);
+        renderNav(); render();
+      },true);
+  };
+  const ew=$('#expCsvW'); if(ew) ew.onclick=exportWhoopCSV;
+  const pill=(sel,cb)=>$$(sel+' button').forEach(b=>b.onclick=()=>{
+    $$(sel+' button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); cb&&cb(b.dataset.v); });
+  /* pane switching: class toggle only, so nothing in the form is lost */
+  $$('#setSeg button').forEach(b=>b.onclick=()=>{ haptic(); setPane(b.dataset.p); });
+  setPane(SETTAB);
+  const dg=$('#sDiag'); if(dg) dg.onclick=copyDiagnostics;
+  pill('#sDur'); pill('#sUnits'); pill('#sDays');
+  /* theme is applied immediately: a preference you cannot see is useless */
+  pill('#sTheme', v=>{ setTheme(v); haptic(); });
+  /* cycle tracking */
+  const mcInit=()=>{ DB.mcycle=DB.mcycle||{on:false,starts:[],typicalLen:null,
+                                           typicalPeriod:null,askedAt:null}; };
+  const me=$('#sMcEnable');
+  /* Enabling used to leave you with an empty count and "log today to start".
+     Ask the three questions every specialist tracker asks, all skippable. */
+  if(me) me.onclick=()=>{ mcInit(); haptic(); mcSetupSheet(); };
+
+  const ml=$('#sMcLen'); if(ml) ml.onchange=()=>{
+    DB.mcycle.typicalLen = ml.value===''?null:clamp(+ml.value,15,90); save(true); };
+  const mp=$('#sMcPer'); if(mp) mp.onchange=()=>{
+    DB.mcycle.typicalPeriod = mp.value===''?null:clamp(+mp.value,1,15); save(true); };
+
+  /* NO render() here. This handler belongs to the date input, and rendering
+     replaces the input mid-interaction - which closed the native picker the
+     moment a date was chosen. Patch the one line that changes instead. */
+  const ms=$('#sMcStart'); if(ms) ms.onchange=()=>{
+    const v=ms.value; if(!v) return;
+    if(v>todayISO()){ toast('That date is in the future','err'); ms.value=''; return; }
+    mcInit();
+    if(DB.mcycle.starts.indexOf(v)<0) DB.mcycle.starts.push(v);
+    DB.mcycle.starts.sort(); save(true);
+    const c=$('#sMcCount');
+    if(c) c.textContent=mcStarts().length+' recorded so far';
+    ms.value='';
+    toast('Period start added','ok');
+  };
+
+  /* one button at the bottom, and the choice of what to do with the data
+     lives inside it rather than as a second button beside it */
+  const mo2=$('#sMcOff');
+  if(mo2) mo2.onclick=()=>{
+    openSheet('Disable cycle tracking?',
+      `<p style="font-size:14.5px;line-height:1.6;color:var(--text-2)">Nothing
+        cycle-related will appear in the app, and it will stop affecting your
+        recommendations. Your entries can stay in case you turn it back on, or
+        be deleted for good.</p>`,
+      `<button class="btn ghost block" id="mcKeep">Stop tracking, keep my entries</button>
+       <button class="btn danger block" id="mcDel">Stop and delete everything</button>`);
+    $('#mcKeep').onclick=()=>{ DB.mcycle.on=false; save(true); closeSheet();
+      toast('Cycle tracking off'); setTimeout(render,220); };
+    $('#mcDel').onclick=()=>{ mcWipe(); save(true); closeSheet();
+      toast('Cycle data deleted'); setTimeout(render,220); };
+  };
+  $('#sWizard').onclick=()=>{ persist(); startSetup(true); };
+  /* injuries: add, edit, and mark recovered */
+  const limAdd=$('#limAdd'); if(limAdd) limAdd.onclick=()=>limitSheet(null);
+  $$('[data-limed]').forEach(b=>b.onclick=()=>limitSheet(b.dataset.limed));
+  $$('[data-limrm]').forEach(b=>b.onclick=()=>{
+    const l=(P.limits||[]).find(x=>x.id===b.dataset.limrm); if(!l)return;
+    const a=areaOf(l.area)||{name:l.area};
+    confirmSheet('Recovered?',
+      `The ${esc(a.name.toLowerCase())} limitation will end today and those movements come back into your sessions. Nothing about your history changes.`,
+      'Mark recovered',()=>{ l.until=addDays(todayISO(),-1); save(true); toast('Good news','ok'); render(); });
+  });
+  /* Equipment: the same editor the setup wizard uses, so the two cannot
+     drift apart. The old chip picker below is still wired for any build that
+     still renders it.
+     Removing the last one is allowed — bodyweight only is a real setup. */
+  wirePicker('gearPick', (P.gear||[]),
+    EQUIP_ITEMS.map(x=>({id:x.id,name:x.name,hint:x.hint})),
+    next=>{ P.gear=next; P.tier=tierOf(next);
+            P.equipment=equipmentList(next,P.equipNote,P.dbKg);
+            pruneTargets(); save(true); render(); },
+    'Add equipment', true);
+  /* Sports: the first one leads. Goals: at least one. Both re-derive targets. */
+  wirePicker('sportPick', (P.sports&&P.sports.length)?P.sports:[P.sport],
+    SPORTS.map(x=>({id:x.id,name:x.name,hint:x.focus})),
+    next=>{ P.sports=next; P.sport=next[0];
+            P.goalPrimary=goalTextFor(next);
+            applyGoalTargets(); save(true); render(); },
+    'Add a sport');
+  wirePicker('goalPick', (P.physiques&&P.physiques.length)?P.physiques:[P.physique],
+    PHYSIQUES.map(x=>({id:x.id,name:x.name,hint:x.desc})),
+    next=>{ P.physiques=next; P.physique=next[0];
+            P.goalSecondary=next.map(id=>(PHYSIQUES.find(x=>x.id===id)||{}).desc).filter(Boolean).join(' ');
+            applyGoalTargets(); save(true); render(); },
+    'Add a goal');
+  /* keep the band strip in sync while dragging, and keep the bands ordered */
+  ['green','yellow','orange'].forEach(k=>{ const el2=$('#sb_'+k); if(!el2)return;
+    el2.addEventListener('change',()=>{
+      let g=+$('#sb_green').value, y=+$('#sb_yellow').value, o=+$('#sb_orange').value;
+      if(y>=g) y=g-4; if(o>=y) o=y-4;
+      S.bands={green:g,yellow:Math.max(24,y),orange:Math.max(20,o)};
+      save(true); render();
+    });
+  });
+  const br=$('#sbReset'); if(br) br.onclick=()=>{
+    S.bands={green:72,yellow:56,orange:42}; S.hardStrain=14; save(true); toast('Thresholds reset','ok'); render(); };
+  /* One missing element used to throw here and silently abort the rest of the
+     function, which is why the checkboxes near the bottom appeared dead.
+     Every read is now guarded, so a partial form can never break saving. */
+  const persist=()=>{
+    const v =(id,d)=>{ const e=$('#'+id); return e?e.value:d; };
+    const ck=(id,d)=>{ const e=$('#'+id); return e?e.checked:d; };
+    const num=(id)=>{ const e=$('#'+id); if(!e||e.value==='')return null; const n=parseFloat(e.value); return isNaN(n)?null:n; };
+    /* Bail out when the settings body is not on screen, so a stray event
+       cannot write defaults over real data. This used to test for #sName,
+       which stopped existing when the profile became read-only - and silently
+       disabled saving for EVERY other control in Settings. Test for the
+       settings panes themselves, which is what it always meant. */
+    if(!document.querySelector('#view .spane')) return;
+    /* changing training days re-derives the weekly targets; changing equipment
+       only ever removes a target you can no longer do, so hand-tuned numbers
+       are never quietly overwritten */
+    let reDerive=false;
+    /* The profile owns its own saving now - see profileCard(). Reading its
+       fields here would write '' over the name and null over age, height and
+       weight every time any OTHER settings input fired, because v() and num()
+       return their defaults when the element is not on screen. */
+    /* gear is owned by the chip picker above, not by this form — reading a
+       checkbox list that no longer exists used to wipe it on every keystroke */
+    P.tier=tierOf(P.gear||[]);
+    P.dbKg=num('sDbKg');
+    P.equipNote=(v('sEqNote','')||'').trim();
+    P.equipment=equipmentList(P.gear||[],P.equipNote,P.dbKg);
+    P.preferBest=ck('sBest',true);
+    const dy=$('#sDays button.on');
+    if(dy){ const nd=+dy.dataset.v; if(nd!==P.daysPerWeek){ P.daysPerWeek=nd; reDerive=true; } }
+    const du=$('#sDur button.on'); if(du)P.sessionMin=+du.dataset.v;
+    /* goals are derived from the selections, never hand-typed prose */
+    P.goalPrimary=goalTextFor(P.sports);
+    P.goalSecondary=(P.physiques||[]).map(id=>(PHYSIQUES.find(x=>x.id===id)||{}).desc).filter(Boolean).join(' ');
+    P.planStart=v('sStart',P.planStart)||P.planStart;
+    const bg=num('sb_green'), by=num('sb_yellow'), bo=num('sb_orange');
+    if(bg!=null&&by!=null&&bo!=null) S.bands={green:bg,yellow:by,orange:bo};
+    const hs=num('sHs'); if(hs!=null) S.hardStrain=hs;
+    S.autoAdjust=ck('sAuto',true);
+    S.restTimerOn=ck('sRest',true);
+    S.sound=ck('sSound',true);
+    /* never left true without the permission that makes it mean anything */
+    S.notify=ck('sNotify',false) && notifyState()==='granted';
+    if(reDerive) applyGoalTargets(); else pruneTargets();
+    save();
+  };
+  $$('#view input, #view textarea, #view select').forEach(i=>{
+    i.addEventListener('change',persist); i.addEventListener('input',persist); });
+  /* the two behaviour switches confirm they took effect */
+  /* the alert switch has to go and ask for something, so it cannot be a
+     plain persist target: permission is requested from this tap and the
+     checkbox is put back if the browser says no */
+  (function(){
+    const e=$('#sNotify'); if(!e) return;
+    e.addEventListener('change',()=>{
+      const h=$('#sNotifyH');
+      if(!e.checked){ DB.settings.notify=false; save(); toast('Alerts off','ok'); return; }
+      if(notifyState()==='granted'){
+        DB.settings.notify=true; save(); toast('Alerts on','ok');
+        notify('Alerts are on','Baseline will tell you when a rest timer finishes.');
+        return;
+      }
+      notifyAsk(p=>{
+        if(p==='granted'){
+          DB.settings.notify=true; save(); toast('Alerts on','ok');
+          notify('Alerts are on','Baseline will tell you when a rest timer finishes.');
+        } else {
+          e.checked=false; DB.settings.notify=false; save();
+          if(h) h.textContent='Your browser blocked alerts for this app. Turn them back on in its site settings, then try again.';
+          toast('Your browser blocked alerts','err');
+        }
+      });
+    });
+  })();
+  ['sAuto','sRest','sSound'].forEach(id=>{ const e=$('#'+id); if(!e)return;
+    e.addEventListener('change',()=>{
+      const on=e.checked;
+      if(id==='sSound'&&on) SOUND.set();      // hear what you just turned on
+      toast(id==='sAuto'
+        ? (on?'Readiness will adjust your session volume':'Sessions will always come at full volume')
+        : id==='sSound'
+        ? (on?'Sound on':'Sound off')
+        : (on?'Rest timer on':'Rest timer off'),'ok');
+    });
+  });
+  $('#sSched').onclick=()=>{ persist(); editSchedule(); };
+  $('#expJson').onclick=exportJSON;
+  profileWire();
+  const tb=$('#sTour'); if(tb) tb.onclick=()=>openTour();
+  const ab=$('#sAway'); if(ab) ab.onclick=()=>openAway();
+  $('#impJson').onclick=()=>$('#jsonIn').click();
+  $('#expCsvS').onclick=exportSessionsCSV;
+  $('#expCsvA').onclick=exportActivitiesCSV;
+  $('#rsProg').onclick=()=>confirmSheet('Reset program?',
+    'Default workouts, exercise library and weekly targets will be restored. Your sessions, activities, check-ins, tests, measurements and WHOOP data are all kept.','Reset program',()=>{
+      DB.exercises=seedExercises(); DB.workouts=seedWorkouts();
+      DB.targets=Object.assign({},freshDB().targets);
+      save(true); toast('Program reset','ok'); render(); },true);
+  $('#rsAll').onclick=()=>confirmSheet('Erase all data?',
+    'This permanently deletes <b>everything</b> on this device — imported wearable data, check-ins, sessions, activities, tests and measurements. It cannot be undone, and there is no copy anywhere else. Export a backup first if there is any doubt.','Erase all data',async()=>{
+      await Store.clearAll();
+      DB=freshDB();
+      /* this used to call chooseMode(), which does not exist — so erasing
+         threw a ReferenceError after the data was already gone and left the
+         app on a dead screen. A just-erased install needs setup. */
+      saveWhoop(); resetStack(); renderNav(); go('today');
+      toast('All data erased');
+      setTimeout(()=>startSetup(),500); },true);
+}
+

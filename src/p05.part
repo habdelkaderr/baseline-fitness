@@ -1,0 +1,1408 @@
+
+/* =========================================================================
+   CHARTS (inline SVG, no libraries)
+   ====================================================================== */
+/* viewBox width tracks the real container so strokes are not stretched
+   horizontally on a wide phone (390–440 CSS px on the Pro Max sizes) */
+function chartW(){ const v=document.getElementById('view');
+  const w=(v&&v.clientWidth)||window.innerWidth||390;
+  return clamp(Math.round(w-32),260,660); }
+function lineChart(series,opts){
+  opts=opts||{};
+  const W=opts.w||chartW(),H=opts.h||110,P={t:10,r:8,b:18,l:opts.l==null?30:opts.l};
+  const all=[].concat(...series.map(s=>s.pts.map(p=>p.v))).filter(v=>v!=null);
+  if(all.length<2) return `<div class="empty" style="padding:22px"><p>Not enough data yet</p></div>`;
+  let lo=opts.min!=null?opts.min:Math.min(...all), hi=opts.max!=null?opts.max:Math.max(...all);
+  if(hi===lo){hi=lo+1;lo=lo-1;}
+  const pad=(hi-lo)*.14; lo-=pad; hi+=pad;
+  const n=Math.max(...series.map(s=>s.pts.length));
+  const X=i=> P.l+(n<2?0:(i/(n-1))*(W-P.l-P.r));
+  const Y=v=> P.t+(1-(v-lo)/(hi-lo))*(H-P.t-P.b);
+  let g='';
+  // gridlines
+  [0,.5,1].forEach(f=>{ const y=P.t+f*(H-P.t-P.b);
+    g+=`<line x1="${P.l}" y1="${y}" x2="${W-P.r}" y2="${y}" stroke="var(--border-soft)" stroke-width="1"/>`;
+    if(P.l>8) g+=`<text x="${P.l-6}" y="${y+3.5}" fill="var(--text-3)" font-size="8.5" text-anchor="end" font-weight="600">${rnd(hi-f*(hi-lo),opts.dp==null?0:opts.dp)}</text>`;
+  });
+  if(opts.baseline!=null&&opts.baseline>lo&&opts.baseline<hi){
+    const y=Y(opts.baseline);
+    g+=`<line x1="${P.l}" y1="${y}" x2="${W-P.r}" y2="${y}" stroke="var(--text-3)" stroke-width="1" stroke-dasharray="3 3" opacity=".7"/>`;
+  }
+  series.forEach((s,si)=>{
+    const col=s.color||'var(--accent)';
+    const pts=s.pts.map((p,i)=>({x:X(i),y:p.v==null?null:Y(p.v)}));
+    let d='',open=false;
+    pts.forEach(p=>{ if(p.y==null){open=false;return;} d+=(open?'L':'M')+p.x.toFixed(1)+' '+p.y.toFixed(1)+' '; open=true; });
+    if(s.area&&d){
+      const first=pts.find(p=>p.y!=null), last=[...pts].reverse().find(p=>p.y!=null);
+      if(first&&last) g+=`<path d="${d}L${last.x.toFixed(1)} ${H-P.b} L${first.x.toFixed(1)} ${H-P.b} Z" fill="${col}" opacity=".10"/>`;
+    }
+    g+=`<path d="${d}" fill="none" stroke="${col}" stroke-width="${s.w||2}" stroke-linecap="round" stroke-linejoin="round" ${s.dash?'stroke-dasharray="4 3"':''}/>`;
+    if(s.dots!==false){ const lastI=pts.map((p,i)=>p.y!=null?i:-1).filter(i=>i>=0).pop();
+      if(lastI!=null&&pts[lastI]) g+=`<circle cx="${pts[lastI].x.toFixed(1)}" cy="${pts[lastI].y.toFixed(1)}" r="3.2" fill="${col}" stroke="var(--bg)" stroke-width="1.6"/>`; }
+  });
+  if(opts.labels&&opts.labels.length){
+    opts.labels.forEach(l=>{ g+=`<text x="${X(l.i)}" y="${H-4}" fill="var(--text-3)" font-size="8.5" text-anchor="middle" font-weight="600">${esc(l.t)}</text>`; });
+  }
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="height:${H}px">${g}</svg>`;
+}
+function barChart(pts,opts){
+  opts=opts||{};
+  const W=opts.w||chartW(),H=opts.h||96,P={t:8,r:6,b:18,l:opts.l==null?26:opts.l};
+  const vals=pts.map(p=>p.v).filter(v=>v!=null);
+  if(!vals.length) return `<div class="empty" style="padding:22px"><p>No data yet</p></div>`;
+  const hi=Math.max(opts.max||0,...vals)||1;
+  const bw=(W-P.l-P.r)/pts.length;
+  let g='';
+  g+=`<line x1="${P.l}" y1="${H-P.b}" x2="${W-P.r}" y2="${H-P.b}" stroke="var(--border-soft)"/>`;
+  if(opts.target!=null){ const y=P.t+(1-opts.target/hi)*(H-P.t-P.b);
+    g+=`<line x1="${P.l}" y1="${y}" x2="${W-P.r}" y2="${y}" stroke="var(--accent)" stroke-dasharray="3 3" opacity=".6"/>`; }
+  pts.forEach((p,i)=>{
+    const h=p.v==null?0:Math.max(2,(p.v/hi)*(H-P.t-P.b));
+    const x=P.l+i*bw+bw*0.16, w=bw*0.68;
+    g+=`<rect x="${x.toFixed(1)}" y="${(H-P.b-h).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${Math.min(3,w/2).toFixed(1)}" fill="${p.color||opts.color||'var(--accent)'}" opacity="${p.dim?.35:1}"/>`;
+    if(p.t) g+=`<text x="${(x+w/2).toFixed(1)}" y="${H-5}" fill="var(--text-3)" font-size="8.5" text-anchor="middle" font-weight="600">${esc(p.t)}</text>`;
+  });
+  if(P.l>8) g+=`<text x="${P.l-5}" y="${P.t+7}" fill="var(--text-3)" font-size="8.5" text-anchor="end" font-weight="600">${rnd(hi,0)}</text>`;
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="height:${H}px">${g}</svg>`;
+}
+function ringSvg(pct,color,size){
+  size=size||76; const r=size/2-6, c=2*Math.PI*r;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="var(--surface-3)" stroke-width="7"/>
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round"
+      stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c*(1-clamp(pct,0,100)/100)).toFixed(1)}"/></svg>`;
+}
+
+/* =========================================================================
+   SHEET / MODAL
+   ====================================================================== */
+let sheetOnClose=null;
+function openSheet(title,html,footHtml,onClose){
+  $('#sheetTitle').textContent=title;
+  $('#sheetBody').innerHTML=html;
+  const f=$('#sheetFoot');
+  if(footHtml){ f.innerHTML=footHtml; f.classList.remove('hide'); } else { f.innerHTML=''; f.classList.add('hide'); }
+  $('#scrim').classList.add('on'); $('#sheet').classList.add('on');
+  $('#sheetBody').scrollTop=0;
+  sheetOnClose=onClose||null;
+  bindInputs($('#sheet'));
+}
+/* Re-render an already-open sheet WITHOUT restarting its open animation.
+   Calling openSheet() again on every tap made the panel slide and the footer
+   button jump — which is what made multi-step forms feel broken. */
+function updateSheet(title,html,footHtml){
+  const s=$('#sheet');
+  if(!s.classList.contains('on')) return openSheet(title,html,footHtml);
+  const body=$('#sheetBody');
+  const y=body.scrollTop;                       // keep the reading position
+  if(title!=null) $('#sheetTitle').textContent=title;
+  body.innerHTML=html;
+  const f=$('#sheetFoot');
+  if(footHtml){ f.innerHTML=footHtml; f.classList.remove('hide'); }
+  else { f.innerHTML=''; f.classList.add('hide'); }
+  body.scrollTop=y;
+  bindInputs(s);
+}
+function closeSheet(){
+  $('#scrim').classList.remove('on'); $('#sheet').classList.remove('on');
+  if(sheetOnClose){ const f=sheetOnClose; sheetOnClose=null; setTimeout(f,220); }
+}
+$('#scrim').addEventListener('click',closeSheet);
+$('#sheetX').addEventListener('click',closeSheet);
+
+function confirmSheet(title,msg,okLabel,onOk,danger){
+  openSheet(title,`<p style="font-size:14.5px;line-height:1.55;color:var(--text-2)">${msg}</p>`,
+    `<div class="btn-row"><button class="btn ghost" onclick="closeSheet()">Cancel</button>
+     <button class="btn ${danger?'danger':'primary'}" id="cfOk">${esc(okLabel)}</button></div>`);
+  $('#cfOk').onclick=()=>{ closeSheet(); setTimeout(onOk,240); };
+}
+
+/* =========================================================================
+   KEYBOARD HANDLING
+   On phones the on-screen keyboard covers the lower half of the screen. The
+   visualViewport API reports the space actually left, so the sheet is shrunk
+   to fit and the focused field scrolled into the visible part.
+   ====================================================================== */
+function bindKeyboard(){
+  const vv=window.visualViewport;
+  const sheet=document.getElementById('sheet');
+  if(!sheet) return;
+  const apply=()=>{
+    if(!vv) return;
+    /* how much of the window the keyboard is covering */
+    const covered=Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    if(covered>90){
+      sheet.style.setProperty('--kb', covered+'px');
+      sheet.classList.add('kb-open');
+    } else {
+      sheet.style.removeProperty('--kb');
+      sheet.classList.remove('kb-open');
+    }
+  };
+  if(vv && !bindKeyboard._wired){
+    vv.addEventListener('resize',apply);
+    vv.addEventListener('scroll',apply);
+    bindKeyboard._wired=true;
+  }
+  bindKeyboard.apply=apply;
+}
+/* keep the focused field above the keyboard */
+function wireFocusScroll(root){
+  $$('input, textarea, select', root).forEach(el2=>{
+    if(el2.dataset.kbWired) return;
+    el2.dataset.kbWired='1';
+    el2.addEventListener('focus',()=>{
+      if(bindKeyboard.apply) setTimeout(bindKeyboard.apply,120);
+      /* two passes: once immediately, once after the keyboard animates in */
+      const bring=()=>{ try{ el2.scrollIntoView({block:'center',behavior:'smooth'}); }catch(e){ el2.scrollIntoView(false); } };
+      setTimeout(bring,180);
+      setTimeout(bring,420);
+    });
+  });
+}
+
+/* =========================================================================
+   CHIP PICKER
+   Shows only what you have chosen, as removable blocks, plus a "+" that opens
+   the full list. Long option sets stay out of the way until you want them.
+   ====================================================================== */
+function chipPicker(opts){
+  // opts: {id, chosen:[ids], all:[{id,name,emoji,hint}], lead:bool, allowEmpty:bool}
+  const {id, chosen, all, lead, allowEmpty, emptyText} = opts;
+  const pick=x=>all.find(o=>o.id===x)||{id:x,name:x};
+  const mark=o=> o.icon ? `<i class="chipi">${svg(o.icon)}</i>`
+               : '';
+  return `<div class="chipset" id="${id}">
+    ${(!chosen.length&&allowEmpty)?`<span class="chipnone">${esc(emptyText||'None')}</span>`:''}
+    ${chosen.map((cid,i)=>{ const o=pick(cid);
+      return `<span class="chipblk${lead&&i===0?' lead':''}" data-v="${esc(cid)}">
+        ${mark(o)}${esc(o.name)}${lead&&i===0?'<i class="lead-t">MAIN</i>':''}
+        <button class="chipx" data-rm="${esc(cid)}" aria-label="Remove">${svg('x')}</button>
+      </span>`;}).join('')}
+    <button class="chipadd" data-add="${id}">${svg('plus')} Add</button>
+  </div>`;
+}
+/* wire a chip picker: cb(newChosenArray).
+   allowEmpty is for sets that can legitimately be empty — equipment, where
+   "bodyweight only" is a real answer — unlike sports or goals. */
+/* keepSheet: the caller will redraw this sheet itself (the setup wizard does),
+   so the picker must not close it. closeSheet() runs the sheet's onClose, and
+   the wizard's onClose persists the draft, re-renders and toasts - which is
+   what used to flash "Saved where you left off" every time you ticked a
+   dumbbell during first-run setup. */
+function wirePicker(id, chosen, all, cb, title, allowEmpty, keepSheet){
+  const root=$('#'+id); if(!root) return;
+  $$('#'+id+' [data-rm]').forEach(b=>b.onclick=ev=>{
+    ev.stopPropagation();
+    if(chosen.length<=1 && !allowEmpty){ toast('Keep at least one'); return; }
+    cb(chosen.filter(x=>x!==b.dataset.rm)); haptic();
+  });
+  const add=$('#'+id+' [data-add]');
+  if(add) add.onclick=()=>{
+    /* One visit, however many you want. The list shows everything with your
+       choices already ticked, so you can see what you have while choosing and
+       tick four things without leaving. */
+    let pending=chosen.slice();
+    const draw=()=>{
+      updateSheet(title||'Choose',
+        `<div class="picklist">${all.map(o=>{
+          const on=pending.indexOf(o.id)>=0;
+          return `<button class="pickrow${on?' on':''}" data-v="${esc(o.id)}" aria-pressed="${on?'true':'false'}">
+            ${o.icon?`<i class="rw-i">${svg(o.icon)}</i>`:''}
+            <span class="rw-x"><span class="rw-t">${esc(o.name)}</span>${
+              o.hint?`<span class="rw-s">${esc(o.hint)}</span>`:''}</span>
+            <i class="pick-c">${svg(on?'check':'plus')}</i>
+          </button>`;}).join('')}</div>`,
+        `<button class="btn primary big block" id="pkDone">Done${
+          pending.length?' · '+pending.length+' selected':''}</button>`);
+      $$('.pickrow').forEach(b=>b.onclick=()=>{
+        const v=b.dataset.v, i=pending.indexOf(v);
+        if(i>=0){
+          if(pending.length<=1 && !allowEmpty){ toast('Keep at least one'); return; }
+          pending.splice(i,1);
+        } else pending.push(v);
+        haptic(); draw();
+      });
+      $('#pkDone').onclick=()=>{
+        haptic();
+        if(!keepSheet) closeSheet();
+        cb(pending.slice());
+      };
+    };
+    /* open first so updateSheet has a sheet to update, then draw */
+    openSheet(title||'Choose','','');
+    draw();
+  };
+}
+
+/* range slider fill + live value */
+function bindInputs(root){
+  bindKeyboard(); wireFocusScroll(root);
+  $$('input[type=range]',root).forEach(r=>{
+    const upd=()=>{
+      const mn=+r.min||0,mx=+r.max||100;
+      r.style.setProperty('--pct',((r.value-mn)/(mx-mn)*100)+'%');
+      const t=r.dataset.out&&$('#'+r.dataset.out);
+      if(t) t.textContent = r.dataset.fmt==='min' ? fmtMin(+r.value) : r.value;
+    };
+    r.addEventListener('input',upd); upd();
+  });
+}
+
+/* =========================================================================
+   NAVIGATION
+   ====================================================================== */
+/* The metrics tab is named for what it holds, not for whose device filled it.
+   A label that changes per user makes the nav width jump about and reads
+   oddly for anyone whose device is not the one it was named after; "Metrics"
+   covers trends, sleep, baselines and import whatever you wear, or none. */
+/* Four primary destinations, always the same four.
+
+   Settings left the bar because it is configuration, not a place you go
+   during training - it lives behind the gear in the app bar. Metrics left
+   because it is only meaningful for someone with a wearable, and a tab that
+   appears and disappears is a worse answer than reaching it from the
+   readiness row on Today, where the number it explains already is. */
+function tabs(){ return [
+  {id:'today',   label:'Today',    icon:'today'},
+  {id:'workouts',label:'Train',    icon:'dumbbell'},
+  {id:'progress',label:'Progress', icon:'chart'},
+  /* Settings was a gear in the top-right corner - the only destination
+     reachable by a different gesture from every other one, in the hardest
+     place on a large phone to reach with a thumb. Last in the bar puts it
+     bottom right, where a settings tab belongs. */
+  {id:'settings',label:'Settings', icon:'gear'}
+];}
+let TAB='today';
+
+/* =========================================================================
+   PAGE STACK
+
+   One navigation idiom for the whole app. A section screen lists its
+   subjects as rows, a row pushes a page, and the page's back button is the
+   way out. This replaces five horizontal segment bars that between them hid
+   21 leaf panes with no way back and no sense of depth.
+
+   A page is {build} plus whatever its builder needs; the builder calls
+   appbar() exactly as a tab view does, and appbar() works out on its own
+   that it is drawing a pushed page and needs a back button.
+   ====================================================================== */
+let STACK=[];
+let NAVLOCK=false;   // suppresses the popstate our own history.back() causes
+
+function pushPage(spec){
+  STACK.push(spec);
+  /* a real history entry, so the phone's back gesture leaves the page
+     rather than the app - guarded because file:// has no history to push */
+  try{ history.pushState({bl:STACK.length},''); }catch(e){}
+  render(); window.scrollTo(0,0);
+}
+function popPage(fromHistory){
+  if(!STACK.length) return false;
+  STACK.pop(); render(); window.scrollTo(0,0);
+  if(!fromHistory){ NAVLOCK=true; try{ history.back(); }catch(e){ NAVLOCK=false; } }
+  return true;
+}
+function resetStack(){ STACK=[]; }
+window.addEventListener('popstate',function(){
+  if(NAVLOCK){ NAVLOCK=false; return; }
+  popPage(true);
+});
+function renderNav(){
+  /* the brand is app identity, not a status readout — whichever device you
+     wear is shown on the Metrics screen and in Settings, not here */
+  $('#nav').innerHTML=
+    `<div class="nav-brand"><i>${svg('ring')}</i><div>Baseline<span>Adaptive training</span></div></div>`+
+    tabs().map(t=>
+      `<button data-tab="${t.id}" class="${TAB===t.id?'on':''}" aria-current="${TAB===t.id?'page':'false'}">${svg(t.icon)}<span>${esc(t.label)}</span></button>`).join('')+
+    `<div class="nav-foot">All data stays on this device.<br>No account, no server, no tracking.</div>`;
+  $$('#nav button').forEach(b=>b.onclick=()=>{ haptic(); go(b.dataset.tab); });
+}
+function go(tab){
+  /* tapping a primary destination always lands on that destination, never
+     three pages deep inside where you were last time - or, for Today, three
+     weeks back because of something you were looking at last time */
+  resetStack();
+  WEEKOFF=0; SELDAY=null;
+  TAB=tab; DB.ui.tab=tab; save();
+  renderNav(); render();
+  window.scrollTo(0,0);
+}
+function render(){
+  const v=$('#view');
+  /* The tab set is not fixed: Metrics disappears for anyone with no wearable.
+     Removing a wearable while standing on that tab used to leave you on a
+     screen with nothing highlighted in the nav, so the guard lives here and
+     re-checks on every render rather than only at boot. */
+  if(!tabs().some(x=>x.id===TAB)){ TAB='today'; renderNav(); }
+  /* a pushed page owns the view; the tab underneath stays lit in the bar */
+  if(STACK.length){
+    const pg=STACK[STACK.length-1];
+    v.innerHTML=''; pg.build(v); bindInputs(v); return;
+  }
+  ({today:viewToday, workouts:viewWorkouts,
+    progress:viewProgress, settings:viewSettings}[TAB]||viewToday)(v);
+  bindInputs(v);
+}
+/* The one app bar. On a pushed page it carries a back button; on a primary
+   destination it carries whatever that screen asks for and nothing else.
+
+   It used to carry a settings gear, which was a second way into a screen the
+   tab bar now offers directly - and put it in the corner of the phone that is
+   hardest to reach. */
+function appbar(title,sub,actions){
+  const onPage=STACK.length>0;
+  $('#appbar').innerHTML=
+    (onPage?`<button class="icon-btn ab-back" id="abBack" aria-label="Back">${svg('left')}</button>`:'')+
+    `<div class="ab-txt"><div class="ttl">${title}</div>${sub?`<div class="sub">${sub}</div>`:''}</div>`+
+    `<div class="appbar-actions">${actions||''}</div>`;
+  const bk=$('#abBack'); if(bk) bk.onclick=()=>{ haptic(); popPage(); };
+}
+
+/* =========================================================================
+   ROW LIST
+
+   The app's one way of offering a set of choices that lead somewhere. Used
+   by every section index, so Train, Progress, Settings and Metrics all browse
+   identically instead of each inventing a segment bar.
+
+   navRows([{ t, s, icon, badge, go }])  - t title, s subtitle, go on tap.
+   ====================================================================== */
+/* Wrap an existing pane renderer as a pushed page. The pane keeps its own
+   signature (c => void); this only supplies the app bar around it. */
+function panePage(title,sub,fn){
+  return function(c){ appbar(title, sub||''); fn(c); };
+}
+function openPane(title,sub,fn){ pushPage({build:panePage(title,sub,fn)}); }
+
+function navRows(id,items){
+  return `<div class="rows" id="${id}">`+items.filter(Boolean).map((r,i)=>
+    `<button data-r="${i}"${r.aria?` aria-label="${esc(r.aria)}"`:''}>
+      ${r.icon?`<i class="rw-i">${svg(r.icon)}</i>`:''}
+      <span class="rw-x"><span class="rw-t">${esc(r.t)}</span>${
+        r.s?`<span class="rw-s">${esc(r.s)}</span>`:''}</span>
+      ${r.badge?`<span class="rw-b">${esc(r.badge)}</span>`:''}
+      <i class="rw-c">${svg('chev')}</i>
+    </button>`).join('')+`</div>`;
+}
+function wireRows(id,items){
+  const list=items.filter(Boolean);
+  $$('#'+id+' button').forEach(b=>{
+    const r=list[+b.dataset.r];
+    if(r&&r.go) b.onclick=()=>{ haptic(); r.go(); };
+  });
+}
+
+/* =========================================================================
+   VIEW: TODAY
+   ====================================================================== */
+function greeting(){ const h=new Date().getHours(); return h<5?'Good night':h<12?'Good morning':h<18?'Good afternoon':'Good evening'; }
+
+/* =========================================================================
+   AWAY MODE
+   The plan already waits when nothing is logged - progression is earned by
+   work, not by the calendar. This makes the pause deliberate, so the app can
+   say "you were away" instead of leaving the user to wonder why week 3 lasted
+   a month.
+   ====================================================================== */
+const awayUntil = ()=> (DB.profile && DB.profile.awayUntil) || null;
+const isAway = (date)=> { const u=awayUntil(); return !!u && (date||todayISO())<=u; };
+function awayDaysLeft(date){
+  const u=awayUntil(); if(!u) return 0;
+  return Math.max(0, daysBetween(date||todayISO(), u));
+}
+function setAway(until, reason){
+  DB.profile.awayUntil = until || null;
+  DB.profile.awayReason = reason || '';
+  save(true);
+}
+
+/* =========================================================================
+   THE NOTICE SLOT
+   One row on Today, at most. Priority order, and each notice ends itself:
+   nothing here can accumulate.
+   ====================================================================== */
+function noticeRow(date){
+  const d=date||todayISO();
+
+  /* 0 · a session still running from earlier today. Nothing outranks this:
+     everything else on the screen is about deciding what to train, and that
+     decision has already been made. */
+  const pw=pausedWorkout();
+  if(pw){
+    const k=sum(pw.entries.map(e=>e.sets.filter(s=>s.done).length));
+    return {id:'paused', icon:'play',
+      t:pw.pausedAt?'Workout paused':'Workout still open',
+      s:pw.workoutName+' · '+(k? k+' set'+(k===1?'':'s')+' logged' : 'nothing logged yet'),
+      go:()=>resumeWorkout()};
+  }
+
+  /* 1 · away: the most important thing to say, because it explains why the
+     rest of the screen looks paused */
+  if(isAway(d)){
+    const n=awayDaysLeft(d);
+    return {id:'away', icon:'moon', t:'Away until '+fmtDate(awayUntil()),
+      s:(DB.profile.awayReason? DB.profile.awayReason+' · ' : '')
+        +'Progression is paused'+(n?' · '+n+' day'+(n===1?'':'s')+' left':' · back tomorrow'),
+      go:()=>openAway()};
+  }
+
+  /* 2 · retest week: week 8 is a deload and retest, and nothing said so */
+  const ph=currentPhase();
+  if(ph.w===8){
+    const due=retestsDue();
+    if(due.length) return {id:'retest', icon:'target', t:'Retest week',
+      s:due.length+' test'+(due.length===1?'':'s')+' worth repeating this week',
+      go:()=>{ resetStack(); openPane('Tests','Retest and compare', paneTests); }};
+  }
+
+  /* 3 · the weekly digest, on the day the week turns over */
+  if(dowOf(d)===1){
+    const wkStart=weekStartOf(d);
+    if(!(DB.ui && DB.ui.digestSeen===wkStart) && hasHistory()){
+      return {id:'digest', icon:'chart', t:'Last week in review',
+        s:'A short summary of what you did and what moved',
+        go:()=>{ DB.ui=DB.ui||{}; DB.ui.digestSeen=wkStart; save();
+                 resetStack(); openPane('Last week','How the week went', paneWeek); }};
+    }
+  }
+
+  /* 4 · the walkthrough, while they are still new */
+  if(DB.profile.onboarded && !tourSeen() && loggedCount()===0){
+    return {id:'tour', icon:'info', t:'New here?',
+      s:'How Baseline works — about a minute', go:()=>openTour()};
+  }
+  return null;
+}
+function noticeHTML(date){
+  const n=noticeRow(date);
+  if(!n) return '';
+  return `<div class="rows" id="noticeRow" data-n="${n.id}">
+    <button data-r="0"><i class="rw-i">${svg(n.icon)}</i>
+      <span class="rw-x"><span class="rw-t">${esc(n.t)}</span>
+        <span class="rw-s">${esc(n.s)}</span></span>
+      <i class="rw-c">${svg('chev')}</i></button></div>`;
+}
+function wireNotice(date){
+  const b=$('#noticeRow button'); if(!b) return;
+  const n=noticeRow(date); if(!n) return;
+  b.onclick=()=>{ haptic(); n.go(); };
+}
+
+/* which tests are worth repeating: never done, or not for six weeks */
+function retestsDue(){
+  const out=[];
+  TESTS.forEach(t=>{
+    const rs=(DB.tests||[]).filter(x=>x.testId===t.id).sort((a,b)=>a.date<b.date?-1:1);
+    if(!rs.length){ out.push(t); return; }
+    if(daysBetween(rs[rs.length-1].date, todayISO())>=42) out.push(t);
+  });
+  return out;
+}
+
+/* the away sheet: one date, one optional word, and a way to come back early */
+function openAway(){
+  const cur=awayUntil();
+  openSheet(cur?'Away until '+fmtDate(cur):'Pause training',`
+   <p class="lede">Baseline will stop counting the days against your
+     progression. Nothing is lost — the plan waits where it is and picks up
+     when you are back.</p>
+   <div class="field" style="margin-top:18px"><label>Back on</label>
+     <input class="inp" type="date" id="awUntil" min="${todayISO()}"
+            value="${esc(cur||'')}"></div>
+   <div class="field"><label>Why <span style="text-transform:none;font-weight:600">(optional)</span></label>
+     <div class="pills" id="awWhy">
+       ${['Holiday','Travel','Illness','Injury','Busy'].map(x=>
+         `<button data-v="${x}" class="${DB.profile.awayReason===x?'on':''}">${x}</button>`).join('')}
+     </div></div>
+   <div class="hint">You can still log anything you do while away, and it
+     still counts. This only stops the progression clock.</div>
+  `, cur
+   ? `<button class="btn primary big block" id="awSave">Update</button>
+      <button class="btn ghost block" id="awEnd">I am back now</button>`
+   : `<button class="btn primary big block" id="awSave">Pause training</button>`);
+
+  $$('#awWhy button').forEach(b=>b.onclick=()=>{
+    const on=b.classList.contains('on');
+    $$('#awWhy button').forEach(x=>x.classList.remove('on'));
+    if(!on) b.classList.add('on');
+    haptic();
+  });
+  $('#awSave').onclick=()=>{
+    const u=$('#awUntil').value;
+    if(!u){ toast('Pick a date to come back','err'); return; }
+    if(u<todayISO()){ toast('That date has passed','err'); return; }
+    const w=$('#awWhy button.on');
+    setAway(u, w?w.dataset.v:'');
+    closeSheet(); toast('Training paused'); setTimeout(render,220);
+  };
+  const e=$('#awEnd');
+  if(e) e.onclick=()=>{ setAway(null,''); closeSheet(); toast('Welcome back','ok');
+                        setTimeout(render,220); };
+}
+
+/* =========================================================================
+   FIRST-RUN WALKTHROUGH
+   Six cards, plain language, no jargon, skippable on every one of them.
+   Shown once after setup; reopenable from Settings > About.
+
+   It exists because Baseline decides things, and a system that decides things
+   is confusing until you know what it is deciding from. Six screens of
+   explanation once is cheaper than a user assuming Tuesday's session is a bug.
+   ====================================================================== */
+const TOUR=[
+  {t:'Baseline picks one session a day',
+   b:'Not a plan written weeks ago. A decision made this morning, from how '+
+     'recovered you are and what you have actually been doing.'},
+  {t:'It needs about a minute from you',
+   b:'Each morning it asks how long you slept and how you feel. The sliders '+
+     'start where you left them last time, so most days are a nudge or two. '+
+     'If you wear a tracker, whatever it recorded is filled in for you.'},
+  {t:'Then you get one thing to do',
+   b:'One session, with a duration and an intensity. Tap Start and the screen '+
+     'becomes the workout: one exercise at a time, what you lifted last time, '+
+     'and buttons instead of a keyboard.'},
+  {t:'It shows you why',
+   b:'Tap "Why this?" to see what counted towards the decision and what it '+
+     'ruled out. Disagree? "Change today’s plan" is right underneath. '+
+     'Overriding is recorded and adapted to, never held against you.'},
+  {t:'Log anything you do',
+   b:'A match, a long walk, helping someone move house. Three taps. '+
+     'Unplanned activity is not a missed workout — tomorrow works around it.'},
+  {t:'It all stays on this device',
+   b:'Your data lives in this browser, on this phone. No account, no server, '+
+     'nothing uploaded anywhere. That also means a backup is the only copy '+
+     'there is: Settings → Data → Backup, every few weeks.'}
+];
+let TOURSTEP=0;
+
+function drawTour(){
+  const s=TOURSTEP, c=TOUR[s], last=s===TOUR.length-1;
+  const dots=TOUR.map((x,i)=>
+    `<div style="flex:1;height:3px;border-radius:9px;background:${
+      i<=s?'var(--accent)':'var(--surface-3)'}"></div>`).join('');
+  const body=`<div style="display:flex;gap:4px;margin-bottom:20px">${dots}</div>
+    <div style="font-size:22px;font-weight:850;letter-spacing:-.6px;line-height:1.2">${esc(c.t)}</div>
+    <p class="lede" style="margin-top:12px">${esc(c.b)}</p>`;
+  /* the same footer geometry as the setup wizard, for the same reason */
+  const foot=`<div class="btn-row setup-foot">
+    <button class="btn ghost" id="tourSkip">${last?'Back':'Skip'}</button>
+    <button class="btn primary" id="tourNext">${last?'Got it':'Next'}</button></div>`;
+  if($('#sheet').classList.contains('on')) updateSheet('How Baseline works', body, foot);
+  else openSheet('How Baseline works', body, foot, endTour);
+  $('#tourSkip').onclick=()=>{ if(last){ TOURSTEP--; drawTour(); } else { closeSheet(); } };
+  $('#tourNext').onclick=()=>{
+    if(last){ closeSheet(); return; }
+    TOURSTEP++; drawTour(); haptic();
+  };
+}
+/* seen is seen, whether it was read or skipped: nobody should be shown this
+   twice because they closed it */
+function endTour(){
+  DB.ui=DB.ui||{};
+  if(!DB.ui.tourDone){ DB.ui.tourDone=true; save(); }
+  try{ render(); }catch(e){}
+}
+function openTour(){ TOURSTEP=0; drawTour(); }
+const tourSeen = ()=> !!(DB.ui && DB.ui.tourDone);
+
+/* How much the engine has to work with. Decides whether a new user still
+   needs orienting: not a dismissible banner, it simply stops appearing once
+   there is enough history for the app to speak for itself. */
+function loggedCount(){
+  return (DB.sessions||[]).filter(s=>s.done).length
+       + (DB.activities||[]).length
+       + Object.keys(DB.checkins||{}).length;
+}
+
+/* has this device recorded anything at all? */
+function hasHistory(){
+  return (DB.sessions||[]).some(s=>s.done) || (DB.activities||[]).length>0 || DB.whoop.cycles.length>0;
+}
+/* "never logged" is not the same as "over 2 weeks ago", and neither is the
+   same as "not in the four days you have been using this". */
+function sinceText(n, span){
+  if(!hasHistory()) return 'never logged';
+  if(n===99){
+    if(span!=null && span<14) return 'not yet';
+    return 'over 2 weeks ago';
+  }
+  if(n===1) return 'yesterday';
+  return n+' days ago';
+}
+/* The walkthrough offer is one of the notices now - see noticeRow(). Keeping a
+   second row that could appear beside it is how Today grows back into the
+   dashboard this redesign removed. */
+
+function viewToday(v){
+  const d=todayISO(), ci=DB.checkins[d];
+  const first=(DB.profile.name||'').trim().split(/\s+/)[0];
+  appbar(greeting()+(first?', '+esc(first):''), fmtDate(d));
+
+  /* No check-in yet: the screen has exactly one thing to offer. */
+  if(!ci){ v.innerHTML=setupPrompt()+todayNoCheckin(d); wireToday(d); return; }
+
+  const rd=readiness(d,ci), B=BAND[rd.band];
+  const ovr=DB.plans[d];
+  const rec=recommend(d,ci,rd);
+  // a user override replaces the engine's pick but keeps its reasoning visible
+  const pl = ovr ? Object.assign({},rec,{workoutId:ovr.workoutId,variant:ovr.variant,
+      addCore:!!ovr.addCore, label:ovr.label||rec.label, est:ovr.est||rec.est,
+      overridden:true}) : rec;
+  const wk=DB.workouts.find(w=>w.id===pl.workoutId);
+  const done=DB.sessions.find(s=>s.date===d&&s.done);
+
+  v.innerHTML=setupPrompt()+`
+
+  ${ringRow(d)}
+  ${mcRow(d)}
+  ${noticeHTML(d)}
+
+  ${done?`
+  <button class="rec tap" id="btnDone" data-sid="${esc(done.id)}"
+          aria-label="${esc(done.workoutName||'Session complete')}, see what you did">
+    <div class="rec-l">Done today</div>
+    <div class="rec-t">${esc(done.workoutName||'Session complete')}</div>
+    <div class="rec-m">${done.durationMin||0} min${done.setsDone?' · '+done.setsDone+' sets':''}${
+      done.volume?' · '+rnd(done.volume,0)+' volume':''}</div>
+    <div class="rec-go">See what you did ${svg('chev')}</div>
+  </button>
+  `
+  :`
+  <div class="rec">
+    <div class="rec-l">Today</div>
+    <div class="rec-t">${esc(pl.label)}${pl.addCore?' + Core':''}</div>
+    <div class="rec-m">${pl.est?`~${pl.est} min`:''}${pl.est&&pl.intensity?' · ':''}${esc(pl.intensity||'')}</div>
+    ${pl.overridden?'<div class="rec-m" style="color:var(--violet)">Your choice</div>':''}
+    ${hasLimits(d)?`<div class="rec-m" style="color:var(--orange)">Working around ${esc(limitsText(d))}</div>`:''}
+  </div>
+
+  ${wk?`<button class="btn primary big block" id="btnStart">${svg('play')} Start session</button>`
+      :`<div class="hint" style="margin-top:13px;text-align:center">Rest is the recommendation today, not the absence of one.</div>`}
+
+  <button class="tert" id="whyT" aria-expanded="false" aria-controls="whyB">Why this? ${svg('down')}</button>
+  <div class="whybox" id="whyB" hidden>
+    <ul class="whyl">${pl.why.map(w=>`<li class="${w.k}"><span class="dot"></span><span>${w.t}</span></li>`).join('')}</ul>
+    ${(pl.ruledOut&&pl.ruledOut.length)?`<div class="ruled">
+      <div class="rl-t">Not today</div>
+      ${pl.ruledOut.map(r=>`<div class="rl"><i>${svg('x')}</i>
+        <span><b>${esc(r.label)}</b> — ${r.why}</span></div>`).join('')}
+    </div>`:''}
+    <div class="hint" style="margin-top:10px">Based on ${esc(rd.sources.label)}.</div>
+  </div>
+
+  <button class="btn ghost block" id="btnSwap">Change today's plan</button>`}
+
+  ${(pl.prep&&!done)?`
+  <div class="rows" id="prepRows">
+    <button data-r="0"><span class="rw-x"><span class="rw-t">Pre-${esc(sportLC())} activation</span>
+      <span class="rw-s">${sportWarmup().dur} min before you play</span></span>
+      <i class="rw-c">${svg('chev')}</i></button>
+  </div>`:''}
+
+  <div class="sec-t">This week</div>
+  ${weekStrip(d)}
+
+  ${activitiesCard(selDay())}
+  ${activityRowsHTML()}`;
+
+  wireToday(d);
+}
+
+
+/* =========================================================================
+   RINGS
+   A score is a proportion of something. A ring says that in a glance where a
+   bare number has to be read and compared against a maximum you are expected
+   to remember. `pct` null means there is nothing to draw - an em-dash, not a
+   ring at zero, because those are different statements.
+   ====================================================================== */
+/* Three quarters of a circle with the gap at the bottom: the shape of the
+   app's own mark, which it already draws in the nav and on the icon and had
+   never used for anything that carried a number. */
+const RING_R=26, RING_C=2*Math.PI*RING_R;
+const RING_SWEEP=0.75, RING_ARC=RING_C*RING_SWEEP;
+function ringHTML(o){
+  const has=o.pct!=null && !isNaN(o.pct);
+  const p=has? clamp(o.pct,0,100) : 0;
+  const off=(RING_ARC*(1-p/100)).toFixed(1);
+  const col=has? (o.color||'var(--accent)') : 'var(--text-3)';
+  return `<span class="arc${o.lead?' lead':''}">
+    <svg viewBox="0 0 64 64" class="arc-s" aria-hidden="true">
+      <circle class="arc-bg" cx="32" cy="32" r="${RING_R}"
+        stroke-dasharray="${RING_ARC.toFixed(1)} ${RING_C.toFixed(1)}"></circle>
+      ${has?`<circle class="arc-fg" cx="32" cy="32" r="${RING_R}"
+        style="stroke:${col}"
+        stroke-dasharray="${RING_ARC.toFixed(1)} ${RING_C.toFixed(1)}"
+        stroke-dashoffset="${off}"></circle>`:''}
+      <text class="arc-t" x="32" y="32" text-anchor="middle" dominant-baseline="central"
+            style="fill:${col}">${esc(o.value)}</text>
+    </svg>
+  </span>`;
+}
+
+/* The three numbers that describe a day - but not as three equals. Readiness
+   is what this app is built around, so it leads at full width with its band
+   in words; strain and sleep are the context for it and sit below at half
+   size. A row of three identical circles would say all three weigh the same,
+   which in this app they do not. */
+function ringRow(d){
+  const ci=DB.checkins[d];
+  const rd=ci? readiness(d,ci) : null;
+  const B=rd? BAND[rd.band] : null;
+  const dd=dayDemand(d);
+  const load=dd.load||0;
+  /* sleep against what this profile actually needs, not a fixed eight hours */
+  const need=(ci && ci.sleepNeed) ? ci.sleepNeed : 480;
+  const slept=(ci && ci.sleepMin!=null) ? ci.sleepMin : null;
+
+  return `<div class="scores">
+    <button class="score lead" id="rdRow" aria-label="Readiness ${rd?rd.score:'unknown'} of 100${
+      B?', '+esc(B.label):''}. View details">
+      ${ringHTML({lead:true, pct: rd? rd.score : null, value: rd? rd.score : '—',
+                  color: B? B.color : null})}
+      <span class="score-x">
+        <span class="score-l">Readiness</span>
+        <span class="score-w" style="${B?'color:'+B.color:''}">${rd? esc(B.label) : 'Not checked in'}</span>
+        <span class="score-s">${rd? 'out of 100' : 'Check in to get today’s number'}</span>
+      </span>
+      <i class="rw-c">${svg('chev')}</i>
+    </button>
+    <div class="score-pair">
+      <button class="score" id="ringStrain" aria-label="Strain today ${rnd(load,1)} of 21. See the day">
+        ${ringHTML({pct: load? Math.min(100, load/21*100) : null,
+                    value: load? rnd(load,1) : '—', color:'var(--cyan)'})}
+        <span class="score-x"><span class="score-l">Strain</span>
+          <span class="score-s">of 21 today</span></span>
+      </button>
+      <button class="score" id="ringSleep" aria-label="${slept!=null?'Slept '+fmtMin(slept):'Sleep not recorded'}">
+        ${ringHTML({pct: slept!=null? Math.min(100, slept/need*100) : null,
+                    value: slept!=null? (Math.round(slept/60*10)/10)+'h' : '—',
+                    color:'var(--violet)'})}
+        <span class="score-x"><span class="score-l">Sleep</span>
+          <span class="score-s">${slept!=null? 'of '+Math.round(need/60)+'h needed' : 'not recorded'}</span></span>
+      </button>
+    </div>
+  </div>`;
+}
+function wireRings(d){
+  /* #rdRow is wired by wireToday's own `on('rdRow', ...)`, which already knows
+     pushPage's shape. Binding it again here replaced a correct handler with a
+     differently-shaped one - and silently, because onclick just overwrites. */
+  const s=$('#ringStrain');
+  if(s) s.onclick=()=>{ const c=$('#actsCard'); if(c) c.scrollIntoView({behavior:'smooth',block:'center'}); };
+  const z=$('#ringSleep');
+  if(z) z.onclick=()=>openCheckinView(d);
+}
+
+
+/* ---------------------------------------------------------------- READINESS
+   The contributors behind the number, on their own screen. Garmin and Oura
+   both do this: one score on the home screen, the factors that produced it a
+   tap away. It is also where the wearable figures live now, so someone with
+   no device never sees an empty chart. */
+function pageReadiness(d){
+  return function(c){
+    const ci=DB.checkins[d]; if(!ci){ c.innerHTML=''; return; }
+    const rd=readiness(d,ci), B=BAND[rd.band];
+    appbar('Readiness', fmtDate(d));
+    const dev=(ci.recovery!=null||ci.hrv!=null||ci.rhr!=null);
+    c.innerHTML=`
+    <div class="rec" style="text-align:center">
+      <div class="rec-t" style="font-size:44px;color:${B.color}">${rd.score}</div>
+      <div class="rec-m" style="font-weight:750;color:${B.color}">${esc(B.label)}</div>
+      <div class="hint" style="margin-top:8px">${esc(rd.sources.label)} · ${esc(rd.sources.confidence)} confidence</div>
+    </div>
+
+    <div class="sec-t">What moved it</div>
+    <div class="card"><ul class="whyl">${
+      /* rd.why holds the sentences; rd.parts holds the numeric weights and
+         has no text at all, which is why this section used to be blank. */
+      (rd.why||[]).length
+        ? rd.why.map(w=>`<li class="${esc(w.k||'info')}"><span class="dot"></span>
+            <span>${w.t}</span></li>`).join('')
+        : '<li class="info"><span class="dot"></span><span>Nothing logged yet today, so there is nothing to attribute.</span></li>'
+    }</ul></div>
+    ${(rd.parts||[]).length?`<div class="hint" style="margin-top:-2px">Weighted from ${
+      rd.parts.length} signal${rd.parts.length>1?'s':''} · ${esc(rd.sources.confidence)} confidence</div>`:''}
+
+    <div class="sec-t">This morning</div>
+    ${dev?`<div class="stats">
+      ${statTile('Recovery',ci.recovery,'%',ci.recovery>=67?'g':ci.recovery>=34?'y':'r')}
+      ${statTile('HRV',ci.hrv,'ms','c')}
+      ${statTile('Rest HR',ci.rhr,'bpm','')}
+    </div><div class="stats">`:'<div class="stats">'}
+      ${statTile('Sleep',ci.sleepMin!=null?fmtMin(ci.sleepMin):null,'',
+         rd.shortfall==null?'':rd.shortfall<=60?'g':rd.shortfall<=120?'y':'r',
+         rd.shortfall!=null?(rd.shortfall<=0?'target met':Math.round(rd.shortfall)+' min short'):'')}
+      ${statTile('7d load',rd.acwr.ratio!=null?rnd(rd.acwr.ratio,2):null,'×',
+         rd.acwr.ratio==null?'':rd.acwr.ratio>1.4?'o':rd.acwr.ratio<0.8?'c':'g','acute:chronic')}
+      ${statTile('Yest. load',rnd(dayDemand(addDays(d,-1)).load,1),'',
+         (()=>{const x=dayDemand(addDays(d,-1)).load; return x>=12?'r':x>=7?'y':'g';})(),'from your log')}
+    </div>
+
+    <div class="sec-t">How you said you feel</div>
+    <div class="card">
+      ${feelRow('Energy',ci.energy,'g')}
+      ${feelRow('Soreness',ci.soreness,'o',true)}
+      ${feelRow('Stress',ci.stress,'y',true)}
+      ${feelRow('Motivation',ci.motivation,'c')}
+      ${ci.pain&&ci.pain!=='None'?`<div class="kv"><span class="k">Pain</span><span class="v">${esc(ci.pain)}</span></div>`:''}
+    </div>
+
+    <button class="btn ghost block" id="rdEdit">Edit check-in</button>
+    ${(usesDevice()||DB.whoop.cycles.length)
+      ? `<button class="btn ghost block" id="rdMetrics">Wearable metrics and trends</button>`
+      : ''}`;
+    const e=$('#rdEdit'); if(e) e.onclick=()=>openCheckin(d);
+    const m=$('#rdMetrics'); if(m) m.onclick=()=>{ HTAB='trends'; openMetrics(); };
+  };
+}
+
+function statTile(lab,val,unit,cls,delta){
+  /* delta stays escaped. A caller that wants direction says so with a leading
+     arrow, which is read here rather than passed through as markup. */
+  const d=delta==null?'':String(delta);
+  const dir = d.indexOf('\u25b2')===0 ? ' up' : d.indexOf('\u25bc')===0 ? ' down' : '';
+  return `<div class="stat ${cls||''}"><div class="lab">${esc(lab)}</div>
+    <div><div class="val num">${val==null?'—':esc(String(val))}${val!=null&&unit?`<small>${esc(unit)}</small>`:''}</div>
+    ${d?`<div class="dlt${dir}">${esc(d)}</div>`:''}</div></div>`;
+}
+function feelRow(lab,val,cls,inverse){
+  const pct=val==null?0:val*10;
+  const good = val==null?null : (inverse? val<=4 : val>=7);
+  return `<div style="margin-bottom:11px">
+    <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:5px">
+      <span style="color:var(--text-2);font-weight:600">${esc(lab)}</span>
+      <span class="num" style="font-weight:800;color:${val==null?'var(--text-3)':good?'var(--green)':'var(--text)'}">${val==null?'—':val+'/10'}</span></div>
+    <div class="bar ${cls}"><i style="width:${pct}%"></i></div></div>`;
+}
+/* Which week the strip is showing. 0 is the current one; negative is the
+   past. Never positive - there is nothing to log in a week that has not
+   happened. Reset when you leave Today so it does not greet you weeks back. */
+let WEEKOFF=0;
+/* Which day the Today screen is talking about. null means today, which is
+   what it means every time you arrive. Selecting a day in the calendar is
+   what makes "Add activity" mean that day rather than this one. */
+let SELDAY=null;
+const selDay = ()=> SELDAY || todayISO();
+
+function weekStrip(d){
+  const today=todayISO();
+  const sel=selDay();
+  const start=addDays(weekStartOf(d), WEEKOFF*7);
+  const end=addDays(start,6);
+  const label = WEEKOFF===0 ? 'This week'
+    : WEEKOFF===-1 ? 'Last week'
+    : fmtDate(start)+' — '+fmtDate(end);
+  const TAGS={lower:'Legs',upper:'Upper',power:'Power',core:'Core',run:'Run',bike:'Bike',mobility:'Mob',prep:'Prep',strength:'Str'};
+  /* one cycle context for all seven days, not one per day */
+  const mcc = mcOn()? mcCtx() : null;
+  let h='<div class="card flush">'
+    +`<div class="wk-nav">
+        <button class="wk-b" id="wkPrev" aria-label="Previous week">${svg('left')}</button>
+        <span class="wk-l">${esc(label)}</span>
+        ${WEEKOFF<0
+          ? `<button class="wk-b" id="wkNext" aria-label="Next week">${svg('chev')}</button>`
+          : `<span class="wk-b ghost" aria-hidden="true"></span>`}
+      </div>`
+    +'<div style="display:grid;grid-template-columns:repeat(7,1fr)">';
+  for(let i=0;i<7;i++){
+    const day=addDays(start,i), isT=day===today;
+    const future=day>today;
+    const isSel=day===sel;
+    const dow=dowOf(day);
+    const sess=DB.sessions.find(s=>s.date===day&&s.done);
+    const acts=DB.activities.filter(a=>a.date===day);
+    const ten=acts.some(a=>isMainSportAct(a.type))||DB.whoop.workouts.some(w=>w.date===day&&mainSportActs().some(x=>new RegExp(x,'i').test(w.activity)));
+    const cy=cycleByDate(day);
+    const col = sess?'var(--accent)': ten?'var(--green)': acts.length?'var(--cyan)':'var(--surface-3)';
+    let tag='';
+    if(ten) tag=(ACT_TYPES[(acts.find(a=>isMainSportAct(a.type))||{}).type]||{}).short||'Sport';
+    else if(sess) tag=TAGS[sess.category||catOfWorkout(DB.workouts.find(w=>w.id===sess.workoutId))]||'Train';
+    else if(acts.length) tag=(ACT_TYPES[acts[0].type]||ACT_TYPES.other).short;
+    h+=`<${future?'div':'button'} class="wk-d${future?' future':''}${isSel?' sel':''}"
+         ${future?'':`data-day="${day}" aria-current="${isSel?'date':'false'}"
+           aria-label="${esc(fmtDate(day))}${isSel?', selected':', show this day'}"`}
+         style="border-right:${i<6?'1px solid var(--border-soft)':'none'}">
+      <div style="font-size:9.5px;font-weight:800;color:${isT?'var(--accent)':'var(--text-3)'};letter-spacing:.5px">${DOW_NAME[dow].toUpperCase()}</div>
+      <div style="font-size:14px;font-weight:750;margin:3px 0 6px;color:${isSel||isT?'var(--text)':'var(--text-2)'}">${new Date(day+'T12:00:00').getDate()}</div>
+      <div style="width:7px;height:7px;border-radius:50%;background:${col};margin:0 auto"></div>
+      <div style="font-size:9.5px;color:var(--text-3);margin-top:5px;font-weight:700;line-height:1.2;min-height:20px">${esc(tag)}</div>
+      ${(()=>{
+        /* Readiness, not the wearable's raw recovery. The ring at the top of
+           this same screen shows readiness; two different numbers answering
+           "how ready am I" on one screen is the app disagreeing with itself. */
+        const ci=DB.checkins[day];
+        if(!ci) return '<div style="height:13px"></div>';
+        const rd=readiness(day,ci), bb=BAND[rd.band];
+        return `<div style="font-size:10.5px;font-weight:850;margin-top:2px;
+          color:${bb.color}" title="Readiness ${rd.score}">${rd.score}</div>`;
+      })()}
+      ${mcc?(()=>{
+        /* cycle day for the week people actually look at. A logged bleeding
+           day is filled; everything else is just the number, quietly. */
+        const cd=mcDay(day,mcc);
+        const lg=mcLog(day);
+        const bleed=!!(lg&&lg.bleeding);
+        if(cd==null) return '<div style="height:16px"></div>';
+        return `<div style="margin-top:3px"><span style="display:inline-block;min-width:17px;
+          padding:1px 4px;border-radius:6px;font-size:9.5px;font-weight:800;line-height:13px;
+          ${bleed?'background:var(--pink);color:#fff'
+                 :'background:var(--surface-2);color:var(--text-3)'}"
+          >${cd}</span></div>`;
+      })():''}
+    </${future?'div':'button'}>`;
+  }
+  return h+'</div><div style="padding:9px 14px;border-top:1px solid var(--border-soft);font-size:11px;color:var(--text-3);line-height:1.45">'
+    +(WEEKOFF===0
+       ? 'Nothing here is pre-scheduled. Each day is decided that morning from your readiness and what you have actually done.'
+       : 'Tap a day to see it, or to add something you did and forgot to log.')
+    +(mcc?' The small number is your cycle day; a filled one is a day you logged bleeding.':'')
+    +'</div></div>';
+}
+
+function wireWeekStrip(d){
+  const p=$('#wkPrev');
+  if(p) p.onclick=()=>{ haptic(); WEEKOFF--; render(); };
+  const n=$('#wkNext');
+  if(n) n.onclick=()=>{ haptic(); WEEKOFF=Math.min(0,WEEKOFF+1); render(); };
+  /* Selecting a day is what makes the card below it - and therefore Add
+     activity - mean that day. Tapping the selected day again goes back to
+     today, so there is always a way out without hunting for the date. */
+  $$('#view .wk-d[data-day]').forEach(b=>b.onclick=()=>{
+    haptic();
+    const day=b.dataset.day;
+    SELDAY = (day===selDay() || day===todayISO()) ? null : day;
+    render();
+  });
+}
+
+function todayNoCheckin(d){
+  const cy=cycleByDate(d);
+  return `
+  <div class="rec">
+    <div class="rec-l">Today</div>
+    <div class="rec-t">How are you doing?</div>
+    <div class="rec-m">Baseline needs this before it can pick a session. About a minute.</div>
+  </div>
+  <button class="btn primary big block" id="btnCheck">${svg('play')} Check in</button>
+  ${cy?`<div class="hint" style="margin-top:11px;text-align:center">Your ${esc(SRC_NAME())} numbers for today are already there — they will be filled in for you.</div>`:''}
+
+  ${noticeHTML(d)}
+  <div class="sec-t">This week</div>
+  ${weekStrip(d)}
+  ${activitiesCard(selDay())}
+  ${activityRowsHTML()}`;
+}
+
+function setupPrompt(){
+  if(DB.profile.onboarded) return '';
+  const t=TIERS[DB.profile.tier||0]||TIERS[0];
+  return `<div class="card wide" id="setupCard" style="border-color:var(--orange-line);background:linear-gradient(160deg,var(--orange-wash),transparent)">
+    <div class="card-t" style="color:var(--orange)">Setup not finished</div>
+    <div style="font-size:15px;font-weight:750;letter-spacing:-.2px;margin:7px 0 7px">The program is running on defaults</div>
+    <p style="font-size:13px;color:var(--text-2);line-height:1.55">Right now it assumes <b>${esc(t.name.toLowerCase())}</b> equipment and <b>${esc(sportsText())}</b> as your sport. If either is wrong you are being given the wrong exercises.</p>
+    <div class="btn-row">
+      <button class="btn primary sm" id="setupGo">Continue setup</button>
+      <button class="btn ghost sm" id="setupDismiss">Defaults are fine</button>
+    </div>
+  </div>`;
+}
+function dailySummaryCard(d){
+  const dd=dayDemand(d);
+  if(!dd.n) return `<div class="card tight"><div class="empty" style="padding:20px">
+    <p>Nothing logged yet today. Anything you do — planned or not — can be logged and will feed straight into tomorrow's recommendation.</p></div></div>`;
+  const b=loadBand(dd.load);
+  const groups={};
+  dd.items.forEach(i=>{
+    const k = i.kind==='session' ? 'Strength' : (ACT_TYPES[i.type]||ACT_TYPES.other).name;
+    groups[k]=groups[k]||{min:0,load:0,n:0};
+    groups[k].min+=i.min||0; groups[k].load+=i.load||0; groups[k].n++;
+  });
+  const tomorrow = dd.expl>=8 ? 'Explosive demand is high — tomorrow avoids plyometrics and hard change of direction.'
+    : dd.lower>=12 ? 'Heavy lower-body day — tomorrow will move to upper body or recovery work.'
+    : dd.lower>=8  ? 'Real lower-body load — tomorrow\'s leg volume will be trimmed.'
+    : dd.upper>=8  ? 'Notable upper-body load — tomorrow\'s pressing and pulling volume will be reduced.'
+    : dd.load>=12  ? 'High total load — tomorrow will be pulled back regardless of the schedule.'
+    : dd.load<=4   ? 'Light day — no carry-over. Tomorrow can be trained properly.'
+    : 'Moderate load — tomorrow\'s plan stands unless your recovery numbers say otherwise.';
+  return `<div class="card">
+    <div class="card-h"><div class="card-t">Total activity load</div>
+      <span class="chip ${b.cls}">${b.label} · ${dd.load}</span></div>
+    ${Object.entries(groups).map(([k,g])=>`<div class="kv"><span class="k">${esc(k)}${g.n>1?` ×${g.n}`:''}</span>
+      <span class="v">${g.min} min · load ${rnd(g.load,1)}</span></div>`).join('')}
+    <div class="divider"></div>
+    <div class="card-t" style="margin-bottom:9px">Demand breakdown</div>
+    ${[['Lower body',dd.lower,'a'],['Upper body',dd.upper,'c'],['Explosive',dd.expl,'o'],['Impact',dd.impact,'r']].map(([l,v,cl])=>
+      `<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+        <span style="color:var(--text-2);font-weight:600">${l}</span><span class="num" style="font-weight:750">${v}</span></div>
+        <div class="bar ${cl}"><i style="width:${clamp(v/18*100,0,100)}%"></i></div></div>`).join('')}
+    <div class="note ${dd.expl>=8||dd.lower>=12?'warn':'acc'}"><b>Effect on tomorrow:</b> ${tomorrow}</div>
+    <div class="hint" style="margin-top:8px">Load Score is this app's own estimate from activity type, duration and RPE — not a WHOOP measurement. Where WHOOP strain exists for a day, the engine uses that for the day total.</div>
+  </div>`;
+}
+
+function todayPlan(d){
+  const ci=DB.checkins[d], ovr=DB.plans[d], rec=recommend(d,ci);
+  return ovr ? Object.assign({},rec,{workoutId:ovr.workoutId,variant:ovr.variant,addCore:!!ovr.addCore,
+    label:ovr.label||rec.label,est:ovr.est||rec.est,id:ovr.id||rec.id,overridden:true}) : rec;
+}
+function wireToday(d){
+  const on=(id,fn)=>{ const b=$('#'+id); if(b)b.onclick=fn; };
+  /* the score pushes its own explanation rather than printing it here */
+  on('rdRow',()=>pushPage({build:pageReadiness(d)}));
+  /* "Why this?" expands in place: progressive disclosure, not a new screen,
+     because the answer is three lines and belongs next to the question */
+  const wt=$('#whyT'), wb=$('#whyB');
+  if(wt&&wb) wt.onclick=()=>{
+    const open=wb.hasAttribute('hidden');
+    if(open) wb.removeAttribute('hidden'); else wb.setAttribute('hidden','');
+    wt.classList.toggle('open',open);
+    wt.setAttribute('aria-expanded',open?'true':'false');
+    haptic();
+  };
+  const pr=$('#prepRows button'); if(pr) pr.onclick=()=>previewWorkout('w_prep','full');
+  const mr=$('#mcRow button'); if(mr) mr.onclick=()=>openCycle();
+  wireNotice(d);
+  on('btnCheck',()=>openCheckin(d));
+  on('btnEditCi',()=>openCheckinView(d));
+  on('btnStart',()=>{ const p=todayPlan(d); startWorkout(p.workoutId,p.variant,d,p); });
+  on('btnPreview',()=>{ const p=todayPlan(d); previewWorkout(p.workoutId,p.variant,p); });
+  on('btnSwap',()=>changePlan(d));
+  on('btnPrep',()=>previewWorkout('w_prep','full'));
+  wireRings(d);
+  wireWeekStrip(d);
+  wireActivitiesCard(selDay());
+  wireActivityRows();
+  /* the tile that says you trained is the way to what you actually did */
+  const dn=$('#btnDone'); if(dn) dn.onclick=()=>sessionDetail(dn.dataset.sid);
+  on('btnAddWhoop',()=>{ if(usesDevice()){ HTAB='import'; openMetrics(); } else startSetup(true); });
+  on('setupGo',()=>startSetup());
+  on('setupDismiss',()=>{
+    DB.profile.onboarded=true; save(true); renderNav(); render();
+    toast('Using defaults — change them any time in Settings');
+  });
+  ['accReady','accOpts','accWk'].forEach(id=>{
+    const h=$('#'+id+'H'); if(h) h.onclick=()=>$('#'+id).classList.toggle('open');
+  });
+}
+
+/* ---- user override: [CHANGE TODAY'S PLAN] ---- */
+function changePlan(d){
+  const rec=recommend(d,DB.checkins[d]);
+  const cur=DB.plans[d];
+  openSheet("Change today's plan",`
+   <div class="note acc" style="margin-bottom:14px">Overriding is not a failure — whatever you actually do gets logged and feeds straight back into tomorrow's recommendation.</div>
+   <div class="card-t" style="margin-bottom:9px">Ranked by today's data</div>
+   ${rec.scored.map(x=>{
+     const wk=x.wid?DB.workouts.find(w=>w.id===x.wid):null;
+     const isRec = x.c.id===rec.id && !cur;
+     const isCur = cur && cur.id===x.c.id;
+     return `<button class="card tight" data-pick="${x.c.id}" style="display:block;width:100%;text-align:left;margin-bottom:8px;${isRec||isCur?'border-color:var(--accent)':''}">
+       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+         <div style="flex:1;min-width:0">
+           <div style="font-size:14.5px;font-weight:750">${esc(x.c.label)}</div>
+           <div style="font-size:11.5px;color:${x.blocked?'var(--orange)':'var(--text-3)'};margin-top:4px;line-height:1.45">
+             ${x.blocked?'Engine advises against: '+esc(x.blocked):esc((wk&&wk.focus)||x.c.goal).slice(0,90)}</div>
+         </div>
+         <div style="text-align:right;flex:0 0 auto">
+           ${isRec?'<span class="tag a">PICKED</span>':isCur?'<span class="tag v">YOURS</span>':''}
+           ${wk?`<div style="font-size:11px;color:var(--text-3);margin-top:4px;font-weight:650">${wk.est.full} min</div>`:''}
+         </div>
+       </div></button>`;}).join('')}
+   <div class="divider"></div>
+   <div class="card-t" style="margin-bottom:9px">Or pick any session directly</div>
+   ${DB.workouts.map(w=>`<button class="row tap" data-w="${w.id}" style="display:flex;width:100%;text-align:left;background:var(--surface);border-radius:11px;margin-bottom:6px;border:1px solid var(--border-soft)">
+     <div class="rt"><div class="rn" style="font-size:13.5px">${esc(w.name)}</div><div class="rs">${esc(w.focus)}</div></div>
+     <span class="chev">${svg('chev')}</span></button>`).join('')}
+   ${cur?`<button class="btn ghost block" id="cpClear">${svg('undo')} Back to the engine's pick</button>`:''}
+  `);
+  $$('[data-pick]',$('#sheetBody')).forEach(b=>b.onclick=()=>{
+    const x=rec.scored.find(s=>s.c.id===b.dataset.pick);
+    if(!x.wid){ DB.plans[d]={id:x.c.id,workoutId:null,variant:'full',label:x.c.label,est:0};
+      save(true); closeSheet(); toast('Plan updated'); setTimeout(render,220); return; }
+    closeSheet(); setTimeout(()=>pickVariantFor(d,x.wid,x.c),240);
+  });
+  $$('[data-w]',$('#sheetBody')).forEach(b=>b.onclick=()=>{
+    closeSheet(); setTimeout(()=>pickVariantFor(d,b.dataset.w,null),240); });
+  const cc=$('#cpClear'); if(cc)cc.onclick=()=>{ delete DB.plans[d]; save(true); closeSheet(); toast('Back to the recommendation'); setTimeout(render,220); };
+}
+function pickVariantFor(d,wid,cand){
+  const w=DB.workouts.find(x=>x.id===wid);
+  openSheet('Which version?',`
+   <p class="hint" style="margin-bottom:14px">${esc(w.name)}</p>
+   ${[['full','FULL','Everything as prescribed.'],['reduced','REDUCED','Fewer sets, effort capped.'],
+      ['recovery','RECOVERY','Movement quality only, no fatigue.']].map(([v,l,ds])=>
+     `<button class="card tight" data-v="${v}" style="display:block;width:100%;text-align:left;margin-bottom:9px">
+       <div style="display:flex;justify-content:space-between;align-items:center">
+         <div><div style="font-weight:800;font-size:14px">${l}</div>
+         <div style="font-size:12px;color:var(--text-3);margin-top:3px">${ds}</div></div>
+         <span class="chip">${w.est[v]} min</span></div></button>`).join('')}
+  `);
+  $$('[data-v]',$('#sheetBody')).forEach(b=>b.onclick=()=>{
+    DB.plans[d]={id:cand?cand.id:catOfWorkout(w),workoutId:wid,variant:b.dataset.v,
+      label:cand?cand.label:w.name, est:w.est[b.dataset.v]};
+    save(true); closeSheet(); toast('Plan updated','ok'); setTimeout(()=>{ if(TAB!=='today')go('today'); else render(); },220);
+  });
+}
+
+/* =========================================================================
+   DAILY CHECK-IN
+   ====================================================================== */
+/* The most recent check-in before this date. Yesterday's answers are a much
+   better starting point than a constant: most days change by a point or two,
+   so an unchanged day becomes zero input instead of four drags. */
+function lastCheckin(before){
+  const ks=Object.keys(DB.checkins||{}).filter(k=>k<before).sort();
+  return ks.length? DB.checkins[ks[ks.length-1]] : null;
+}
+/* One gesture for any value between three and twelve hours, in the fifteen
+   minute resolution anybody actually knows their sleep to. Consistent with the
+   four questions below it, which were already sliders. */
+/* One-minute resolution. Dragging gets you close across nine hours; the
+   minus/plus pair either side gets you exact, which matters when a tracker
+   reports 7h 23m and you want to enter 7h 23m. */
+const SLEEP_MIN=180, SLEEP_MAX=720, SLEEP_STEP=1;
+function sleepSlider(mins,fallback){
+  const raw = mins!=null ? mins : fallback;
+  const v = clamp(Math.round(raw||450), SLEEP_MIN, SLEEP_MAX);
+  return `<div class="slider-row">
+    <div class="slider-top"><span class="l">Time asleep</span>
+      <span class="v num" id="ciSleep_o">${fmtMin(v)}</span></div>
+    <div class="fine">
+      <button type="button" class="fine-b" data-sleep="-1" aria-label="One minute less">&minus;</button>
+      <input type="range" id="ciSleep" min="${SLEEP_MIN}" max="${SLEEP_MAX}"
+             step="${SLEEP_STEP}" value="${v}" data-out="ciSleep_o" data-fmt="min"
+             aria-label="Time asleep">
+      <button type="button" class="fine-b" data-sleep="1" aria-label="One minute more">+</button>
+    </div>
+    <div class="scale"><span>${fmtMin(SLEEP_MIN)}</span><span>${fmtMin(SLEEP_MAX)}</span></div>
+  </div>`;
+}
+
+/* What you answered, before anything can be changed by a stray thumb.
+   The profile screen in Settings learned this the same way: a screen opened
+   to READ should not put a dozen sliders under your fingers. Edit is a choice
+   you make, and the editable form behind it is unchanged. */
+function openCheckinView(d){
+  const ci=DB.checkins[d];
+  if(!ci) return openCheckin(d);
+  const cy=cycleByDate(d);
+  const rd=readiness(d,ci), B=BAND[rd.band];
+  const row=(k,v)=> v==null||v===''? '' :
+    `<div class="kv"><span class="k">${esc(k)}</span><span class="v">${esc(String(v))}</span></div>`;
+  const lvl=v=> v==null? null : v+' / 10';
+
+  openSheet('Check-in · '+fmtDate(d),`
+    <div class="rec" style="text-align:center;margin-bottom:var(--sp-3)">
+      <div class="rec-l">Readiness</div>
+      <div class="rec-t" style="color:${B.color}">${rd.score}</div>
+      <div class="rec-m">${esc(B.label)}</div>
+    </div>
+    ${(ci.recovery!=null||ci.hrv!=null||ci.rhr!=null)?`
+    <div class="sec-t">${cy?'From your '+esc(sourceOf().name)+' data':'What you entered'}</div>
+    <div class="card tight">
+      ${row('Recovery', ci.recovery!=null? ci.recovery+'%':null)}
+      ${row('HRV', ci.hrv!=null? ci.hrv+' ms':null)}
+      ${row('Resting HR', ci.rhr!=null? ci.rhr+' bpm':null)}
+      ${row('Yesterday’s strain', ci.prevStrain!=null? ci.prevStrain:null)}
+    </div>`:''}
+    <div class="sec-t">How you slept and felt</div>
+    <div class="card tight">
+      ${row('Time asleep', ci.sleepMin!=null? fmtMin(ci.sleepMin):null)}
+      ${row('Energy', lvl(ci.energy))}
+      ${row('Soreness', lvl(ci.soreness))}
+      ${row('Stress', lvl(ci.stress))}
+      ${row('Motivation', lvl(ci.motivation))}
+      ${row('Pain', ci.pain)}
+      ${row('Time to train', ci.availTime? ci.availTime+' min':null)}
+    </div>
+    ${ci.notes?`<div class="note">${esc(ci.notes)}</div>`:''}`,
+    `<button class="btn primary big block" id="ciEdit">${svg('edit')} Edit this check-in</button>`);
+  $('#ciEdit').onclick=()=>openCheckin(d);
+}
+
+function openCheckin(d){
+  const cy=cycleByDate(d), prev=cycleByDate(addDays(d,-1));
+  /* previous answers, used only as slider starting positions */
+  const PREV=lastCheckin(d)||{};
+  const LAST=(k,fb)=>PREV[k]!=null?PREV[k]:fb;
+  const ex=DB.checkins[d]||{};
+  const g=(k,f)=> ex[k]!=null?ex[k] : (cy&&cy[f]!=null?cy[f]:'');
+  const prevStrain = ex.prevStrain!=null?ex.prevStrain : (prev&&prev.strain!=null?prev.strain:'');
+  const dow=dowOf(d);
+  const loggedTen = DB.activities.some(a=>a.date===d&&isMainSportAct(a.type));
+
+  /* Three cases, and only one of them asks you to type device numbers:
+       a) imported data covers this date -> filled in automatically, read-only
+       b) device user, date not covered  -> asks for exactly what it provides
+       c) no device at all               -> never mentioned                    */
+  const autoWhoop = !!cy;
+  const SRC = sourceOf();
+  /* the engine only consumes these four; asking for numbers it would ignore
+     would be padding, so a device that reports more is not asked for more */
+  const ENTRY=[['recovery','ciRec',0,100,'1'],['hrv','ciHrv',0,300,'1'],
+               ['rhr','ciRhr',20,120,'1'],['strain','ciPs',0,21,'0.1']]
+    .filter(([f])=>hasField(f));
+  const askWhoop  = !autoWhoop && ENTRY.length>0;
+  const B2 = DB.baselines;
+  openSheet('Daily check-in · '+fmtDate(d),`
+   ${autoWhoop?`
+   <div class="card tight" style="border-color:var(--cyan-line);background:var(--cyan-wash)">
+     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+       <div class="card-t" style="color:var(--cyan)">From your ${esc(SRC.name)} data</div>
+       <span class="tag c">AUTOMATIC</span>
+     </div>
+     <div class="stats">
+       ${statTile('Recovery',cy.recovery,'%',cy.recovery>=67?'g':cy.recovery>=34?'y':'r')}
+       ${statTile('HRV',cy.hrv,'ms','c')}
+       ${statTile('Rest HR',cy.rhr,'bpm','')}
+     </div>
+     <div class="hint" style="margin-top:9px">Imported for ${fmtDate(d)} — nothing to type. Re-import a fresh export to keep this up to date.</div>
+     <input type="hidden" id="ciRec" value="${cy.recovery!=null?cy.recovery:''}">
+     <input type="hidden" id="ciHrv" value="${cy.hrv!=null?cy.hrv:''}">
+     <input type="hidden" id="ciRhr" value="${cy.rhr!=null?cy.rhr:''}">
+     <input type="hidden" id="ciSp"  value="${cy.sleepPerf!=null?cy.sleepPerf:''}">
+     <input type="hidden" id="ciPs"  value="${prev&&prev.strain!=null?prev.strain:''}">
+   </div>`:''}
+   ${askWhoop?`
+   <div class="card-t" style="margin-bottom:4px">This morning's ${esc(SRC.name)} numbers</div>
+   <div class="hint" style="margin-bottom:12px">Only what your ${esc(SRC.name)} actually reports is asked for here.${
+     B2.computed?` They are compared against your own baselines — HRV <b>${rnd(B2.hrv,0)} ms</b>, resting HR <b>${rnd(B2.rhr,0)}</b>, typical recovery <b>${rnd(B2.recovery,0)}%</b>.`
+     :' Once you have a couple of weeks logged, they get compared against your own baselines rather than general ranges.'}</div>
+   <div class="grid2">
+     ${ENTRY.map(([f,id,lo,hi,step])=>{
+       const val = f==='strain' ? prevStrain : g(f,f);
+       const lbl = f==='strain' ? `Yesterday's ${fieldLabel(f).toLowerCase()}` : fieldLabel(f);
+       const unit= fieldUnit(f);
+       return `<div class="field"><label>${esc(lbl)}${unit?' ('+esc(unit)+')':''}</label>
+         <input class="inp num" type="number" inputmode="${step==='1'?'numeric':'decimal'}" step="${step}"
+                id="${id}" min="${lo}" max="${hi}" value="${val}" placeholder="—"></div>`;}).join('')}
+   </div>
+   <div class="note" style="margin-bottom:16px">Leave any of these blank and the engine simply weighs them out — it will not guess a value.</div>`:''}
+   ${(!autoWhoop&&!askWhoop)?`<div class="note" style="margin-bottom:16px">The questions below are all it needs. Your answers plus your training history drive the recommendation.</div>`:''}
+   <div class="field"><label>How long did you sleep?</label>
+     ${(()=>{
+       /* a real prior, in order of authority; never an invented figure */
+       const imported = ex.sleepMin!=null ? ex.sleepMin
+                      : (cy&&cy.sleepMin!=null ? cy.sleepMin : null);
+       const prior = PREV.sleepMin!=null ? PREV.sleepMin : DB.baselines.sleepNeed;
+       return sleepSlider(imported, prior);
+     })()}
+     <div class="hint">${
+       (ex.sleepMin!=null||(cy&&cy.sleepMin!=null))
+         ? (cy&&cy.sleepMin!=null&&ex.sleepMin==null
+             ? `From your ${esc(SRC_NAME())} data.` : 'Drag to adjust.')
+       : PREV.sleepMin!=null
+         ? `Starting from last time's <b>${fmtMin(PREV.sleepMin)}</b> — drag to what you actually got.`
+         : `Starting from your <b>${fmtMin(DB.baselines.sleepNeed)}</b> target — drag to what you actually got.`
+     }${
+       cy&&cy.sleepNeed ? ` Your need last night was <b>${fmtMin(cy.sleepNeed)}</b>.` : ''
+     }</div></div>
+   ${(!autoWhoop&&!askWhoop)?`<div class="hint" style="margin-bottom:16px">Yesterday's load is worked out from what you logged — currently <b>${rnd(dayDemand(addDays(d,-1)).load,1)}</b>. Log your activities and it stays accurate.</div>`:''}
+
+   <div class="divider"></div>
+   <div class="card-t" style="margin-bottom:14px">How you feel <span class="src you">your input</span></div>
+   ${sliderHTML('ciEn','Energy',ex.energy??LAST('energy',6),'Drained','Excellent')}
+   ${sliderHTML('ciSo','Muscle soreness',ex.soreness??LAST('soreness',3),'None','Severe')}
+   ${sliderHTML('ciSt','Stress',ex.stress??LAST('stress',4),'Calm','Very high')}
+   ${sliderHTML('ciMo','Motivation',ex.motivation??LAST('motivation',7),'None','Very high')}
+   ${(!DB.checkins[d]&&lastCheckin(d))?`<div class="hint" style="margin-top:-4px">Starting from yesterday's answers — move only what changed.</div>`:''}
+
+   <div class="field"><label>Pain (joint / sharp / unusual)</label>
+     <div class="pills" id="ciPain">
+       ${['None','Mild','Moderate','Significant'].map(p=>`<button data-v="${p}" class="${(ex.pain||'None')===p?'on':''}">${p}</button>`).join('')}
+     </div>
+     <div class="hint">Moderate or significant pain automatically removes loaded training. Persistent pain should be assessed by a qualified healthcare professional.</div></div>
+
+   ${loggedTen?`<div class="note acc" style="margin-bottom:16px">
+     ${esc(SPORT_LABEL())} already logged for today — the engine has taken it into account and will keep heavy legs, running and plyometrics off the menu.</div>`:''}
+
+
+   <div class="field"><label>Time available today</label>
+     <div class="pills" id="ciTime">
+       ${(function(){
+         /* Pre-selected to whatever you usually train for, so a normal day
+            needs no input at all and a short day needs exactly one tap. It is
+            visible rather than hidden because the engine caps the session on
+            it, and the day it matters is the day you would never think to
+            open a disclosure. */
+         const usual=sessMin();
+         const chosen = ex.availTime!=null ? ex.availTime : usual;
+         const opts=[20,30,45,60,90];
+         if(opts.indexOf(usual)<0) opts.push(usual);
+         opts.sort((a,b)=>a-b);
+         return opts.map(t=>`<button data-v="${t}" class="${chosen==t?'on':''}">${t} min${
+           t===usual?' <i style="font-style:normal;opacity:.6">usual</i>':''}</button>`).join('');
+       })()}
+     </div>
+   </div>
+
+   <button class="tert" id="ciNoteT" aria-expanded="${ex.notes?'true':'false'}">
+     ${ex.notes?'Note':'Add a note'} ${svg('down')}</button>
+   <div id="ciNoteB" ${ex.notes?'':'hidden'}>
+     <div class="field"><textarea class="inp" id="ciNotes" placeholder="Travel, illness, a tough match…">${esc(ex.notes||'')}</textarea></div>
+   </div>
+  `,`<button class="btn primary big block" id="ciSave">Save check-in</button>`);
+
+  /* exact minutes, for when dragging is not precise enough */
+  $$('[data-sleep]').forEach(b=>b.onclick=()=>{
+    const r=$('#ciSleep'); if(!r) return;
+    r.value=String(clamp((+r.value||0)+(+b.dataset.sleep), SLEEP_MIN, SLEEP_MAX));
+    r.dispatchEvent(new Event('input',{bubbles:true}));
+    haptic();
+  });
+
+  const nt=$('#ciNoteT'), nb=$('#ciNoteB');
+  if(nt&&nb) nt.onclick=()=>{
+    const open=nb.hasAttribute('hidden');
+    if(open) nb.removeAttribute('hidden'); else nb.setAttribute('hidden','');
+    nt.classList.toggle('open',open);
+    nt.setAttribute('aria-expanded',open?'true':'false');
+  };
+
+
+  const aw=$('#accWH'); if(aw) aw.onclick=()=>$('#accW').classList.toggle('open');
+  $$('#ciPain button').forEach(b=>b.onclick=()=>{ $$('#ciPain button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); haptic(); });
+  $$('#ciTime button').forEach(b=>b.onclick=()=>{ $$('#ciTime button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); haptic(); });
+
+  $('#ciSave').onclick=()=>{
+    const nv=id=>{ const e=$(id); if(!e||e.value==='')return null; const n=parseFloat(e.value); return isNaN(n)?null:n; };
+    const sv=nv('#ciSleep');
+    const sleepMin = (sv==null||sv<=0)?null:sv;
+    const painB=$('#ciPain button.on'), timB=$('#ciTime button.on');
+    /* WHOOP fields are absent from the DOM unless they apply — nv() returns
+       null for a missing element, so nothing is ever invented */
+    const est=dayDemand(addDays(d,-1)).load;
+    const wRec=nv('#ciRec'), wPs=nv('#ciPs');
+    DB.checkins[d]=Object.assign({},DB.checkins[d],{
+      date:d,
+      recovery:wRec, hrv:nv('#ciHrv'), rhr:nv('#ciRhr'),
+      sleepPerf:nv('#ciSp'),
+      sleepMin,
+      prevStrain: wPs!=null ? wPs : (est>0?est:null),
+      prevStrainEstimated: wPs==null,
+      whoopAuto: autoWhoop,
+      sleepNeed:(cy&&cy.sleepNeed)||(DB.baselines.sleepNeedGeneric?null:DB.baselines.sleepNeed),
+      resp:(cy&&cy.resp)||null,
+      energy:+$('#ciEn').value, soreness:+$('#ciSo').value,
+      stress:+$('#ciSt').value, motivation:+$('#ciMo').value,
+      pain:painB?painB.dataset.v:'None',
+      /* no toggle any more: whether you played is read from the activity log */
+      sportToday: DB.activities.some(a=>a.date===d&&isMainSportAct(a.type)) || null,
+      availTime: timB? +timB.dataset.v : null,
+      notes:($('#ciNotes')||{value:''}).value.trim(),
+      at:new Date().toISOString()
+    });
+    save(true); closeSheet(); toast('Check-in saved','ok');
+    setTimeout(()=>{ if(TAB!=='today') go('today'); else render(); },200);
+  };
+}
+function sliderHTML(id,label,val,lo,hi){
+  return `<div class="slider-row">
+    <div class="slider-top"><span class="l">${esc(label)}</span><span class="v num" id="${id}_o">${val}</span></div>
+    <input type="range" id="${id}" min="1" max="10" step="1" value="${val}" data-out="${id}_o">
+    <div class="scale"><span>${esc(lo)}</span><span>${esc(hi)}</span></div></div>`;
+}

@@ -1,0 +1,743 @@
+
+/* =========================================================================
+   ACTIVITY  (timeline · history · totals · your sport)
+   ------------------------------------------------------------------------
+   This was a tab of its own until the day's activities became a card on
+   Today. A whole primary destination holding that same card plus three links
+   was the tab bar paying rent, so the links moved under the card and the tab
+   went. These are the pages they lead to.
+   ====================================================================== */
+let ATAB='timeline', AFILTER='';
+
+/* The group that sits under the day's activities on Today: everything about
+   what you have actually done, in one place rather than two. */
+function activityRows(){
+  const n=(DB.activities||[]).length;
+  const sessions=(DB.sessions||[]).filter(s=>s.done).length;
+  return [
+    {t:'Recent days', icon:'today', s:'The last ten days, day by day',
+     go:()=>openPane('Recent days', null, paneTimeline)},
+    {t:'All activity', icon:'book',
+     s: n? `${n} logged` : 'Nothing logged yet',
+     go:()=>openPane('All activity', null, paneActHistory)},
+    {t:'Totals', icon:'chart', s:'By week and by type',
+     go:()=>openPane('Totals','Volume by week and type', paneTotals)},
+    hasSportChosen() ? {t:SPORT_LABEL(), icon:'flame', s:'Your sport in detail',
+     go:()=>openPane(SPORT_LABEL(), null, paneTennis)} : null
+  ].filter(Boolean);
+}
+function activityRowsHTML(){
+  return `<div class="sec-t">Your activity</div>`+navRows('aRows', activityRows());
+}
+function wireActivityRows(){ wireRows('aRows', activityRows()); }
+
+/* ---------------------------------------------------------- TIMELINE */
+function paneTimeline(c){
+  const days=[];
+  for(let i=0;i<10;i++) days.push(addDays(todayISO(),-i));
+  c.innerHTML=days.map(d=>{
+    const dd=dayDemand(d), ci=DB.checkins[d], cy=cycleByDate(d);
+    const dow=dowOf(d);
+    const plan=DB.plans[d];
+    const planned=plan&&plan.workoutId?DB.workouts.find(w=>w.id===plan.workoutId):null;
+    const didSession=DB.sessions.some(s=>s.date===d&&s.done);
+    const b=loadBand(dd.load);
+    const isToday=d===todayISO();
+    const rows=[];
+    if(plan && !didSession && d<=todayISO()){
+      rows.push({time:'—',label:'Planned · '+(plan.label||(planned?planned.short:'session')),sub:'not completed',cls:'miss'});
+    }
+    dd.items.forEach(i=>{
+      if(i.kind==='session'){
+        rows.push({time:i.time||'—',label:'Strength · '+(i.name||'Session'),
+          sub:`${i.min||0} min · load ${rnd(i.load,1)}${i.rpe?' · RPE '+i.rpe:''}`,cls:'sess'});
+      } else {
+        const t=ACT_TYPES[i.type]||ACT_TYPES.other;
+        rows.push({time:i.time||'—',label:t.name+(i.subtype?' · '+i.subtype:''),
+          sub:`${i.min||0} min${i.dist?' · '+i.dist+' km':''} · RPE ${i.rpe||'—'} · load ${rnd(i.load,1)}`,
+          cls:'act',tag:i.planned===false?'UNPLANNED':(i.planned===true?'PLANNED':''),id:i.id});
+      }
+    });
+    if(ci&&ci.pain&&ci.pain!=='None') rows.push({time:'—',label:'Pain reported · '+ci.pain,sub:'',cls:'pain'});
+    return `<div class="card">
+      <div class="card-h">
+        <div><div style="font-size:14.5px;font-weight:800;letter-spacing:-.2px;color:${isToday?'var(--accent)':'var(--text)'}">${isToday?'TODAY':DOW_FULL[dow].toUpperCase()}</div>
+        <div style="font-size:11px;color:var(--text-3);font-weight:600;margin-top:2px">${fmtDate(d)}</div></div>
+        <div style="text-align:right">
+          ${dd.n?`<span class="chip ${b.cls}">${b.label} · ${dd.load}</span>`:'<span class="chip">Rest</span>'}
+          ${cy&&cy.recovery!=null?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px;font-weight:650">Recovery ${cy.recovery}%</div>`:''}
+        </div>
+      </div>
+      ${rows.length? rows.map(r=>`
+        <div class="row" style="padding:10px 0;border-color:var(--border-soft)" ${r.id?`data-aid="${r.id}"`:''}>
+          <div style="width:44px;font-size:11.5px;font-weight:750;color:var(--text-3)" class="num">${esc(r.time)}</div>
+          <div class="rt"><div class="rn" style="font-size:13.5px;${r.cls==='miss'?'color:var(--text-3)':''}">${r.label}</div>
+            ${r.sub?`<div class="rs">${esc(r.sub)}</div>`:''}</div>
+          ${r.tag?`<span class="tag ${r.tag==='UNPLANNED'?'o':'g'}">${r.tag}</span>`:''}
+          ${r.id?`<span class="chev">${svg('edit')}</span>`:''}
+        </div>`).join('')
+       :'<div style="font-size:12.5px;color:var(--text-3);padding:6px 0">Nothing logged.</div>'}
+      ${dd.n?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:11px">
+        <button class="btn xs ghost" data-dd="${d}">What this loaded</button></div>`:''}
+    </div>`;}).join('');
+  $$('[data-aid]',c).forEach(r=>r.onclick=()=>activityView(r.dataset.aid));
+  /* the demand vector, on request rather than on every row */
+  $$('[data-dd]',c).forEach(b=>b.onclick=ev=>{
+    ev.stopPropagation();
+    const d=b.dataset.dd, dd=dayDemand(d), bd=loadBand(dd.load);
+    openSheet('What '+fmtDate(d)+' loaded',`
+      <div class="rec" style="margin-top:0">
+        <div class="rec-l">Total load</div>
+        <div class="rec-t" style="font-size:26px">${rnd(dd.load,1)}</div>
+        <div class="rec-m">${esc(bd.label)} — ${esc(bd.note)}</div>
+      </div>
+      <div class="sec-t">By system</div>
+      <div class="stats c2">
+        ${statTile('Legs',rnd(dd.lower,1),'','a')}
+        ${statTile('Upper',rnd(dd.upper,1),'','c')}
+        ${statTile('Explosive',rnd(dd.expl,1),'','o')}
+        ${statTile('Impact',rnd(dd.impact,1),'','r')}
+      </div>
+      <div class="hint">Estimated from the type, duration and effort you
+        logged — not measured. It is what tomorrow's recommendation reads.</div>`,
+      `<button class="btn primary big block" onclick="closeSheet()">Done</button>`);
+  });
+}
+
+/* ------------------------------------------------------- YOUR SPORT pane */
+function paneTennis(c){
+  const SPN=SPORT_LABEL(), SLC=sportLC();
+  const T=DB.activities.filter(a=>isMainSportAct(a.type)).slice().reverse();
+  const wT=DB.whoop.workouts.filter(w=>mainSportActs().some(x=>new RegExp(x,'i').test(w.activity)));
+  const last30=T.filter(t=>daysBetween(t.date,todayISO())<=30);
+  const mins=sum(T.map(t=>t.min)), avg=mean(T.map(t=>t.min));
+  // next-day recovery after your sport
+  const after=[];
+  [...new Set([...T.map(t=>t.date),...wT.map(w=>w.date)])].forEach(d=>{
+    const n=cycleByDate(addDays(d,1)), s=cycleByDate(d);
+    if(n&&n.recovery!=null) after.push({d,next:n.recovery,same:s?s.recovery:null});
+  });
+  const nextAvg=mean(after.map(a=>a.next)), baseAvg=DB.baselines.recovery;
+  c.innerHTML=`
+   <div class="stats" style="margin-bottom:12px">
+     ${statTile('Sessions',T.length+wT.length,'','g')}
+     ${statTile('Last 30d',last30.length,'','a')}
+     ${statTile('Avg length',avg?Math.round(avg):null,'m','c')}
+   </div>
+   ${after.length>=5?`<div class="card">
+     <div class="card-h"><div class="card-t">Recovery cost of ${esc(SLC)}</div><span class="tag">${after.length} PAIRS</span></div>
+     <div class="kv"><span class="k">Average recovery the day after ${esc(SLC)}</span><span class="v">${rnd(nextAvg,1)}%</span></div>
+     <div class="kv"><span class="k">Your overall average recovery</span><span class="v">${rnd(baseAvg,1)}%</span></div>
+     <div class="kv"><span class="k">Difference</span><span class="v" style="color:${nextAvg<baseAvg?'var(--red)':'var(--green)'}">${nextAvg>baseAvg?'+':''}${rnd(nextAvg-baseAvg,1)} points</span></div>
+     <div class="note warn">Observation, not proof of cause — it is your own data, ${after.length} day-pairs of it, and plenty else changes between days. ${(baseAvg!=null&&nextAvg<baseAvg-3)?`A drop this size is why the engine keeps heavy legs off the day after ${esc(SLC)}.`:'No meaningful drop so far.'}</div>
+   </div>`:`<div class="note" style="margin-bottom:12px">Once you have five ${esc(SLC)} sessions followed by a WHOOP recovery score, this pane will show what ${esc(SLC)} actually costs <b>you</b>. Nothing is assumed before then.</div>`}
+   <div class="card">
+     <div class="card-t" style="margin-bottom:11px">How your training serves ${esc(SLC)}</div>
+     ${sportFocus().map(([k,vv,wid])=>
+       `<div class="row tap" data-w="${wid}" style="padding:11px 0">
+          <div class="rt"><div class="rn" style="font-size:13.5px">${esc(k)}</div><div class="rs">${esc(vv)}</div></div>
+          <span class="chev">${svg('chev')}</span></div>`).join('')}
+   </div>
+   <div class="sec-t">${esc(SPN)} sessions</div>
+   ${T.length? T.map(t=>`
+     <div class="card tight" data-aid="${t.id}">
+       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+         <div><div style="font-size:14px;font-weight:750">${esc(fmtDate(t.date))}${t.time?' · '+esc(t.time):''}</div>
+           <div style="font-size:11.5px;color:var(--text-3);margin-top:3px">${esc([t.subtype,t.format,t.intensity].filter(Boolean).join(' · '))||'—'}</div></div>
+         <span class="chip ${loadBand(activityLoad(t)).cls}">${t.min} min</span>
+       </div>
+       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">
+         <span class="tag">RPE ${t.rpe||'—'}</span><span class="tag a">LOAD ${activityLoad(t)}</span>
+         ${t.planned===false?'<span class="tag o">UNPLANNED</span>':''}
+       </div>
+       ${t.notes?`<div class="note" style="font-size:11.5px">${esc(t.notes)}</div>`:''}
+     </div>`).join('')
+    :`<div class="empty"><div class="ei">${svg('flame')}</div><h4>No ${esc(SLC)} logged yet</h4><p>Log a session and the engine will start protecting the day after it.</p></div>`}
+   ${wT.length?`<div class="note">Plus <b>${wT.length}</b> matching sessions imported from WHOOP.</div>`:''}`;
+  $$('[data-w]',c).forEach(b=>b.onclick=()=>previewWorkout(b.dataset.w,'full'));
+  $$('[data-aid]',c).forEach(b=>b.onclick=()=>activityView(b.dataset.aid));
+}
+
+/* ---------------------------------------------------------- HISTORY pane */
+function paneActHistory(c){
+  const types=[...new Set(DB.activities.map(a=>a.type))];
+  const list=DB.activities.filter(a=>!AFILTER||a.type===AFILTER).slice().sort((a,b)=>b.date<a.date?-1:1);
+  c.innerHTML=`
+   <div class="swipe" style="margin-bottom:12px">
+     <button class="chip ${AFILTER===''?'a':''}" data-f="">All ${DB.activities.length}</button>
+     ${types.map(t=>`<button class="chip ${AFILTER===t?'a':''}" data-f="${t}">${''} ${esc((ACT_TYPES[t]||ACT_TYPES.other).name)} ${DB.activities.filter(a=>a.type===t).length}</button>`).join('')}
+   </div>
+   ${list.length? list.map(a=>{ const t=ACT_TYPES[a.type]||ACT_TYPES.other, L=activityLoad(a), b=loadBand(L);
+     const cy=cycleByDate(addDays(a.date,1));
+     return `<div class="card tight" data-aid="${a.id}">
+       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+         <div style="flex:1;min-width:0">
+           <div style="font-size:14.5px;font-weight:750">${esc(t.name)}${a.subtype?' · '+esc(a.subtype):''}</div>
+           <div style="font-size:11.5px;color:var(--text-3);margin-top:3px">${fmtDate(a.date)}${a.time?' · '+esc(a.time):''}</div>
+         </div>
+         <span class="chip ${b.cls}">${b.label}</span>
+       </div>
+       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">
+         <span class="tag">${a.min||0} MIN</span>
+         ${a.dist?`<span class="tag">${a.dist} KM</span>`:''}
+         ${a.pace?`<span class="tag">${esc(a.pace)}/KM</span>`:''}
+         <span class="tag">RPE ${a.rpe||'—'}</span>
+         <span class="tag a">LOAD ${L}</span>
+         ${a.planned===false?'<span class="tag o">UNPLANNED</span>':'<span class="tag g">PLANNED</span>'}
+         ${cy&&cy.recovery!=null?`<span class="tag ${cy.recovery>=67?'g':cy.recovery>=34?'o':'r'}">NEXT DAY ${cy.recovery}%</span>`:''}
+       </div>
+       ${a.notes?`<div class="note" style="font-size:11.5px">${esc(a.notes)}</div>`:''}
+     </div>`;}).join('')
+    :'<div class="empty"><div class="ei">'+svg('book')+'</div><h4>Nothing logged yet</h4><p>Use “Log an activity” above. Anything counts — a kickabout, a hike, a swim, a spontaneous run.</p></div>'}`;
+  $$('[data-f]',c).forEach(b=>b.onclick=()=>{ AFILTER=b.dataset.f; paneActHistory(c); });
+  $$('[data-aid]',c).forEach(b=>b.onclick=()=>activityView(b.dataset.aid));
+}
+
+/* ---------------------------------------------------------- TOTALS pane */
+function paneTotals(c){
+  const today=todayISO();
+  const weeks=[],months={};
+  for(let w=0;w<8;w++){
+    const end=addDays(today,-7*w), start=addDays(end,-6);
+    const acts=DB.activities.filter(a=>a.date>=start&&a.date<=end);
+    const sess=DB.sessions.filter(s=>s.done&&s.date>=start&&s.date<=end);
+    let load=0,lower=0,expl=0;
+    for(let i=0;i<7;i++){ const dd=dayDemand(addDays(start,i)); load+=dd.load; lower+=dd.lower; expl+=dd.expl; }
+    weeks.push({start,end,acts:acts.length,sess:sess.length,min:sum(acts.map(a=>a.min))+sum(sess.map(s=>s.durationMin)),
+      load:rnd(load,1),lower:rnd(lower,1),expl:rnd(expl,1)});
+  }
+  DB.activities.forEach(a=>{ const m=a.date.slice(0,7); months[m]=months[m]||{n:0,min:0,load:0,types:{}};
+    months[m].n++; months[m].min+=a.min||0; months[m].load+=activityLoad(a);
+    months[m].types[a.type]=(months[m].types[a.type]||0)+1; });
+  const byType={};
+  DB.activities.forEach(a=>{ byType[a.type]=byType[a.type]||{n:0,min:0,load:0}; byType[a.type].n++;
+    byType[a.type].min+=a.min||0; byType[a.type].load+=activityLoad(a); });
+  const maxLoad=Math.max(1,...weeks.map(w=>w.load));
+  c.innerHTML=`
+   <div class="card">
+     <div class="card-h"><div class="card-t accent">Weekly load — last 8 weeks</div></div>
+     <div class="chart-wrap">${barChart(weeks.slice().reverse().map((w,i)=>({v:w.load,t:i===7?'now':'',color:w.load>maxLoad*.85?'var(--orange)':'var(--accent)'})),{h:90})}</div>
+     <div class="divider"></div>
+     ${weeks.map((w,i)=>`<div class="kv"><span class="k">${i===0?'This week':i===1?'Last week':fmtDate(w.start)}</span>
+       <span class="v">${w.sess+w.acts} sessions · ${w.min} min · load ${w.load}</span></div>`).join('')}
+   </div>
+   <div class="card">
+     <div class="card-h"><div class="card-t">Lower-body vs explosive demand</div></div>
+     <div class="chart-wrap">${lineChart([
+       {pts:weeks.slice().reverse().map(w=>({v:w.lower})),color:'var(--accent)',area:true},
+       {pts:weeks.slice().reverse().map(w=>({v:w.expl})),color:'var(--orange)'}],{h:100,l:26})}</div>
+     <div class="legend"><span><i style="background:var(--accent)"></i>Lower body</span><span><i style="background:var(--orange)"></i>Explosive</span></div>
+     <div class="hint" style="margin-top:9px">Watch for explosive demand climbing several weeks in a row without a dip — that is the pattern that precedes soft-tissue problems in racquet and field sports.</div>
+   </div>
+   <div class="card">
+     <div class="card-h"><div class="card-t">By activity type — all time</div></div>
+     ${Object.entries(byType).sort((a,b)=>b[1].load-a[1].load).map(([t,g])=>{
+       const T=ACT_TYPES[t]||ACT_TYPES.other;
+       return `<div class="kv"><span class="k">${esc(T.name)}</span>
+         <span class="v">${g.n} × · ${fmtMin(g.min)} · load ${rnd(g.load,0)}</span></div>`;}).join('')
+      ||'<div class="hint">No activities logged yet.</div>'}
+   </div>
+   <div class="card">
+     <div class="card-h"><div class="card-t">Monthly totals</div></div>
+     ${Object.keys(months).sort().reverse().map(m=>`<div class="kv">
+       <span class="k">${m}</span><span class="v">${months[m].n} activities · ${fmtMin(months[m].min)} · load ${rnd(months[m].load,0)}</span></div>`).join('')
+      ||'<div class="hint">No activities logged yet.</div>'}
+   </div>`;
+}
+
+/* ---------------------------------------------------------- ENTRY SHEET */
+/* Things the app has no activity type for, plus whatever this user has
+   actually typed before. Fed to a native <datalist>, so the platform does the
+   filtering as you type and the keyboard behaves the way the phone's does. */
+const OTHER_SUGGESTIONS=[
+  'Badminton','Table tennis','Cricket','Baseball','Rugby','Hockey','Handball',
+  'Boxing','Kickboxing','Wrestling','Judo','Surfing','Kayaking','Canoeing',
+  'Paddleboarding','Sailing','Horse riding','Skateboarding','Ice skating',
+  'Dance','Ballet','Pilates','CrossFit','Circuit training','Spinning',
+  'Cross-trainer','Stair climbing','Gardening','Manual work','Physiotherapy',
+  'Stretching','Foam rolling','Sauna','Cold exposure','Walk with the dog'
+];
+function otherSuggestions(){
+  const mine=[];
+  (DB.activities||[]).forEach(a=>{
+    const s=(a.subtype||'').trim();
+    if(s && mine.indexOf(s)<0) mine.push(s);
+  });
+  /* the user's own words first: they are the likeliest next answer */
+  return mine.concat(OTHER_SUGGESTIONS.filter(s=>mine.indexOf(s)<0));
+}
+
+
+/* =========================================================================
+   THE ACTIVITY PICKER
+   ------------------------------------------------------------------------
+   One list, searchable, shared by every flow that needs to know what you are
+   doing. It used to be a wall of pills, duplicated: once in the logging form
+   and again in the start-a-session sheet. Thirty types is a list you search,
+   not a grid you scan.
+   ====================================================================== */
+
+/* An honest icon or a generic one. Inventing a distinct glyph per sport would
+   mean thirty drawings, most of them guesses; these are the ones the icon set
+   genuinely has. */
+function ACT_ICON(k){
+  if(/tennis|padel|squash|badminton/.test(k)) return 'tennis';
+  if(k==='cycling') return 'bike';
+  if(/running|walking|hiking|triathlon/.test(k)) return 'run';
+  if(k==='swimming') return 'drop';
+  if(/strength|gym|climbing/.test(k)) return 'dumbbell';
+  if(/yoga|mobility|stretch/.test(k)) return 'heart';
+  if(k==='rowing') return 'pulse';
+  return 'flame';
+}
+
+/* What you have actually been doing, newest first. A profile that names
+   sports supplies the shortlist until there is history to supply it. */
+function recentActTypes(n){
+  const out=[];
+  (DB.activities||[]).slice()
+    .sort((a,b)=>(a.date===b.date? 0 : (a.date<b.date?1:-1)))
+    .forEach(a=>{ if(a.type && ACT_TYPES[a.type] && out.indexOf(a.type)<0) out.push(a.type); });
+  if(!out.length) mainSportActs().forEach(k=>{ if(ACT_TYPES[k] && out.indexOf(k)<0) out.push(k); });
+  return out.slice(0, n||6);
+}
+
+function pickActivity(onPick, title){
+  const recent=recentActTypes();
+  const heading=(DB.activities||[]).length? 'Most recent' : 'Your sports';
+  const all=Object.keys(ACT_TYPES).sort((a,b)=>
+    ACT_TYPES[a].name.localeCompare(ACT_TYPES[b].name));
+  const row=k=>`<button class="parow" data-k="${esc(k)}"
+      data-n="${esc(ACT_TYPES[k].name.toLowerCase())}">
+      <i class="pa-i">${svg(ACT_ICON(k))}</i>
+      <span class="pa-t">${esc(ACT_TYPES[k].name)}</span>
+      <i class="rw-c">${svg('chev')}</i></button>`;
+
+  openSheet(title||'Select activity',`
+    <input class="inp pa-q" id="paQ" type="search" autocomplete="off"
+           placeholder="Search activities" aria-label="Search activities">
+    ${recent.length?`<div class="pa-h" data-sec="recent">${heading}</div>
+      <div class="pa-g" data-sec="recent">${recent.map(row).join('')}</div>`:''}
+    <div class="pa-h" data-sec="all">All A–Z</div>
+    <div class="pa-g" data-sec="all">${all.map(row).join('')}</div>
+    <div class="hint" id="paNone" hidden style="text-align:center;padding:18px 0">
+      Nothing matches. Everything is loggable — pick <b>Other</b> and name it yourself.
+    </div>`,'');
+
+  /* Straight through, with no close-and-reopen hop: every caller answers by
+     opening a sheet of its own, so the panel stays put and its contents
+     change - which is what picking from a list should feel like, and what
+     makes the step testable without waiting on an animation. */
+  $$('#sheetBody .parow').forEach(b=>b.onclick=()=>onPick(b.dataset.k));
+
+  /* Filter by hiding rows rather than re-rendering: re-rendering from a
+     search field's own handler destroys the field being typed into. */
+  const q=$('#paQ');
+  if(q) q.addEventListener('input',()=>{
+    const s=q.value.trim().toLowerCase();
+    let n=0;
+    $$('#sheetBody .parow').forEach(b=>{
+      const hit=!s || b.dataset.n.indexOf(s)>=0;
+      b.hidden=!hit; if(hit) n++;
+    });
+    $$('#sheetBody .pa-g').forEach(g=>{
+      const any=Array.prototype.some.call(g.querySelectorAll('.parow'),x=>!x.hidden);
+      g.hidden=!any;
+      const h=document.querySelector('#sheetBody .pa-h[data-sec="'+g.dataset.sec+'"]');
+      if(h) h.hidden=!any;
+    });
+    const none=$('#paNone'); if(none) none.hidden = n>0;
+  });
+}
+
+/* =========================================================================
+   WHAT IS ON TODAY
+   ------------------------------------------------------------------------
+   One card listing what the day already holds - each thing with the strain it
+   came to and the span it ran over - and the two ways to add to it. This
+   replaces five separate "Log an activity" buttons: three of them rendered by
+   different branches of the Today screen and two more on the Activity tab,
+   all doing one of two things.
+   ====================================================================== */
+/* One effort on the day's spine. `longest` is the longest thing done that
+   day, so the bar says how this one compares rather than repeating a number
+   that is already written next to it. */
+function actRowHTML(i, longest){
+  const isS = i.kind==='session';
+  const name = isS ? (i.name||'Session') : (ACT_TYPES[i.type]||ACT_TYPES.other).name;
+  const from = i.time || '';
+  const to   = i.endTime || (from && i.min ? timePlus(from, i.min) : '');
+  const L    = i.load!=null ? rnd(i.load,1) : null;
+  const pct  = (longest && i.min) ? Math.max(6, Math.round(i.min/longest*100)) : 0;
+  const band = L!=null ? loadBand(L).cls : '';
+  return `<button class="dayrow" data-${isS?'sid':'aid'}="${esc(i.id)}"
+      aria-label="${esc(name)}${i.min?', '+fmtMin(i.min):''}${from?', from '+from:''}${
+        L!=null?', strain '+L:''}">
+    <span class="dr-t">${from?esc(from):'—'}</span>
+    <span class="dr-dot"><i class="${band}"></i></span>
+    <span class="dr-x">
+      <span class="dr-n">${esc(name)}${isS?'<em>session</em>':''}</span>
+      ${pct?`<span class="dr-bar"><i class="${band}" style="width:${pct}%"></i></span>`:''}
+      <span class="dr-m">${i.min?esc(fmtMin(i.min)):''}${to?' · until '+esc(to):''}</span>
+    </span>
+    <span class="dr-s ${band}">${L==null?'—':L}</span>
+  </button>`;
+}
+function activitiesCard(d){
+  const date=d||todayISO();
+  const dd=dayDemand(date);
+  const items=dd.items||[];
+  const longest=items.reduce((m,i)=>Math.max(m, i.min||0), 0);
+  const isToday=date===todayISO();
+  return `<div class="card acts${isToday?'':' other'}" id="actsCard">
+    <div class="card-h"><div class="card-t">${isToday
+      ? "Today's activities"
+      : esc(DOW_FULL[dowOf(date)])+', '+esc(fmtDate(date))}</div>
+      ${dd.load?`<span class="day-strain ${loadBand(dd.load).cls}">${rnd(dd.load,1)}
+        <em>strain</em></span>`:''}</div>
+    ${isToday?'':`<div class="day-back">You are looking at another day.
+      <button class="tert" id="acToday">Back to today</button></div>`}
+    ${items.length
+      ? `<div class="daylist">${items.map(i=>actRowHTML(i,longest)).join('')}</div>`
+      : `<div class="day-empty">Nothing logged yet. The day fills in as you go.</div>`}
+    <div class="day-act${date===todayISO()?'':' one'}">
+      <button class="btn ghost" id="acAdd">${svg('plus')} Add activity</button>
+      ${date===todayISO()
+        ? `<button class="btn ghost" id="acStart">${svg('timer')} Start activity</button>`
+        : ''}
+    </div>
+  </div>`;
+}
+function wireActivitiesCard(d){
+  const date=d||todayISO();
+  const add=$('#acAdd');   if(add)   add.onclick=()=>addActivityFlow(date);
+  const st =$('#acStart'); if(st)    st.onclick=()=>startActivityFlow();
+  const bk =$('#acToday'); if(bk)    bk.onclick=()=>{ SELDAY=null; WEEKOFF=0; render(); };
+  $$('#actsCard [data-aid]').forEach(b=>b.onclick=()=>activityView(b.dataset.aid));
+  /* sessionDetail takes an ID and looks the session up itself. Passing the
+     object made it search for a session whose id was an object, find nothing,
+     and return - so the row did nothing at all, quietly. */
+  $$('#actsCard [data-sid]').forEach(b=>b.onclick=()=>sessionDetail(b.dataset.sid));
+}
+/* the two things those buttons do, in one place each */
+function addActivityFlow(d){
+  pickActivity(k=>activitySheet(null, d||todayISO(), k), 'Add activity');
+}
+function startActivityFlow(){
+  pickActivity(k=>preStartSheet(k), 'Start activity');
+}
+
+/* =========================================================================
+   AN ACTIVITY YOU ALREADY LOGGED
+   ------------------------------------------------------------------------
+   Read first. Editing is a choice, and it is confirmed by the Save button on
+   the form behind it - the same contract the profile and the check-in use.
+   Opening a record to look at it should never be able to change it.
+   ====================================================================== */
+function activityView(id){
+  const a=(DB.activities||[]).find(x=>x.id===id);
+  if(!a) return;
+  const T=ACT_TYPES[a.type]||ACT_TYPES.other;
+  const to=a.endTime || (a.time&&a.min? timePlus(a.time,a.min) : '');
+  const strain=activityLoad(a);
+  const row=(k,v)=> (v==null||v==='')?'' :
+    `<div class="kv"><span class="k">${esc(k)}</span><span class="v">${esc(String(v))}</span></div>`;
+
+  openSheet(T.name,`
+    <div class="score lead" style="cursor:default;margin-bottom:var(--sp-3)">
+      ${ringHTML({lead:true, pct: strain? Math.min(100,strain/21*100):null,
+                  value: strain? rnd(strain,1) : '—', color:'var(--cyan)'})}
+      <span class="score-x">
+        <span class="score-l">Strain</span>
+        <span class="score-w">${esc(T.name)}</span>
+        <span class="score-s">${esc(fmtDate(a.date))}${a.time?' · '+esc(a.time):''}${to?'–'+esc(to):''}</span>
+      </span>
+    </div>
+    <div class="card tight">
+      ${row('How long', a.min? fmtMin(a.min):null)}
+      ${row('Started', a.time)}
+      ${row('Ended', to)}
+      ${row('How hard', a.intensity)}
+      ${row('Effort', a.rpe? a.rpe+' / 10':null)}
+      ${row('Strain', strain? rnd(strain,1)+' of 21':null)}
+      ${a.strain!=null?`<div class="kv"><span class="k">Strain figure</span>
+        <span class="v">${a.strainAuto===false?'Yours':'Estimated'}</span></div>`:''}
+      ${row('Distance', a.dist? a.dist+' km':null)}
+      ${row('Pace', a.pace? a.pace+' /km':null)}
+      ${row('Format', a.format)}
+      ${row('Session', a.subtype)}
+      ${row('Planned', a.planned===true?'Yes':a.planned===false?'No':null)}
+    </div>
+    ${a.notes?`<div class="note">${esc(a.notes)}</div>`:''}`,
+    `<button class="btn primary big block" id="avEdit">${svg('edit')} Edit this activity</button>
+     <button class="btn danger block" id="avDel">${svg('trash')} Delete activity</button>`);
+
+  $('#avEdit').onclick=()=>activitySheet(id);
+  $('#avDel').onclick=()=>confirmSheet('Delete activity?',
+    'It will be removed from your history and from all load calculations.','Delete',()=>{
+      DB.activities=(DB.activities||[]).filter(x=>x.id!==id);
+      save(true); toast('Deleted'); render(); },true);
+}
+
+function activitySheet(id,defDate,preset){
+  const ex = id? DB.activities.find(a=>a.id===id) : null;
+  /* No pre-selected type: "what did you do" is the question, and answering it
+     for the user is how you end up with a log full of tennis. */
+  let type = ex? ex.type : (preset||null);
+  let more = !!ex;           // editing opens with the details already visible
+
+  /* Something that already happened has a start and an end, so those are the
+     questions. An older record may only carry a duration and a start time, in
+     which case the end is worked out rather than invented - and if it has no
+     start time at all, both stay empty and the duration it already had is
+     kept on save rather than being thrown away. */
+  let FROM = ex? (ex.time||'') : '';
+  let TO   = ex? (ex.endTime || (ex.time&&ex.min? timePlus(ex.time,ex.min) : '')) : '';
+  /* a strain the user typed is theirs; until then it follows the other
+     answers, which is what makes the field answerable rather than a demand */
+  let STRAINSET = !!(ex && ex.strain!=null && ex.strainAuto===false);
+  /* The slider lives inside the collapsed details, so it EXISTS whether or
+     not anyone has looked at it: testing for the element is not testing for
+     an answer. An existing record counts as overridden only when its stored
+     effort disagrees with what its intensity would have implied. */
+  let RPESET = !!(ex && ex.rpe!=null &&
+                  (!ex.intensity || ex.rpe!==effortRpe(ex.intensity,null)));
+  let RPEVAL = (ex && ex.rpe!=null) ? ex.rpe : 6;
+
+  /* Every pill group except the type used to be rendered from the record and
+     read back out of the DOM, so a redraw - which is what opening "Add
+     details" does - discarded whatever had been chosen. Answers live here
+     instead, beside `type`, and survive being redrawn. */
+  const PICK = {
+    intensity: ex? (ex.intensity||null) : null,
+    format:    ex? (ex.format||null)    : null,
+    subtype:   ex? (ex.subtype||null)   : null,
+    planned:   ex? (ex.planned===true?'1':ex.planned===false?'0':null) : null
+  };
+
+  const curMin = ()=>{
+    const m=minsBetween(FROM,TO);
+    if(m!=null) return m;
+    return (ex && ex.min) ? ex.min : null;
+  };
+  const curInt = ()=> PICK.intensity;
+  const estimate = ()=>{
+    const m=curMin();
+    if(!type || !m) return null;
+    const r = RPESET ? RPEVAL : effortRpe(curInt(), null);
+    return activityLoad({type:type, min:m, rpe:r});
+  };
+
+  const draw=()=>{
+    const a = ex || {};
+    const T = type? ACT_TYPES[type] : null;
+    const MIN = curMin();
+    const DURTXT = MIN!=null
+      ? fmtMin(MIN)+(minsBetween(FROM,TO)==null? ' — previously logged; set the times to keep it' : '')
+      : 'Set both times and the length works itself out.';
+    const STRAIN = STRAINSET ? (a.strain!=null? a.strain : null) : estimate();
+    const STRAINH = MIN==null
+      ? 'Worked out once there are times to work it out from.'
+      : STRAINSET
+        ? 'Your figure. Clear it to go back to the estimate.'
+        : 'Estimated from '+MIN+' minutes'+(curInt()? ' at '+String(curInt()).toLowerCase() : '')
+          +'. Replace it if your watch gave you a number.';
+    /* the types worth showing first: whatever this user actually does */
+    const mine = mainSportActs().concat(['running','cycling','strength','walking'])
+      .filter((x,i,arr)=>ACT_TYPES[x] && arr.indexOf(x)===i);
+    const rest = Object.keys(ACT_TYPES).filter(k=>mine.indexOf(k)<0);
+    const order = mine.concat(rest);
+
+    openSheet(ex?'Edit activity':'Log activity',`
+     <div class="field"><label>What did you do?</label>
+       <button class="selrow" id="asPick">
+         <i class="rw-i">${svg(type?ACT_ICON(type):'plus')}</i>
+         <span class="rw-x"><span class="rw-t">${type?esc(ACT_TYPES[type].name):'Select activity'}</span></span>
+         <i class="rw-c">${svg('chev')}</i>
+       </button></div>
+
+     ${type?`
+     <div class="field"><label>When was it?</label>
+       <input class="inp" type="date" id="asDate" value="${esc(a.date||defDate||todayISO())}">
+       <div class="grid2" style="margin-top:9px">
+         <div><div class="sl">Started</div>
+           <input class="inp" type="time" id="asFrom" value="${esc(FROM)}"></div>
+         <div><div class="sl">Ended</div>
+           <input class="inp" type="time" id="asTo" value="${esc(TO)}"></div>
+       </div>
+       <div class="hint" id="asDur">${DURTXT}</div>
+     </div>
+
+     ${type==='other'?`
+     <div class="field"><label>What was it?</label>
+       <input class="inp" id="asName" list="asNames" autocomplete="off"
+              value="${esc(a.subtype||'')}" placeholder="Start typing…">
+       <datalist id="asNames">${otherSuggestions().map(s=>
+         `<option value="${esc(s)}"></option>`).join('')}</datalist>
+       <div class="hint">Suggestions appear as you type. Anything is fine.</div>
+     </div>`:''}
+
+     <div class="field"><label>How hard was it?</label>
+       <div class="pills" id="asInt">
+         ${['Easy','Moderate','Hard','Maximal'].map(f=>
+           `<button data-v="${f}" class="${PICK.intensity===f?'on':''}">${f}</button>`).join('')}</div>
+     </div>
+
+     <div class="field"><label>Strain</label>
+       <div class="fine">
+         <input class="inp num" type="number" inputmode="decimal" step="0.1"
+                min="0" max="21" id="asStrain" value="${STRAIN==null?'':STRAIN}">
+         <span class="hint" style="margin:0;white-space:nowrap">of 21</span>
+       </div>
+       <div class="hint" id="asStrainH">${STRAINH}</div>
+     </div>
+
+     <button class="tert" id="asMoreT" aria-expanded="${more?'true':'false'}">
+       ${more?'Fewer details':'Add details'} ${svg('down')}</button>
+
+     <div id="asMore" ${more?'':'hidden'}>
+       ${T&&T.dist?`<div class="grid2">
+         <div class="field"><label>Distance (km)</label>
+           <input class="inp num" type="number" inputmode="decimal" step="0.1" id="asDist"
+                  value="${a.dist||''}" placeholder="—"></div>
+         <div class="field"><label>Pace (min/km)</label>
+           <input class="inp" id="asPace" value="${esc(a.pace||'')}" placeholder="auto"></div>
+       </div>`:''}
+       ${type==='other'?'':['tennis','padel','squash'].includes(type)?`
+         <div class="field"><label>Format</label><div class="pills" id="asFormat">
+           ${['Singles','Doubles','Hitting','Solo drills'].map(f=>
+             `<button data-v="${f}" class="${PICK.format===f?'on':''}">${f}</button>`).join('')}</div></div>
+         <div class="field"><label>Session</label><div class="pills" id="asSubtype">
+           ${['Match','Practice','Drills','Serve practice','Social'].map(f=>
+             `<button data-v="${f}" class="${PICK.subtype===f?'on':''}">${f}</button>`).join('')}</div></div>`
+       :`<div class="field"><label>Description</label>
+          <input class="inp" id="asSubtype2" value="${esc(a.subtype||'')}"
+                 placeholder="${type==='other'?'What was it?':'e.g. intervals, easy, match'}"></div>`}
+       <div class="field"><label>Was this planned?</label>
+         <div class="seg acc" id="asPlan">
+           <button data-v="1" class="${PICK.planned==='1'?'on':''}">Planned</button>
+           <button data-v="0" class="${PICK.planned==='0'?'on':''}">Unplanned</button>
+         </div></div>
+       ${sliderHTML('asRpe','Perceived effort',
+           RPESET? RPEVAL : effortRpe(PICK.intensity,null),'Very easy','Maximal')}
+       <div class="field"><label>Notes</label>
+         <textarea class="inp" id="asNotes" placeholder="Anything worth remembering">${esc(a.notes||'')}</textarea></div>
+       ${ex?`<button class="btn danger block" id="asDel">${svg('trash')} Delete activity</button>`:''}
+     </div>`
+     :`<div class="hint" style="margin-top:4px">Pick one to carry on.</div>`}
+    `, type?`<button class="btn primary big block" id="asSave">${ex?'Save changes':'Save activity'}</button>`:'');
+
+    /* one pill group behaves like every other pill group, and every one of
+       them writes its answer somewhere a redraw cannot lose it */
+    const pills=(sel,key,cb)=>$$(sel+' button').forEach(b=>b.onclick=()=>{
+      $$(sel+' button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on'); haptic();
+      if(key) PICK[key]=b.dataset.v;
+      if(cb) cb(b);
+    });
+    pills('#asFormat','format'); pills('#asSubtype','subtype');
+    pills('#asPlan','planned');
+    /* how hard it was changes what the strain estimate comes to */
+    pills('#asInt','intensity', ()=>refresh());
+
+    /* The two times are the length. Nothing else asks for it, so there is no
+       second control to disagree with. */
+    const bindTime=(id,set)=>{ const e=$('#'+id); if(!e) return;
+      e.addEventListener('input',()=>{ set(e.value); refresh(); });
+      e.addEventListener('change',()=>{ set(e.value); refresh(); }); };
+    bindTime('asFrom', v=>{ FROM=v; });
+    bindTime('asTo',   v=>{ TO=v; });
+
+    const rp=$('#asRpe');
+    if(rp) rp.addEventListener('input',()=>{ RPESET=true; RPEVAL=+rp.value; refresh(); });
+
+    const st=$('#asStrain');
+    if(st) st.addEventListener('input',()=>{
+      /* emptying it hands the number back to the estimate */
+      STRAINSET = st.value.trim()!=='';
+      refresh(true);
+    });
+    /* Patch the derived text in place. Re-rendering the sheet from inside a
+       time or number input's own handler destroys the element being typed
+       into, which on a date control closes the picker the instant it opens -
+       a bug this app has already had once. */
+    function refresh(strainOnly){
+      const m=curMin();
+      const d=$('#asDur');
+      if(d) d.textContent = m!=null
+        ? fmtMin(m)+(minsBetween(FROM,TO)==null? ' — previously logged; set the times to keep it' : '')
+        : 'Set both times and the length works itself out.';
+      const s=$('#asStrain'), h=$('#asStrainH');
+      if(s && !STRAINSET && !strainOnly){
+        const e=estimate();
+        s.value = e==null? '' : e;
+      }
+      if(h) h.textContent = m==null
+        ? 'Worked out once there are times to work it out from.'
+        : STRAINSET
+          ? 'Your figure. Clear it to go back to the estimate.'
+          : 'Estimated from '+m+' minutes'+(curInt()? ' at '+String(curInt()).toLowerCase() : '')
+            +'. Replace it if your watch gave you a number.';
+      /* keep the finer control in step with the coarser one, so opening the
+         details never shows an effort that contradicts the pill above it */
+      const rp2=$('#asRpe'), ro=$('#asRpe_o');
+      if(rp2 && !RPESET){
+        const v=effortRpe(curInt(), null);
+        RPEVAL=v;
+        rp2.value=String(v);
+        if(ro) ro.textContent=String(v);
+      }
+    }
+
+    const pk=$('#asPick');
+    if(pk) pk.onclick=()=>pickActivity(k=>{ type=k; draw(); },'Select activity');
+
+    const mt=$('#asMoreT'), mb=$('#asMore');
+    if(mt&&mb) mt.onclick=()=>{ more=!more; draw(); };
+
+    if($('#asDel')) $('#asDel').onclick=()=>confirmSheet('Delete activity?',
+      'It will be removed from your history and from all load calculations.','Delete',()=>{
+        DB.activities=DB.activities.filter(x=>x.id!==id); save(true); toast('Deleted'); render(); },true);
+
+    const sv=$('#asSave');
+    if(sv) sv.onclick=()=>{
+      const min=curMin();
+      if(min==null||!min){ toast('When did it start and finish?','err'); return; }
+      const gv=key=>PICK[key];
+      let dist=$('#asDist')?(+$('#asDist').value||null):null;
+      let pace=$('#asPace')?$('#asPace').value.trim():null;
+      if(dist&&!pace&&min){ const p=min/dist; pace=Math.floor(p)+':'+String(Math.round((p%1)*60)).padStart(2,'0'); }
+      const planned=gv('planned');
+      const inten=gv('intensity');
+      const stEl=$('#asStrain');
+      const stVal=(stEl && stEl.value.trim()!=='') ? clamp(+stEl.value,0,21) : null;
+      const rec={
+        id: ex? ex.id : 'a'+uid(),
+        date: ($('#asDate')||{}).value||defDate||todayISO(),
+        time: FROM||null, endTime: TO||null,
+        type, min, dist, pace,
+        format: gv('format'),
+        subtype: gv('subtype')
+                 || ($('#asName')?$('#asName').value.trim():'')
+                 || ($('#asSubtype2')?$('#asSubtype2').value.trim():null),
+        intensity: inten,
+        /* The pills never reached the load model: activityLoad reads `rpe`,
+           which only the slider inside "Add details" ever set, so answering
+           Maximal here and leaving the details closed produced the same
+           strain as answering Easy. The visible answer counts now. */
+        rpe: RPESET ? RPEVAL : (inten? effortRpe(inten,null) : null),
+        /* a figure the user stated outranks anything the formula can derive */
+        strain: stVal,
+        strainAuto: !STRAINSET,
+        planned: planned==null? null : planned==='1',
+        notes: ($('#asNotes')||{}).value.trim()||'',
+        at: new Date().toISOString()
+      };
+      if(ex){ Object.assign(ex,rec); } else { DB.activities.push(rec); }
+      DB.activities.sort((a,b)=>a.date<b.date?-1:1);
+      save(true); closeSheet(); toast(ex?'Activity updated':'Activity logged','ok');
+      setTimeout(render,220);
+    };
+  };
+  draw();
+}

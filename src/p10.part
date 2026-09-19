@@ -1,0 +1,2214 @@
+
+/* =========================================================================
+   WORKOUT MODE
+   ====================================================================== */
+let W=null;            // live session state
+let restTimer=null, restLeft=0;
+
+function startWorkout(wid,variant,date,rec){
+  const wk=DB.workouts.find(x=>x.id===wid); if(!wk){toast('Workout not found','err');return;}
+  const blocks = sessionBlocks(Object.assign({addCore:false},rec||{},
+    {workoutId:wid, variant:variant, date:date||todayISO()}));
+  if(!blocks.length){ toast('This version has no exercises','err'); return; }
+  const rd=DB.checkins[date]?readiness(date,DB.checkins[date]):null;
+  W={
+    id:'s'+uid(), date:date||todayISO(), workoutId:wid,
+    workoutName:wk.name+((rec&&rec.addCore)?' + Core':''), variant,
+    category:(rec&&rec.id)?({lower:'lower',upper:'upper',power:'power',core:'core',
+      run_e:'run',run_q:'run',run_int:'run',bike:'bike',mobility:'mobility'}[rec.id]||catOfWorkout(wk)):catOfWorkout(wk),
+    addCore:!!(rec&&rec.addCore), recId:rec?rec.id:null, overridden:!!(rec&&rec.overridden),
+    startedAt:Date.now(), time:new Date().toTimeString().slice(0,5),
+    band:rd?rd.band:null, readinessScore:rd?rd.score:null,
+    step:-1,   // -1 = warm-up screen
+    entries: blocks.map(b=>{ const e=exOf(b.ex)||{name:'(missing)',sets:3,reps:'10'};
+      const n=b.sets||e.sets||3;
+      return { exerciseId:b.ex, name:e.name, plannedSets:n,
+        plannedReps:b.reps||e.reps, plannedRpe:b.rpe||e.rpe, plannedRest:b.rest||e.rest,
+        tempo:b.tempo||e.tempo||'', note:'', blockNote:b.note||'', cue:e.cue||'', subs:e.subs||'',
+        progNote:b.progNote||'',
+        /* a hold is timed, not counted: derived here once so nothing
+           downstream has to parse the prescription again */
+        timed:setSecs(b.reps||e.reps),
+        /* and a run or a ride is a clock, not a set list */
+        cardio:cardioSpec(b, e), run:null,
+        skipped:false,
+        sets:Array.from({length:n},()=>({reps:'',weight:'',rpe:'',done:false})) };})
+  };
+  /* Fill every set in with what you did last time BEFORE the screen is
+     drawn. Shown muted until confirmed, so nothing is recorded that the user
+     has not ticked - but the common case, repeating last week, is one tap. */
+  W.entries.forEach(primeSets);
+  /* a gesture the browser will accept: without this the first rest tone of
+     the session is silently dropped */
+  audioCtx();
+  $('#wmode').classList.add('on');
+  document.body.style.overflow='hidden';
+  drawWM();
+}
+
+/* The most likely value for each set, in order of authority:
+     1. what you did in that same set position last time
+     2. what you did in the last set of that session (for extra sets)
+     3. the planned reps, and no weight
+   Never written to `done`; these are suggestions until the user taps. */
+function primeSets(en){
+  const prev=lastPerformance(en.exerciseId, null, W?W.id:null);
+  const planReps=String(en.plannedReps||'').replace(/[^0-9]/g,' ').trim().split(/\s+/)[0]||'';
+  /* What today's numbers SHOULD be, and the sentence that says why. Held on
+     the entry so the set card can show the reason next to the number: a
+     figure that moved without explanation is worse than one that did not. */
+  const tg=nextTarget(en, W?W.date:todayISO());
+  en.target=tg;
+  en.sets.forEach((s,n)=>{
+    if(s.done) return;                      // a resumed session keeps its log
+    if(s.reps==='' || s.weight===''){
+      const src = prev ? (prev.sets[Math.min(n, prev.sets.length-1)]||null) : null;
+      const lastReps=(src&&src.reps!=null&&src.reps!=='') ? String(src.reps) : planReps;
+      const lastW   =(src&&src.weight!=null&&src.weight!=='') ? String(src.weight) : '';
+      if(s.reps==='')   s.reps   = (tg&&tg.reps!=null)   ? tg.reps   : lastReps;
+      if(s.weight==='') s.weight = (tg&&tg.weight!=null) ? tg.weight : lastW;
+    }
+  });
+}
+function exitWM(discard){
+  const fin=()=>{ cancelAuto(); stopRest(); clearHold();
+                  clearInterval(cardTimer); cardTimer=null;
+                  $('#wmode').classList.remove('on'); document.body.style.overflow='';
+                  W=null; render(); };
+  if(discard){ try{ Store.pref('live',null); }catch(e){} return fin(); }
+
+  /* Always ask. This used to leave silently whenever nothing had been logged
+     yet, which is exactly when a mis-tap on a 44px button is most likely, and
+     it never offered the third answer people actually want: pause. */
+  const logged=W? sum(W.entries.map(e=>e.sets.filter(s=>s.done).length)) : 0;
+  openSheet('Leave this workout?',
+    `<p class="lede">${logged
+      ? logged+' set'+(logged===1?'':'s')+' logged so far. Pausing keeps all of it and offers the session back on Today.'
+      : 'Nothing is logged yet. Pausing keeps your place so you can pick it up later today.'}</p>`,
+    `<button class="btn primary big block" id="wmPause">Pause — finish it later</button>
+     <button class="btn ghost block" id="wmKeep">Cancel — keep training</button>
+     <button class="btn danger block" id="wmDrop">Discard this workout</button>`);
+  $('#wmKeep').onclick=()=>closeSheet();
+  $('#wmPause').onclick=()=>{
+    if(W){ W.pausedAt=Date.now(); W.endedAt=Date.now(); saveLive(); }
+    closeSheet(); toast('Paused — pick it up from Today','ok');
+    setTimeout(fin,240);
+  };
+  $('#wmDrop').onclick=()=>{
+    closeSheet();
+    setTimeout(()=>confirmSheet('Discard this workout?',
+      logged? 'Everything you logged in this session is lost. This cannot be undone.'
+            : 'Nothing was logged, so nothing is lost.',
+      'Discard',()=>{ try{ Store.pref('live',null); }catch(e){} fin(); },true),260);
+  };
+}
+
+/* A session left running earlier today, if there is one to offer back.
+   Kept deliberately loose about `pausedAt`: a session interrupted by a phone
+   call or a browser tab being evicted deserves the same offer as one somebody
+   paused on purpose. */
+function pausedWorkout(){
+  try{
+    const lv=Store.pref('live');
+    if(!lv) return null;
+    const live=JSON.parse(lv);
+    if(!live || live.done || !live.entries) return null;
+    if(live.date!==todayISO()) return null;
+    return live;
+  }catch(e){ return null; }
+}
+function resumeWorkout(){
+  const live=pausedWorkout(); if(!live) return;
+  W=live;
+  /* the clock should count the time you trained, not the time the phone
+     spent in your pocket */
+  W.startedAt=Date.now()-((live.endedAt||Date.now())-live.startedAt);
+  delete W.pausedAt;
+  $('#wmode').classList.add('on'); document.body.style.overflow='hidden';
+  drawWM();
+}
+
+/* ---- finishing an exercise moves you on by itself ----
+   Ticking the last set used to leave you on a screen with nothing left to do
+   and a button that said "Skip to next".
+
+   The first version waited 1.6 seconds silently, which turned out to be long
+   enough to look finished and short enough to beat a thumb: reaching for the
+   undo chip on the set you had just logged meant tapping a screen that had
+   already moved on. Four seconds, counted out loud on screen, and cancelled
+   by any touch or scroll at all - reaching for undo IS the signal that you
+   are not done with this screen. */
+const AUTO_MS=4000;
+let WMNEXT=null, WMNEXT_AT=0, WMTICK=null;
+function cancelAuto(){
+  if(WMNEXT){ clearTimeout(WMNEXT); WMNEXT=null; }
+  if(WMTICK){ clearInterval(WMTICK); WMTICK=null; }
+  WMNEXT_AT=0;
+}
+function autoPending(){ return WMNEXT!==null; }
+function autoLeft(){ return WMNEXT_AT? Math.max(0,Math.ceil((WMNEXT_AT-Date.now())/1000)) : 0; }
+function armAuto(i){
+  cancelAuto();
+  WMNEXT_AT=Date.now()+AUTO_MS;
+  WMTICK=setInterval(()=>{ const el=$('#wmCount'); if(el) el.textContent=autoLeft(); },250);
+  WMNEXT=setTimeout(()=>{
+    WMNEXT=null; cancelAuto();
+    if(!W || W.step!==i) return;
+    const en=W.entries[i];
+    if(!en || !en.sets.length || !en.sets.every(s=>s.done)) return;
+    nextStep();
+  },AUTO_MS);
+}
+
+/* ---- the plan, in words ----
+   "RPE 7 · rest 60s · tempo 2-0-2-1" is the plan written for a coach. The
+   exact figures are still there, one tap away under More. */
+/* `kind` is 'hold' for something held, 'cardio' for something continuous, and
+   anything else for something counted. `true` still means 'hold'. */
+function effortWords(rpe, kind){
+  const m=String(rpe==null?'':rpe).match(/(\d+)/);
+  if(!m) return '';
+  const v=+m[1];
+  const k = kind===true ? 'hold' : (kind||'reps');
+  /* Continuous work has no reps and no end to hold out for, so the scale is
+     the talk test - the same cue the block notes for these sessions already
+     give in prose. */
+  if(k==='cardio'){
+    if(v<=4) return 'easy — you could hold a full conversation';
+    if(v===5) return 'steady — talking is comfortable';
+    if(v===6) return 'steady — you can talk, but in short sentences';
+    if(v===7) return 'hard — a few words at a time';
+    if(v===8) return 'hard — you would not want to talk';
+    if(v===9) return 'very hard — close to your limit';
+    return 'flat out';
+  }
+  /* A hold has no reps to have left in reserve, and "reps in reserve" is the
+     very notation this line exists to replace. Same scale, the only unit a
+     hold has: how much longer you could have held it. */
+  if(k==='hold'){
+    if(v<=5) return 'comfortable — you could hold it a good deal longer';
+    if(v===6) return 'working, with a fair bit left';
+    if(v===7) return 'hard — a few seconds more in you';
+    if(v===8) return 'hard — a couple of seconds from shaking';
+    if(v===9) return 'very hard — right on the edge';
+    return 'held until it gives out';
+  }
+  if(v<=5) return 'comfortable — several reps left over';
+  if(v===6) return 'working, with a few reps left over';
+  if(v===7) return 'hard, with about 3 reps left in you';
+  if(v===8) return 'hard, with about 2 reps left in you';
+  if(v===9) return 'very hard — one rep left in you';
+  return 'as hard as you can go';
+}
+function restWords(rest){
+  const sec=parseRest(rest);
+  if(!sec) return '';
+  if(sec<=45)  return 'short rests, about '+sec+' seconds';
+  if(sec<=75)  return 'about a minute between sets';
+  if(sec<=105) return 'about a minute and a half between sets';
+  return 'about '+Math.round(sec/60)+' minutes between sets';
+}
+
+/* "REDUCED" told a first-time user nothing. */
+const VARIANT_NAME={full:'Full session', reduced:'Reduced volume', recovery:'Recovery session'};
+
+function drawWM(){
+  if(!W)return;
+  /* Re-rendering the body threw the user back to the top of the exercise on
+     every single tick, which on a four-set list meant scrolling down again
+     after each set. */
+  const _body=$('#wmBody'), _keep=_body?_body.scrollTop:0;
+  const total=W.entries.length;
+  const i=W.step;
+  const doneSets=sum(W.entries.map(e=>e.sets.filter(s=>s.done).length));
+  const allSets=sum(W.entries.map(e=>e.plannedSets));
+  $('#wmProg').style.width=(allSets?doneSets/allSets*100:0)+'%';
+  const elapsed=Math.round((Date.now()-W.startedAt)/60000);
+
+  $('#wmHead').innerHTML=`
+    <button class="icon-btn" id="wmX">${svg('x')}</button>
+    <div style="flex:1;text-align:center">
+      <div style="font-size:12.5px;font-weight:750;letter-spacing:-.1px">${esc(W.workoutName)}</div>
+      <div style="font-size:10.5px;color:var(--text-3);font-weight:650;margin-top:1px">
+        ${W.kind==='activity'
+          ? esc(W.intensity||'Running')
+          : esc(VARIANT_NAME[W.variant]||'Full session')+' · '+(i<0?'warm-up':`exercise ${i+1}/${total}`)} · ${elapsed} min</div>
+    </div>
+    <div class="icon-btn" style="font-size:11px;font-weight:800;color:var(--accent)">${doneSets}/${allSets}</div>`;
+  $('#wmX').onclick=()=>exitWM();
+
+  if(i<0 && W.kind==='activity'){ W.step=0; return drawWM(); }
+  if(i<0) return drawWarmup();
+  if(i>=total) return W.saveAs==='activity' ? drawActivityFinish() : drawFinish();
+  drawExercise(W.entries[i],i,total);
+  if(_body && _keep) _body.scrollTop=_keep;
+}
+function drawWarmup(){
+  const wk=DB.workouts.find(x=>x.id===W.workoutId);
+  const wu=warmupFor(wk);
+  const first=W.entries[0];
+  $('#wmBody').innerHTML=`
+    <div class="wm-ex">Warm-up</div>
+    <div class="wm-sub">${esc(wu.name)} · about ${wu.dur} minutes</div>
+    <div class="wm-plain">Then ${W.entries.length} exercise${W.entries.length===1?'':'s'}, starting with ${esc(first?first.name:'training')}.</div>
+    ${wk.desc?`<div class="note acc">${esc(wk.desc)}</div>`:''}
+    ${wu.items.some(it=>warmupHow(it.n))
+      ? '<div class="hint" style="margin:14px 2px 2px">Tap any movement to see how to do it.</div>'
+      : ''}
+    <div class="setlist">
+      ${wu.items.map((it,n)=>{
+        const how=warmupHow(it.n);
+        return `<div class="setrow wu${how?' has-how':''}" style="align-items:flex-start"
+                     ${how?`data-wu="${n}" role="button" tabindex="0"
+                     aria-expanded="false" aria-label="${esc(it.n)}, tap for how to do it"`:''}>
+          <div class="sn">${n+1}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14.5px;font-weight:650">${esc(it.n)}</div>
+            <div style="font-size:12px;color:var(--text-3);margin-top:2px">${esc(it.d)}</div>
+            ${how?`<div class="wu-how" id="wuHow${n}" hidden>${esc(how)}</div>`:''}
+          </div>
+          ${how?`<i class="wu-x">${svg('down')}</i>`:''}
+        </div>`;}).join('')}
+    </div>
+    <div class="note">Do not skip this. It makes the first working set as good as the last.</div>`;
+  /* the same footer as every exercise that follows, so this reads as step 0
+     of one flow rather than a separate screen with its own vocabulary */
+  $('#wmFoot').innerHTML=
+    `<button class="btn primary big block" id="wmGo">Start 1 · ${esc(first?first.name:'training')}</button>`;
+  /* Collapsed by default: somebody who knows what a leg swing is should not
+     have to scroll past 53 paragraphs to start training. */
+  $$('#wmBody [data-wu]').forEach(r=>{
+    const open=()=>{
+      const el=$('#wuHow'+r.dataset.wu); if(!el) return;
+      const now=el.hasAttribute('hidden');
+      if(now) el.removeAttribute('hidden'); else el.setAttribute('hidden','');
+      r.classList.toggle('open',now);
+      r.setAttribute('aria-expanded',now?'true':'false');
+      haptic();
+    };
+    r.onclick=open;
+    r.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); open(); } };
+  });
+  $('#wmGo').onclick=()=>{ W.step=0; drawWM(); window.scrollTo(0,0); $('#wmBody').scrollTop=0; };
+}
+
+function drawExercise(en,i,total){
+  /* a run, a ride or a game is a clock, not a list of sets */
+  if(en.cardio) return drawCardioStep(en,i,total);
+  const e=exOf(en.exerciseId);
+  /* a kg field only where kilograms mean something - plus the escape hatch
+     for anyone who hangs a plate off a weighted pull-up */
+  const showKg = exLoadable(e) || !!en.wantWeight;
+  const nSets  = en.sets.length;
+  const cur    = en.sets.findIndex(s=>!s.done);   // the one set that matters
+  const allDone= cur<0;
+  const planReps=String(en.plannedReps||'').replace(/[^0-9]/g,' ').trim().split(/\s+/)[0]||'';
+  const prev   = lastPerformance(en.exerciseId, null, W.id);
+  const prevW  = n=>{ if(!prev) return '';
+                      const m=prev.sets[Math.min(n,prev.sets.length-1)];
+                      return (m&&m.weight!==''&&m.weight!=null)?String(m.weight):''; };
+  /* What comes after the thing you are doing right now, named. "Skip to next"
+     told you there was a next; it never told you what, so there was no way to
+     know whether you were two sets from the end of the exercise or two sets
+     from the end of the session. */
+  const nextLabel=(()=>{
+    if(cur>=0 && cur<nSets-1) return 'Next: set '+(cur+2)+' of '+nSets;
+    if(i<total-1){ const nx=W.entries[i+1];
+      return 'Next: '+nx.name+' · set 1 of '+nx.sets.length; }
+    return 'Next: finish the workout';
+  })();
+  /* a hold logged as the number 40 must never read back as "40 reps" */
+  const tm=en.timed;
+  const label  = (s,n)=>{ const r=s.reps||planReps||'—';
+                          const w=(showKg&&s.weight!==''&&s.weight!=null)?s.weight:'';
+                          const unit=tm? r+'s' : r+' reps';
+                          return w!==''? (tm? r+'s×'+w+'kg' : r+'×'+w+'kg') : unit; };
+
+  /* what you did last time - the number you are trying to beat, small enough
+     to sit inside the card instead of pushing the controls off the screen */
+  const lastHTML=(()=>{
+    if(!prev) return `<div class="lastrow none">First time doing this — today's numbers become the target to beat.</div>`;
+    const ago=daysBetween(prev.date, W.date);
+    const p=progressVs(prev, en);
+    return `<div class="lastrow${p&&p.up===true?' up':p&&p.up===false?' down':''}">
+      <div class="ll">Last time <i>${ago<=0?'today':ago===1?'yesterday':ago+' days ago'}</i></div>
+      <div class="lv">${esc(setsSummary(prev.sets, !!tm))}${prev.bestRpe?` · RPE ${prev.bestRpe}`:''}</div>
+      ${p&&p.up===true?`<div class="lp up">${svg('up')} ${p.pct}% more volume so far</div>`:''}
+      ${p&&p.up===false?`<div class="lp down">${svg('down2')} ${Math.abs(p.pct)}% below last time — fine on a low-readiness day</div>`:''}
+    </div>`;})();
+
+  /* rest belongs to the set that started it, so it is drawn inside the card */
+  const restHTML = (restActive() && REST.ex===i) ? `<div class="wrest">
+      <span class="wrt num" id="restT">${mmss(restRemaining())}</span>
+      <span class="wrl" id="restL">Rest after set ${REST.set+1}${allDone?'':` · then set ${cur+1} of ${nSets}`}</span>
+      <button class="btn sm" id="restAdd">+30s</button>
+      <button class="btn sm primary" id="restSkip">Skip rest</button>
+    </div>` : '';
+
+  /* the sets already logged: one strip, tap a chip to take it back */
+  const doneHTML = en.sets.some(s=>s.done) ? `<div class="wdone">
+      <span class="wd-l">Logged</span>
+      ${en.sets.map((s,n)=>!s.done?'':`<button data-undo="${n}"
+         aria-label="Undo set ${n+1}"><i>${n+1}</i> ${esc(label(s,n))}</button>`).join('')}
+      <span class="wd-h">tap to undo</span>
+    </div>` : '';
+
+  const primed = !allDone && !en.sets.some(s=>s.done)
+              && (en.sets[cur].reps!=='' || en.sets[cur].weight!=='');
+
+  const cardHTML = allDone
+    ? `<div class="wnow fin" id="wmDoneN">
+         <div class="wnow-t">${esc(en.name)} done<span>${nSets} set${nSets===1?'':'s'} logged</span></div>
+         <p id="wmNextP">${esc(nextLabel.replace(/^Next: /,'Moving on to '))}
+           in <b id="wmCount">${autoLeft()||Math.round(AUTO_MS/1000)}</b>s — tap anywhere to stay.</p>
+         <button class="btn ghost block" id="wmStay">Stay on this exercise</button>
+       </div>`
+    : `<div class="wnow">
+         <div class="wnow-t">Set ${cur+1} of ${nSets}<span>${esc(nextLabel)}</span></div>
+         ${restHTML}
+         ${lastHTML}
+         ${tm?(()=>{
+           /* a countdown, not a rep count. It logs the set itself when it
+              finishes, so holding one is genuinely one tap. */
+           const on = holdActive() && HOLD.ex===i && HOLD.set===cur;
+           const want = +en.sets[cur].reps || tm.hi;
+           return `<div class="hold${on?' run':''}">
+             <div class="hl">${on? 'Holding' : 'Hold for '+want+' seconds'
+               +(tm.perSide?' per side':'')}</div>
+             <div class="ht num" id="holdT">${mmss(on?holdRemaining():want)}</div>
+             <button class="btn ${on?'ghost':'primary'}" id="holdBtn" data-secs="${want}">${
+               on? svg('x')+' Stop' : svg('play')+' Start the hold'}</button>
+           </div>`;})():''}
+         <div class="wnow-f">
+           <div class="sfield"><div class="sl">${tm?'Seconds':'Reps'}</div>${
+             stepper(cur,'reps',en.sets[cur].reps,tm?String(tm.hi):planReps,
+                     tm?5:null, tm?'Seconds held':'Reps')}</div>
+           ${showKg?`<div class="sfield"><div class="sl">kg</div>${stepper(cur,'weight',en.sets[cur].weight,prevW(cur))}</div>`:''}
+         </div>
+         ${primed?`<div class="hint">${
+            (en.target&&en.target.line) ? esc(en.target.line)
+            : prev ? 'Filled in from last time — change it first if today was different.'
+            : 'Filled in from the plan — change it first if you did something else.'}</div>`:''}
+         <button class="btn ${tm?'ghost':'primary'} big block wlog" data-log="${cur}">${svg('check')} Log set ${cur+1}${
+           tm&&en.sets[cur].reps? ' · '+esc(en.sets[cur].reps)+'s' : ''}</button>
+       </div>`;
+
+  $('#wmBody').innerHTML=`
+    <div class="wm-ex">${esc(en.name)}</div>
+    <div class="wm-sub">${nSets} set${nSets===1?'':'s'} of ${
+       tm? esc(secsLabel(tm)) : esc(en.plannedReps)+' reps'}</div>
+    ${(()=>{ const bits=[effortWords(en.plannedRpe, !!tm), restWords(en.plannedRest)].filter(Boolean);
+       return bits.length?`<div class="wm-plain">${esc(bits.join(' · '))}</div>`:''; })()}
+    ${(()=>{ const h=briefHow(e);
+       return h?`<button class="wm-how" id="wmHowLine">${esc(h)} <i>More</i></button>`:''; })()}
+    ${en.blockNote?`<div class="note warn">${esc(en.blockNote)}</div>`:''}
+    <div class="setlist">
+      ${cardHTML}
+      ${doneHTML}
+    </div>
+    <div class="btn-row">
+      <button class="btn sm ghost" id="wmAddSet">${svg('plus')} Add a set</button>
+      <button class="btn sm ghost" id="wmMore">More</button>
+    </div>
+    ${en.sets.some(s=>s.done)?`
+    <div class="ruled" style="display:flex;align-items:center;gap:12px">
+      <div style="flex:1"><div style="font-size:13px;font-weight:700">Effort</div>
+        <div style="font-size:11.5px;color:var(--text-3);margin-top:2px">Optional — planned ${esc(en.plannedRpe||'—')}</div></div>
+      <div style="flex:0 0 128px">${stepper(-1,'rpe',
+        (en.sets.filter(s=>s.done&&s.rpe)[0]||{}).rpe||'', '')}</div>
+    </div>`:''}
+    ${en.note?`<div class="note"><b>Your note:</b> ${esc(en.note)}</div>`:''}`;
+
+  /* "Skip to next" was on screen even when every set was logged. */
+  $('#wmFoot').innerHTML=`<div class="btn-row">
+      ${i>0?`<button class="btn ghost" id="wmPrev">Back</button>`:''}
+      <button class="btn ${allDone?'primary':'ghost'}" id="wmNext" style="flex:2">${
+        i<total-1?'Next exercise':'Finish workout'}</button>
+    </div>`;
+
+  /* one place that writes a set value, whether it came from a stepper button
+     or from somebody typing into the field */
+  const putVal=(n,k,v)=>{
+    if(n<0){ /* the per-exercise effort control writes to every logged set */
+      en.sets.forEach(s=>{ if(s.done) s.rpe=v; });
+    } else {
+      en.sets[+n][k]=v;
+    }
+    saveLive();
+  };
+  $$('.wmIn').forEach(inp=>inp.addEventListener('input',()=>{
+    const n=+inp.dataset.s;
+    if(n>=0 && en.sets[n]) en.sets[n].touched=true;   // stop carry-forward
+    putVal(inp.dataset.s, inp.dataset.k, inp.value);
+  }));
+  $$('.stp button').forEach(b=>b.onclick=ev=>{
+    ev.stopPropagation();
+    const wrap=b.parentElement, inp=wrap.querySelector('input');
+    const sn=+inp.dataset.s;
+    if(sn>=0 && en.sets[sn]) en.sets[sn].touched=true;
+    const k=inp.dataset.k, dir=+b.dataset.d;
+    const cv = inp.value!=='' ? parseFloat(inp.value)
+             : (inp.placeholder!=='' ? parseFloat(inp.placeholder) : NaN);
+    const base = isNaN(cv) ? 0 : cv;
+    /* an explicit increment wins: seconds do not move one at a time */
+    const step = inp.dataset.step ? +inp.dataset.step : stepSize(k, base);
+    let next = base + dir*step;
+    if(k==='rpe') next=clamp(next,1,10);
+    if(next<0) next=0;
+    /* 2.5 kg increments must not accumulate floating-point dust */
+    next = Math.round(next*100)/100;
+    inp.value = String(next);
+    putVal(inp.dataset.s, k, inp.value);
+    haptic();
+  });
+  /* logging a set, and taking one back: the only two things that change the
+     record on this screen */
+  const complete=(n)=>{
+    const s=en.sets[n];
+    s.done=!s.done;
+    if(s.done){
+      if(!s.reps){ const ph=String(en.plannedReps).replace(/[^0-9–\-]/g,'').split(/[–\-]/)[0]; s.reps=ph||''; }
+      if(!s.rpe){ const m=String(en.plannedRpe||'').match(/(\d+)/); if(m)s.rpe=m[1]; }
+      /* Whatever you just confirmed is the best guess for the sets after it.
+         Only untouched ones, so an already-logged set is never rewritten. */
+      for(let k=n+1;k<en.sets.length;k++){
+        const nx=en.sets[k];
+        if(nx.done || nx.touched) continue;
+        nx.reps=s.reps; nx.weight=s.weight;
+      }
+      haptic(); SOUND.set();
+      if(en.sets.every(x=>x.done)){
+        /* the exercise is finished - say so and move on rather than leaving
+           somebody on a screen with nothing left to do on it */
+        stopRest(); armAuto(i);
+      } else {
+        const rest=parseRest(en.plannedRest);
+        if(DB.settings.restTimerOn && rest) startRest(rest,en.name,n+1,en.sets.length);
+      }
+    } else {
+      cancelAuto(); stopRest();
+    }
+    saveLive(); drawWM();
+  };
+  $$('#wmBody [data-log]').forEach(b=>b.onclick=ev=>{
+    ev.stopPropagation(); complete(+b.dataset.log); });
+  $$('#wmBody [data-undo]').forEach(b=>b.onclick=ev=>{
+    ev.stopPropagation(); complete(+b.dataset.undo); });
+
+  const hb=$('#holdBtn');
+  if(hb) hb.onclick=()=>{
+    if(holdActive() && HOLD.ex===i) return stopHold();
+    startHold(+hb.dataset.secs||(tm?tm.hi:30), cur, en.name);
+  };
+  const rSkip=$('#restSkip'); if(rSkip) rSkip.onclick=()=>{ stopRest(); drawWM(); };
+  const rAdd =$('#restAdd');  if(rAdd)  rAdd.onclick=()=>restAdd30();
+  const stay =$('#wmStay');   if(stay)  stay.onclick=()=>{
+    cancelAuto();
+    const p=$('#wmDoneN p'); if(p) p.textContent='Staying here. Add a set, rate the effort, or press Next exercise when you are ready.';
+    stay.remove();
+  };
+  /* Reaching for the undo chip is itself the signal that you are not finished
+     with this screen, so ANY touch or scroll cancels the automatic move.
+     Note what this must NOT do: removing the Stay button here would swallow
+     the click that follows the pointerdown on it. */
+  if(allDone && autoPending()){
+    const body=$('#wmBody');
+    const halt=()=>{
+      if(!autoPending()) return;
+      cancelAuto();
+      const p=$('#wmNextP');
+      if(p) p.textContent='Staying here — nothing will move until you say so.';
+    };
+    if(body){
+      body.addEventListener('pointerdown',halt,{once:true});
+      body.addEventListener('scroll',halt,{once:true});
+      body.addEventListener('keydown',halt,{once:true});
+    }
+  }
+
+  $('#wmAddSet').onclick=()=>{
+    cancelAuto();
+    en.sets.push({reps:'',weight:'',rpe:'',done:false});
+    en.plannedSets=en.sets.length; saveLive(); drawWM();
+  };
+  /* the things you do between exercises, not during a set.
+     Each row carries the function it runs. It used to dispatch on the row
+     index, so adding a conditional row shifted every index below it and wired
+     the wrong handler to the wrong label. */
+  $('#wmMore').onclick=()=>{
+    const rows=[
+      {t:'How to do it', s:en.cue? en.cue.slice(0,44)+'…' : 'Cue, progression and the plan in full',
+       icon:'book', run:()=>wmHow()},
+      {t:'Why this exercise?', s:'What it covers and why it was picked',
+       icon:'info', run:()=>wmWhy()},
+      /* only where a kilogram is not already on offer */
+      exLoadable(exOf(en.exerciseId)) ? null : {
+        t: en.wantWeight? 'Remove the weight field' : 'Add weight',
+        s: en.wantWeight? 'Back to reps only' : 'For a vest, belt or a held dumbbell',
+        icon:'barbell',
+        run:()=>{ en.wantWeight=!en.wantWeight;
+                  if(!en.wantWeight) en.sets.forEach(s=>{ s.weight=''; });
+                  saveLive(); drawWM(); }},
+      {t:'Replace exercise', s:'Something else for the same target',
+       icon:'undo', run:()=>wmSwap()},
+      {t:'This hurt', s:'Keep it out of my sessions for 3 weeks',
+       icon:'thermo', run:()=>wmHurt()},
+      {t:'Add a note', s:en.note?'Note saved':'Form, how it felt',
+       icon:'edit', run:()=>wmNote()},
+      {t:'Skip this exercise', s:'Recorded as skipped, not failed',
+       icon:'x', run:()=>wmSkip()}
+    ].filter(Boolean);
+    cancelAuto();
+    openSheet(en.name,navRows('wmMoreRows',rows));
+    $$('#wmMoreRows button').forEach(b=>b.onclick=()=>{
+      const act=rows[+b.dataset.r];
+      closeSheet();
+      setTimeout(()=>{ if(act&&act.run) act.run(); },200);
+    });
+  };
+  /* the reference material, off the set screen and one tap away. The exact
+     figures live here now that the screen itself speaks plainly. */
+  const wmHow=()=>{
+    const ex=exOf(en.exerciseId)||{};
+    openSheet(en.name,`
+      ${en.cue?`<div class="note acc"><b>Cue:</b> ${esc(en.cue)}</div>`:''}
+      ${ex.how?`<p class="lede">${esc(ex.how)}</p>`:''}
+      <div class="sec-t">The plan in full</div>
+      <div class="card tight">
+        <div class="kv"><span class="k">Sets</span><span class="v">${en.plannedSets}</span></div>
+        <div class="kv"><span class="k">Reps</span><span class="v">${esc(en.plannedReps||'—')}</span></div>
+        <div class="kv"><span class="k">Effort</span><span class="v">${esc(en.plannedRpe||'—')}</span></div>
+        <div class="kv"><span class="k">Rest</span><span class="v">${esc(en.plannedRest||'—')}</span></div>
+        ${en.tempo?`<div class="kv"><span class="k">Tempo</span><span class="v">${esc(en.tempo)}</span></div>`:''}
+      </div>
+      ${en.progNote?`<div class="note acc">${esc(en.progNote)}</div>`:''}
+      ${(en.target&&en.target.line)?`<div class="note">${esc(en.target.line)}</div>`:''}
+      ${ex.prog?`<div class="sec-t">How it progresses</div>
+        <p class="lede">${esc(ex.prog)}</p>`:''}
+      ${en.subs?`<div class="sec-t">If it is not working today</div>
+        <p class="lede">${esc(en.subs)}</p>`:''}`,
+      `<button class="btn primary big block" onclick="closeSheet()">Got it</button>`);
+  };
+  /* G · the resolver already knew all of this and never said it */
+  const wmWhy=()=>{
+    openSheet('Why this exercise?',
+      `<ul class="whyl">${exerciseWhy(en).map(b=>
+        `<li class="info"><span class="dot"></span><span>${b}</span></li>`).join('')}</ul>`,
+      `<button class="btn primary big block" onclick="closeSheet()">Got it</button>`);
+  };
+  /* C · lighter than declaring an injury, which is what this used to require */
+  const wmHurt=()=>{
+    confirmSheet('Keep this out for a while?',
+      `<b>${esc(en.name)}</b> will be left out of your sessions for three weeks
+       and something else covering the same pattern used instead. You can undo
+       it in Settings → Training at any time.<br><br>
+       Sharp or persistent pain is worth a word with a qualified healthcare
+       professional rather than only an app setting.`,
+      'Leave it out',()=>{
+        const hurt=en.exerciseId;
+        avoidExercise(hurt,'hurt during a session');
+        toast('Left out for 3 weeks');
+        /* swap it now so the session can carry on. resolveExercise already
+           knows how to route around an avoided movement, and returns an
+           exercise object rather than an id. */
+        const ne=resolveExercise(hurt);
+        if(ne && ne.id!==hurt){
+          en.exerciseId=ne.id; en.name=ne.name; en.cue=ne.cue||'';
+          en.plannedReps=ne.reps; en.plannedRpe=ne.rpe; en.plannedRest=ne.rest;
+          en.tempo=ne.tempo||'';
+          en.swapNote='Swapped in after you marked the previous one as painful.';
+          saveLive();
+        }
+        drawWM();
+      },true);
+  };
+  const wmSkip=()=>{ en.skipped=true; saveLive(); nextStep(); };
+  const wmNote=()=>{
+    openSheet('Note · '+en.name,`<div class="field"><label>Note for this exercise</label>
+      <textarea class="inp" id="enN" style="min-height:110px" placeholder="Felt heavy, left side weaker, form broke on set 3…">${esc(en.note)}</textarea></div>`,
+      `<button class="btn primary big block" id="enS">Save note</button>`);
+    $('#enS').onclick=()=>{ en.note=$('#enN').value.trim(); saveLive(); closeSheet(); drawWM(); };
+  };
+  const wmSwap=()=>pickExercise(id=>{
+    const ne=exOf(id);
+    en.exerciseId=id; en.name=ne.name; en.cue=ne.cue||''; en.subs=ne.subs||'';
+    en.plannedReps=ne.reps; en.plannedRpe=ne.rpe; en.plannedRest=ne.rest; en.tempo=ne.tempo||'';
+    en.note=(en.note?en.note+' · ':'')+'substituted during session';
+    saveLive(); drawWM();
+  });
+  const hl=$('#wmHowLine'); if(hl) hl.onclick=()=>{ cancelAuto(); wmHow(); };
+  const p=$('#wmPrev'); if(p)p.onclick=()=>{ cancelAuto(); stopRest(); W.step=Math.max(0,i-1); drawWM(); };
+  $('#wmNext').onclick=nextStep;
+}
+/* A number you change with your thumb. `n` is the set index, or -1 for a
+   control that applies to the whole exercise. The field stays typeable. */
+function stepper(n,k,val,placeholder,step,label){
+  return `<div class="stp">
+    <button type="button" data-d="-1" aria-label="Decrease">&minus;</button>
+    <input class="wmIn" type="text" inputmode="decimal" enterkeyhint="done"
+           data-s="${n}" data-k="${k}"${step?` data-step="${step}"`:''}
+           value="${esc(val==null?'':String(val))}"
+           placeholder="${esc(placeholder==null?'':String(placeholder))}"
+           aria-label="${esc(label|| (k==='weight'?'Kilograms':k==='reps'?'Reps':'Effort'))}">
+    <button type="button" data-d="1" aria-label="Increase">+</button>
+  </div>`;
+}
+/* The increment that matches the kit the user said they own, rather than a
+   generic 2.5 everywhere. Someone with a 12 kg pair of dumbbells has no use
+   for 2.5 kg steps; someone with a barbell has no use for 1 kg ones. */
+function stepSize(k,cur){
+  if(k!=='weight') return 1;
+  const gear=rawGear();
+  const plates = gear.indexOf('bb')>=0 || gear.indexOf('bar')>=0;
+  const dbMax = (DB.profile&&DB.profile.dbKg)||null;
+  /* barbell work moves in plate pairs once the bar is loaded */
+  if(plates && cur>=20) return 2.5;
+  /* dumbbells: 1 kg while light, 2 kg once past the middle of the rack */
+  if(dbMax && cur>=Math.min(20, dbMax*0.5)) return 2;
+  return cur>=20 ? 2.5 : 1;
+}
+function nextStep(){ cancelAuto(); stopRest(); clearHold();
+  clearInterval(cardTimer); cardTimer=null;
+  W.step++; drawWM(); $('#wmBody').scrollTop=0; }
+function parseRest(s){
+  if(!s)return null;
+  const m=String(s).match(/(\d+)\s*(s|min|m)?/i);
+  if(!m)return null;
+  let v=+m[1];
+  if(/min|^m$/i.test(m[2]||''))v*=60;
+  return v>0&&v<=600?v:null;
+}
+function drawFinish(){
+  stopRest();
+  const dur=Math.max(1,Math.round((Date.now()-W.startedAt)/60000));
+  const setsDone=sum(W.entries.map(e=>e.sets.filter(s=>s.done).length));
+  const vol=sum(W.entries.map(e=>sum(e.sets.filter(s=>s.done).map(s=>(+s.reps||0)*(+s.weight||1)))));
+  const rpes=[].concat(...W.entries.map(e=>e.sets.filter(s=>s.done&&s.rpe).map(s=>+s.rpe)));
+  const avgRpe=rpes.length?rnd(mean(rpes),1):null;
+  const skipped=W.entries.filter(e=>e.skipped);
+  $('#wmBody').innerHTML=`
+    <div style="text-align:center;padding:14px 0 6px">
+      <div style="width:64px;height:64px;border-radius:20px;background:var(--accent);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" style="width:32px;height:32px">${ICON.check}</svg></div>
+      <div style="font-size:27px;font-weight:850;letter-spacing:-.9px">Workout complete</div>
+      <div style="font-size:13px;color:var(--text-3);margin-top:5px;font-weight:600">${esc(W.workoutName)} · ${esc(VARIANT_NAME[W.variant]||'Full session')}</div>
+    </div>
+    <div class="stats c4">
+      ${statTile('Duration',dur,'m','a')}
+      ${statTile('Sets',setsDone,'','c')}
+      ${statTile('Volume',rnd(vol,0),'','')}
+      ${statTile('Avg RPE',avgRpe,'','o')}
+    </div>
+    <div class="sec-t">Planned vs actual</div>
+    ${W.entries.map((en,n)=>{
+      const done=en.sets.filter(s=>s.done);
+      /* tappable: noticing a mis-logged set on this screen used to mean
+         living with it, because undo only existed on the exercise itself */
+      return `<div class="card tight fin-ex" data-back="${n}" role="button" tabindex="0"
+                   aria-label="Back to ${esc(en.name)}">
+        <div style="font-size:14px;font-weight:750;margin-bottom:6px">${esc(en.name)}
+          ${en.skipped?'<span class="tag r">SKIPPED</span>':done.length<en.plannedSets?'<span class="tag o">PARTIAL</span>':'<span class="tag g">DONE</span>'}</div>
+        <div class="kv"><span class="k">Planned</span><span class="v">${en.plannedSets} × ${esc(en.plannedReps)}</span></div>
+        <div class="kv"><span class="k">Actual</span><span class="v">${done.length?done.map(s=>s.reps+(s.weight?'×'+s.weight+'kg':'')).join(' · '):'—'}</span></div>
+        <div class="fin-x">Tap to go back and change it</div>
+      </div>`;}).join('')}
+    <div class="field" style="margin-top:16px"><label>Session RPE — how hard overall?</label>
+      <div class="slider-row" style="margin-bottom:8px">
+        <div class="slider-top"><span class="l">Overall effort</span><span class="v num" id="fRpe_o">${avgRpe||7}</span></div>
+        <input type="range" id="fRpe" min="1" max="10" step="1" value="${Math.round(avgRpe||7)}" data-out="fRpe_o">
+        <div class="scale"><span>Very easy</span><span>Maximal</span></div></div></div>
+    <div class="field"><label>How was that?</label>
+      <div class="pills" id="fFeel">
+        ${FEEDBACK.map(f=>`<button data-v="${f.id}">${esc(f.name)}</button>`).join('')}
+      </div>
+      <div class="hint">One tap. It is the only thing here that changes what
+        you get next time.</div></div>
+    <div class="field"><label>Session notes</label>
+      <textarea class="inp" id="fNotes" placeholder="Anything to remember for next time?"></textarea></div>
+    ${skipped.length?`<div class="note warn">${skipped.length} exercise${skipped.length>1?'s':''} skipped. That is recorded rather than hidden — it is useful signal, not a failure.</div>`:''}
+    ${(()=>{
+      /* a run or a ride gets the same comparison a logged activity gets:
+         time, distance, pace and strain against the last one */
+      const cd=W.entries.filter(e=>e.cardio && e.sets.some(s=>s.done));
+      if(!cd.length) return '';
+      const cmin=sum(cd.map(e=>+e.sets.filter(s=>s.done)[0].reps||0));
+      if(!cmin) return '';
+      const act=cd[0].cardio.act;
+      return effortCompare({workoutId:W.workoutId, type:act, date:W.date,
+               excludeId:W.id, min:cmin, dist:null,
+               strain:rnd(liveStrain(act,cmin,cardRpeOf(cd[0])),1)})
+           + weekContext(W.category, cmin);
+    })()}`;
+  $('#wmFoot').innerHTML=`<button class="btn primary big block" id="fSave">Save session</button>`;
+  bindInputs($('#wmBody'));
+  $$('#wmBody [data-back]').forEach(el=>{
+    const go=()=>{ cancelAuto(); W.step=+el.dataset.back; drawWM(); $('#wmBody').scrollTop=0; };
+    el.onclick=go;
+    el.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); go(); } };
+  });
+  $('#fSave').onclick=()=>{
+    W.done=true; W.endedAt=Date.now(); W.durationMin=dur; W.setsDone=setsDone; W.volume=rnd(vol,1);
+    W.sessionRpe=+$('#fRpe').value; W.notes=$('#fNotes').value.trim();
+    /* one tap, and the only thing on that screen that changes what comes
+       next - see feedbackBias() */
+    W.feedback=(function(){ const b=$('#fFeel button.on'); return b?b.dataset.v:null; })();
+    DB.sessions=DB.sessions.filter(s=>s.id!==W.id);
+    DB.sessions.push(JSON.parse(JSON.stringify(W)));
+    DB.sessions.sort((a,b)=>a.date<b.date?-1:1);
+    Store.pref('live',null);
+    save(true); SOUND.done(); toast('Session saved','ok');
+    exitWM(true);
+  };
+}
+function saveLive(){ try{ Store.pref('live',JSON.stringify(W)); }catch(e){} }
+
+
+
+
+/* The end of something you started on a clock rather than from the plan.
+   It saves an ACTIVITY, not a session, because that is what it was: the
+   engine's weekly maths, the load model and the history already understand
+   activities, and inventing a second shape for the same thing would mean
+   teaching all of them a new one. */
+function drawActivityFinish(){
+  clearInterval(cardTimer); cardTimer=null;
+  const en=W.entries[0];
+  const T=ACT_TYPES[W.actType]||ACT_TYPES.other;
+  const mins=Math.max(1, +(en.sets[0].reps)||Math.round(cardElapsedSec(en)/60));
+  const laps=(en.run&&en.run.laps)?en.run.laps.length:0;
+  const rpe=effortRpe(W.intensity,null);
+  const strain=rnd(liveStrain(W.actType, mins, rpe),1);
+  /* the clock's own figure, until they replace it */
+  let STSET=false;
+
+  $('#wmBody').innerHTML=`
+    <div style="text-align:center;padding:14px 0 6px">
+      <div style="width:64px;height:64px;border-radius:20px;background:var(--accent);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" style="width:32px;height:32px">${ICON.check}</svg></div>
+      <div style="font-size:27px;font-weight:850;letter-spacing:-.9px">${esc(T.name)} done</div>
+      <div style="font-size:13px;color:var(--text-3);margin-top:5px;font-weight:600">${hms(cardElapsedSec(en))} from start to finish</div>
+    </div>
+    <div class="stats c4">
+      ${statTile('Time',mins,'m','a')}
+      ${statTile('Strain',strain,'','o')}
+      ${statTile('Effort','RPE '+rpe,'','c')}
+      ${statTile('Laps',laps||'—','','')}
+    </div>
+    <div class="field"><label>How long was it really?</label>
+      <div class="fine">
+        <input class="inp num" type="number" inputmode="numeric" id="afMin" value="${mins}">
+        <span class="hint" style="margin:0">minutes</span>
+      </div>
+      <div class="hint">Taken from the clock. Change it if it ran on after you stopped.</div>
+    </div>
+    ${T.dist?`<div class="field"><label>How far? <span style="font-weight:600;color:var(--text-3)">optional</span></label>
+      <div class="fine">
+        <input class="inp num" type="number" inputmode="decimal" step="0.1" id="afDist" placeholder="—">
+        <span class="hint" style="margin:0">km</span>
+      </div></div>`:''}
+    <div class="field"><label>How hard was it?</label>
+      <div class="pills" id="afInt">${['Easy','Moderate','Hard','Maximal'].map(f=>
+        `<button data-v="${f}" class="${f===W.intensity?'on':''}">${f}</button>`).join('')}</div>
+      <div class="hint">Asked now rather than before you started, because now
+        you know.</div>
+    </div>
+    <div class="field"><label>Strain</label>
+      <div class="fine">
+        <input class="inp num" type="number" inputmode="decimal" step="0.1"
+               min="0" max="21" id="afStrain" value="${strain}">
+        <span class="hint" style="margin:0;white-space:nowrap">of 21</span>
+      </div>
+      <div class="hint" id="afStrainH">Counted from the clock. Replace it if
+        your watch gave you a number.</div>
+    </div>
+    <div id="afCmp"></div>
+    <div class="field"><label>Notes</label>
+      <textarea class="inp" id="afNotes" placeholder="Where you went, how it felt…">${esc(en.note||'')}</textarea></div>`;
+
+  $('#wmFoot').innerHTML=`<button class="btn primary big block" id="afSave">Save it</button>`;
+  bindInputs($('#wmBody'));
+
+  /* the comparison has to follow whatever they correct the numbers to */
+  const curStrain=()=>{
+    const e=$('#afStrain');
+    if(STSET && e && e.value.trim()!=='') return clamp(+e.value,0,21);
+    const m=Math.max(1,+($('#afMin')||{}).value||mins);
+    const iB=$('#afInt button.on');
+    return rnd(liveStrain(W.actType, m, effortRpe(iB?iB.dataset.v:W.intensity, null)),1);
+  };
+  const paint=()=>{
+    const m=Math.max(1,+($('#afMin')||{}).value||mins);
+    const dEl=$('#afDist');
+    const dist=dEl&&dEl.value!==''? (+dEl.value||null) : null;
+    const st=curStrain();
+    const se=$('#afStrain');
+    if(se && !STSET && document.activeElement!==se) se.value=st;
+    const h=$('#afStrainH');
+    if(h) h.textContent = STSET
+      ? 'Your figure. Clear it to go back to what the clock counted.'
+      : 'Counted from the clock. Replace it if your watch gave you a number.';
+    $('#afCmp').innerHTML=effortCompare({type:W.actType, date:W.date, excludeId:W.id,
+      min:m, dist:dist, strain:st}) + weekContext(ACT_CAT(W.actType), m);
+  };
+  paint();
+  ['afMin','afDist'].forEach(id=>{ const e=$('#'+id); if(e) e.addEventListener('input',paint); });
+  (function(){ const e=$('#afStrain'); if(e) e.addEventListener('input',()=>{
+    STSET = e.value.trim()!==''; paint(); }); })();
+  $$('#afInt button').forEach(b=>b.onclick=()=>{
+    $$('#afInt button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); W.intensity=b.dataset.v; haptic(); paint(); });
+
+  $('#afSave').onclick=()=>{
+    const m=Math.max(1,+($('#afMin')||{}).value||mins);
+    const dEl=$('#afDist');
+    const dist=dEl&&dEl.value!==''? (+dEl.value||null) : null;
+    const iB=$('#afInt button.on');
+    const inten=iB?iB.dataset.v:W.intensity;
+    const rec={
+      id:'a'+uid(), date:W.date, time:W.time||null,
+      endTime:new Date().toTimeString().slice(0,5),
+      type:W.actType, min:m, dist:dist,
+      pace: (dist&&m)? (()=>{ const p=m/dist;
+        return Math.floor(p)+':'+String(Math.round((p%1)*60)).padStart(2,'0'); })() : null,
+      format:null, subtype:null,
+      intensity:inten, rpe:effortRpe(inten,null),
+      /* what the clock counted, or what the watch said instead */
+      strain:curStrain(), strainAuto:!STSET,
+      planned:false,
+      notes:($('#afNotes')||{}).value.trim()||'',
+      /* what the clock actually saw, kept because it is the honest record of
+         a session that ran from a Start you pressed to a Finish you pressed */
+      startedAt:W.startedAt, endedAt:Date.now(),
+      laps:(en.run&&en.run.laps&&en.run.laps.length)? en.run.laps.slice() : null,
+      at:new Date().toISOString()
+    };
+    DB.activities.push(rec);
+    DB.activities.sort((a,b)=>a.date<b.date?-1:1);
+    try{ Store.pref('live',null); }catch(e){}
+    save(true); SOUND.done(); toast('Saved','ok');
+    exitWM(true);
+  };
+}
+
+/* ---- the session clock ----
+   Start to finish, and both the time and the strain count that whole span.
+   There is deliberately no pause on this clock: a run that you stopped in the
+   middle of is still a run that took as long as it took, and the one control
+   that leaves a session already exists in the header. The live value is
+   written into the set on every tick so that whatever happens - a crash, a
+   flat battery, the browser evicting the tab - the minutes already earned are
+   in `live` and come back with the session. */
+let cardTimer=null;
+function cardEntry(){ return (W && W.entries && W.entries[W.step]) || null; }
+function cardElapsedSec(en){
+  if(!en || !en.run || !en.run.startedAt) return 0;
+  return Math.max(0, ((en.run.endedAt||Date.now()) - en.run.startedAt)/1000);
+}
+function cardRunning(en){ return !!(en && en.run && en.run.startedAt && !en.run.endedAt); }
+function cardRpeOf(en){
+  return effortRpe(W?W.intensity:null, en?en.plannedRpe:null);
+}
+function cardStrain(en){
+  if(!en || !en.cardio) return 0;
+  return rnd(liveStrain(en.cardio.act, cardElapsedSec(en)/60, cardRpeOf(en)), 1);
+}
+let cardSaveN=0;
+function cardTick(){
+  const en=cardEntry();
+  if(!en || !cardRunning(en)){ clearInterval(cardTimer); cardTimer=null; return; }
+  const sec=cardElapsedSec(en), min=sec/60;
+  const t=$('#cardT'); if(t) t.textContent=hms(sec);
+  const s=$('#cardS'); if(s) s.textContent=cardStrain(en).toFixed(1);
+  const bar=$('#cardBar i');
+  if(bar && en.cardio.targetMin) bar.style.width=Math.min(100, min/en.cardio.targetMin*100)+'%';
+  /* the minutes are the record, kept current rather than read off at the end */
+  const mins=Math.max(1, Math.round(min));
+  if(en.sets[0]){ en.sets[0].reps=String(mins); en.sets[0].touched=true; }
+  const mv=$('#cardMin'); if(mv && document.activeElement!==mv) mv.value=String(mins);
+  /* the target, if one was set: the same chime and alert the rest timer uses */
+  if(W && W.strainTarget && !W.targetHit && cardStrain(en)>=W.strainTarget){
+    W.targetHit=true;
+    haptic(); SOUND.rest();
+    notify('Strain target reached', W.strainTarget+' · '+(en.name||''));
+    toast('Strain target reached — '+W.strainTarget);
+    saveLive(); drawWM();
+  }
+  if(++cardSaveN%20===0) saveLive();
+}
+function cardStartClock(en){
+  en.run={startedAt:Date.now(), endedAt:null, laps:[]};
+  audioCtx(); SOUND.set();
+  clearInterval(cardTimer); cardTimer=setInterval(cardTick,500);
+  saveLive(); drawWM();
+}
+function cardStopClock(en){
+  if(!en || !en.run) return;
+  en.run.endedAt=Date.now();
+  clearInterval(cardTimer); cardTimer=null;
+  const mins=Math.max(1, Math.round(cardElapsedSec(en)/60));
+  if(en.sets[0]){ en.sets[0].reps=String(mins); en.sets[0].touched=true; }
+  SOUND.rest();
+  saveLive();
+}
+function cardLap(en){
+  if(!cardRunning(en)) return;
+  const now=Date.now();
+  const prev=en.run.laps.length? en.run.laps[en.run.laps.length-1] : en.run.startedAt;
+  en.run.laps.push(now);
+  haptic(); SOUND.tick();
+  toast('Lap '+en.run.laps.length+' — '+mmss((now-prev)/1000));
+  saveLive(); drawWM();
+}
+
+/* A run, a ride or a game: one screen, one number, and the strain it is
+   building while you look at it. */
+function drawCardioStep(en,i,total){
+  const spec=en.cardio;
+  const running=cardRunning(en);
+  const started=!!(en.run && en.run.startedAt);
+  const sec=cardElapsedSec(en), min=sec/60;
+  const done=en.sets[0] && en.sets[0].done;
+  const t=ACT_TYPES[spec.act]||ACT_TYPES.other;
+  const nextLabel = i<total-1 ? 'Next: '+W.entries[i+1].name : 'Next: finish the session';
+
+  const laps=(en.run&&en.run.laps&&en.run.laps.length)? (()=>{
+    let prev=en.run.startedAt;
+    return `<div class="laps">${en.run.laps.map((x,n)=>{
+      const d=(x-prev)/1000; prev=x;
+      return `<div class="lap"><span>Lap ${n+1}</span><b>${mmss(d)}</b></div>`;
+    }).join('')}</div>`; })() : '';
+
+  $('#wmBody').innerHTML=`
+    <div class="wm-ex">${esc(en.name)}</div>
+    <div class="wm-sub">${spec.targetMin? 'about '+spec.targetMin+' minutes' : 'as long as it takes'}</div>
+    ${(()=>{ const bits=[effortWords(en.plannedRpe,'cardio'),
+                         en.tempo?String(en.tempo).toLowerCase():''].filter(Boolean);
+       return bits.length?`<div class="wm-plain">${esc(bits.join(' · '))}</div>`:''; })()}
+    ${(()=>{ const ex=exOf(en.exerciseId); const h=ex?briefHow(ex):'';
+       return h?`<button class="wm-how" id="wmHowLine">${esc(h)} <i>More</i></button>`:''; })()}
+    ${en.blockNote?`<div class="note warn">${esc(en.blockNote)}</div>`:''}
+    <div class="setlist">
+      <div class="wnow${running?' live':''}">
+        <div class="wnow-t">${done?'Logged':running?'In progress':started?'Stopped':'Ready'}
+          <span>${esc(nextLabel)}</span></div>
+        <div class="clock">
+          <div class="cl">Time from start</div>
+          <div class="ct num" id="cardT">${hms(sec)}</div>
+          ${spec.targetMin?`<div class="cbar" id="cardBar"><i style="width:${
+            Math.min(100, spec.targetMin? min/spec.targetMin*100 : 0)}%"></i></div>`:''}
+          <div class="cmeta">
+            <span>${spec.targetMin?'Target '+spec.targetMin+' min':'No target'}</span>
+            <span>Strain <b class="num" id="cardS">${cardStrain(en).toFixed(1)}</b>${
+              W.strainTarget? ' of '+W.strainTarget : ''}</span>
+          </div>
+          ${done?'' : running
+            ? `<div class="btn-row" style="margin:0">
+                 <button class="btn ghost" id="cardLap">Lap</button>
+                 <button class="btn primary" id="cardStop" style="flex:2">${svg('check')} Finish and log</button>
+               </div>`
+            : `<button class="btn primary big block" id="cardGo">${svg('play')} ${
+                 started?'Start again':'Start'}</button>`}
+        </div>
+        ${laps}
+        ${started?`<div class="wnow-f">
+          <div class="sfield"><div class="sl">Minutes</div>${
+            stepper(0,'reps',en.sets[0].reps,String(spec.targetMin||''),1,'Minutes')}</div>
+        </div>
+        <div class="hint">The clock is the record. Change the number only if it
+          ran on after you stopped.</div>`:''}
+        ${started&&!running&&!done?`
+        <button class="btn primary big block wlog" data-log="0">${svg('check')} Log ${
+          esc(en.sets[0].reps||'0')} minutes</button>`:''}
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn sm ghost" id="wmMore">More</button>
+    </div>`;
+
+  $('#wmFoot').innerHTML=`<div class="btn-row">
+      ${i>0?`<button class="btn ghost" id="wmPrev">Back</button>`:''}
+      <button class="btn ${done?'primary':'ghost'}" id="wmNext" style="flex:2">${
+        i<total-1?'Next exercise':'Finish workout'}</button>
+    </div>`;
+
+  if(running && !cardTimer){ clearInterval(cardTimer); cardTimer=setInterval(cardTick,500); }
+
+  const go=$('#cardGo');  if(go)  go.onclick=()=>cardStartClock(en);
+  const lp=$('#cardLap'); if(lp)  lp.onclick=()=>cardLap(en);
+  const st=$('#cardStop');if(st)  st.onclick=()=>{ cardStopClock(en); drawWM(); };
+
+  $$('.wmIn').forEach(inp=>inp.addEventListener('input',()=>{
+    if(en.sets[0]){ en.sets[0].reps=inp.value; en.sets[0].touched=true; saveLive(); }
+  }));
+  $$('#wmBody .stp button').forEach(b=>b.onclick=ev=>{
+    ev.stopPropagation();
+    const inp=b.parentElement.querySelector('input');
+    const cur = inp.value!=='' ? parseFloat(inp.value)
+              : (inp.placeholder!=='' ? parseFloat(inp.placeholder) : 0);
+    let next=(isNaN(cur)?0:cur) + (+b.dataset.d);
+    if(next<0) next=0;
+    inp.value=String(next);
+    if(en.sets[0]){ en.sets[0].reps=inp.value; en.sets[0].touched=true; saveLive(); }
+    haptic();
+  });
+  $$('#wmBody [data-log]').forEach(b=>b.onclick=()=>{
+    if(cardRunning(en)) cardStopClock(en);
+    en.sets[0].done=true;
+    if(!en.sets[0].rpe) en.sets[0].rpe=String(cardRpeOf(en));
+    haptic(); SOUND.set();
+    saveLive(); armAuto(i); drawWM();
+  });
+
+  const hl=$('#wmHowLine');
+  if(hl) hl.onclick=()=>{
+    const ex=exOf(en.exerciseId)||{};
+    openSheet(en.name,`
+      ${ex.how?`<p class="lede">${esc(ex.how)}</p>`:''}
+      <div class="sec-t">The plan in full</div>
+      <div class="card tight">
+        <div class="kv"><span class="k">Time</span><span class="v">${esc(en.plannedReps||'—')}</span></div>
+        <div class="kv"><span class="k">Effort</span><span class="v">${esc(en.plannedRpe||'—')}</span></div>
+        ${en.tempo?`<div class="kv"><span class="k">Feel</span><span class="v">${esc(en.tempo)}</span></div>`:''}
+      </div>
+      ${ex.prog?`<div class="sec-t">How it progresses</div><p class="lede">${esc(ex.prog)}</p>`:''}`,
+      `<button class="btn primary big block" onclick="closeSheet()">Got it</button>`);
+  };
+  $('#wmMore').onclick=()=>{
+    const rows=[
+      {t:'Skip this', s:'Recorded as skipped, not failed', icon:'x',
+       run:()=>{ en.skipped=true; clearInterval(cardTimer); cardTimer=null; saveLive(); nextStep(); }},
+      {t:'Add a note', s:en.note?'Note saved':'How it felt, where you went', icon:'edit',
+       run:()=>{
+         openSheet('Note · '+en.name,`<div class="field"><label>Note</label>
+           <textarea class="inp" id="enN" style="min-height:110px">${esc(en.note)}</textarea></div>`,
+           `<button class="btn primary big block" id="enS">Save note</button>`);
+         $('#enS').onclick=()=>{ en.note=$('#enN').value.trim(); saveLive(); closeSheet(); drawWM(); };
+       }}
+    ];
+    openSheet(en.name, navRows('wmMoreRows',rows));
+    $$('#wmMoreRows button').forEach(b=>b.onclick=()=>{
+      const act=rows[+b.dataset.r]; closeSheet();
+      setTimeout(()=>{ if(act&&act.run) act.run(); },200);
+    });
+  };
+  const p=$('#wmPrev'); if(p)p.onclick=()=>{ cancelAuto(); W.step=Math.max(0,i-1); drawWM(); };
+  $('#wmNext').onclick=nextStep;
+}
+
+/* ---- starting something that is not in the plan ----
+   Playing tennis could only ever be told to the app afterwards, from memory. */
+function startLiveActivity(type,intensity,strainTarget){
+  /* No intensity until they say so at the end: while the clock runs the
+     strain estimate uses the neutral middle of the scale, and the screen says
+     that it is an estimate rather than pretending to know. */
+  const T=ACT_TYPES[type]||ACT_TYPES.other;
+  const d=todayISO();
+  const rd=DB.checkins[d]?readiness(d,DB.checkins[d]):null;
+  W={
+    id:'s'+uid(), date:d, kind:'activity', saveAs:'activity',
+    actType:type, workoutName:T.name, variant:'full',
+    category:ACT_CAT(type), intensity:intensity||null,
+    strainTarget:(strainTarget!=null? +strainTarget : null), targetHit:false,
+    startedAt:Date.now(), time:new Date().toTimeString().slice(0,5),
+    band:rd?rd.band:null, readinessScore:rd?rd.score:null,
+    step:0, addCore:false, recId:null, overridden:false,
+    entries:[{
+      exerciseId:null, name:T.name, plannedSets:1, plannedReps:'',
+      plannedRpe:'', plannedRest:'—', tempo:'',
+      note:'', blockNote:'', cue:'', subs:'', skipped:false, progNote:'',
+      timed:null, cardio:{act:type, targetMin:null, free:true},
+      run:{startedAt:Date.now(), endedAt:null, laps:[]},
+      sets:[{reps:'',weight:'',rpe:'',done:false}]
+    }]
+  };
+  $('#wmode').classList.add('on'); document.body.style.overflow='hidden';
+  audioCtx(); SOUND.set();
+  clearInterval(cardTimer); cardTimer=setInterval(cardTick,500);
+  saveLive(); drawWM();
+}
+/* Choosing what you are doing and starting it are different moments. This is
+   the second one: the activity, an optional strain target, and one button.
+
+   The target is not a decoration - the clock chimes and the phone alerts when
+   the live strain crosses it, using the same sound and notification machinery
+   the rest timer uses. Off unless asked for, and pre-filled from what the
+   same activity came to last time, which is the only figure the app can
+   honestly suggest. */
+function preStartSheet(type){
+  const T=ACT_TYPES[type]||ACT_TYPES.other;
+  const prev=lastEffort({type:type, date:todayISO()});
+  let target=null;
+
+  const draw=()=>{
+    updateSheet(T.name,`
+      <div class="prestart">
+        <i class="ps-i">${svg(ACT_ICON(type))}</i>
+        <div class="ps-n">${esc(T.name)}</div>
+        <button class="tert" id="psChange">Choose something else</button>
+      </div>
+      <div class="ruled" style="display:flex;align-items:center;gap:12px">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:700">Strain target</div>
+          <div style="font-size:11.5px;color:var(--text-3);margin-top:2px">${
+            target!=null? 'You will be told when you reach it.'
+            : prev? 'Last time this came to '+rnd(prev.strain,1)+'.'
+            : 'Optional. Nothing is set.'}</div>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="psOn" ${target!=null?'checked':''}
+                 style="width:22px;height:22px;accent-color:var(--accent)">
+        </label>
+      </div>
+      ${target!=null?`<div class="field">
+        <div class="fine">
+          <input class="inp num" type="number" inputmode="decimal" step="0.1"
+                 min="1" max="21" id="psT" value="${target}">
+          <span class="hint" style="margin:0;white-space:nowrap">of 21</span>
+        </div></div>`:''}
+      <div class="hint">The clock and the strain both run from the moment you
+        start. How hard it was is asked at the end.</div>`,
+      `<button class="btn primary big block" id="psGo">${svg('play')} Start activity</button>`);
+
+    const on=$('#psOn');
+    if(on) on.onchange=()=>{
+      target = on.checked ? (prev? rnd(prev.strain,1) : 10) : null;
+      draw();
+    };
+    const tv=$('#psT');
+    if(tv) tv.addEventListener('input',()=>{ target=tv.value===''?null:clamp(+tv.value,1,21); });
+    const ch=$('#psChange');
+    if(ch) ch.onclick=()=>{ closeSheet(); setTimeout(()=>startActivityFlow(),200); };
+    const go=$('#psGo');
+    if(go) go.onclick=()=>{
+      const t=target;
+      closeSheet();
+      setTimeout(()=>startLiveActivity(type,null,t),220);
+    };
+  };
+  openSheet(T.name,'','');
+  draw();
+}
+
+/* The one question worth asking before a clock starts.
+   It used to also ask how hard you expected it to be, which is a prediction
+   nobody can make standing at the door with their shoes on. That question is
+   a memory at the end and a guess at the start, so it is asked at the end. */
+/* the name the rest of the app calls: the picker, then the pre-start screen */
+function startActivitySheet(){ return startActivityFlow(); }
+/* ---- what it came to, and how that compares ---- */
+function effortCompare(o){
+  const prev=lastEffort(o);
+  const pace=(o.dist&&o.min)? o.min/o.dist : null;
+  const rows=[
+    cmpRow('Time', o.min, prev?prev.min:null, 'min', 0),
+    o.dist!=null? cmpRow('Distance', o.dist, prev?prev.dist:null, 'km', 1) : '',
+    pace!=null? cmpRow('Pace', pace, prev?prev.pace:null, '', 2, true, paceStr) : '',
+    cmpRow('Strain', o.strain, prev?prev.strain:null, '', 1)
+  ].filter(Boolean).join('');
+  if(!prev) return `<div class="sec-t">This effort</div>
+    <div class="cmpbox">${rows}</div>
+    <div class="hint">Nothing to compare with yet — this becomes the mark to beat.</div>`;
+  const ago=daysBetween(prev.date, o.date||todayISO());
+  return `<div class="sec-t">Compared with last time</div>
+    <div class="cmpbox">${rows}</div>
+    <div class="hint">Against ${esc(prev.name||'your last one')},
+      ${ago<=0?'earlier today':ago===1?'yesterday':ago+' days ago'}.</div>`;
+}
+/* where this leaves the week */
+function weekContext(cat, addMin){
+  const P=weekProgress(todayISO());
+  const T=DB.targets||{};
+  if(cat==='run'||cat==='bike'){
+    const mins=(cat==='run'?P.runMin:P.bikeMin)+(addMin||0);
+    const n=(cat==='run'?P.run:P.bike);
+    const tgt=T[cat]||0;
+    return `<div class="note acc">That is ${mins} minute${mins===1?'':'s'} of
+      ${cat==='run'?'running':'riding'} this week${tgt?` across ${n} of ${tgt} planned session${tgt===1?'':'s'}`:''}.</div>`;
+  }
+  if(P.sportMin+(addMin||0)>0)
+    return `<div class="note acc">That is ${P.sportMin+(addMin||0)} minutes of your sport this week.</div>`;
+  return '';
+}
+
+/* ---- the hold timer ----
+   Same deadline-driven shape as the rest timer, and for the same reason: iOS
+   suspends intervals when the screen locks, so a decrementing counter drifts
+   and a target timestamp does not. When the hold completes it LOGS THE SET
+   ITSELF and lets the rest timer start, which is what makes a timed set one
+   tap rather than three. */
+let holdTimer=null, holdEnd=0, holdDone=false, holdTick=-1;
+let HOLD={ex:-1, set:-1, secs:0, name:''};
+function holdRemaining(){ return Math.max(0,(holdEnd-Date.now())/1000); }
+function holdActive(){ return holdEnd>0 && holdRemaining()>0; }
+function startHold(sec,n,name){
+  stopRest();
+  holdEnd=Date.now()+sec*1000; holdDone=false; holdTick=-1;
+  HOLD={ex:W?W.step:-1, set:n, secs:sec, name:name||''};
+  audioCtx();
+  clearInterval(holdTimer); holdTimer=setInterval(paintHold,200);
+  drawWM();
+}
+function clearHold(){
+  clearInterval(holdTimer); holdTimer=null;
+  holdEnd=0; holdTick=-1; HOLD={ex:-1,set:-1,secs:0,name:''};
+}
+/* stopped early: record what was actually held, not what was asked for */
+function stopHold(){
+  if(!holdActive()){ clearHold(); return drawWM(); }
+  const held=Math.max(1, Math.round(HOLD.secs-holdRemaining()));
+  const n=HOLD.set, ex=HOLD.ex;
+  clearHold();
+  if(W && W.entries[ex] && W.entries[ex].sets[n]){
+    W.entries[ex].sets[n].reps=String(held);
+    W.entries[ex].sets[n].touched=true;
+    saveLive();
+  }
+  toast('Held '+held+'s — log it or change it');
+  drawWM();
+}
+function paintHold(){
+  const r=holdRemaining();
+  const t=$('#holdT'); if(t) t.textContent=mmss(r);
+  const s=Math.ceil(r);
+  if(s!==holdTick){ holdTick=s; if(s>0&&s<=3) SOUND.tick(); }
+  if(r<=0 && !holdDone){
+    holdDone=true; haptic(); SOUND.rest();
+    notify('Hold complete', HOLD.name? HOLD.name+' — set logged' : 'Set logged');
+    const secs=HOLD.secs, n=HOLD.set, ex=HOLD.ex;
+    clearHold();
+    if(W && W.entries[ex] && W.entries[ex].sets[n]){
+      W.entries[ex].sets[n].reps=String(secs);
+      W.entries[ex].sets[n].touched=true;
+    }
+    /* let the ordinary log path do the work: carry-forward, the rest timer
+       and the automatic move to the next exercise all live there */
+    const b=$('#wmBody [data-log="'+n+'"]');
+    if(b) b.click(); else { saveLive(); drawWM(); }
+  }
+}
+
+/* ---- rest timer ----
+   Driven by a target timestamp, not by decrementing a counter. iOS Safari
+   throttles or suspends timers when you lock the screen or switch apps, so a
+   counting-down variable would drift badly; a deadline stays correct.
+
+   It has no element of its own any more. The countdown is drawn inside the
+   card for the set that started it, which is where somebody looking for it
+   expects it to be; REST records which set that is. */
+let restEnd=0, restDone=false, restTick=-1, REST={ex:-1,set:-1,of:0,name:''};
+function restRemaining(){ return Math.max(0,(restEnd-Date.now())/1000); }
+function restActive(){ return restEnd>0 && restRemaining()>0; }
+function paintRest(){
+  const r=restRemaining();
+  const t=$('#restT'); if(t) t.textContent=mmss(r);
+  /* count the last three seconds out loud, once each, however often the
+     250ms interval happens to fire */
+  const s=Math.ceil(r);
+  if(s!==restTick){ restTick=s; if(s>0&&s<=3) SOUND.tick(); }
+  if(r<=0 && !restDone){
+    restDone=true; haptic(); SOUND.rest();
+    /* the whole reason alerts exist: the phone is in a pocket or face down */
+    notify('Rest is over', REST.name? 'Next set · '+REST.name : 'Time for your next set');
+    toast('Rest done — next set');
+    stopRest();
+    if(W && $('#wmode').classList.contains('on')) drawWM();
+  }
+}
+function startRest(sec,name,n,of){
+  restEnd=Date.now()+sec*1000; restDone=false; restTick=-1;
+  REST={ex:W?W.step:-1, set:(n||1)-1, of:of||0, name:name||''};
+  clearInterval(restTimer); restTimer=setInterval(paintRest,250);
+}
+function stopRest(){
+  clearInterval(restTimer); restTimer=null;
+  restEnd=0; restTick=-1; REST={ex:-1,set:-1,of:0,name:''};
+}
+function restAdd30(){ if(!restEnd) return; restEnd+=30000; restDone=false; paintRest(); }
+
+/* =========================================================================
+   EXPORT / IMPORT
+   ====================================================================== */
+function download(name,text,mime){
+  const blob=new Blob([text],{type:mime||'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=name;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); },400);
+}
+function exportJSON(){
+  const c=Store.counts();
+  const payload={
+    _app:'baseline.tps', _version:DB.version, _schema:SCHEMA_VERSION,
+    _exported:new Date().toISOString(),
+    _counts:c,
+    _note:'Private local backup from Baseline. Contains your own fitness data only. Nothing was uploaded anywhere.',
+    /* say plainly what sensitive categories are in the file, so nobody
+       forwards one without knowing */
+    _contains: (function(){
+      const k=['training history','daily check-ins'];
+      if(DB.whoop&&DB.whoop.cycles&&DB.whoop.cycles.length) k.push('imported wearable data');
+      if(DB.mcycle&&DB.mcycle.on) k.push('MENSTRUAL CYCLE DATA');
+      return k;
+    })(),
+    data:DB
+  };
+  download('baseline-backup-'+todayISO()+'.json',JSON.stringify(payload,null,1));
+  DB.meta.lastBackup=new Date().toISOString();
+  DB.meta.lastBackupCount=c;
+  save(true);
+  toast('Backup downloaded','ok');
+  if(STACK.length) setTimeout(render,300);
+}
+function exportWhoopCSV(){
+  if(!DB.whoop.cycles.length){ toast('No WHOOP data to export','err'); return; }
+  const cols=['date','recovery','hrv','rhr','resp','skinTemp','spo2','strain','kcal',
+    'sleepMin','inBed','sleepPerf','sleepNeed','sleepDebt','sleepEff','sleepCons','deep','rem','light','awake'];
+  const rows=[cols.slice()];
+  DB.whoop.cycles.forEach(c=>rows.push(cols.map(k=>c[k])));
+  download('baseline-whoop-'+todayISO()+'.csv',rows.map(r=>r.map(csvEsc).join(',')).join('\n'),'text/csv');
+  toast('WHOOP data exported','ok');
+}
+function csvEsc(v){ if(v==null)return''; const s=String(v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
+function exportSessionsCSV(){
+  const rows=[['date','workout','variant','readiness_band','readiness_score','duration_min','session_rpe',
+    'exercise','planned_sets','planned_reps','planned_rpe','set_number','actual_reps','actual_weight_kg','actual_rpe','completed','exercise_note','session_note']];
+  DB.sessions.filter(s=>s.done).forEach(s=>s.entries.forEach(en=>{
+    if(!en.sets.length) rows.push([s.date,s.workoutName,s.variant,s.band,s.readinessScore,s.durationMin,s.sessionRpe,en.name,en.plannedSets,en.plannedReps,en.plannedRpe,'','','','','false',en.note,s.notes]);
+    en.sets.forEach((st,i)=>rows.push([s.date,s.workoutName,s.variant,s.band,s.readinessScore,s.durationMin,s.sessionRpe,
+      en.name,en.plannedSets,en.plannedReps,en.plannedRpe,i+1,st.reps,st.weight,st.rpe,st.done,en.note,s.notes]));
+  }));
+  if(rows.length===1){ toast('No completed sessions yet','err'); return; }
+  download('baseline-sessions-'+todayISO()+'.csv',rows.map(r=>r.map(csvEsc).join(',')).join('\n'),'text/csv');
+  toast('Sessions CSV downloaded','ok');
+}
+function exportActivitiesCSV(){
+  const rows=[['date','time','type','subtype','format','duration_min','distance_km','pace','intensity','rpe','planned',
+    'load_score','demand_lower','demand_upper','demand_explosive','demand_impact','notes']];
+  DB.activities.forEach(a=>{ const d=activityDemand(a);
+    rows.push([a.date,a.time,a.type,a.subtype,a.format,a.min,a.dist,a.pace,a.intensity,a.rpe,
+      a.planned===false?'unplanned':'planned',rnd(d.load,1),rnd(d.lower,1),rnd(d.upper,1),rnd(d.expl,1),rnd(d.impact,1),a.notes]); });
+  if(rows.length===1){ toast('No activities logged yet','err'); return; }
+  download('baseline-activities-'+todayISO()+'.csv',rows.map(r=>r.map(csvEsc).join(',')).join('\n'),'text/csv');
+  toast('Activities CSV downloaded','ok');
+}
+$('#jsonIn').addEventListener('change',async e=>{
+  const f=(e.target.files||[])[0]; e.target.value='';
+  if(!f)return;
+  let payload;
+  try{ payload=JSON.parse(await f.text()); }
+  catch(err){ toast('That file is not valid JSON','err'); return; }
+  const data = payload && payload.data ? payload.data : payload;
+  if(!data||typeof data!=='object'||!data.profile||!data.exercises){ toast('Not a Baseline backup file','err'); return; }
+  const c=(data.whoop&&data.whoop.cycles&&data.whoop.cycles.length)||0;
+  confirmSheet('Restore backup?',
+    `This backup holds <b>${c}</b> WHOOP cycles, <b>${(data.sessions||[]).length}</b> sessions, <b>${(data.activities||[]).length}</b> activities and <b>${Object.keys(data.checkins||{}).length}</b> check-ins.<br><br>Restoring <b>replaces everything currently in the app</b>. Export a backup of your current data first if you are unsure.`,
+    'Restore',()=>{
+      DB=migrate(data);
+      if(DB.whoop.cycles.length>=14) recomputeBaselines();
+      saveWhoop(); renderNav();
+      toast('Backup restored','ok'); go('today');
+    });
+});
+
+/* =========================================================================
+   MIGRATION / BOOT
+   ====================================================================== */
+function migrate(d){
+  const f=freshDB();
+  const out=Object.assign({},f,d);
+  out.profile=Object.assign({},f.profile,d.profile||{});
+  out.settings=Object.assign({},f.settings,d.settings||{});
+  out.settings.bands=Object.assign({},f.settings.bands,(d.settings||{}).bands||{});
+  out.baselines=Object.assign({},f.baselines,d.baselines||{});
+  out.whoop=Object.assign({cycles:[],workouts:[],journal:[],imports:[]},d.whoop||{});
+  out.targets=Object.assign({},f.targets,d.targets||{});
+  /* an install that predates cycle tracking gets it switched off, which is
+     the same state a fresh install has */
+  out.mcycle=Object.assign({},f.mcycle,d.mcycle||{});
+  if(!Array.isArray(out.mcycle.starts)) out.mcycle.starts=[];
+  /* the fixed weekly calendar was replaced by the daily decision engine */
+  delete out.schedule; delete out.altSchedule; delete out.tennisDays;
+  ['exercises','workouts','sessions','tests','physique','activities'].forEach(k=>{
+    if(!Array.isArray(out[k])) out[k]=f[k];
+  });
+  out.checkins=out.checkins&&typeof out.checkins==='object'?out.checkins:{};
+  out.plans=out.plans&&typeof out.plans==='object'?out.plans:{};
+  out.meta=Object.assign({},f.meta,d.meta||{});
+  /* schema migrations — additive, never destructive */
+  const from=(d.meta&&d.meta.schema)||1;
+  if(from<2){
+    /* v1 shipped one person's baselines as defaults; drop them unless the
+       device actually holds the WHOOP data they were computed from */
+    const n=(out.whoop&&out.whoop.cycles)?out.whoop.cycles.length:0;
+    if(n<14) out.baselines=Object.assign({},f.baselines);
+    if(!out.profile.mode) out.profile.mode = n>=14?'whoop':'manual';
+    /* an existing install has already been set up — do not re-ask the mode
+       question. Check the INCOMING profile, not the merged one, because the
+       fresh defaults would otherwise mask it. */
+    if(!d.profile || d.profile.onboarded===undefined) out.profile.onboarded=true;
+  }
+  const inP=d.profile||{};
+  /* The binary WHOOP/manual switch became a list of wearables. Read the
+     INCOMING profile so fresh defaults cannot mask what the user chose:
+     someone who had WHOOP keeps WHOOP, everyone else lands on no wearable. */
+  if(!inP.source){
+    out.profile.source = (inP.mode==='whoop') ? 'whoop'
+      : (inP.mode==='manual') ? 'none'
+      : (((out.whoop&&out.whoop.cycles)?out.whoop.cycles.length:0)>=14 ? 'whoop' : 'none');
+  } else out.profile.source=inP.source;
+  out.profile.sourceFields = Array.isArray(inP.sourceFields)?inP.sourceFields.slice():null;
+  /* standing limitations are new; an older install simply has none */
+  out.profile.limits = Array.isArray(inP.limits)
+    ? inP.limits.filter(l=>l&&l.area&&areaOf(l.area)) : [];
+  out.profile.mode = out.profile.source==='none' ? 'manual'
+                   : out.profile.source==='whoop' ? 'whoop' : 'device';
+  /* Single sport/physique became multi-select. Trust the arrays only if the
+     SAVED data had them — otherwise the fresh defaults would mask the user's
+     real single value and silently reset everyone to one sport. */
+  /* Carry a real answer forward; invent nothing. A saved array wins, then a
+     saved single value, then nothing at all — which is now a valid state and
+     no longer gets papered over with 'general'/'athletic'. */
+  out.profile.sports = Array.isArray(inP.sports) ? inP.sports.slice()
+    : (inP.sport ? [inP.sport] : []);
+  out.profile.physiques = Array.isArray(inP.physiques) ? inP.physiques.slice()
+    : (inP.physique ? [inP.physique] : []);
+  out.profile.sport=out.profile.sports[0]||null;
+  /* equipment used to be a 3-way tier that assumed dumbbells and a band.
+     Derive an explicit item list from whatever the old profile implied. */
+  if(!Array.isArray(out.profile.gear)){
+    const t0=out.profile.tier||0;
+    const g=['bike','run'];
+    if(t0>=0) g.push('db','band');
+    if(t0>=1) g.push('bench','bar');
+    if(t0>=2) g.push('bb','cable');
+    out.profile.gear=g;
+  }
+  out.profile.tier=tierOf(out.profile.gear);
+  out.profile.equipment=equipmentList(out.profile.gear,out.profile.equipNote,out.profile.dbKg);
+  out.profile.physique=out.profile.physiques[0]||null;
+  out.meta.schema=SCHEMA_VERSION;
+  // legacy: fold old separate tennis/cardio logs into the unified activity log
+  if(Array.isArray(d.tennis)) d.tennis.forEach(t=>out.activities.push({
+    id:t.id||'a'+uid(),date:t.date,type:'tennis',min:t.min,rpe:t.rpe,subtype:t.type||null,
+    intensity:t.intensity||'Moderate',planned:true,notes:t.notes||''}));
+  if(Array.isArray(d.cardio)) d.cardio.forEach(t=>out.activities.push({
+    id:t.id||'a'+uid(),date:t.date,type:t.mode==='bike'?'cycling':'running',min:t.min,dist:t.distance||null,
+    rpe:t.rpe,intensity:'Moderate',planned:true,notes:t.notes||''}));
+  delete out.tennis; delete out.cardio;
+  // older exports had w_aerobic / w_interval; make sure the cardio set exists
+  const have=new Set(out.workouts.map(w=>w.id));
+  seedWorkouts().forEach(sw=>{ if(!have.has(sw.id)) out.workouts.push(sw); });
+  /* Backfill against the ENTIRE built-in library. This used to read
+     seedExercises() alone, so every exercise added later — the gym set, and
+     now the extra patterns — was invisible to anyone who already had the app
+     installed. Their own edits and additions are untouched. */
+  const exHave=new Set(out.exercises.map(e=>e.id));
+  builtInExercises().forEach(se=>{ if(!exHave.has(se.id)) out.exercises.push(se); });
+  // repair any workout whose exercises no longer exist
+  const ids=new Set(out.exercises.map(e=>e.id));
+  out.workouts.forEach(w=>{
+    if(!w.blocks) w.blocks={full:[],reduced:[],recovery:[]};
+    ['full','reduced','recovery'].forEach(v=>{
+      if(!Array.isArray(w.blocks[v])) w.blocks[v]=[];
+      w.blocks[v]=w.blocks[v].filter(b=>ids.has(b.ex));
+    });
+    if(!w.est) w.est={full:40,reduced:28,recovery:18};
+  });
+  // backfill session categories so week accounting works on old history
+  out.sessions.forEach(s=>{
+    if(!s.category) s.category=catOfWorkout(out.workouts.find(w=>w.id===s.workoutId));
+  });
+  out.version=f.version;
+  return out;
+}
+
+/* A blank screen is the worst possible failure, so boot is defensive:
+   every async step has a deadline, the whole thing is wrapped, and a watchdog
+   force-renders if anything still manages to stall. */
+let BOOTED=false;
+function bootFallback(reason){
+  if(BOOTED) return;
+  BOOTED=true;
+  try{
+    if(!DB) DB=freshDB();
+    TAB='today'; renderNav(); render(); updateBanner();
+    const b=document.getElementById('sbanner');
+    if(b&&!b.classList.contains('on')){
+      b.className='on';
+      b.innerHTML=`<b>Started in recovery mode.</b> Something failed while loading (${esc(reason||'unknown')}), so defaults were used.
+        If you had data saved, do not enter anything yet — reload once, and restore a JSON backup if it is still missing.`;
+    }
+  }catch(e){
+    document.getElementById('view').innerHTML =
+      '<div class="empty"><div class="ei">'+svg('info')+'</div><h4>Could not start</h4>'+
+      '<p>Reload the page. If this persists, the saved data may be corrupt — '+
+      'restore a JSON backup from Settings after reloading.</p></div>';
+  }
+}
+setTimeout(()=>{ if(!DB) bootFallback('startup timed out'); },6000);
+
+/* rebuild the in-memory model from the IndexedDB stores */
+function hydrate(loaded){
+  if(!loaded) return null;
+  if(loaded.legacy) return loaded.legacy;              // v1 single-blob install
+  const f=freshDB(), kv=loaded.kv||{}, c=loaded.cols||{};
+  const out=Object.assign({},f);
+  KV_KEYS.forEach(k=>{ if(kv[k]) out[k]=kv[k]; });
+  ['sessions','activities','exercises','workouts','tests','physique'].forEach(k=>{
+    if(c[k]&&c[k].length) out[k]=c[k];
+  });
+  if(c.checkins&&c.checkins.length){
+    out.checkins={};
+    c.checkins.forEach(r=>{ const d=r.date; out.checkins[d]=r; });
+  }
+  out.whoop={
+    cycles:c.wCycles||[], workouts:c.wWorkouts||[],
+    journal:c.wJournal||[], imports:c.wImports||[]
+  };
+  out.whoop.cycles.sort((a,b)=>a.date<b.date?-1:1);
+  return out;
+}
+
+async function boot(){
+  try{ await withTimeout(Store.init(),5000,null); }catch(e){}
+  let loaded=null;
+  try{ loaded=await withTimeout(Store.loadAll(),6000,null); }catch(e){}
+  const raw=hydrate(loaded);
+  DB = raw ? migrate(raw) : freshDB();
+  /* A fresh profile has no weekly targets, because nobody has told us
+     anything yet. But an install that DID complete setup and predates derived
+     targets would now come up empty, so rebuild them from the profile it
+     already has. Setup never completed means still none, which is correct. */
+  if(DB.profile.onboarded && !Object.keys(DB.targets||{}).length) applyGoalTargets();
+  BOOTED=true;
+  /* a legacy localStorage install is rewritten into IndexedDB once */
+  if(loaded&&loaded.legacy){ save(true,true); toast('Data upgraded to IndexedDB','ok'); }
+  else if(!raw) save(true,true);
+  if(DB.whoop.cycles.length>=14) recomputeBaselines();
+  TAB = (DB.ui&&DB.ui.tab)||'today';
+  if(!tabs().some(t=>t.id===TAB)) TAB='today';
+  renderNav(); render(); updateBanner();
+
+  /* An interrupted workout. It used to throw a modal over the screen 600ms
+     after launch, before the user had read anything. Today's notice slot
+     offers it instead, so all that is left here is clearing a session that
+     belongs to a day that has already ended. */
+  try{
+    const lv=Store.pref('live');
+    const live=lv?JSON.parse(lv):null;
+    if(live && (live.done || live.date!==todayISO())) Store.pref('live',null);
+  }catch(e){}
+
+  if(!DB.profile.onboarded) setTimeout(()=>startSetup(),350);
+  else if(!Store.durable) setTimeout(()=>openSetup(true),500);
+}
+/* =========================================================================
+   SERVICE WORKER — offline support
+   Only registers on a secure origin where sw.js was actually deployed
+   alongside this file. Everything is fire-and-forget: a missing or failing
+   service worker must never affect the app, which works fine without one.
+   ====================================================================== */
+const SW={state:'unknown', scope:null};
+function registerSW(){
+  if(!('serviceWorker' in navigator)){ SW.state='unsupported'; return; }
+  if(!window.isSecureContext || location.protocol==='file:'){ SW.state='insecure-origin'; return; }
+  navigator.serviceWorker.register('sw.js',{scope:'./'})
+    .then(reg=>{
+      SW.state='registered'; SW.scope=reg.scope;
+      reg.addEventListener('updatefound',()=>{
+        const w=reg.installing; if(!w) return;
+        w.addEventListener('statechange',()=>{
+          if(w.state==='installed'&&navigator.serviceWorker.controller){
+            SW.state='update-ready';
+            toast('Update downloaded — reopen the app to apply');
+          }
+        });
+      });
+    })
+    .catch(e=>{ SW.state='not-deployed'; SW.err=(e&&e.message)||String(e); });
+  navigator.serviceWorker.ready.then(()=>{ if(SW.state==='registered') SW.state='active'; }).catch(()=>{});
+}
+
+/* any unexpected throw inside boot must still leave a usable app */
+boot()
+  .catch(e=>{ /* The TYPE, not the object: an exception raised while parsing or storing
+     can quote what it was working on, and that would be health data in a
+     console. The message still reaches the on-screen fallback, which is the
+     person who needs it. */
+    console.error('Baseline: boot failed ('+((e&&e.name)||'Error')+')');
+    bootFallback((e&&e.message)||'error'); })
+  .then(()=>{ try{ registerSW(); }catch(e){} });
+
+/* =========================================================================
+   FIRST-RUN SETUP WIZARD
+   Six short steps. Everything is optional except the equipment question,
+   because that is the only answer the program genuinely cannot work without.
+   ====================================================================== */
+/* Every sport here has a matching SPORT_PROFILES entry. A sport without one
+   falls through to 'general', which would give balanced defaults to someone
+   who believes they told the app what they play. */
+const SPORTS=[
+  {id:'tennis',    name:'Tennis',                focus:'Leg and core strength, explosive power, lateral movement, acceleration, deceleration and change of direction.'},
+  {id:'padel',     name:'Padel',                 focus:'Lateral movement, rotation, quick reactions and shoulder durability.'},
+  {id:'squash',    name:'Squash',                focus:'Repeated lunging, rotation, fast direction changes and repeat-effort conditioning.'},
+  {id:'racquet',   name:'Other racquet sport',   focus:'Lateral movement, rotational power, shoulder durability and repeat-effort conditioning.'},
+  {id:'football',  name:'Football / Soccer',     focus:'Repeated sprinting, acceleration and deceleration, change of direction, hamstring and groin resilience.'},
+  {id:'basketball',name:'Basketball',            focus:'Jump power, landing mechanics, lateral movement and repeat-sprint conditioning.'},
+  {id:'volleyball',name:'Volleyball',            focus:'Jump height, landing control, overhead power and shoulder durability.'},
+  {id:'martial',   name:'Martial arts / boxing', focus:'Rotational power, repeated efforts, change of direction and trunk strength.'},
+  {id:'running',   name:'Running',               focus:'Aerobic base, running economy, single-leg strength and tendon resilience.'},
+  {id:'cycling',   name:'Cycling',               focus:'Aerobic base, leg strength endurance, hip and back durability.'},
+  {id:'swimming',  name:'Swimming',              focus:'Shoulder durability, trunk control and aerobic capacity.'},
+  {id:'triathlon', name:'Triathlon / multisport',focus:'Aerobic base across three disciplines, single-leg strength and tendon resilience.'},
+  {id:'rowing',    name:'Rowing',                focus:'Hip hinge strength, trunk endurance and aerobic capacity.'},
+  {id:'climbing',  name:'Climbing',              focus:'Pulling strength, shoulder stability, body tension and grip.'},
+  {id:'skiing',    name:'Skiing / snowboarding', focus:'Eccentric leg strength, lateral control, landing and sustained effort.'},
+  {id:'hiking',    name:'Hiking / trekking',     focus:'Leg endurance, ankle and calf resilience, aerobic capacity.'},
+  {id:'golf',      name:'Golf',                  focus:'Rotational speed, hip mobility and trunk control.'},
+  {id:'gym',       name:'Gym / general strength',focus:'Balanced strength, movement quality and joint durability.'},
+  {id:'general',   name:'No specific sport',     focus:'Balanced strength, conditioning and movement quality for general athleticism.'}
+];
+const PHYSIQUES=[
+  {id:'athletic', name:'Athletic and lean',   desc:'Visible definition and balanced proportions without adding bulk that slows you down.'},
+  {id:'muscle',   name:'Build muscle',        desc:'Prioritise size — more volume on the upper body and legs, slightly less conditioning.'},
+  {id:'lean',     name:'Get leaner',          desc:'Keep strength while raising weekly energy expenditure.'},
+  {id:'perform',  name:'Performance only',    desc:'I do not care how it looks. Train purely for the sport.'}
+];
+
+let SETUP={step:0, draft:null};
+/* Keep an unfinished wizard where the user left it. Throwing the draft away
+   and restarting at step 1 is how a short form becomes one people never
+   finish. Only ever restored for an incomplete setup: editing from Settings
+   starts from the saved profile, so a stale draft cannot come back. */
+function persistSetup(){
+  if(!SETUP||!SETUP.draft||SETUP.fromSettings) return;
+  if(DB.profile.onboarded) return;
+  DB.ui=DB.ui||{};
+  DB.ui.setup={step:SETUP.step, draft:SETUP.draft};
+  save();
+}
+function clearSetupDraft(){
+  if(DB.ui&&DB.ui.setup){ DB.ui.setup=null; save(); }
+}
+function startSetup(fromSettings){
+  SETUP={step:0, fromSettings:!!fromSettings, draft:{
+    source:DB.profile.source, sourceFields:Array.isArray(DB.profile.sourceFields)?DB.profile.sourceFields.slice():null,
+    age:DB.profile.age, sex:DB.profile.sex,
+    heightCm:DB.profile.heightCm, weightKg:DB.profile.weightKg,
+    gear:Array.isArray(DB.profile.gear)?DB.profile.gear.slice():[],
+    dbKg:DB.profile.dbKg||null,
+    tier:DB.profile.tier==null?0:DB.profile.tier,
+    name:DB.profile.name||'',
+    mcOn:!!(DB.mcycle&&DB.mcycle.on),
+    mcStart:(DB.mcycle&&DB.mcycle.starts&&DB.mcycle.starts[DB.mcycle.starts.length-1])||'',
+    mcLen:(DB.mcycle&&DB.mcycle.typicalLen)||null,
+    mcPeriod:(DB.mcycle&&DB.mcycle.typicalPeriod)||null,
+    sports:rawSports().slice(),
+    physiques:rawGoals().slice(),
+    daysPerWeek:rawDays(), sessionMin:rawMin(),
+    units:DB.profile.units||'metric', equipNote:DB.profile.equipNote||''
+  }};
+  const saved = (!fromSettings && !DB.profile.onboarded && DB.ui && DB.ui.setup) ? DB.ui.setup : null;
+  if(saved && saved.draft){
+    SETUP.draft = Object.assign(SETUP.draft, saved.draft);
+    SETUP.step  = clamp(saved.step||0, 0, SETUP_STEPS.length-1);
+  }
+  drawSetup();
+}
+/* Seven steps, one question each. `optional` drives the Skip affordance:
+   there is no separate skip control, the primary button simply says "Skip"
+   while the step is empty. */
+const SETUP_STEPS=[
+  {id:'name',   name:'Your name',  optional:true},
+  {id:'goals',  name:'What for'},
+  {id:'sports', name:'Sports'},
+  {id:'gear',   name:'Equipment'},
+  {id:'sched',  name:'Schedule'},
+  {id:'device', name:'Wearable',   optional:true},
+  {id:'body',   name:'About you',  optional:true}
+];
+/* sports offered in the picker. SPORT_PROFILES.general remains the engine's
+   neutral fallback, but it is not offered as a choice any more: choosing
+   nothing already means "no specific sport", and having both was two ways to
+   say the same thing. */
+const SETUP_SPORTS = ()=> SPORTS.filter(s=>s.id!=='general');
+/* is this step still empty? decides Skip vs Continue */
+function stepEmpty(id,d){
+  switch(id){
+    case 'name':   return !(d.name||'').trim();
+    case 'device': return !d.source;
+    case 'body':   return d.age==null && d.heightCm==null && d.weightKg==null;
+    /* An empty gear list is a perfectly good answer at home, and a
+       meaningless one before "where do you train" has been asked at all. */
+    case 'gear':   return !d.place;
+    default:       return false;
+  }
+}
+
+/* Recompute the primary button's label without touching the sheet body.
+   Typing is the one case where a redraw is not allowed: it would take the
+   focused input, the caret position and the keyboard with it. */
+function setupNextLabel(){
+  const d=SETUP.draft, s=SETUP.step, step=SETUP_STEPS[s];
+  if(!step) return 'Continue';
+  return s===SETUP_STEPS.length-1
+    ? (stepEmpty(step.id,d) ? 'Skip & finish' : finishLabel(d))
+    : (step.optional && stepEmpty(step.id,d) ? 'Skip' : 'Continue');
+}
+function refreshSetupNext(){
+  const b=$('#setNext'); if(!b) return;
+  const l=setupNextLabel();
+  if(b.textContent.trim()!==l) b.textContent=l;
+}
+
+function drawSetup(){
+  const d=SETUP.draft, s=SETUP.step, step=SETUP_STEPS[s];
+  /* guard the shape, never the content: an empty selection is the user's
+     answer, and re-forcing it here made "None" literally unreachable */
+  if(!Array.isArray(d.gear)) d.gear=[];
+  if(!Array.isArray(d.sports)) d.sports=[];
+  if(!Array.isArray(d.physiques)) d.physiques=[];
+
+  const dots=SETUP_STEPS.map((n,i)=>
+    `<div style="flex:1;height:3px;border-radius:9px;background:${i<=s?'var(--accent)':'var(--surface-3)'}"></div>`).join('');
+  const head=`<div style="display:flex;gap:4px;margin-bottom:14px">${dots}</div>`;
+
+  let body='', title='';
+
+  /* ---------------- 1 · name ---------------- */
+  if(step.id==='name'){
+    title='Welcome to Baseline';
+    body=head+`
+     <p class="lede">Baseline decides what you should train each day, from how
+       recovered you are and what you have actually been doing.</p>
+     <div class="field" style="margin-top:20px">
+       <label>What should I call you?</label>
+       <input class="inp setF" data-k="name" id="setName" type="text"
+              autocomplete="given-name" enterkeyhint="next"
+              value="${esc(d.name||'')}" placeholder="First name">
+     </div>
+     <div class="note acc">Everything stays on this device. No account, no
+       server, nothing uploaded.</div>`;
+  }
+
+  /* ---------------- 2 · what for ---------------- */
+  if(step.id==='goals'){
+    title='What are you training for?';
+    body=head+`
+     <p class="lede">Pick any that apply, or none.</p>
+     ${chipPicker({id:'setGoalPick', allowEmpty:true, chosen:d.physiques,
+        emptyText:'None selected',
+        all:PHYSIQUES.map(x=>({id:x.id,name:x.name,hint:x.desc}))})}
+     ${d.physiques.indexOf('muscle')>=0&&d.physiques.indexOf('lean')>=0
+       ? `<div class="note warn">Muscle and leanness pull against each other. Both is slower than either.</div>`:''}
+     ${d.physiques.indexOf('perform')>=0&&d.physiques.length>1
+       ? `<div class="note">Performance wins where these conflict.</div>`:''}`;
+  }
+
+  /* ---------------- 3 · sports ---------------- */
+  if(step.id==='sports'){
+    title='Do you play a sport?';
+    body=head+`
+     <p class="lede">Baseline trains around it and never schedules it. Leave
+       empty if none.</p>
+     ${chipPicker({id:'setSportPick', lead:true, allowEmpty:true, chosen:d.sports,
+        emptyText:'None — general training',
+        all:SETUP_SPORTS().map(x=>({id:x.id,name:x.name,hint:x.focus}))})}
+     ${d.sports.length>1?`<div class="note acc">Shared qualities get priority.
+       <b>${esc((SPORTS.find(x=>x.id===d.sports[0])||{}).name)}</b> leads.</div>`:''}`;
+  }
+
+  /* ---------------- 4 · equipment ---------------- */
+  if(step.id==='gear'){
+    /* Where you train decides which way round to ask. A gym has everything
+       until told otherwise; at home nothing is assumed. */
+    title = d.place ? (d.place==='gym'?'Your gym':'What do you have at home?')
+                    : 'Where do you train?';
+    body=head+`
+     <p class="lede">${d.place
+       ? 'You are only ever shown exercises you can actually do.'
+       : 'This decides how the next question is asked. You can change it at any time.'}</p>
+     <div id="setGear_root">${gearEditorHTML({id:'setGear', gear:d.gear,
+        place:d.place, open:!!SETUP.gearOpen})}</div>
+     ${d.place?`<div class="ruled" style="font-size:13px;color:var(--text-2);font-weight:600">
+       ${countDoable(d.gear)} of ${DB.exercises.length} exercises available</div>`:''}`;
+  }
+
+  /* ---------------- 5 · how much ---------------- */
+  if(step.id==='sched'){
+    title='How much can you train?';
+    body=head+`
+     <div class="field"><label>Days a week</label>
+       <div class="pills" id="setDays">${[2,3,4,5,6].map(n=>
+         `<button data-v="${n}" class="${d.daysPerWeek===n?'on':''}">${n}</button>`).join('')}</div>
+     </div>
+     <div class="field"><label>Usual session length</label>
+       <div class="pills" id="setMin">${[20,30,45,60,75].map(n=>
+         `<button data-v="${n}" class="${d.sessionMin===n?'on':''}">${n} min</button>`).join('')}</div>
+     </div>
+     <div class="hint">A guideline, not a quota. Baseline still tells you to
+       rest when your recovery says so.${(d.daysPerWeek==null||d.sessionMin==null)
+        ? ` Left blank, it assumes ${DEFAULT_DAYS} days and ${DEFAULT_SESSION_MIN} minutes.`:''}</div>`;
+  }
+
+  /* ---------------- 6 · wearable (optional) ---------------- */
+  if(step.id==='device'){
+    title='Do you wear a tracker?';
+    const src=d.source?sourceOf(d.source):null;
+    body=head+`
+     <p class="lede">Optional. Baseline works fully without one.</p>
+     <div class="field">
+       <select class="inp setSel" data-k="source" id="setSrcSel">
+         <option value="" ${!d.source?'selected':''}>None</option>
+         ${SOURCES.filter(o=>o.id!=='none').map(o=>
+           `<option value="${o.id}" ${d.source===o.id?'selected':''}>${esc(o.name)}</option>`).join('')}
+       </select>
+     </div>
+     ${src&&src.fields.length?`<div class="hint" style="display:flex;align-items:center">
+        ${srcMark(src.id,17)}<span>Gives ${esc(src.fields.map(f=>
+          fieldLabel(f,src.id).toLowerCase()).join(', '))}.</span></div>`:''}
+     ${src&&src.pickFields?`
+       <div class="field" style="margin-top:16px"><label>Which numbers does it give?</label>
+        ${chipPicker({id:'setFieldPick', allowEmpty:true, emptyText:'None',
+           chosen:(d.sourceFields||src.fields),
+           all:src.fields.map(fid=>({id:fid,name:DATA_FIELDS[fid].name,hint:DATA_FIELDS[fid].hint||''}))})}
+        </div>`:''}
+     ${src?`<div class="note acc">${esc(src.how)}</div>`:''}`;
+  }
+
+  /* ---------------- 7 · about you (optional) ---------------- */
+  if(step.id==='body'){
+    title='A little about you';
+    body=head+`
+     <p class="lede">Optional. Used for heart-rate zones and tracking
+       measurements over time.</p>
+     <div class="grid2" style="margin-top:16px">
+       <div class="field"><label>Age</label>
+         <input class="inp num setF" data-k="age" type="number" inputmode="numeric"
+                min="10" max="100" value="${d.age||''}" placeholder="—"></div>
+       <div class="field"><label>Height (cm)</label>
+         <input class="inp num setF" data-k="heightCm" type="number" inputmode="numeric"
+                min="100" max="250" value="${d.heightCm||''}" placeholder="—"></div>
+       <div class="field"><label>Weight (kg)</label>
+         <input class="inp num setF" data-k="weightKg" type="number" inputmode="decimal"
+                step="0.1" min="30" max="250" value="${d.weightKg||''}" placeholder="—"></div>
+     </div>
+     <div class="field"><label>Sex <span style="text-transform:none;font-weight:600">(optional)</span></label>
+       <div class="pills" id="setSex">
+         ${['Female','Male','Prefer not to say'].map(x=>
+           `<button data-v="${x}" class="${d.sex===x?'on':''}">${x}</button>`).join('')}
+       </div>
+       <div class="hint">Used for body-composition context only. It does not change the training program.</div>
+     </div>
+
+     ${d.sex==='Female'?`
+     <div class="ruled">
+       <div class="field"><label>Track menstrual cycle?</label>
+         <div class="seg acc" id="setMc">
+           <button data-v="1" class="${d.mcOn?'on':''}">Yes</button>
+           <button data-v="0" class="${d.mcOn?'':'on'}">Not now</button>
+         </div>
+         <div class="hint">Entirely optional, and you can turn it on or off later in Settings.
+           Baseline treats it as context about you, never as a rule about what you can train.</div>
+       </div>
+       ${d.mcOn?`
+       <div class="field"><label>First day of your most recent period</label>
+         <input class="inp setF" data-k="mcStart" type="date" value="${esc(d.mcStart||'')}">
+         <div class="hint">Skip it if you would rather just start logging from today.</div></div>
+       <div class="grid2">
+         <div class="field"><label>Typical cycle length</label>
+           <input class="inp num setF" data-k="mcLen" type="number" inputmode="numeric"
+                  min="15" max="90" value="${d.mcLen||''}" placeholder="Not sure"></div>
+         <div class="field"><label>Typical period length</label>
+           <input class="inp num setF" data-k="mcPeriod" type="number" inputmode="numeric"
+                  min="1" max="15" value="${d.mcPeriod||''}" placeholder="Not sure"></div>
+       </div>
+       <div class="hint">Both optional. Baseline will work them out from what you log.</div>`:''}
+     </div>`:''}
+
+     ${d.age?`<div class="hint">Estimated max heart rate about
+       <b>${Math.round(208-0.7*d.age)} bpm</b>. An estimate, not a measurement.</div>`:''}`;
+  }
+
+  /* The footer is geometrically identical on every step: the left slot is
+     always occupied (Close on the first step, Back after), and the columns are
+     fixed fractions. The sheet's own width is pinned in CSS - it used to
+     shrink-wrap its content on desktop, which is what made this button appear
+     to jump between steps. */
+  const backLabel = s>0 ? 'Back' : 'Close';
+  const back = `<button class="btn ghost" id="setBack">${backLabel}</button>`;
+  /* an optional step that is still empty offers Skip, so skipping needs no
+     extra control and cannot be mistaken for a dead end. setupNextLabel() is
+     the single source for this, because typing refreshes it in place. */
+  const nextLabel = setupNextLabel();
+  const foot=`<div class="btn-row setup-foot">${back}<button class="btn primary" id="setNext">${esc(nextLabel)}</button></div>`;
+  /* Patch the open sheet in place. Re-opening it on every tap restarted the
+     slide-in animation and made the footer button jump. `steps` holds a floor
+     height so the footer does not walk up and down as each step's content
+     changes length — on desktop the sheet is a centred modal, so without it
+     the buttons move with every step. */
+  $('#sheet').classList.add('steps');
+  if($('#sheet').classList.contains('on')) updateSheet(title, body, foot);
+  else openSheet(title, body, foot,
+    ()=>{ $('#sheet').classList.remove('steps');
+          if(!DB.profile.onboarded){
+            /* capture whatever was typed on the step being abandoned */
+            $$('#sheet .setF').forEach(i=>{ const k=i.dataset.k;
+              SETUP.draft[k] = i.type==='number' ? (i.value===''?null:parseFloat(i.value)) : i.value; });
+            persistSetup();
+            try{ render(); toast('Saved where you left off'); }catch(e){}
+          } });
+  persistSetup();
+
+  /* single-choice cards that remain (data-source tiles elsewhere) */
+  $$('.setOpt').forEach(b=>b.onclick=()=>{
+    const k=b.dataset.k; let v=b.dataset.v;
+    if(k==='tier') v=+v;
+    SETUP.draft[k]=v; haptic(); drawSetup();
+  });
+  /* the wearable is a plain select: one row, and the phone's own picker */
+  $$('.setSel').forEach(sel=>sel.onchange=()=>{
+    SETUP.draft[sel.dataset.k]=sel.value||null;
+    if(sel.dataset.k==='source') SETUP.draft.sourceFields=null;   // re-derive
+    haptic(); drawSetup();
+  });
+  /* every multi-choice step uses the same chip picker as Settings: chosen
+     items as blocks, "+" opens the full list in a sheet */
+  const pick=(id,key,all,title,allowEmpty,lead)=>{
+    const cur=SETUP.draft[key]||[];
+    wirePicker(id, cur, all, next=>{
+      SETUP.draft[key]=next;
+      if(lead) SETUP.draft[key.replace(/s$/,'')]=next[0]||null;
+      haptic(); drawSetup();
+    }, title, allowEmpty, true);   // the wizard redraws this sheet itself
+  };
+  wireGearEditor({id:'setGear', gear:SETUP.draft.gear, place:SETUP.draft.place,
+    open:!!SETUP.gearOpen,
+    apply:o=>{
+      const d=SETUP.draft;
+      if(o.place!==undefined){ d.place=o.place; SETUP.gearOpen=false; }
+      if(o.gear) d.gear=o.gear;
+      if(o.openList!==undefined) SETUP.gearOpen=o.openList;
+      if(o.kg) setGearKg(o.kg.id, o.kg.v, d);
+      d.tier=tierOf(d.gear||[]);
+      persistSetup(); drawSetup();
+    }});
+  pick('setSportPick','sports',
+       SETUP_SPORTS().map(x=>({id:x.id,name:x.name,hint:x.focus})),
+       'Add a sport', true, true);
+  pick('setGoalPick','physiques',
+       PHYSIQUES.map(x=>({id:x.id,name:x.name,hint:x.desc})),
+       'Add a goal', true, true);
+  (function(){
+    const src=sourceOf(SETUP.draft.source);
+    if(!src.pickFields) return;
+    if(!Array.isArray(SETUP.draft.sourceFields)) SETUP.draft.sourceFields=src.fields.slice();
+    pick('setFieldPick','sourceFields',
+         src.fields.map(f=>({id:f,name:DATA_FIELDS[f].name,hint:DATA_FIELDS[f].hint||''})),
+         'Add a metric', true);
+  })();
+  /* free fields */
+  $$('.setF').forEach(i=>i.oninput=()=>{
+    const k=i.dataset.k;
+    SETUP.draft[k] = i.type==='number' ? (i.value===''?null:parseFloat(i.value)) : i.value;
+    /* Skip -> Continue the moment the step stops being empty */
+    refreshSetupNext();
+  });
+  const pill=(sel,k,num,redraw)=>{ const el2=$(sel); if(!el2)return;
+    $$(sel+' button').forEach(b=>b.onclick=()=>{
+      $$(sel+' button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+      SETUP.draft[k]= num ? +b.dataset.v : b.dataset.v; haptic();
+      /* a pill tap involves no keyboard, so the step can redraw and drop the
+         "left blank, it assumes..." disclosure it no longer needs */
+      if(redraw) drawSetup(); else refreshSetupNext(); }); };
+  /* choosing a sex reveals or hides the cycle question, so it redraws */
+  pill('#setSex','sex',false,true); pill('#setUnits','units');
+  pill('#setMc','mcOn',false,true);
+  pill('#setDays','daysPerWeek',true,true); pill('#setMin','sessionMin',true,true);
+
+  const bk=$('#setBack');
+  if(bk) bk.onclick=()=>{ if(SETUP.step>0){ SETUP.step--; drawSetup(); } else closeSheet(); };
+  /* nothing blocks progress: every question can be left unanswered, and
+     "None" is a real answer rather than a reason to refuse */
+  $('#setNext').onclick=()=>{
+    if(SETUP.step<SETUP_STEPS.length-1){ SETUP.step++; drawSetup(); return; }
+    finishSetup();
+  };
+  const nm=$('#setName');
+  if(nm) nm.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); $('#setNext').click(); } };
+}
+
+function finishSetup(){
+  const d=SETUP.draft, P=DB.profile;
+  P.source=d.source;
+  P.sourceFields=sourceOf(d.source).pickFields
+    ? (Array.isArray(d.sourceFields)?d.sourceFields.slice():sourceOf(d.source).fields.slice())
+    : null;
+  /* kept only so data saved by older versions still reads correctly */
+  P.mode = d.source==='none' ? 'manual' : d.source==='whoop' ? 'whoop' : 'device';
+  P.age=d.age; P.sex=d.sex; P.heightCm=d.heightCm; P.weightKg=d.weightKg;
+  P.gear=d.gear.slice(); P.dbKg=d.dbKg||null;
+  P.tier=tierOf(d.gear);                                   // derived, not chosen
+  P.name=(d.name||'').trim();
+  /* cycle tracking: only ever what was actually answered */
+  DB.mcycle=DB.mcycle||{on:false,starts:[],typicalLen:null,typicalPeriod:null,askedAt:null};
+  DB.mcycle.on = d.sex==='Female' && (d.mcOn==='1'||d.mcOn===true);
+  DB.mcycle.askedAt = d.sex==='Female' ? new Date().toISOString() : DB.mcycle.askedAt;
+  if(DB.mcycle.on){
+    DB.mcycle.typicalLen = d.mcLen||null;
+    DB.mcycle.typicalPeriod = d.mcPeriod||null;
+    if(d.mcStart && DB.mcycle.starts.indexOf(d.mcStart)<0) DB.mcycle.starts.push(d.mcStart);
+    DB.mcycle.starts.sort();
+  }
+  P.sports=d.sports.slice(); P.sport=d.sports[0]||null;    // sport = the leading one
+  P.physiques=d.physiques.slice(); P.physique=d.physiques[0]||null;
+  P.daysPerWeek=d.daysPerWeek; P.sessionMin=d.sessionMin; P.units=d.units;
+  if(d.equipNote) P.equipNote=d.equipNote;
+  P.equipment=equipmentList(d.gear, d.equipNote, d.dbKg);
+  P.goalPrimary=d.sports.length?goalTextFor(d.sports):'';
+  P.goalSecondary=d.physiques.map(id=>(PHYSIQUES.find(x=>x.id===id)||{}).desc).filter(Boolean).join(' ');
+  P.onboarded=true;
+  clearSetupDraft();
+  applyGoalTargets();
+  save(true); closeSheet(); renderNav();
+  const wasSettings=SETUP.fromSettings;
+  setTimeout(()=>{
+    const src=sourceOf(d.source);
+    if(src.importer && !hasWhoop()){ HTAB='import'; openMetrics(); toast(`Import your ${src.name} data to finish`); }
+    else { go('today'); toast('Setup complete','ok'); }
+    /* the walkthrough, once, for a genuinely new install. Not shown when
+       setup was reopened from Settings to change something. */
+    if(!wasSettings && !tourSeen()) setTimeout(openTour,500);
+  },240);
+}
+/* built strictly from what was ticked — nothing inferred */
+function equipmentList(gear, note, dbKg){
+  const out=['Bodyweight'];
+  (gear||[]).forEach(id=>{
+    const it=EQUIP_ITEMS.find(x=>x.id===id); if(!it) return;
+    out.push(id==='db'&&dbKg ? `Dumbbells (${dbKg} kg)` : it.name);
+  });
+  if(note) out.push(note);
+  return out;
+}
+/* helpers shared by the wizard and settings */
+function tierOf(gear){
+  const g=gear||[];
+  if(g.indexOf('bb')>=0||g.indexOf('cable')>=0) return 2;
+  if(g.indexOf('bench')>=0||g.indexOf('bar')>=0||g.indexOf('kb')>=0) return 1;
+  return 0;
+}
+function countDoable(gear){
+  const g=gear||[];
+  return DB.exercises.filter(e=>{
+    const needs=e.needs||[];
+    return needs.every(x=> x==='anchor' ? (g.indexOf('bench')>=0||g.indexOf('bb')>=0) : g.indexOf(x)>=0);
+  }).length;
+}
+function goalTextFor(sportIds){
+  const ids=Array.isArray(sportIds)?sportIds:[sportIds];
+  const list=ids.map(id=>SPORTS.find(x=>x.id===id)).filter(Boolean);
+  if(!list.length) return 'Build balanced strength, conditioning and movement quality.';
+  if(list.length===1){
+    return list[0].id==='general'
+      ? 'Build balanced strength, conditioning and movement quality.'
+      : `Improve ${list[0].name.toLowerCase()} performance. ${list[0].focus}`;
+  }
+  const names=list.map(s=>s.name.toLowerCase());
+  return `Improve performance across ${names.slice(0,-1).join(', ')} and ${names[names.length-1]}, `+
+         `led by ${names[0]}. ${list[0].focus}`;
+}
+/* Goals shape the weekly targets. With several sports selected the shared
+   qualities (legs, core, conditioning) take priority and sport-specific work
+   is spread thinner — the leading sport still decides ties. */
+/* =========================================================================
+   WEEKLY TARGETS — entirely derived
+   Built from the sports you chose, the outcomes you want, the days you have
+   and the equipment you own. A category you cannot or would not do simply
+   does not appear: no bike, no bike target.
+   ====================================================================== */
+function applyGoalTargets(){
+  const P=DB.profile, days=trainDays();
+  const sports=sportsOf(), goals=goalsOf(), gear=rawGear();
+  const has=x=>sports.indexOf(x)>=0;
+  const wants=x=>goals.indexOf(x)>=0;
+  const owns=x=>gear.indexOf(x)>=0;
+  const T={};
+
+  /* strength scales with available days */
+  T.lower = days<=2?1 : days<=3?1 : 2;
+  T.upper = days<=2?1 : days<=3?1 : 2;
+  T.core  = Math.min(4, Math.max(1, days-1));
+  T.mobility = Math.max(1, Math.min(4, days-1));
+
+  /* power only where a chosen sport actually needs it */
+  const explosive = sports.some(id=>(SPORT_PROFILES[id]||{}).explosive);
+  if(explosive && days>=3) T.power = days>=5?2:1;
+
+  /* Conditioning has to pass two tests: can you do it, and does anything you
+     chose actually call for it? Owning trainers is not a reason to run. */
+  const canRun  = owns('run') ||has('running');
+  const canBike = owns('bike')||has('cycling');
+  const runSports = sports.some(id=>id==='running'||(SPORT_PROFILES[id]||{}).impact==='high');
+  const needsRun  = has('running') || runSports || (!canBike && days>=3);
+  const needsBike = has('cycling') || wants('lean') || canBike;
+  if(canRun && needsRun)   T.run  = has('running') ? Math.min(4,days-1) : (days>=4?2:1);
+  if(canBike && needsBike) T.bike = has('cycling') ? Math.min(4,days-1) : 1;
+  /* a sport that already supplies running needs less programmed running */
+  if(T.run && runSports && !has('running')) T.run=Math.max(1,T.run-1);
+
+  if(wants('muscle')){ T.upper=Math.min(3,T.upper+1); if(!wants('lean')&&T.run) T.run=Math.max(0,T.run-1); }
+  if(wants('lean')){ if(T.run) T.run++; if(T.bike) T.bike++; else if(canBike) T.bike=1; }
+
+  /* more sports than days means something has to give */
+  if(sports.length>=3&&days<=3){ T.power=0; T.upper=1; }
+  /* every category is present, but a category you cannot or would not do is
+     zero — and targetKeys() hides zeros everywhere in the UI */
+  TARGET_ORDER.forEach(k=>{ T[k]=Math.max(0, Math.round(T[k]||0)); });
+  DB.targets=T;
+  return T;
+}
+/* Remove targets the user can no longer do. Deliberately one-directional:
+   losing a bike drops the bike target, but buying one does not silently add
+   sessions to your week — "Rebuild from my setup" does that on request. */
+function pruneTargets(){
+  const gear=(DB.profile&&DB.profile.gear)||[], T=DB.targets||{};
+  const sp=sportsOf();
+  if(T.bike && gear.indexOf('bike')<0 && sp.indexOf('cycling')<0) T.bike=0;
+  if(T.run  && gear.indexOf('run')<0  && sp.indexOf('running')<0
+     && !sp.some(id=>(SPORT_PROFILES[id]||{}).impact==='high')) T.run=0;
+  return T;
+}
+/* labels + rationale for whatever targets exist, written from the user's setup */
+function targetMeta(){
+  const sp=SPORT_LABEL(), q=sportProf().qualities;
+  return {
+    lower:   ['Lower body strength', `The base under ${sp.toLowerCase()} — ${q.split(',')[0]}`],
+    upper:   ['Upper body strength', rawGoals().indexOf('muscle')>=0
+                ? 'Your muscle-building goal' : 'Shoulder durability and balanced strength'],
+    power:   ['Power / plyometrics', `Explosive qualities ${sp.toLowerCase()} depends on`],
+    core:    ['Core',                'Force transfer between legs and upper body'],
+    run:     ['Runs',                'Aerobic base; reduced when your sport already supplies it'],
+    bike:    ['Rides',               'Low-impact aerobic work'],
+    mobility:['Mobility sessions',   'Protects the hard days']
+  };
+}
+
+
+/* ---- iOS lifecycle ----
+   Safari suspends background tabs and does not reliably fire beforeunload, so
+   state is flushed on pagehide and on every hide, and the rest timer is
+   recomputed from its deadline whenever the app comes back. */
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){ if(DB) save(true); if(W) saveLive(); }
+  else { if(restEnd) paintRest(); if(W) drawWM(); updateBanner(); }
+});
+window.addEventListener('pagehide',()=>{ if(DB) save(true); if(W) saveLive(); });
+window.addEventListener('beforeunload',()=>{ if(DB) save(true); });
+/* orientation changes need a relayout of the charts and grids */
+let orT;
+window.addEventListener('orientationchange',()=>{ clearTimeout(orT); orT=setTimeout(()=>{ if(DB&&!W) render(); },260); });
+window.addEventListener('resize',()=>{ clearTimeout(orT); orT=setTimeout(()=>{ if(DB&&!W) render(); },400); });
+</script>
+</body>
+</html>

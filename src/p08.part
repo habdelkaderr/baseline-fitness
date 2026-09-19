@@ -1,0 +1,418 @@
+
+/* =========================================================================
+   VIEW: PROGRESS  (training · tests · physique · correlations)
+   The week review that used to live here has moved: its narrative to Today,
+   its numbers to the top of Training. What was left duplicated Today's target
+   bars and the Metrics trends.
+   ====================================================================== */
+let PTAB='training';
+/* Progress leads with how the week actually went - the verdict and the load
+   chart - and keeps the deeper questions as rows. */
+function viewProgress(v){
+  appbar('Progress');
+  const R=weekReview();
+  const nT=(DB.tests||[]).length, nP=(DB.physique||[]).length;
+  const nS=(DB.sessions||[]).filter(s=>s.done).length;
+  const verdict = R.attn.length ? R.attn.length+' thing'+(R.attn.length>1?'s':'')+' to watch'
+                : R.good.length ? 'Going well so far'
+                : 'Not enough logged yet to judge';
+  const rows=[
+    {t:'Strength', icon:'dumbbell',
+     s: nS? `${nS} session${nS===1?'':'s'} of history` : 'No sessions yet',
+     go:()=>openPane('Strength','What is moving, and what is not', paneStrength)},
+    {t:'Tests', icon:'target',
+     s: nT? `${nT} result${nT===1?'':'s'} recorded` : 'No results yet',
+     go:()=>openPane('Tests','Jump, sprint, agility and holds', paneTests)},
+    {t:'Physique', icon:'ruler',
+     s: nP? `${nP} measurement${nP===1?'':'s'}` : 'No measurements yet',
+     go:()=>openPane('Physique','Weight and measurements over time', panePhysique)},
+    {t:'Patterns', icon:'pulse',
+     s:'What your data does and does not show',
+     go:()=>openPane('Patterns','Correlations only, never causes', paneLinks)}
+  ];
+  v.innerHTML=
+    `<div class="rec" style="margin-top:0">
+       <div class="rec-l">This week</div>
+       <div class="rec-t" style="font-size:22px">${esc(verdict)}</div>
+     </div>`
+    + weekNumbers(R)
+    + `<button class="tert" id="pFull">Full week review ${svg('chev')}</button>`
+    + '<div class="sec-t">Go deeper</div>' + navRows('pRows',rows);
+  const f=$('#pFull');
+  if(f) f.onclick=()=>openPane('This week','How the week went', paneWeek);
+  wireRows('pRows',rows);
+  bindInputs(v);
+}
+
+/* "How did my week go" - the numbers and the narrative together, which is
+   what that question actually wants. weekNumbers used to open the Strength
+   pane, where it answered a question nobody had asked there. */
+function paneWeek(c){
+  const R=weekReview();
+  c.innerHTML=weekNumbers(R)+weekNarrative(R);
+}
+
+/* ------------------------------------------------------------- WEEK */
+function weekReview(){
+
+  const today=todayISO(), start=addDays(today,-dowOf(today)), prevStart=addDays(start,-7);
+  const range=(s,e)=>{ const o=[]; let d=s; while(d<=e){o.push(d);d=addDays(d,1);} return o; };
+  const wk=range(start,today), pv=range(prevStart,addDays(start,-1));
+  const stat=(days)=>{
+    const cy=days.map(cycleByDate).filter(Boolean);
+    const ci=days.map(d=>DB.checkins[d]).filter(Boolean);
+    const ss=DB.sessions.filter(s=>s.done&&days.includes(s.date));
+    const ac=DB.activities.filter(a=>days.includes(a.date));
+    let load=0,lower=0,expl=0; days.forEach(d=>{const dd=dayDemand(d);load+=dd.load;lower+=dd.lower;expl+=dd.expl;});
+    return {
+      rec:mean(cy.map(x=>x.recovery)), hrv:mean(cy.map(x=>x.hrv)), rhr:mean(cy.map(x=>x.rhr)),
+      sleep:mean(cy.map(x=>x.sleepMin)), strain:mean(cy.map(x=>x.strain)), debt:mean(cy.map(x=>x.sleepDebt)),
+      sessions:ss.length, acts:ac.length, sport:ac.filter(a=>isMainSportAct(a.type)).length,
+      min:sum(ss.map(s=>s.durationMin))+sum(ac.map(a=>a.min)),
+      vol:sum(ss.map(s=>s.volume)), sets:sum(ss.map(s=>s.setsDone)),
+      load:rnd(load,1), lower:rnd(lower,1), expl:rnd(expl,1),
+      sore:mean(ci.map(x=>x.soreness)), energy:mean(ci.map(x=>x.energy)),
+      days, nCy:cy.length
+    };
+  };
+  const A=stat(wk), P=stat(pv);
+  /* plain text, not markup: statTile escapes its delta - correctly, it is
+     the only thing stopping a stray value becoming an injection - so anything
+     with tags in it was rendered to the user verbatim. The arrow is enough
+     for statTile to colour it. */
+  const dl=(a,b,dp)=>{ if(a==null||b==null)return ''; const d=a-b;
+    return `${d>0?'▲':d<0?'▼':'–'} ${Math.abs(rnd(d,dp||0))}`; };
+
+  // target attainment across the whole week, plus genuinely blank days
+  const T=DB.targets, WP=weekProgress(today), TK=targetKeys();
+  const tgtTotal=TK.reduce((s,k)=>s+(T[k]||0),0);
+  const tgtDone =TK.reduce((s,k)=>s+Math.min(T[k]||0,WP[k]||0),0);
+  /* the strength target this user actually set, not a fixed number */
+  const strTgt=(T.lower||0)+(T.upper||0)+(T.power||0);
+  const sleepNeed=DB.baselines.sleepNeed||480;
+  const genericSleep=!!DB.baselines.sleepNeedGeneric;
+  const compl=A.sessions;
+  const missed=wk.filter(d=>d<today&&!DB.sessions.some(s=>s.date===d&&s.done)&&!DB.activities.some(a=>a.date===d));
+
+  // narrative
+  const good=[],attn=[];
+  if(strTgt&&A.sessions>=strTgt) good.push(`${A.sessions} session${A.sessions===1?'':'s'} completed — at or above the ${strTgt}/week your targets ask for.`);
+  else if(!strTgt&&A.sessions>=3) good.push(`${A.sessions} sessions completed this week.`);
+  if(A.rec!=null&&P.rec!=null&&A.rec>P.rec+3) good.push(`Average recovery is up ${rnd(A.rec-P.rec,1)} points on last week.`);
+  if(A.sleep!=null&&A.sleep>=sleepNeed-60) good.push(`Sleep averaged ${fmtMin(A.sleep)} — within an hour of your ${genericSleep?'assumed':'measured'} ${fmtMin(sleepNeed)} need.`);
+  if(A.hrv!=null&&P.hrv!=null&&A.hrv>P.hrv+2) good.push(`HRV averaged ${rnd(A.hrv,0)} ms, up ${rnd(A.hrv-P.hrv,1)} on last week.`);
+  if(A.acts>0) good.push(`${A.acts} activit${A.acts===1?'y':'ies'} logged, so the engine had real data to adapt from rather than assumptions.`);
+  if(A.sleep!=null&&A.sleep<sleepNeed-60) attn.push(`Sleep averaged ${fmtMin(A.sleep)} against a ${fmtMin(sleepNeed)} need${genericSleep?' (a general adult estimate — import WHOOP data and this becomes yours)':''} — more than an hour short.`);
+  if(missed.length>=2) attn.push(`${missed.length} day${missed.length>1?'s':''} with nothing logged at all (${missed.map(fmtDate).join(', ')}). Rest days are fine — unlogged days just leave the engine guessing.`);
+  if(strTgt&&A.sessions<strTgt-1) attn.push(`${A.sessions} session${A.sessions===1?'':'s'} against a ${strTgt}/week target. If recovery was the reason that is the system working; if it was not, the gap is worth closing.`);
+  if(A.expl>=20) attn.push(`Explosive demand totalled ${A.expl} this week — high. Watch for accumulating soreness in the calves and hamstrings.`);
+  if(A.sore!=null&&A.sore>=6) attn.push(`Average soreness ${rnd(A.sore,1)}/10 — elevated. Consider an extra easy day before the next power session.`);
+  if(A.rhr!=null&&DB.baselines.rhr&&A.rhr>DB.baselines.rhr+2) attn.push(`Resting HR averaged ${rnd(A.rhr,1)} vs your ${rnd(DB.baselines.rhr,1)} baseline.`);
+
+  const next=[];
+  if(A.sleep!=null&&A.sleep<sleepNeed-60) next.push('Anchor your wake time to within 30 minutes every day. Wake-time regularity is the cheapest recovery lever you have, and once you have a few weeks of data here you will be able to see it in your own numbers.');
+  if(strTgt&&A.sessions<strTgt) next.push(`Aim for ${strTgt} session${strTgt===1?'':'s'} next week — that is what your goals, days and equipment came out at.`);
+  if(A.expl>=20) next.push('Cut one plyometric block next week and keep the jump quality high rather than the volume.');
+  if(!next.length) next.push('Hold this pattern. It is working — repeat it before adding anything.');
+
+  return {A, P, dl, wk, pv, good, attn, next,
+          tgtDone, tgtTotal, compl, missed, strTgt, sleepNeed, genericSleep};
+}
+
+/* the narrative half, rendered wherever it is useful */
+function weekNarrative(R){
+  return `
+  <div class="card"><div class="card-t accent" style="margin-bottom:10px">What went well</div>
+    ${R.good.length?`<ul class="why" style="border:none;padding:0;margin:0">${R.good.map(g=>`<li class="pos"><span class="dot"></span><span>${g}</span></li>`).join('')}</ul>`
+      :'<div class="hint">Not enough logged this week to say. Log your sessions and activities and this fills in.</div>'}</div>
+
+  <div class="card"><div class="card-t" style="margin-bottom:10px;color:var(--orange)">What needs attention</div>
+    ${R.attn.length?`<ul class="why" style="border:none;padding:0;margin:0">${R.attn.map(g=>`<li class="warn"><span class="dot"></span><span>${g}</span></li>`).join('')}</ul>`
+      :'<div class="hint">Nothing flagged. Good week.</div>'}</div>
+
+  <div class="card"><div class="card-t" style="margin-bottom:10px;color:var(--cyan)">Next week</div>
+    <ul class="why" style="border:none;padding:0;margin:0">${R.next.map(g=>`<li class="info"><span class="dot"></span><span>${g}</span></li>`).join('')}</ul></div>
+
+  <div class="note">Drawn only from what you logged. A thin week means observations, not conclusions.</div>`;
+}
+
+/* the week's numbers, shown above the training history they summarise */
+function weekNumbers(R){
+  const A=R.A, P=R.P, dl=R.dl, wk=R.wk;
+  return `
+  <div class="stats c2">
+    ${statTile('Avg recovery',A.rec!=null?rnd(A.rec,0):null,'%',A.rec>=67?'g':A.rec>=34?'y':'r',dl(A.rec,P.rec))}
+    ${statTile('Avg HRV',A.hrv!=null?rnd(A.hrv,0):null,'ms','c',dl(A.hrv,P.hrv))}
+    ${statTile('Avg RHR',A.rhr!=null?rnd(A.rhr,1):null,'bpm','',dl(A.rhr,P.rhr,1))}
+    ${statTile('Avg sleep',A.sleep!=null?fmtMin(A.sleep):null,'',A.sleep>=R.sleepNeed-60?'g':'o',dl(A.sleep,P.sleep))}
+  </div>
+  <div class="stats">
+    ${statTile('Sessions',A.sessions,'','a',`vs ${P.sessions}`)}
+    ${statTile('Activities',A.acts,'','g',`${A.sport} ${esc(sportLC())}`)}
+    ${statTile('Week load',A.load,'','o',dl(A.load,P.load,1))}
+  </div>
+  <div class="card" style="margin-top:12px">
+    <div class="card-h"><div class="card-t">Daily load</div></div>
+    <div class="chart-wrap">${barChart(wk.map(d=>{const dd=dayDemand(d);
+      return {v:dd.load,t:DOW_NAME[dowOf(d)][0],color:dd.load>=12?'var(--orange)':dd.load>=7?'var(--accent)':'var(--surface-3)'};}),{h:84})}</div>
+    <div class="hint" style="margin-top:6px">Hard/easy alternation is the goal.</div>
+  </div>`;
+}
+
+/* --------------------------------------------------------- STRENGTH */
+function paneStrength(c){
+  const done=DB.sessions.filter(s=>s.done);
+  /* the week's numbers live in Progress > This week; this pane is about
+     whether individual lifts are moving */
+  if(done.length<1){
+    c.innerHTML='<div class="empty"><h4>No sessions yet</h4><p>Complete a workout and your exercise-by-exercise progression appears here.</p></div>';
+    return; }
+  const byEx={};
+  done.forEach(s=>s.entries.forEach(en=>{
+    const sets=en.sets.filter(x=>x.done&&x.reps);
+    if(!sets.length)return;
+    byEx[en.exerciseId]=byEx[en.exerciseId]||{name:en.name,pts:[]};
+    const tot=sum(sets.map(x=>+x.reps||0));
+    const best=Math.max(...sets.map(x=>+x.reps||0));
+    const vol=sum(sets.map(x=>(+x.reps||0)*(+x.weight||1)));
+    byEx[en.exerciseId].pts.push({date:s.date,sets:sets.length,totReps:tot,best,vol,
+      rpe:mean(sets.map(x=>+x.rpe||null))});
+  }));
+  const keys=Object.keys(byEx).sort((a,b)=>byEx[b].pts.length-byEx[a].pts.length);
+  c.innerHTML=`
+   <div class="card">
+     <div class="card-h"><div class="card-t accent">Total weekly volume</div></div>
+     <div class="chart-wrap">${(()=>{const w=[];for(let i=7;i>=0;i--){const e=addDays(todayISO(),-7*i),s=addDays(e,-6);
+       w.push({v:sum(done.filter(x=>x.date>=s&&x.date<=e).map(x=>x.volume)),t:i===0?'now':''});} return barChart(w,{h:84});})()}</div>
+     <div class="hint" style="margin-top:6px">Volume = reps × weight (bodyweight exercises count as 1 per rep). Useful as a trend, not an absolute.</div>
+   </div>
+   ${keys.map(k=>{
+     const e=byEx[k], pts=e.pts.slice(-12);
+     const first=pts[0], last=pts[pts.length-1];
+     const chg=pts.length>1? last.totReps-first.totReps : null;
+     return `<div class="card">
+       <div class="card-h"><div class="card-t">${esc(e.name)}</div>
+         <span class="tag ${chg>0?'g':chg<0?'r':''}">${pts.length} SESSIONS</span></div>
+       <div class="chart-wrap">${lineChart([{pts:pts.map(p=>({v:p.totReps})),color:'var(--accent)',area:true}],{h:76,l:24})}</div>
+       <div class="divider"></div>
+       <div class="kv"><span class="k">Latest</span><span class="v">${last.sets} sets · ${last.totReps} total reps${last.rpe?' · RPE '+rnd(last.rpe,1):''}</span></div>
+       ${pts.length>1?`<div class="kv"><span class="k">Change since first logged</span>
+         <span class="v ${chg>0?'up':chg<0?'down':'flat'}">${chg>0?'+':''}${chg} reps</span></div>`:''}
+       <div class="kv"><span class="k">Best single set</span><span class="v">${Math.max(...pts.map(p=>p.best))} reps</span></div>
+       <div class="note ${chg>0?'acc':chg<0?'warn':''}" style="font-size:11.5px">
+         ${chg>0?'Progressing — keep adding reps until you reach the top of the range, then move to the harder variation.'
+          :chg<0?'Output has fallen. Check recovery and sleep before assuming you need to train harder — dropping performance is usually a fatigue signal, not a motivation one.'
+          :'Holding steady. If recovery is good, add a rep per set. If recovery is poor, maintaining is the correct outcome.'}</div>
+     </div>`;}).join('')}`;
+}
+
+/* ------------------------------------------------------------ TESTS */
+function paneTests(c){
+  const byT={}; DB.tests.forEach(t=>{ byT[t.testId]=byT[t.testId]||[]; byT[t.testId].push(t); });
+  Object.values(byT).forEach(a=>a.sort((x,y)=>x.date<y.date?-1:1));
+  c.innerHTML=`
+   <div class="note acc" style="margin-bottom:14px">Retest at the end of every 8-week block, on a <b>green</b> day, warmed up, and ideally at the same time of day. Testing on a tired day tells you about your fatigue, not your fitness.</div>
+   <button class="btn primary block" id="tAdd" style="margin-bottom:14px">${svg('plus')} Record a test result</button>
+   ${TESTS.map(T=>{
+     const h=byT[T.id]||[];
+     const last=h[h.length-1], first=h[0];
+     const chg = h.length>1 ? last.value-first.value : null;
+     const better = chg==null?null : (T.dir==='up'? chg>0 : chg<0);
+     return `<div class="card tight">
+       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+         <div style="flex:1"><div style="font-size:14.5px;font-weight:750">${esc(T.name)}</div>
+           <div style="font-size:11.5px;color:var(--text-3);margin-top:3px">${esc(T.cat)} · ${esc(T.how)}</div></div>
+         <div style="text-align:right"><div style="font-size:20px;font-weight:850;letter-spacing:-.6px;color:${last?'var(--accent)':'var(--text-3)'}" class="num">${last?last.value:'—'}</div>
+           <div style="font-size:10px;color:var(--text-3);font-weight:700">${esc(T.unit)}</div></div>
+       </div>
+       ${h.length>1?`<div class="chart-wrap" style="margin-top:9px">${lineChart([{pts:h.map(x=>({v:x.value})),color:better?'var(--green)':'var(--orange)',area:true}],{h:60,l:24,dp:1})}</div>
+         <div class="kv"><span class="k">Change from first test</span><span class="v ${better?'up':'down'}">${chg>0?'+':''}${rnd(chg,1)} ${esc(T.unit)}</span></div>`:''}
+       ${h.length?`<div class="hint" style="margin-top:6px">${h.length} result${h.length>1?'s':''} · last ${fmtDate(last.date)}</div>`:''}
+     </div>`;}).join('')}`;
+  $('#tAdd').onclick=()=>{
+    openSheet('Record a test',`
+      <div class="field"><label>Test</label><select class="inp" id="tSel">
+        ${TESTS.map(t=>`<option value="${t.id}">${esc(t.name)} (${esc(t.unit)})</option>`).join('')}</select></div>
+      <div class="field"><label>Date</label><input class="inp" type="date" id="tDate" value="${todayISO()}"></div>
+      <div class="field"><label>Result</label><input class="inp num" type="number" inputmode="decimal" step="0.1" id="tVal" placeholder="value"></div>
+      <div class="field"><label>Notes</label><input class="inp" id="tNote" placeholder="conditions, which side, how you felt"></div>
+      <div class="note" id="tHow"></div>
+    `,`<button class="btn primary big block" id="tSave">Save result</button>`);
+    const upd=()=>{ const T=TESTS.find(x=>x.id===$('#tSel').value); $('#tHow').innerHTML='<b>How to test:</b> '+esc(T.how); };
+    $('#tSel').onchange=upd; upd();
+    $('#tSave').onclick=()=>{
+      const v=parseFloat($('#tVal').value); if(isNaN(v)){toast('Enter a value','err');return;}
+      DB.tests.push({id:'t'+uid(),testId:$('#tSel').value,date:$('#tDate').value,value:v,notes:$('#tNote').value.trim()});
+      save(true); closeSheet(); toast('Result saved','ok'); setTimeout(()=>render(),240);
+    };
+  };
+}
+
+/* --------------------------------------------------------- PHYSIQUE */
+function panePhysique(c){
+  const P=DB.physique.slice().sort((a,b)=>a.date<b.date?-1:1);
+  const F=[['weight','Weight','kg'],['waist','Waist','cm'],['chest','Chest','cm'],
+           ['shoulders','Shoulders','cm'],['arm','Arm (flexed)','cm'],['thigh','Thigh','cm']];
+  c.innerHTML=`
+   <div class="note warn" style="margin-bottom:14px">WHOOP cannot measure body composition. Physique progress is tracked here from measurements and photos you record yourself — kept completely separate from the performance metrics so neither one distorts the other.</div>
+   <button class="btn primary block" id="phAdd" style="margin-bottom:14px">${svg('plus')} Add measurements</button>
+   ${P.length? F.map(([k,l,u])=>{
+     const pts=P.filter(p=>p[k]!=null);
+     if(pts.length<1) return '';
+     const last=pts[pts.length-1], first=pts[0];
+     const chg=pts.length>1?last[k]-first[k]:null;
+     return `<div class="card tight">
+       <div style="display:flex;justify-content:space-between;align-items:center">
+         <div><div style="font-size:14px;font-weight:750">${l}</div>
+         <div style="font-size:11px;color:var(--text-3)">${pts.length} entries</div></div>
+         <div style="text-align:right"><span class="num" style="font-size:20px;font-weight:850;letter-spacing:-.5px">${last[k]}</span>
+         <span style="font-size:11px;color:var(--text-3);font-weight:700"> ${u}</span>
+         ${chg!=null?`<div style="font-size:11px;font-weight:700" class="${chg>0?'up':'down'}">${chg>0?'+':''}${rnd(chg,1)} ${u}</div>`:''}</div>
+       </div>
+       ${pts.length>1?`<div class="chart-wrap" style="margin-top:8px">${lineChart([{pts:pts.map(p=>({v:p[k]})),color:'var(--violet)',area:true}],{h:56,l:26,dp:1})}</div>`:''}
+     </div>`;}).join('')
+    :'<div class="empty"><div class="ei">'+svg('ruler')+'</div><h4>No measurements yet</h4><p>Record a baseline now and repeat every 4 weeks, same time of day, same conditions.</p></div>'}
+   <div class="card">
+     <div class="card-t" style="margin-bottom:10px">What drives the physique goal</div>
+     <div class="kv"><span class="k">Shoulder width / V-taper</span><span class="v">Lateral Raise · Pike Push-Up · Band Lat Pulldown</span></div>
+     <div class="kv"><span class="k">Upper back</span><span class="v">Band Row · DB Row · Face Pull</span></div>
+     <div class="kv"><span class="k">Chest definition</span><span class="v">Push-Up progressions · Floor Press</span></div>
+     <div class="kv"><span class="k">Arms</span><span class="v">Curls + Triceps at high reps to failure</span></div>
+     <div class="kv"><span class="k">Posture</span><span class="v">Pull-Apart · Prone Y-T-W · Wall Slides</span></div>
+     ${(DB.profile.gear||[]).indexOf('bb')<0
+       ? `<div class="note acc">With light dumbbells, visible change comes from <b>proximity to failure, slow eccentrics and total weekly sets</b> — not from load. That is why the upper-body sessions prescribe 15–25 reps at RPE 8–9 rather than heavy triples.</div>`
+       : `<div class="note acc">With a barbell available, progressive load is your main driver — add weight before adding reps, and keep the last set 1–2 reps short of failure.</div>`}
+   </div>`;
+  $('#phAdd').onclick=()=>{
+    openSheet('Add measurements',`
+      <div class="field"><label>Date</label><input class="inp" type="date" id="phDate" value="${todayISO()}"></div>
+      <div class="grid2">
+        ${F.map(([k,l,u])=>`<div class="field"><label>${l} (${u})</label>
+          <input class="inp num phF" data-k="${k}" type="number" inputmode="decimal" step="0.1" placeholder="—"></div>`).join('')}
+      </div>
+      <div class="field"><label>Notes</label><textarea class="inp" id="phNote" placeholder="Conditions, time of day, how you look/feel"></textarea></div>
+      <div class="hint">Measure at the same time of day, ideally in the morning before eating, with the same tape tension each time.</div>
+    `,`<button class="btn primary big block" id="phSave">Save</button>`);
+    $('#phSave').onclick=()=>{
+      const rec={id:'p'+uid(),date:$('#phDate').value,notes:$('#phNote').value.trim()};
+      let any=false;
+      $$('.phF').forEach(i=>{ if(i.value!==''){ rec[i.dataset.k]=parseFloat(i.value); any=true; } });
+      if(!any){ toast('Enter at least one measurement','err'); return; }
+      DB.physique.push(rec); save(true); closeSheet(); toast('Saved','ok'); setTimeout(()=>render(),240);
+    };
+  };
+}
+
+/* ------------------------------------------------------------ LINKS */
+/* Cycle observations belong with the other correlations, and carry the same
+   warning: an association in your own data, never a cause. */
+function mcLinksBlock(){
+  if(!mcOn()) return '';
+  const ev=mcEvidence();
+  const rows=MC_PHASES.filter(k=>ev.phases[k].n>0);
+  if(!rows.length) return '';
+  const any=rows.some(k=>ev.phases[k].established);
+  return `<div class="sec-t">Cycle context</div>
+  <div class="card">
+    ${rows.map(k=>{ const e=ev.phases[k];
+      return `<div class="kv"><span class="k">${esc(k.charAt(0).toUpperCase()+k.slice(1))}
+        <span style="color:var(--text-3);font-weight:600">· ${e.n} day${e.n===1?'':'s'}</span></span>
+        <span class="v num" style="color:${e.established?(e.z<0?'var(--orange)':'var(--green)'):'var(--text-3)'}">${
+          e.diff==null?'—':(e.diff>0?'+':'')+e.diff}</span></div>`;}).join('')}
+    <div class="hint" style="margin-top:9px">${any
+      ? 'You have tended to report a measurably different day around the highlighted phase. Baseline treats that as one small input, capped at 5 points of readiness.'
+      : ev.blocked
+        ? 'Nothing here influences a recommendation — '+esc(ev.blocked)+'.'
+        : 'No single phase stands out clearly enough yet to influence a recommendation.'} A correlation in your own logs — not a cause, and not a medical finding.</div>
+  </div>`;
+}
+
+/* How the last few sessions felt, which is the one thing the user tells the
+   app about outcomes rather than inputs. */
+function feedbackBlock(){
+  const rated=(DB.sessions||[]).filter(s=>s.done&&s.feedback);
+  if(!rated.length) return '';
+  const fb=feedbackBias();
+  const tally={};
+  FEEDBACK.forEach(f=>tally[f.id]=0);
+  rated.forEach(s=>{ if(tally[s.feedback]!=null) tally[s.feedback]++; });
+  return `<div class="sec-t">How sessions have felt</div>
+  <div class="card">
+    ${FEEDBACK.map(f=>`<div class="kv"><span class="k">${esc(f.name)}</span>
+      <span class="v num">${tally[f.id]}</span></div>`).join('')}
+    <div class="hint" style="margin-top:9px">${fb.line
+      ? fb.line+' It moves the version of the session by one step and nothing else — never the readiness score, and never past a pain cap.'
+      : 'Rate three sessions the same way and Baseline will start adjusting how much you get. Right now it is not.'}</div>
+  </div>`;
+}
+
+/* How the last few sessions felt, which is the one thing the user tells the
+   app about outcomes rather than inputs. */
+function feedbackBlock(){
+  const rated=(DB.sessions||[]).filter(s=>s.done&&s.feedback);
+  if(!rated.length) return '';
+  const fb=feedbackBias();
+  const tally={};
+  FEEDBACK.forEach(f=>tally[f.id]=0);
+  rated.forEach(s=>{ if(tally[s.feedback]!=null) tally[s.feedback]++; });
+  return `<div class="sec-t">How sessions have felt</div>
+  <div class="card">
+    ${FEEDBACK.map(f=>`<div class="kv"><span class="k">${esc(f.name)}</span>
+      <span class="v num">${tally[f.id]}</span></div>`).join('')}
+    <div class="hint" style="margin-top:9px">${fb.line
+      ? fb.line+' It moves the version of the session by one step and nothing else — never the readiness score, and never past a pain cap.'
+      : 'Rate three sessions the same way and Baseline will start adjusting how much you get. Right now it is not.'}</div>
+  </div>`;
+}
+
+function paneLinks(c){
+  const cors=correlations();
+  const rev=adviceReview();
+  c.innerHTML=`
+   <div class="card" style="margin-bottom:14px;border-left:3px solid var(--violet)">
+     <div class="card-h"><div class="card-t accent">Is this engine's advice any good?</div>
+       ${rev.n?`<span class="tag">${rev.n} DAY${rev.n===1?'':'S'}</span>`:''}</div>
+     ${rev.n===0
+       ? `<div class="hint">Nothing to judge yet. Each day's call is recorded before you act on it; once there are enough of both, this compares the mornings after.</div>`
+       : `<div class="kv"><span class="k">You followed the recommendation</span><span class="v">${rev.adherence}% of ${rev.n} days</span></div>
+          ${rev.ready
+            ? `<div class="kv"><span class="k">Average ${esc(rev.label)} when you followed it</span><span class="v">${rnd(rev.keptAvg,1)}</span></div>
+               <div class="kv"><span class="k">…and when you did not</span><span class="v">${rnd(rev.ignoredAvg,1)}</span></div>
+               <div class="kv"><span class="k">Difference</span><span class="v" style="color:${rev.diff>1?'var(--green)':rev.diff<-1?'var(--red)':'var(--text-2)'}">${rev.diff>0?'+':''}${rev.diff}</span></div>
+               <div class="note ${Math.abs(rev.diff)<=1?'':'acc'}">${
+                 Math.abs(rev.diff)<=1
+                   ? 'No meaningful difference so far. That is a real result: on your data this engine is not yet demonstrably better than your own judgement.'
+                   : rev.diff>0
+                     ? `Days you followed it were followed by <b>${rev.diff}</b> better ${esc(rev.label)} on average. Suggestive, not proof — you probably also felt better on the days you agreed with it.`
+                     : `Days you followed it came out <b>${Math.abs(rev.diff)}</b> worse on average. Worth treating the recommendation more sceptically, and worth telling me so the weights can be looked at.`}</div>`
+            : `<div class="hint" style="margin-top:8px">Not enough yet to compare: ${rev.nKept} day${rev.nKept===1?'':'s'} following it and ${rev.nIgnored} not, against a minimum of ${rev.min} each. Until both sides reach that, any difference would be noise and nothing is claimed.</div>`}
+          ${rev.restReady?`<div class="note">When it specifically said <b>rest or mobility</b>: ${rnd(rev.restKeptAvg,1)} when you took it, ${rnd(rev.restIgnoredAvg,1)} when you trained anyway (${rev.restDiff>0?'+':''}${rev.restDiff}).</div>`:''}`}
+   </div>
+   <div class="note red" style="margin-bottom:14px"><b>Correlations, not causes.</b> Two things moving together does not mean one caused the other. Treat each line as a hypothesis, not a finding.</div>
+   ${cors.length? cors.map(x=>{
+     const a=Math.abs(x.r), cls=a<0.2?'':a<0.35?'c':a<0.5?'o':'a';
+     return `<div class="card tight">
+       <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+         <div style="flex:1"><div style="font-size:13.5px;font-weight:700">${esc(x.label)}</div>
+           <div style="font-size:11px;color:var(--text-3);margin-top:3px">${rLabel(x.r)} ${x.r>0?'positive':'negative'} relationship · n=${x.n} days</div></div>
+         <div style="text-align:right"><span class="num" style="font-size:18px;font-weight:850;color:var(--${a>=0.35?'accent':'text-2'})">${x.r>0?'+':''}${rnd(x.r,2)}</span></div>
+       </div>
+       <div class="bar ${cls}" style="margin-top:8px"><i style="width:${clamp(a*100,3,100)}%"></i></div>
+     </div>`;}).join('')
+    :`<div class="empty"><div class="ei">${svg('pulse')}</div><h4>Not enough data yet</h4><p>${usesDevice()
+        ? `Import your ${esc(SRC_NAME())} history, or log a few weeks of daily numbers, and log 2–3 weeks of activity — then relationships appear here.`
+        : 'These relationships are drawn between a wearable\'s overnight metrics and what you did the day before. Without a wearable there is nothing to correlate, so this stays empty rather than showing you something invented.'}</p></div>`}
+   ${cors.length?`<div class="card">
+     <div class="card-t" style="margin-bottom:9px">How to read these</div>
+     <div class="kv"><span class="k">|r| below 0.2</span><span class="v">Negligible — ignore</span></div>
+     <div class="kv"><span class="k">0.2 – 0.35</span><span class="v">Weak — possible, unproven</span></div>
+     <div class="kv"><span class="k">0.35 – 0.5</span><span class="v">Moderate — worth testing</span></div>
+     <div class="kv"><span class="k">Above 0.5</span><span class="v">Strong — still not causal</span></div>
+     <div class="hint" style="margin-top:9px">Test enough relationships and some look meaningful by chance. A single strong one in a few months of data usually is.</div>
+   </div>`:''}`;
+  /* Two more observation blocks belong here, with the same caveat as the
+     correlations above: what the user told us about outcomes, and the cycle
+     context if they track it. mcLinksBlock() was written in stage 6 and never
+     called - the cycle observations in Patterns were dead code. */
+  c.innerHTML += feedbackBlock() + mcLinksBlock();
+}
