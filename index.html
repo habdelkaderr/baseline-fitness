@@ -850,6 +850,52 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
   font-weight:650;line-height:1.35}
 .wrest .btn{margin-bottom:0}
 
+/* ---------- A session on a clock ---------- */
+.wnow.live{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
+.clock{display:flex;flex-direction:column;align-items:center;gap:10px;
+  padding:16px 12px;border-radius:12px;margin-bottom:12px;
+  background:var(--surface-2);border:1px solid var(--border)}
+.wnow.live .clock{background:var(--accent-wash);border-color:var(--accent-line)}
+.clock .cl{font-size:9.5px;font-weight:800;letter-spacing:.6px;
+  text-transform:uppercase;color:var(--text-3)}
+.clock .ct{font-size:52px;font-weight:850;letter-spacing:-2.4px;line-height:1;
+  font-variant-numeric:tabular-nums;color:var(--text)}
+.wnow.live .clock .ct{color:var(--accent)}
+.cbar{width:100%;height:6px;border-radius:99px;background:var(--surface-3);overflow:hidden}
+.cbar i{display:block;height:100%;background:var(--accent);border-radius:99px;
+  transition:width .4s linear}
+.cmeta{display:flex;justify-content:space-between;width:100%;gap:12px;
+  font-size:11.5px;font-weight:650;color:var(--text-3)}
+.cmeta b{color:var(--accent);font-weight:850;font-size:13px}
+.clock .btn-row,.clock .btn{width:100%;margin-bottom:0}
+.laps{margin-bottom:12px;border-radius:10px;overflow:hidden;
+  border:1px solid var(--border-soft)}
+.lap{display:flex;justify-content:space-between;padding:8px 12px;
+  font-size:12.5px;font-weight:650;border-bottom:1px solid var(--border-soft)}
+.lap:last-child{border-bottom:none}
+.lap b{font-variant-numeric:tabular-nums}
+
+/* ---------- This effort against the last one ---------- */
+.cmpbox{border:1px solid var(--border);border-radius:var(--r-md);
+  overflow:hidden;margin-bottom:var(--sp-2)}
+.cmp{display:flex;align-items:baseline;gap:10px;padding:11px 13px;
+  border-bottom:1px solid var(--border-soft);font-size:13px}
+.cmp:last-child{border-bottom:none}
+.cmp .cl{flex:0 0 74px;color:var(--text-3);font-weight:650;font-size:12px}
+.cmp .cn{font-weight:800;font-variant-numeric:tabular-nums;min-width:0}
+.cmp .cw{flex:1;color:var(--text-3);font-size:11.5px;font-weight:600;
+  text-align:right;overflow-wrap:anywhere}
+.cmp .cd{flex:0 0 auto;font-size:11.5px;font-weight:800;
+  padding:2px 8px;border-radius:99px;white-space:nowrap}
+.cmp .cd.up{color:var(--green);background:var(--green-wash)}
+.cmp .cd.down{color:var(--orange);background:var(--orange-wash)}
+.cmp .cd.flat{color:var(--text-3);background:var(--surface-2)}
+
+/* a planned-versus-actual row on the finish screen, which is a way back in */
+.fin-ex{cursor:pointer}
+.fin-ex:active{background:var(--surface-2)}
+.fin-x{font-size:11px;font-weight:650;color:var(--text-3);margin-top:7px}
+
 /* ---------- A hold: a countdown, not a rep count ---------- */
 .hold{
   display:flex;flex-direction:column;align-items:center;gap:9px;
@@ -1121,6 +1167,16 @@ const DOW_FULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','S
 const fmtDate  = iso =>{ const d=new Date(iso+'T12:00:00'); return DOW_NAME[d.getDay()]+' '+d.getDate()+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]; };
 const fmtMin   = m =>{ if(m==null||isNaN(m))return '—'; const h=Math.floor(m/60), r=Math.round(m%60); return h? h+'h '+String(r).padStart(2,'0')+'m' : r+'m'; };
 const mmss     = s =>{ s=Math.max(0,Math.round(s)); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };
+/* A session clock. mmss is fine for a rest timer but a two-hour bike ride
+   would read as '127:14', so this rolls over into hours. */
+const hms      = s =>{ s=Math.max(0,Math.round(s));
+  const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), x=s%60;
+  return h? h+':'+String(m).padStart(2,'0')+':'+String(x).padStart(2,'0')
+          : m+':'+String(x).padStart(2,'0'); };
+/* minutes per kilometre as 5:42 */
+const paceStr  = p =>{ if(p==null||!isFinite(p)||p<=0) return '—';
+  const m=Math.floor(p), s=Math.round((p-m)*60);
+  return (s===60? (m+1)+':00' : m+':'+String(s).padStart(2,'0'))+' /km'; };
 const daysBetween=(a,b)=> Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00'))/864e5);
 function pearson(xs,ys){
   const p=[]; for(let i=0;i<xs.length;i++) if(xs[i]!=null&&ys[i]!=null&&!isNaN(xs[i])&&!isNaN(ys[i])) p.push([xs[i],ys[i]]);
@@ -3907,6 +3963,126 @@ function nextTarget(en, date){
   return Object.assign(out,{kind:'reps', reps:String(lowReps+1),
     line:'No load to add on this one, so the target is '+(lowReps+1)
       +' reps — one past last time.'});
+}
+
+
+/* =========================================================================
+   A BLOCK MEASURED IN TIME
+   ------------------------------------------------------------------------
+   Running, riding and playing a sport are measured in minutes, and the block
+   tables already prescribe them that way. Which blocks those are is derived
+   from the exercise's own category and its prescription, so nothing has to be
+   maintained by hand and the awkward cases fall out correctly:
+
+     cd01 '25–45 min'              -> a clock, 35 minutes
+     cd03 '20s hard / 40s easy' ×8 -> a clock, 8 minutes
+     cd04 '10–15s uphill'       ×6 -> NOT a clock; hill sprints are reps
+     lx18 '20'                     -> NOT a clock; calf raises are reps
+   ====================================================================== */
+function cardioActOf(ex){
+  if(!ex || ex.cat!=='cardio') return null;
+  const eq=String(ex.equip||'').toUpperCase();
+  const nm=String(ex.name||'');
+  if(/WALK/i.test(nm)) return 'walking';
+  if(/BIKE|CYCL|SPIN/.test(eq) || /Bike|Spin|Cycl/i.test(nm)) return 'cycling';
+  if(/ROW/.test(eq)) return 'other';
+  return 'running';
+}
+/* What the prescription actually comes to, in minutes, or null when it is not
+   a span of time at all. */
+function cardioMinutes(b){
+  const txt=String((b&&b.reps)||'');
+  const sets=+((b&&b.sets))||1;
+  if(!txt) return null;
+
+  /* '2 × 8 min, 3 min easy between' — the repeats are inside the text */
+  let m=txt.match(/([0-9]+)\s*×\s*([0-9]+)\s*min/i);
+  if(m){
+    const n=+m[1], per=+m[2];
+    const gap=txt.match(/,\s*([0-9]+)\s*min/i);
+    return n*per + (gap? (+gap[1])*Math.max(0,n-1) : 0);
+  }
+  /* an interval structure: '20s hard / 40s easy', '1 min hard / 2 min easy'.
+     One `sets` is one work-plus-recovery cycle. */
+  if(/hard|easy|\bon\b|\boff\b/i.test(txt)){
+    const iv=txt.match(/([0-9]+)\s*(s|sec|min)[^0-9]*?([0-9]+)\s*(s|sec|min)/i);
+    if(iv){
+      const toS=(v,u)=>/min/i.test(u)? v*60 : v;
+      const per=toS(+iv[1],iv[2])+toS(+iv[3],iv[4]);
+      return Math.max(1, Math.round(per*sets/60));
+    }
+  }
+  /* '25–45 min', '18–25 min at tempo', '30 min' */
+  m=txt.match(/([0-9]+)\s*(?:[–-]\s*([0-9]+)\s*)?min/i);
+  if(m){ const lo=+m[1], hi=m[2]?+m[2]:+m[1]; return Math.round((lo+hi)/2); }
+  return null;
+}
+/* the two together: the clock spec for a block, or null */
+function cardioSpec(b, ex){
+  const act=cardioActOf(ex);
+  if(!act) return null;
+  const min=cardioMinutes(b && b.reps!=null ? b : ex);
+  if(!min) return null;
+  return {act:act, targetMin:min};
+}
+
+/* How hard, as a number the strain curve understands. The activity form
+   records a word; the block tables record an RPE; both end up here. */
+const INT_RPE={Easy:4, Moderate:6, Hard:8, Maximal:9};
+function effortRpe(intensity, plannedRpe){
+  if(intensity && INT_RPE[intensity]!=null) return INT_RPE[intensity];
+  const m=String(plannedRpe==null?'':plannedRpe).match(/([0-9]+)/);
+  return m? clamp(+m[1],1,10) : 6;
+}
+/* Strain for an effort in progress, on the same 0–21 curve every saved
+   activity uses, so the number ticking up during a run and the number in the
+   history mean the same thing. */
+function liveStrain(type, min, rpe){
+  return activityLoad({type:type, min:min, rpe:rpe});
+}
+
+/* =========================================================================
+   THE LAST COMPARABLE EFFORT
+   What "comparable" means depends on where the effort came from: a planned
+   session compares with the last time you did that same session, a logged
+   activity with the last one of the same kind.
+   ====================================================================== */
+function lastEffort(o){
+  const date=o.date||todayISO();
+  let best=null;
+  if(o.workoutId){
+    (DB.sessions||[]).filter(s=>s.done && s.id!==o.excludeId
+        && s.workoutId===o.workoutId && s.date<=date)
+      .forEach(s=>{ if(!best||s.date>best.date) best={
+        date:s.date, min:s.durationMin||0, dist:s.distKm||null,
+        strain:sessionLoad(s).load, name:s.workoutName||''}; });
+  }
+  if(!best && o.type){
+    (DB.activities||[]).filter(a=>a.type===o.type && a.id!==o.excludeId && a.date<=date)
+      .forEach(a=>{ if(!best||a.date>best.date) best={
+        date:a.date, min:a.min||0, dist:a.dist||null,
+        strain:activityLoad(a), name:(ACT_TYPES[a.type]||{}).name||''}; });
+  }
+  if(best) best.pace=(best.dist&&best.min)? best.min/best.dist : null;
+  return best;
+}
+/* One row of the comparison. `lowerIsBetter` exists for pace, where a smaller
+   number is the good news and an arrow pointing down must not read as a loss. */
+function cmpRow(label, now, was, unit, dp, lowerIsBetter, fmt){
+  const f=fmt||(v=>v==null?'—':rnd(v,dp||0)+(unit?' '+unit:''));
+  if(now==null) return '';
+  let delta='';
+  if(was!=null && was!==0){
+    const d=now-was;
+    const good = lowerIsBetter ? d<0 : d>0;
+    const same = Math.abs(d) < (dp? Math.pow(10,-dp)/2 : 0.5);
+    delta = same ? `<span class="cd flat">no change</span>`
+      : `<span class="cd ${good?'up':'down'}">${d>0?'+':'−'}${f(Math.abs(d))}</span>`;
+  }
+  return `<div class="cmp"><span class="cl">${esc(label)}</span>
+    <span class="cn">${esc(String(f(now)))}</span>
+    <span class="cw">${was==null?'':'was '+esc(String(f(was)))}</span>
+    ${delta}</div>`;
 }
 
 /* the tier implied by what is ticked — used only for labelling */
@@ -8349,9 +8525,13 @@ function viewTennis(v){
      go:()=>openPane(SPORT_LABEL(), null, paneTennis)} : null
   ];
   v.innerHTML=
-    `<button class="btn primary big block" id="aAdd">${svg('plus')} Log an activity</button>
+    `<button class="btn primary big block" id="aStart">${svg('play')} Start now</button>
+     <button class="btn ghost block" id="aAdd">${svg('plus')} Log something already done</button>
      <div class="sec-t">Recent</div><div id="aBody"></div>
      <div class="sec-t">More</div>${navRows('aRows',rows)}`;
+  /* Playing tennis used to be something you could only tell the app about
+     afterwards, from memory. */
+  $('#aStart').onclick=()=>startActivitySheet();
   $('#aAdd').onclick=()=>activitySheet(null,todayISO());
   paneTimeline($('#aBody'));
   wireRows('aRows',rows);
@@ -10312,6 +10492,8 @@ function startWorkout(wid,variant,date,rec){
         /* a hold is timed, not counted: derived here once so nothing
            downstream has to parse the prescription again */
         timed:setSecs(b.reps||e.reps),
+        /* and a run or a ride is a clock, not a set list */
+        cardio:cardioSpec(b, e), run:null,
         skipped:false,
         sets:Array.from({length:n},()=>({reps:'',weight:'',rpe:'',done:false})) };})
   };
@@ -10353,6 +10535,7 @@ function primeSets(en){
 }
 function exitWM(discard){
   const fin=()=>{ cancelAuto(); stopRest(); clearHold();
+                  clearInterval(cardTimer); cardTimer=null;
                   $('#wmode').classList.remove('on'); document.body.style.overflow='';
                   W=null; render(); };
   if(discard){ try{ Store.pref('live',null); }catch(e){} return fin(); }
@@ -10410,32 +10593,62 @@ function resumeWorkout(){
 
 /* ---- finishing an exercise moves you on by itself ----
    Ticking the last set used to leave you on a screen with nothing left to do
-   and a button that said "Skip to next". */
-let WMNEXT=null;
-function cancelAuto(){ if(WMNEXT){ clearTimeout(WMNEXT); WMNEXT=null; } }
+   and a button that said "Skip to next".
+
+   The first version waited 1.6 seconds silently, which turned out to be long
+   enough to look finished and short enough to beat a thumb: reaching for the
+   undo chip on the set you had just logged meant tapping a screen that had
+   already moved on. Four seconds, counted out loud on screen, and cancelled
+   by any touch or scroll at all - reaching for undo IS the signal that you
+   are not done with this screen. */
+const AUTO_MS=4000;
+let WMNEXT=null, WMNEXT_AT=0, WMTICK=null;
+function cancelAuto(){
+  if(WMNEXT){ clearTimeout(WMNEXT); WMNEXT=null; }
+  if(WMTICK){ clearInterval(WMTICK); WMTICK=null; }
+  WMNEXT_AT=0;
+}
 function autoPending(){ return WMNEXT!==null; }
+function autoLeft(){ return WMNEXT_AT? Math.max(0,Math.ceil((WMNEXT_AT-Date.now())/1000)) : 0; }
 function armAuto(i){
   cancelAuto();
+  WMNEXT_AT=Date.now()+AUTO_MS;
+  WMTICK=setInterval(()=>{ const el=$('#wmCount'); if(el) el.textContent=autoLeft(); },250);
   WMNEXT=setTimeout(()=>{
-    WMNEXT=null;
+    WMNEXT=null; cancelAuto();
     if(!W || W.step!==i) return;
     const en=W.entries[i];
     if(!en || !en.sets.length || !en.sets.every(s=>s.done)) return;
     nextStep();
-  },1600);
+  },AUTO_MS);
 }
 
 /* ---- the plan, in words ----
    "RPE 7 · rest 60s · tempo 2-0-2-1" is the plan written for a coach. The
    exact figures are still there, one tap away under More. */
-function effortWords(rpe, timed){
+/* `kind` is 'hold' for something held, 'cardio' for something continuous, and
+   anything else for something counted. `true` still means 'hold'. */
+function effortWords(rpe, kind){
   const m=String(rpe==null?'':rpe).match(/(\d+)/);
   if(!m) return '';
   const v=+m[1];
+  const k = kind===true ? 'hold' : (kind||'reps');
+  /* Continuous work has no reps and no end to hold out for, so the scale is
+     the talk test - the same cue the block notes for these sessions already
+     give in prose. */
+  if(k==='cardio'){
+    if(v<=4) return 'easy — you could hold a full conversation';
+    if(v===5) return 'steady — talking is comfortable';
+    if(v===6) return 'steady — you can talk, but in short sentences';
+    if(v===7) return 'hard — a few words at a time';
+    if(v===8) return 'hard — you would not want to talk';
+    if(v===9) return 'very hard — close to your limit';
+    return 'flat out';
+  }
   /* A hold has no reps to have left in reserve, and "reps in reserve" is the
      very notation this line exists to replace. Same scale, the only unit a
      hold has: how much longer you could have held it. */
-  if(timed){
+  if(k==='hold'){
     if(v<=5) return 'comfortable — you could hold it a good deal longer';
     if(v===6) return 'working, with a fair bit left';
     if(v===7) return 'hard — a few seconds more in you';
@@ -10480,13 +10693,16 @@ function drawWM(){
     <div style="flex:1;text-align:center">
       <div style="font-size:12.5px;font-weight:750;letter-spacing:-.1px">${esc(W.workoutName)}</div>
       <div style="font-size:10.5px;color:var(--text-3);font-weight:650;margin-top:1px">
-        ${esc(VARIANT_NAME[W.variant]||'Full session')} · ${i<0?'warm-up':`exercise ${i+1}/${total}`} · ${elapsed} min</div>
+        ${W.kind==='activity'
+          ? esc(W.intensity||'In progress')
+          : esc(VARIANT_NAME[W.variant]||'Full session')+' · '+(i<0?'warm-up':`exercise ${i+1}/${total}`)} · ${elapsed} min</div>
     </div>
     <div class="icon-btn" style="font-size:11px;font-weight:800;color:var(--accent)">${doneSets}/${allSets}</div>`;
   $('#wmX').onclick=()=>exitWM();
 
+  if(i<0 && W.kind==='activity'){ W.step=0; return drawWM(); }
   if(i<0) return drawWarmup();
-  if(i>=total) return drawFinish();
+  if(i>=total) return W.saveAs==='activity' ? drawActivityFinish() : drawFinish();
   drawExercise(W.entries[i],i,total);
   if(_body && _keep) _body.scrollTop=_keep;
 }
@@ -10540,6 +10756,8 @@ function drawWarmup(){
 }
 
 function drawExercise(en,i,total){
+  /* a run, a ride or a game is a clock, not a list of sets */
+  if(en.cardio) return drawCardioStep(en,i,total);
   const e=exOf(en.exerciseId);
   /* a kg field only where kilograms mean something - plus the escape hatch
      for anyone who hangs a plate off a weighted pull-up */
@@ -10604,7 +10822,8 @@ function drawExercise(en,i,total){
   const cardHTML = allDone
     ? `<div class="wnow fin" id="wmDoneN">
          <div class="wnow-t">${esc(en.name)} done<span>${nSets} set${nSets===1?'':'s'} logged</span></div>
-         <p id="wmNextP">${esc(nextLabel.replace(/^Next: /,'Moving on to '))}…</p>
+         <p id="wmNextP">${esc(nextLabel.replace(/^Next: /,'Moving on to '))}
+           in <b id="wmCount">${autoLeft()||Math.round(AUTO_MS/1000)}</b>s — tap anywhere to stay.</p>
          <button class="btn ghost block" id="wmStay">Stay on this exercise</button>
        </div>`
     : `<div class="wnow">
@@ -10751,6 +10970,24 @@ function drawExercise(en,i,total){
     const p=$('#wmDoneN p'); if(p) p.textContent='Staying here. Add a set, rate the effort, or press Next exercise when you are ready.';
     stay.remove();
   };
+  /* Reaching for the undo chip is itself the signal that you are not finished
+     with this screen, so ANY touch or scroll cancels the automatic move.
+     Note what this must NOT do: removing the Stay button here would swallow
+     the click that follows the pointerdown on it. */
+  if(allDone && autoPending()){
+    const body=$('#wmBody');
+    const halt=()=>{
+      if(!autoPending()) return;
+      cancelAuto();
+      const p=$('#wmNextP');
+      if(p) p.textContent='Staying here — nothing will move until you say so.';
+    };
+    if(body){
+      body.addEventListener('pointerdown',halt,{once:true});
+      body.addEventListener('scroll',halt,{once:true});
+      body.addEventListener('keydown',halt,{once:true});
+    }
+  }
 
   $('#wmAddSet').onclick=()=>{
     cancelAuto();
@@ -10893,7 +11130,9 @@ function stepSize(k,cur){
   if(dbMax && cur>=Math.min(20, dbMax*0.5)) return 2;
   return cur>=20 ? 2.5 : 1;
 }
-function nextStep(){ cancelAuto(); stopRest(); clearHold(); W.step++; drawWM(); $('#wmBody').scrollTop=0; }
+function nextStep(){ cancelAuto(); stopRest(); clearHold();
+  clearInterval(cardTimer); cardTimer=null;
+  W.step++; drawWM(); $('#wmBody').scrollTop=0; }
 function parseRest(s){
   if(!s)return null;
   const m=String(s).match(/(\d+)\s*(s|min|m)?/i);
@@ -10924,13 +11163,17 @@ function drawFinish(){
       ${statTile('Avg RPE',avgRpe,'','o')}
     </div>
     <div class="sec-t">Planned vs actual</div>
-    ${W.entries.map(en=>{
+    ${W.entries.map((en,n)=>{
       const done=en.sets.filter(s=>s.done);
-      return `<div class="card tight">
+      /* tappable: noticing a mis-logged set on this screen used to mean
+         living with it, because undo only existed on the exercise itself */
+      return `<div class="card tight fin-ex" data-back="${n}" role="button" tabindex="0"
+                   aria-label="Back to ${esc(en.name)}">
         <div style="font-size:14px;font-weight:750;margin-bottom:6px">${esc(en.name)}
           ${en.skipped?'<span class="tag r">SKIPPED</span>':done.length<en.plannedSets?'<span class="tag o">PARTIAL</span>':'<span class="tag g">DONE</span>'}</div>
         <div class="kv"><span class="k">Planned</span><span class="v">${en.plannedSets} × ${esc(en.plannedReps)}</span></div>
         <div class="kv"><span class="k">Actual</span><span class="v">${done.length?done.map(s=>s.reps+(s.weight?'×'+s.weight+'kg':'')).join(' · '):'—'}</span></div>
+        <div class="fin-x">Tap to go back and change it</div>
       </div>`;}).join('')}
     <div class="field" style="margin-top:16px"><label>Session RPE — how hard overall?</label>
       <div class="slider-row" style="margin-bottom:8px">
@@ -10945,9 +11188,27 @@ function drawFinish(){
         you get next time.</div></div>
     <div class="field"><label>Session notes</label>
       <textarea class="inp" id="fNotes" placeholder="Anything to remember for next time?"></textarea></div>
-    ${skipped.length?`<div class="note warn">${skipped.length} exercise${skipped.length>1?'s':''} skipped. That is recorded rather than hidden — it is useful signal, not a failure.</div>`:''}`;
+    ${skipped.length?`<div class="note warn">${skipped.length} exercise${skipped.length>1?'s':''} skipped. That is recorded rather than hidden — it is useful signal, not a failure.</div>`:''}
+    ${(()=>{
+      /* a run or a ride gets the same comparison a logged activity gets:
+         time, distance, pace and strain against the last one */
+      const cd=W.entries.filter(e=>e.cardio && e.sets.some(s=>s.done));
+      if(!cd.length) return '';
+      const cmin=sum(cd.map(e=>+e.sets.filter(s=>s.done)[0].reps||0));
+      if(!cmin) return '';
+      const act=cd[0].cardio.act;
+      return effortCompare({workoutId:W.workoutId, type:act, date:W.date,
+               excludeId:W.id, min:cmin, dist:null,
+               strain:rnd(liveStrain(act,cmin,cardRpeOf(cd[0])),1)})
+           + weekContext(W.category, cmin);
+    })()}`;
   $('#wmFoot').innerHTML=`<button class="btn primary big block" id="fSave">Save session</button>`;
   bindInputs($('#wmBody'));
+  $$('#wmBody [data-back]').forEach(el=>{
+    const go=()=>{ cancelAuto(); W.step=+el.dataset.back; drawWM(); $('#wmBody').scrollTop=0; };
+    el.onclick=go;
+    el.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); go(); } };
+  });
   $('#fSave').onclick=()=>{
     W.done=true; W.endedAt=Date.now(); W.durationMin=dur; W.setsDone=setsDone; W.volume=rnd(vol,1);
     W.sessionRpe=+$('#fRpe').value; W.notes=$('#fNotes').value.trim();
@@ -10964,6 +11225,389 @@ function drawFinish(){
 }
 function saveLive(){ try{ Store.pref('live',JSON.stringify(W)); }catch(e){} }
 
+
+
+
+/* The end of something you started on a clock rather than from the plan.
+   It saves an ACTIVITY, not a session, because that is what it was: the
+   engine's weekly maths, the load model and the history already understand
+   activities, and inventing a second shape for the same thing would mean
+   teaching all of them a new one. */
+function drawActivityFinish(){
+  clearInterval(cardTimer); cardTimer=null;
+  const en=W.entries[0];
+  const T=ACT_TYPES[W.actType]||ACT_TYPES.other;
+  const mins=Math.max(1, +(en.sets[0].reps)||Math.round(cardElapsedSec(en)/60));
+  const laps=(en.run&&en.run.laps)?en.run.laps.length:0;
+  const rpe=effortRpe(W.intensity,null);
+  const strain=rnd(liveStrain(W.actType, mins, rpe),1);
+
+  $('#wmBody').innerHTML=`
+    <div style="text-align:center;padding:14px 0 6px">
+      <div style="width:64px;height:64px;border-radius:20px;background:var(--accent);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" style="width:32px;height:32px">${ICON.check}</svg></div>
+      <div style="font-size:27px;font-weight:850;letter-spacing:-.9px">${esc(T.name)} done</div>
+      <div style="font-size:13px;color:var(--text-3);margin-top:5px;font-weight:600">${hms(cardElapsedSec(en))} from start to finish</div>
+    </div>
+    <div class="stats c4">
+      ${statTile('Time',mins,'m','a')}
+      ${statTile('Strain',strain,'','o')}
+      ${statTile('Effort','RPE '+rpe,'','c')}
+      ${statTile('Laps',laps||'—','','')}
+    </div>
+    <div class="field"><label>How long was it really?</label>
+      <div class="fine">
+        <input class="inp num" type="number" inputmode="numeric" id="afMin" value="${mins}">
+        <span class="hint" style="margin:0">minutes</span>
+      </div>
+      <div class="hint">Taken from the clock. Change it if it ran on after you stopped.</div>
+    </div>
+    ${T.dist?`<div class="field"><label>How far? <span style="font-weight:600;color:var(--text-3)">optional</span></label>
+      <div class="fine">
+        <input class="inp num" type="number" inputmode="decimal" step="0.1" id="afDist" placeholder="—">
+        <span class="hint" style="margin:0">km</span>
+      </div></div>`:''}
+    <div class="field"><label>How hard was it?</label>
+      <div class="pills" id="afInt">${['Easy','Moderate','Hard','Maximal'].map(f=>
+        `<button data-v="${f}" class="${f===W.intensity?'on':''}">${f}</button>`).join('')}</div>
+    </div>
+    <div id="afCmp"></div>
+    <div class="field"><label>Notes</label>
+      <textarea class="inp" id="afNotes" placeholder="Where you went, how it felt…">${esc(en.note||'')}</textarea></div>`;
+
+  $('#wmFoot').innerHTML=`<button class="btn primary big block" id="afSave">Save it</button>`;
+  bindInputs($('#wmBody'));
+
+  /* the comparison has to follow whatever they correct the numbers to */
+  const paint=()=>{
+    const m=Math.max(1,+($('#afMin')||{}).value||mins);
+    const dEl=$('#afDist');
+    const dist=dEl&&dEl.value!==''? (+dEl.value||null) : null;
+    const iB=$('#afInt button.on');
+    const inten=iB?iB.dataset.v:W.intensity;
+    const st=rnd(liveStrain(W.actType, m, effortRpe(inten,null)),1);
+    $('#afCmp').innerHTML=effortCompare({type:W.actType, date:W.date, excludeId:W.id,
+      min:m, dist:dist, strain:st}) + weekContext(ACT_CAT(W.actType), m);
+  };
+  paint();
+  ['afMin','afDist'].forEach(id=>{ const e=$('#'+id); if(e) e.addEventListener('input',paint); });
+  $$('#afInt button').forEach(b=>b.onclick=()=>{
+    $$('#afInt button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); W.intensity=b.dataset.v; haptic(); paint(); });
+
+  $('#afSave').onclick=()=>{
+    const m=Math.max(1,+($('#afMin')||{}).value||mins);
+    const dEl=$('#afDist');
+    const dist=dEl&&dEl.value!==''? (+dEl.value||null) : null;
+    const iB=$('#afInt button.on');
+    const inten=iB?iB.dataset.v:W.intensity;
+    const rec={
+      id:'a'+uid(), date:W.date, time:W.time||null,
+      type:W.actType, min:m, dist:dist,
+      pace: (dist&&m)? (()=>{ const p=m/dist;
+        return Math.floor(p)+':'+String(Math.round((p%1)*60)).padStart(2,'0'); })() : null,
+      format:null, subtype:null,
+      intensity:inten, rpe:effortRpe(inten,null),
+      planned:false,
+      notes:($('#afNotes')||{}).value.trim()||'',
+      /* what the clock actually saw, kept because it is the honest record of
+         a session that ran from a Start you pressed to a Finish you pressed */
+      startedAt:W.startedAt, endedAt:Date.now(),
+      laps:(en.run&&en.run.laps&&en.run.laps.length)? en.run.laps.slice() : null,
+      at:new Date().toISOString()
+    };
+    DB.activities.push(rec);
+    DB.activities.sort((a,b)=>a.date<b.date?-1:1);
+    try{ Store.pref('live',null); }catch(e){}
+    save(true); SOUND.done(); toast('Saved','ok');
+    exitWM(true);
+  };
+}
+
+/* ---- the session clock ----
+   Start to finish, and both the time and the strain count that whole span.
+   There is deliberately no pause on this clock: a run that you stopped in the
+   middle of is still a run that took as long as it took, and the one control
+   that leaves a session already exists in the header. The live value is
+   written into the set on every tick so that whatever happens - a crash, a
+   flat battery, the browser evicting the tab - the minutes already earned are
+   in `live` and come back with the session. */
+let cardTimer=null;
+function cardEntry(){ return (W && W.entries && W.entries[W.step]) || null; }
+function cardElapsedSec(en){
+  if(!en || !en.run || !en.run.startedAt) return 0;
+  return Math.max(0, ((en.run.endedAt||Date.now()) - en.run.startedAt)/1000);
+}
+function cardRunning(en){ return !!(en && en.run && en.run.startedAt && !en.run.endedAt); }
+function cardRpeOf(en){
+  return effortRpe(W?W.intensity:null, en?en.plannedRpe:null);
+}
+function cardStrain(en){
+  if(!en || !en.cardio) return 0;
+  return rnd(liveStrain(en.cardio.act, cardElapsedSec(en)/60, cardRpeOf(en)), 1);
+}
+let cardSaveN=0;
+function cardTick(){
+  const en=cardEntry();
+  if(!en || !cardRunning(en)){ clearInterval(cardTimer); cardTimer=null; return; }
+  const sec=cardElapsedSec(en), min=sec/60;
+  const t=$('#cardT'); if(t) t.textContent=hms(sec);
+  const s=$('#cardS'); if(s) s.textContent=cardStrain(en).toFixed(1);
+  const bar=$('#cardBar i');
+  if(bar && en.cardio.targetMin) bar.style.width=Math.min(100, min/en.cardio.targetMin*100)+'%';
+  /* the minutes are the record, kept current rather than read off at the end */
+  const mins=Math.max(1, Math.round(min));
+  if(en.sets[0]){ en.sets[0].reps=String(mins); en.sets[0].touched=true; }
+  const mv=$('#cardMin'); if(mv && document.activeElement!==mv) mv.value=String(mins);
+  if(++cardSaveN%20===0) saveLive();
+}
+function cardStartClock(en){
+  en.run={startedAt:Date.now(), endedAt:null, laps:[]};
+  audioCtx(); SOUND.set();
+  clearInterval(cardTimer); cardTimer=setInterval(cardTick,500);
+  saveLive(); drawWM();
+}
+function cardStopClock(en){
+  if(!en || !en.run) return;
+  en.run.endedAt=Date.now();
+  clearInterval(cardTimer); cardTimer=null;
+  const mins=Math.max(1, Math.round(cardElapsedSec(en)/60));
+  if(en.sets[0]){ en.sets[0].reps=String(mins); en.sets[0].touched=true; }
+  SOUND.rest();
+  saveLive();
+}
+function cardLap(en){
+  if(!cardRunning(en)) return;
+  const now=Date.now();
+  const prev=en.run.laps.length? en.run.laps[en.run.laps.length-1] : en.run.startedAt;
+  en.run.laps.push(now);
+  haptic(); SOUND.tick();
+  toast('Lap '+en.run.laps.length+' — '+mmss((now-prev)/1000));
+  saveLive(); drawWM();
+}
+
+/* A run, a ride or a game: one screen, one number, and the strain it is
+   building while you look at it. */
+function drawCardioStep(en,i,total){
+  const spec=en.cardio;
+  const running=cardRunning(en);
+  const started=!!(en.run && en.run.startedAt);
+  const sec=cardElapsedSec(en), min=sec/60;
+  const done=en.sets[0] && en.sets[0].done;
+  const t=ACT_TYPES[spec.act]||ACT_TYPES.other;
+  const nextLabel = i<total-1 ? 'Next: '+W.entries[i+1].name : 'Next: finish the session';
+
+  const laps=(en.run&&en.run.laps&&en.run.laps.length)? (()=>{
+    let prev=en.run.startedAt;
+    return `<div class="laps">${en.run.laps.map((x,n)=>{
+      const d=(x-prev)/1000; prev=x;
+      return `<div class="lap"><span>Lap ${n+1}</span><b>${mmss(d)}</b></div>`;
+    }).join('')}</div>`; })() : '';
+
+  $('#wmBody').innerHTML=`
+    <div class="wm-ex">${esc(en.name)}</div>
+    <div class="wm-sub">${spec.targetMin? 'about '+spec.targetMin+' minutes' : 'as long as it takes'}</div>
+    ${(()=>{ const bits=[effortWords(en.plannedRpe,'cardio'),
+                         en.tempo?String(en.tempo).toLowerCase():''].filter(Boolean);
+       return bits.length?`<div class="wm-plain">${esc(bits.join(' · '))}</div>`:''; })()}
+    ${(()=>{ const ex=exOf(en.exerciseId); const h=ex?briefHow(ex):'';
+       return h?`<button class="wm-how" id="wmHowLine">${esc(h)} <i>More</i></button>`:''; })()}
+    ${en.blockNote?`<div class="note warn">${esc(en.blockNote)}</div>`:''}
+    <div class="setlist">
+      <div class="wnow${running?' live':''}">
+        <div class="wnow-t">${done?'Logged':running?'In progress':started?'Stopped':'Ready'}
+          <span>${esc(nextLabel)}</span></div>
+        <div class="clock">
+          <div class="cl">Time from start</div>
+          <div class="ct num" id="cardT">${hms(sec)}</div>
+          ${spec.targetMin?`<div class="cbar" id="cardBar"><i style="width:${
+            Math.min(100, spec.targetMin? min/spec.targetMin*100 : 0)}%"></i></div>`:''}
+          <div class="cmeta">
+            <span>${spec.targetMin?'Target '+spec.targetMin+' min':'No target'}</span>
+            <span>Strain <b class="num" id="cardS">${cardStrain(en).toFixed(1)}</b></span>
+          </div>
+          ${done?'' : running
+            ? `<div class="btn-row" style="margin:0">
+                 <button class="btn ghost" id="cardLap">Lap</button>
+                 <button class="btn primary" id="cardStop" style="flex:2">${svg('check')} Finish and log</button>
+               </div>`
+            : `<button class="btn primary big block" id="cardGo">${svg('play')} ${
+                 started?'Start again':'Start'}</button>`}
+        </div>
+        ${laps}
+        ${started?`<div class="wnow-f">
+          <div class="sfield"><div class="sl">Minutes</div>${
+            stepper(0,'reps',en.sets[0].reps,String(spec.targetMin||''),1,'Minutes')}</div>
+        </div>
+        <div class="hint">The clock is the record. Change the number only if it
+          ran on after you stopped.</div>`:''}
+        ${started&&!running&&!done?`
+        <button class="btn primary big block wlog" data-log="0">${svg('check')} Log ${
+          esc(en.sets[0].reps||'0')} minutes</button>`:''}
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn sm ghost" id="wmMore">More</button>
+    </div>`;
+
+  $('#wmFoot').innerHTML=`<div class="btn-row">
+      ${i>0?`<button class="btn ghost" id="wmPrev">Back</button>`:''}
+      <button class="btn ${done?'primary':'ghost'}" id="wmNext" style="flex:2">${
+        i<total-1?'Next exercise':'Finish workout'}</button>
+    </div>`;
+
+  if(running && !cardTimer){ clearInterval(cardTimer); cardTimer=setInterval(cardTick,500); }
+
+  const go=$('#cardGo');  if(go)  go.onclick=()=>cardStartClock(en);
+  const lp=$('#cardLap'); if(lp)  lp.onclick=()=>cardLap(en);
+  const st=$('#cardStop');if(st)  st.onclick=()=>{ cardStopClock(en); drawWM(); };
+
+  $$('.wmIn').forEach(inp=>inp.addEventListener('input',()=>{
+    if(en.sets[0]){ en.sets[0].reps=inp.value; en.sets[0].touched=true; saveLive(); }
+  }));
+  $$('#wmBody .stp button').forEach(b=>b.onclick=ev=>{
+    ev.stopPropagation();
+    const inp=b.parentElement.querySelector('input');
+    const cur = inp.value!=='' ? parseFloat(inp.value)
+              : (inp.placeholder!=='' ? parseFloat(inp.placeholder) : 0);
+    let next=(isNaN(cur)?0:cur) + (+b.dataset.d);
+    if(next<0) next=0;
+    inp.value=String(next);
+    if(en.sets[0]){ en.sets[0].reps=inp.value; en.sets[0].touched=true; saveLive(); }
+    haptic();
+  });
+  $$('#wmBody [data-log]').forEach(b=>b.onclick=()=>{
+    if(cardRunning(en)) cardStopClock(en);
+    en.sets[0].done=true;
+    if(!en.sets[0].rpe) en.sets[0].rpe=String(cardRpeOf(en));
+    haptic(); SOUND.set();
+    saveLive(); armAuto(i); drawWM();
+  });
+
+  const hl=$('#wmHowLine');
+  if(hl) hl.onclick=()=>{
+    const ex=exOf(en.exerciseId)||{};
+    openSheet(en.name,`
+      ${ex.how?`<p class="lede">${esc(ex.how)}</p>`:''}
+      <div class="sec-t">The plan in full</div>
+      <div class="card tight">
+        <div class="kv"><span class="k">Time</span><span class="v">${esc(en.plannedReps||'—')}</span></div>
+        <div class="kv"><span class="k">Effort</span><span class="v">${esc(en.plannedRpe||'—')}</span></div>
+        ${en.tempo?`<div class="kv"><span class="k">Feel</span><span class="v">${esc(en.tempo)}</span></div>`:''}
+      </div>
+      ${ex.prog?`<div class="sec-t">How it progresses</div><p class="lede">${esc(ex.prog)}</p>`:''}`,
+      `<button class="btn primary big block" onclick="closeSheet()">Got it</button>`);
+  };
+  $('#wmMore').onclick=()=>{
+    const rows=[
+      {t:'Skip this', s:'Recorded as skipped, not failed', icon:'x',
+       run:()=>{ en.skipped=true; clearInterval(cardTimer); cardTimer=null; saveLive(); nextStep(); }},
+      {t:'Add a note', s:en.note?'Note saved':'How it felt, where you went', icon:'edit',
+       run:()=>{
+         openSheet('Note · '+en.name,`<div class="field"><label>Note</label>
+           <textarea class="inp" id="enN" style="min-height:110px">${esc(en.note)}</textarea></div>`,
+           `<button class="btn primary big block" id="enS">Save note</button>`);
+         $('#enS').onclick=()=>{ en.note=$('#enN').value.trim(); saveLive(); closeSheet(); drawWM(); };
+       }}
+    ];
+    openSheet(en.name, navRows('wmMoreRows',rows));
+    $$('#wmMoreRows button').forEach(b=>b.onclick=()=>{
+      const act=rows[+b.dataset.r]; closeSheet();
+      setTimeout(()=>{ if(act&&act.run) act.run(); },200);
+    });
+  };
+  const p=$('#wmPrev'); if(p)p.onclick=()=>{ cancelAuto(); W.step=Math.max(0,i-1); drawWM(); };
+  $('#wmNext').onclick=nextStep;
+}
+
+/* ---- starting something that is not in the plan ----
+   Playing tennis could only ever be told to the app afterwards, from memory. */
+function startLiveActivity(type,intensity){
+  const T=ACT_TYPES[type]||ACT_TYPES.other;
+  const d=todayISO();
+  const rd=DB.checkins[d]?readiness(d,DB.checkins[d]):null;
+  W={
+    id:'s'+uid(), date:d, kind:'activity', saveAs:'activity',
+    actType:type, workoutName:T.name, variant:'full',
+    category:ACT_CAT(type), intensity:intensity||'Moderate',
+    startedAt:Date.now(), time:new Date().toTimeString().slice(0,5),
+    band:rd?rd.band:null, readinessScore:rd?rd.score:null,
+    step:0, addCore:false, recId:null, overridden:false,
+    entries:[{
+      exerciseId:null, name:T.name, plannedSets:1, plannedReps:'',
+      plannedRpe:'RPE '+effortRpe(intensity,null), plannedRest:'—', tempo:'',
+      note:'', blockNote:'', cue:'', subs:'', skipped:false, progNote:'',
+      timed:null, cardio:{act:type, targetMin:null, free:true},
+      run:{startedAt:Date.now(), endedAt:null, laps:[]},
+      sets:[{reps:'',weight:'',rpe:'',done:false}]
+    }]
+  };
+  $('#wmode').classList.add('on'); document.body.style.overflow='hidden';
+  audioCtx(); SOUND.set();
+  clearInterval(cardTimer); cardTimer=setInterval(cardTick,500);
+  saveLive(); drawWM();
+}
+/* the two questions worth asking before a clock starts, and no more */
+function startActivitySheet(){
+  let type=null, intensity='Moderate';
+  const draw=()=>{
+    const mine=mainSportActs().concat(['running','cycling','walking','strength'])
+      .filter((x,i,a)=>ACT_TYPES[x] && a.indexOf(x)===i);
+    const rest=Object.keys(ACT_TYPES).filter(k=>mine.indexOf(k)<0);
+    updateSheet('Start now',`
+      <div class="field"><label>What are you doing?</label>
+        <div class="pills" id="stType">${mine.concat(rest).map(k=>
+          `<button data-v="${k}" class="${k===type?'on':''}">${esc(ACT_TYPES[k].name)}</button>`).join('')}</div>
+      </div>
+      ${type?`<div class="field"><label>How hard do you expect it to be?</label>
+        <div class="pills" id="stInt">${['Easy','Moderate','Hard','Maximal'].map(f=>
+          `<button data-v="${f}" class="${f===intensity?'on':''}">${f}</button>`).join('')}</div>
+        <div class="hint">Only used to estimate strain while the clock runs.
+          You can change it at the end.</div></div>`:''}`,
+      type?`<button class="btn primary big block" id="stGo">${svg('play')} Start the clock</button>`:'');
+    $$('#stType button').forEach(b=>b.onclick=()=>{ type=b.dataset.v; draw(); });
+    $$('#stInt button').forEach(b=>b.onclick=()=>{ intensity=b.dataset.v; draw(); });
+    const g=$('#stGo');
+    if(g) g.onclick=()=>{ closeSheet(); setTimeout(()=>startLiveActivity(type,intensity),220); };
+  };
+  openSheet('Start now','','');
+  draw();
+}
+
+/* ---- what it came to, and how that compares ---- */
+function effortCompare(o){
+  const prev=lastEffort(o);
+  const pace=(o.dist&&o.min)? o.min/o.dist : null;
+  const rows=[
+    cmpRow('Time', o.min, prev?prev.min:null, 'min', 0),
+    o.dist!=null? cmpRow('Distance', o.dist, prev?prev.dist:null, 'km', 1) : '',
+    pace!=null? cmpRow('Pace', pace, prev?prev.pace:null, '', 2, true, paceStr) : '',
+    cmpRow('Strain', o.strain, prev?prev.strain:null, '', 1)
+  ].filter(Boolean).join('');
+  if(!prev) return `<div class="sec-t">This effort</div>
+    <div class="cmpbox">${rows}</div>
+    <div class="hint">Nothing to compare with yet — this becomes the mark to beat.</div>`;
+  const ago=daysBetween(prev.date, o.date||todayISO());
+  return `<div class="sec-t">Compared with last time</div>
+    <div class="cmpbox">${rows}</div>
+    <div class="hint">Against ${esc(prev.name||'your last one')},
+      ${ago<=0?'earlier today':ago===1?'yesterday':ago+' days ago'}.</div>`;
+}
+/* where this leaves the week */
+function weekContext(cat, addMin){
+  const P=weekProgress(todayISO());
+  const T=DB.targets||{};
+  if(cat==='run'||cat==='bike'){
+    const mins=(cat==='run'?P.runMin:P.bikeMin)+(addMin||0);
+    const n=(cat==='run'?P.run:P.bike);
+    const tgt=T[cat]||0;
+    return `<div class="note acc">That is ${mins} minute${mins===1?'':'s'} of
+      ${cat==='run'?'running':'riding'} this week${tgt?` across ${n} of ${tgt} planned session${tgt===1?'':'s'}`:''}.</div>`;
+  }
+  if(P.sportMin+(addMin||0)>0)
+    return `<div class="note acc">That is ${P.sportMin+(addMin||0)} minutes of your sport this week.</div>`;
+  return '';
+}
 
 /* ---- the hold timer ----
    Same deadline-driven shape as the rest timer, and for the same reason: iOS
