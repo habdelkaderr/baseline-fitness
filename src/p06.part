@@ -1,0 +1,542 @@
+
+/* =========================================================================
+   VIEW: WORKOUTS  (program · builder · exercise library · warm-ups)
+   ====================================================================== */
+let WTAB='program';
+/* Train leads with where you are in the programme. Everything else is a row. */
+function viewWorkouts(v){
+  const ph=currentPhase();
+  appbar('Train', 'Week '+ph.absWeek+' — '+ph.name);
+  const sess=(DB.sessions||[]).filter(s=>s.done).length;
+  const rows=[
+    {t:'Workouts', icon:'dumbbell',
+     s:`${DB.workouts.length} sessions, and how they get chosen`,
+     go:()=>openPane('Workouts', null, paneProgram)},
+    {t:'Exercises', icon:'barbell',
+     s:`${countDoable(DB.profile.gear||[])} of ${DB.exercises.length} you can do`,
+     go:()=>openPane('Exercises','Filtered to your equipment', paneLibrary)},
+    {t:'Warm-ups', icon:'flame',
+     s: hasSportChosen()? `Sport prep for ${sportLC()}, plus the session routines`
+                        : 'The routine before each session type',
+     go:()=>openPane('Warm-ups', null, paneWarmups)},
+    {t:'History', icon:'book',
+     s: sess? `${sess} session${sess===1?'':'s'} logged` : 'Nothing logged yet',
+     go:()=>openPane('History','Completed sessions', paneHistory)}
+  ];
+  v.innerHTML = targetsCard() + progressionCard()
+    + '<div class="sec-t">More</div>' + navRows('wRows',rows);
+  const es=$('#edSched'); if(es) es.onclick=editSchedule;
+  const ph2=$('#accPlanH'); if(ph2) ph2.onclick=()=>$('#accPlan').classList.toggle('open');
+  wireRows('wRows',rows);
+  bindInputs(v);
+}
+
+/* ---------------------------------------------------------- PROGRAM pane */
+/* The one thing Train exists to show: what this week asks for and how much of
+   it you have done. Returned as HTML so the tab can lead with it. */
+function targetsCard(){
+  const P=weekProgress(todayISO()), T=DB.targets;
+  const M=targetMeta(), ks=targetKeys();
+  return `<div class="card">
+    <div class="card-h"><div class="card-t accent">This week's targets</div>
+      <button class="btn xs ghost" id="edSched">${svg('edit')} Edit</button></div>
+    ${!ks.length ? '<div class="hint">No targets yet — they are built from the sports, goals, days and equipment you enter in setup.</div>'
+      : ks.map(k=>{
+        const meta=M[k]||[k,''];
+        const done=P[k]||0, t=T[k]||0;
+        return `<div class="row" style="padding:12px 0">
+          <div class="rt"><div class="rn">${esc(meta[0])}</div><div class="rs">${esc(meta[1])}</div></div>
+          <div class="rv" style="text-align:right"><span style="color:${done>=t?'var(--green)':'var(--text-2)'}">${done}</span>
+            <span style="color:var(--text-3)"> / ${t}</span></div></div>`;}).join('')}
+    <div class="hint" style="margin-top:8px">Guidelines, not quotas. The engine still chooses each day.</div>
+  </div>`;
+}
+/* where you are in the eight-week cycle: the other half of "where am I" */
+function progressionCard(){
+  const ph=currentPhase();
+  return `<div class="card acc" id="accPlan" style="padding:0;overflow:hidden">
+    <div class="acc-h" id="accPlanH">
+      <div><div class="card-t">8-week progression</div>
+        <div style="font-size:12.5px;color:var(--text-2);font-weight:600;margin-top:4px">Week ${ph.absWeek} — ${esc(ph.name)}</div></div>
+      <span class="acc-x">${svg('down')}</span>
+    </div>
+    <div class="acc-b">
+    ${PHASES.map(p=>{ const on=p.w===ph.w;
+      return `<div class="row" style="padding:11px 0;${on?'background:var(--accent-wash);margin:0 -16px;padding-left:16px;padding-right:16px':''}">
+        <div style="width:28px;font-size:12px;font-weight:800;color:${on?'var(--accent)':'var(--text-3)'}">W${p.w}</div>
+        <div class="rt"><div class="rn" style="font-size:14px">${esc(p.name)}</div><div class="rs">${esc(p.goal)}</div></div>
+        <div class="rv" style="font-size:11.5px;text-align:right">${Math.round(p.vol*100)}%<br><span style="color:var(--text-3);font-weight:600">RPE ${p.rpeCap}</span></div></div>`;}).join('')}
+    ${ph.pausedWeeks>0?`<div class="note warn">You are in <b>week ${ph.absWeek}</b>, not week ${ph.elapsedWeek}: ${ph.pausedWeeks} week${ph.pausedWeeks>1?'s':''} passed with nothing logged, and the plan waited rather than moving on without you.</div>`:''}
+    ${(()=>{
+      /* The percentages above are a promise, and until now nothing kept it.
+         This says whether the OTHER half of progression - the numbers on each
+         exercise - is currently moving, and why. */
+      const g=progressGate();
+      const bb=blockBonus(ph, todayISO());
+      return `<div class="sec-t">Getting harder</div>
+        <div class="note ${g.ok?'acc':'warn'}">${esc(g.line)}</div>
+        <div class="kv"><span class="k">This week's volume</span>
+          <span class="v">${Math.round(ph.vol*100)}% of the plan</span></div>
+        <div class="kv"><span class="k">Effort ceiling</span>
+          <span class="v">RPE ${ph.rpeCap}</span></div>
+        <div class="kv"><span class="k">Extra sets for block ${ph.block}</span>
+          <span class="v">${bb? '+'+bb+' set'+(bb===1?'':'s') : 'none'}</span></div>`;
+    })()}
+    <div class="note acc">After week 8 the cycle repeats as <b>block ${ph.block+1}</b> —
+      same structure, with an extra set on the first movement of each strength
+      session once you are completing the sets you are given.</div>
+    </div>
+  </div>`;
+}
+
+/* The Workouts page: how sessions get chosen, and the library of them. */
+function paneProgram(c){
+  c.innerHTML=`
+  <div class="note acc" style="margin-bottom:14px">No fixed weekly schedule — these are what the engine weighs.${hasSportChosen()?` ${esc(sportsText().charAt(0).toUpperCase()+sportsText().slice(1))} ${sportsOf().length>1?'are':'is'} never scheduled, only logged when you play.`:''}</div>
+
+  <div class="card acc" id="accPri" style="padding:0;overflow:hidden">
+    <div class="acc-h" id="accPriH">
+      <div><div class="card-t">Decision priority</div>
+        <div style="font-size:12.5px;color:var(--text-2);font-weight:600;margin-top:4px">What the engine weighs, in order</div></div>
+      <span class="acc-x">${svg('down')}</span>
+    </div>
+    <div class="acc-b">
+    ${priorityList()
+      .map((x,i)=>`<div class="kv"><span class="k"><b style="color:var(--accent)">${i+1}.</b> ${esc(x)}</span></div>`).join('')}
+    <div class="hint" style="margin-top:9px">Applied in order. Recovery is never traded for a weekly target.</div>
+    </div>
+  </div>
+
+  <div class="sec-t">All workouts</div>
+  ${DB.workouts.map(w=>`
+   <div class="card tight" style="border-left:3px solid var(--${w.accent==='accent'?'accent':w.accent})">
+     <div style="display:flex;align-items:flex-start;gap:11px">
+       <div style="flex:1;min-width:0">
+         <div style="font-size:15.5px;font-weight:750;letter-spacing:-.25px">${esc(w.name)}</div>
+         <div style="font-size:12px;color:var(--text-3);margin-top:4px;line-height:1.45">${esc(w.focus)}</div>
+         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">
+           <span class="tag">${w.blocks.full.length} EX</span>
+           <span class="tag ${w.accent==='accent'?'a':w.accent==='cyan'?'c':w.accent==='violet'?'v':w.accent==='green'?'g':'o'}">${esc(w.type)}</span>
+           <span class="tag">${w.est.full}/${w.est.reduced}/${w.est.recovery} MIN</span>
+         </div>
+       </div>
+     </div>
+     <div class="btn-row">
+       <button class="btn xs ghost" data-pv="${w.id}">View</button>
+       <button class="btn xs ghost" data-ed="${w.id}">Edit</button>
+       <button class="btn xs ghost" data-dup="${w.id}">${svg('copy')}</button>
+       <button class="btn xs primary" data-go="${w.id}">Start</button>
+     </div>
+   </div>`).join('')}
+  <button class="btn ghost block" id="newW">${svg('plus')} New workout</button>`;
+
+  const ah=$('#accPriH'); if(ah) ah.onclick=()=>$('#accPri').classList.toggle('open');
+  $$('[data-pv]',c).forEach(b=>b.onclick=()=>previewWorkout(b.dataset.pv,'full'));
+  $$('[data-ed]',c).forEach(b=>b.onclick=()=>editWorkout(b.dataset.ed));
+  $$('[data-dup]',c).forEach(b=>b.onclick=()=>{
+    const w=DB.workouts.find(x=>x.id===b.dataset.dup);
+    const n=JSON.parse(JSON.stringify(w)); n.id='w_'+uid(); n.name=w.name+' (copy)'; n.short=w.short+' 2';
+    DB.workouts.push(n); save(true); toast('Workout duplicated','ok'); render();
+  });
+  $$('[data-go]',c).forEach(b=>b.onclick=()=>chooseVariant(b.dataset.go));
+  $('#newW').onclick=()=>{
+    const n={id:'w_'+uid(),name:'New workout',short:'New',type:'strength',accent:'accent',focus:'',
+      warm:'lower',cool:'lower',est:{full:40,reduced:28,recovery:18},desc:'',
+      blocks:{full:[],reduced:[],recovery:[]}};
+    DB.workouts.push(n); save(true); editWorkout(n.id);
+  };
+}
+
+function editSchedule(){
+  const T=DB.targets, M=targetMeta();
+  /* every category you could reasonably have, so you can add one back, but
+     ordered and labelled from your own setup */
+  const gear=DB.profile.gear||[];
+  const F=TARGET_ORDER.filter(k=>{
+    if(T[k]>0) return true;                                   // already yours
+    if(k==='bike') return gear.indexOf('bike')>=0||sportsOf().indexOf('cycling')>=0;
+    if(k==='run')  return gear.indexOf('run')>=0 ||sportsOf().indexOf('running')>=0;
+    return true;                                              // bodyweight-able
+  });
+  openSheet('Weekly targets',`
+   <p class="hint" style="margin-bottom:16px">How many the engine aims for each week. Set one to 0 to remove it.</p>
+   ${F.map(k=>{ const mx=TARGET_MAX[k]||6, meta=M[k]||[k,''];
+     return `<div class="slider-row">
+     <div class="slider-top"><span class="l">${esc(meta[0])}</span><span class="v num" id="tg_${k}_o">${T[k]||0}</span></div>
+     <input type="range" id="tg_${k}" min="0" max="${mx}" step="1" value="${T[k]||0}" data-out="tg_${k}_o">
+     <div class="scale"><span>0</span><span>${mx} / week</span></div></div>`;}).join('')}
+   ${hasSportChosen()?`<div class="note warn">${esc(SPORT_LABEL())} has no target and is never scheduled. Log it when you play and the engine adapts everything around it.</div>`:''}
+   <button class="btn ghost block" id="schAuto">${svg('target')} Rebuild from my setup</button>
+  `,`<button class="btn primary big block" id="schSave">Save targets</button>`);
+  $('#schAuto').onclick=()=>{ applyGoalTargets(); save(true); closeSheet();
+    toast('Targets rebuilt from your setup','ok'); setTimeout(render,240); };
+  $('#schSave').onclick=()=>{
+    const T2={};
+    F.forEach(k=>{ const v=+$('#tg_'+k).value; if(v>0) T2[k]=v; });
+    DB.targets=T2;
+    save(true); closeSheet(); toast('Targets saved','ok'); setTimeout(render,240);
+  };
+}
+
+/* ---------------------------------------------------- WORKOUT PREVIEW */
+function exOf(id){ return DB.exercises.find(e=>e.id===id)||null; }
+function previewWorkout(wid,variant,rec){
+  const w=DB.workouts.find(x=>x.id===wid); if(!w)return;
+  const V=variant||'full';
+  /* always resolve through sessionBlocks so the preview shows the exercises
+     the user will actually be given for their equipment */
+  const blocks = sessionBlocks(Object.assign({addCore:false},rec||{},{workoutId:wid,variant:V}));
+  const wu=warmupFor(w), cd=COOLDOWNS[w.cool]||COOLDOWNS.easy;
+  openSheet(w.name,`
+   <div class="seg sm" id="pvSeg" style="margin-bottom:14px">
+     ${['full','reduced','recovery'].map(x=>`<button data-v="${x}" class="${x===V?'on':''}">${x.toUpperCase()}</button>`).join('')}
+   </div>
+   ${w.desc?`<div class="note acc" style="margin-bottom:14px">${esc(w.desc)}</div>`:''}
+   <div class="card-t" style="margin-bottom:9px">Warm-up · ${esc(wu.name)} (~${wu.dur} min)</div>
+   <div class="card tight" style="margin-bottom:16px">
+     ${wu.items.map(i=>`<div class="kv"><span class="k">${esc(i.n)}</span><span class="v">${esc(i.d)}</span></div>`).join('')}
+   </div>
+   <div class="card-t" style="margin-bottom:9px">Main session — ${blocks.length} exercises</div>
+   ${blocks.length? blocks.map((b,i)=>{ const e=exOf(b.ex); if(!e)return '';
+     return `<div class="card tight" style="margin-bottom:9px">
+       <div style="display:flex;gap:10px;align-items:flex-start">
+         <div style="width:24px;height:24px;border-radius:7px;background:var(--surface-3);flex:0 0 24px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:var(--text-3)">${i+1}</div>
+         <div style="flex:1;min-width:0">
+           <div style="font-size:14.5px;font-weight:750">${esc(e.name)}</div>
+           <div style="font-size:11.5px;color:var(--text-3);margin-top:3px">${esc(e.muscles)}</div>
+           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+             <span class="tag a">${b.sets||e.sets} × ${esc(b.reps||e.reps)}</span>
+             <span class="tag">${esc(b.rpe||e.rpe)}</span>
+             <span class="tag">REST ${esc(b.rest||e.rest)}</span>
+             ${(b.tempo||e.tempo)?`<span class="tag c">TEMPO ${esc(b.tempo||e.tempo)}</span>`:''}
+           </div>
+           ${e.cue?`<div style="font-size:12px;color:var(--text-2);margin-top:9px;line-height:1.5"><b style="color:var(--accent)">Cue:</b> ${esc(e.cue)}</div>`:''}
+           ${b.note?`<div class="note" style="font-size:11.5px">${esc(b.note)}</div>`:''}
+           ${e.prog?`<div style="font-size:11.5px;color:var(--text-3);margin-top:7px;line-height:1.5"><b>Progress:</b> ${esc(e.prog)}</div>`:''}
+           ${e.subs?`<div style="font-size:11.5px;color:var(--text-3);margin-top:4px;line-height:1.5"><b>Swap for:</b> ${esc(e.subs)}</div>`:''}
+         </div></div></div>`;}).join('')
+    :'<div class="empty"><p>No exercises in this version yet. Use Edit to add some.</p></div>'}
+   <div class="card-t" style="margin:16px 0 9px">Cool-down · ${esc(cd.name)} (~${cd.dur} min)</div>
+   <div class="card tight">
+     ${cd.items.map(i=>`<div class="kv"><span class="k">${esc(i.n)}</span><span class="v">${esc(i.d)}</span></div>`).join('')}
+   </div>
+  `,`<div class="btn-row"><button class="btn ghost" onclick="closeSheet()">Close</button>
+     <button class="btn primary" id="pvGo">Start this version</button></div>`);
+  $$('#pvSeg button').forEach(b=>b.onclick=()=>previewWorkout(wid,b.dataset.v,rec));
+  $('#pvGo').onclick=()=>{ closeSheet(); setTimeout(()=>startWorkout(wid,V,todayISO(),rec),240); };
+}
+function chooseVariant(wid){
+  const w=DB.workouts.find(x=>x.id===wid);
+  openSheet('Which version?',`
+   <p class="hint" style="margin-bottom:14px">${esc(w.name)}</p>
+   ${[['full','FULL','Everything as prescribed — for a green day.'],
+      ['reduced','REDUCED','Fewer sets, effort capped — for a yellow day or short on time.'],
+      ['recovery','RECOVERY','Movement quality only, no fatigue — for orange days.']].map(([v,l,d])=>
+     `<button class="card tight" data-v="${v}" style="display:block;width:100%;text-align:left;margin-bottom:9px">
+       <div style="display:flex;justify-content:space-between;align-items:center">
+         <div><div style="font-weight:800;font-size:14px">${l}</div>
+         <div style="font-size:12px;color:var(--text-3);margin-top:3px">${d}</div></div>
+         <span class="chip">${w.est[v]} min</span></div></button>`).join('')}
+  `);
+  $$('[data-v]',$('#sheetBody')).forEach(b=>b.onclick=()=>{ closeSheet(); setTimeout(()=>startWorkout(wid,b.dataset.v,todayISO()),240); });
+}
+function chooseWorkout(d){
+  openSheet('Choose a session',`
+   <p class="hint" style="margin-bottom:12px">Overriding the recommendation is fine — the engine will still log what you actually did.</p>
+   ${DB.workouts.map(w=>`<button class="row tap" data-w="${w.id}" style="display:flex;width:100%;text-align:left;background:var(--surface);border-radius:12px;margin-bottom:7px;border:1px solid var(--border-soft)">
+     <div class="rt"><div class="rn">${esc(w.name)}</div><div class="rs">${esc(w.focus)}</div></div>
+     <div class="rv">${w.est.full}m</div><span class="chev">${svg('chev')}</span></button>`).join('')}
+  `);
+  $$('[data-w]',$('#sheetBody')).forEach(b=>b.onclick=()=>{ closeSheet(); setTimeout(()=>chooseVariant(b.dataset.w),240); });
+}
+
+/* ---------------------------------------------------- WORKOUT BUILDER */
+function editWorkout(wid){
+  const w=DB.workouts.find(x=>x.id===wid); if(!w)return;
+  let V='full';
+  const draw=()=>{
+    const blocks=w.blocks[V];
+    openSheet('Edit · '+w.name,`
+     <div class="field"><label>Workout name</label><input class="inp" id="ewName" value="${esc(w.name)}"></div>
+     <div class="grid2">
+       <div class="field"><label>Short name</label><input class="inp" id="ewShort" value="${esc(w.short)}"></div>
+       <div class="field"><label>Type</label><select class="inp" id="ewType">
+         ${['strength','power','core','cardio','mobility','tennis'].map(t=>`<option ${w.type===t?'selected':''}>${t}</option>`).join('')}
+       </select></div>
+     </div>
+     <div class="field"><label>Focus</label><input class="inp" id="ewFocus" value="${esc(w.focus)}"></div>
+     <div class="field"><label>Description</label><textarea class="inp" id="ewDesc">${esc(w.desc||'')}</textarea></div>
+     <div class="grid2">
+       <div class="field"><label>Warm-up</label><select class="inp" id="ewWarm">
+         ${Object.keys(WARMUPS).map(k=>`<option value="${k}" ${w.warm===k?'selected':''}>${esc(WARMUPS[k].name)}</option>`).join('')}</select></div>
+       <div class="field"><label>Cool-down</label><select class="inp" id="ewCool">
+         ${Object.keys(COOLDOWNS).map(k=>`<option value="${k}" ${w.cool===k?'selected':''}>${esc(COOLDOWNS[k].name)}</option>`).join('')}</select></div>
+     </div>
+     <div class="grid3">
+       <div class="field"><label>Full min</label><input class="inp num" type="number" id="ewEf" value="${w.est.full}"></div>
+       <div class="field"><label>Red. min</label><input class="inp num" type="number" id="ewEr" value="${w.est.reduced}"></div>
+       <div class="field"><label>Rec. min</label><input class="inp num" type="number" id="ewEc" value="${w.est.recovery}"></div>
+     </div>
+     <div class="divider"></div>
+     <div class="card-t" style="margin-bottom:10px">Exercises — which version?</div>
+     <div class="seg sm" id="ewSeg" style="margin-bottom:12px">
+       ${['full','reduced','recovery'].map(x=>`<button data-v="${x}" class="${x===V?'on':''}">${x.toUpperCase()} (${w.blocks[x].length})</button>`).join('')}
+     </div>
+     ${blocks.length?blocks.map((b,i)=>{ const e=exOf(b.ex);
+       return `<div class="card tight" style="margin-bottom:8px">
+         <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px">
+           <b style="flex:1;font-size:13.5px">${i+1}. ${e?esc(e.name):'<span style="color:var(--red)">Missing exercise</span>'}</b>
+           <button class="icon-btn" style="width:32px;height:32px" data-up="${i}">${svg('up')}</button>
+           <button class="icon-btn" style="width:32px;height:32px" data-dn="${i}">${svg('down2')}</button>
+           <button class="icon-btn" style="width:32px;height:32px;color:var(--red)" data-rm="${i}">${svg('trash')}</button>
+         </div>
+         <div class="grid2">
+           <div><label style="font-size:10px;color:var(--text-3);font-weight:750;letter-spacing:.5px">SETS</label>
+             <input class="inp bEdit" data-i="${i}" data-k="sets" type="number" inputmode="numeric" value="${b.sets||''}" placeholder="${e?e.sets:''}"></div>
+           <div><label style="font-size:10px;color:var(--text-3);font-weight:750;letter-spacing:.5px">REPS</label>
+             <input class="inp bEdit" data-i="${i}" data-k="reps" value="${esc(b.reps||'')}" placeholder="${e?esc(e.reps):''}"></div>
+           <div><label style="font-size:10px;color:var(--text-3);font-weight:750;letter-spacing:.5px">RPE / RIR</label>
+             <input class="inp bEdit" data-i="${i}" data-k="rpe" value="${esc(b.rpe||'')}" placeholder="${e?esc(e.rpe):''}"></div>
+           <div><label style="font-size:10px;color:var(--text-3);font-weight:750;letter-spacing:.5px">REST</label>
+             <input class="inp bEdit" data-i="${i}" data-k="rest" value="${esc(b.rest||'')}" placeholder="${e?esc(e.rest):''}"></div>
+           <div><label style="font-size:10px;color:var(--text-3);font-weight:750;letter-spacing:.5px">TEMPO</label>
+             <input class="inp bEdit" data-i="${i}" data-k="tempo" value="${esc(b.tempo||'')}" placeholder="${e&&e.tempo?esc(e.tempo):'—'}"></div>
+           <div><label style="font-size:10px;color:var(--text-3);font-weight:750;letter-spacing:.5px">NOTE</label>
+             <input class="inp bEdit" data-i="${i}" data-k="note" value="${esc(b.note||'')}" placeholder="optional"></div>
+         </div></div>`;}).join('')
+      :'<div class="empty"><p>No exercises in this version. Add one below.</p></div>'}
+     <button class="btn ghost block" id="ewAdd">${svg('plus')} Add exercise</button>
+     <div class="divider"></div>
+     <button class="btn danger block" id="ewDel">${svg('trash')} Delete this workout</button>
+    `,`<button class="btn primary big block" id="ewSave">Save workout</button>`);
+
+    $$('#ewSeg button').forEach(b=>b.onclick=()=>{ commit(); V=b.dataset.v; draw(); });
+    $$('[data-up]').forEach(b=>b.onclick=()=>{ commit(); const i=+b.dataset.up; if(i>0){ const a=w.blocks[V]; [a[i-1],a[i]]=[a[i],a[i-1]]; save(); draw(); }});
+    $$('[data-dn]').forEach(b=>b.onclick=()=>{ commit(); const i=+b.dataset.dn; const a=w.blocks[V]; if(i<a.length-1){ [a[i+1],a[i]]=[a[i],a[i+1]]; save(); draw(); }});
+    $$('[data-rm]').forEach(b=>b.onclick=()=>{ commit(); w.blocks[V].splice(+b.dataset.rm,1); save(); draw(); });
+    $('#ewAdd').onclick=()=>{ commit(); pickExercise(exid=>{ const e=exOf(exid);
+      w.blocks[V].push({ex:exid,sets:e.sets,reps:e.reps,rpe:e.rpe,rest:e.rest,tempo:e.tempo||''}); save(); draw(); }); };
+    $('#ewDel').onclick=()=>confirmSheet('Delete workout?',
+      `<b>${esc(w.name)}</b> will be removed. Sessions you already completed with it stay in your history.`,'Delete',()=>{
+        DB.workouts=DB.workouts.filter(x=>x.id!==wid);
+        for(const k in DB.plans) if(DB.plans[k]&&DB.plans[k].workoutId===wid) delete DB.plans[k];
+        save(true); toast('Workout deleted'); render();
+      },true);
+    $('#ewSave').onclick=()=>{ commit(); save(true); closeSheet(); toast('Saved','ok'); setTimeout(render,240); };
+  };
+  const commit=()=>{
+    if(!$('#ewName'))return;
+    w.name=$('#ewName').value.trim()||w.name; w.short=$('#ewShort').value.trim()||w.short;
+    w.type=$('#ewType').value; w.focus=$('#ewFocus').value.trim(); w.desc=$('#ewDesc').value.trim();
+    w.warm=$('#ewWarm').value; w.cool=$('#ewCool').value;
+    w.est={full:+$('#ewEf').value||40,reduced:+$('#ewEr').value||28,recovery:+$('#ewEc').value||18};
+    $$('.bEdit').forEach(inp=>{ const b=w.blocks[V][+inp.dataset.i]; if(!b)return;
+      const k=inp.dataset.k, val=inp.value.trim();
+      if(k==='sets') b.sets=val?+val:null; else b[k]=val; });
+  };
+  draw();
+}
+
+function pickExercise(cb){
+  const cats=[...new Set(DB.exercises.map(e=>e.cat))];
+  openSheet('Add exercise',`
+   <input class="inp" id="pxQ" placeholder="Search exercises…" style="margin-bottom:12px">
+   <div class="swipe" id="pxCats" style="margin-bottom:10px">
+     <button class="chip a" data-c="">All</button>
+     ${cats.map(c=>`<button class="chip" data-c="${c}">${esc(CATNAME[c]||c)}</button>`).join('')}
+   </div>
+   <div id="pxList"></div>`);
+  let q='',cat='';
+  const draw=()=>{
+    const list=DB.exercises.filter(e=>(!cat||e.cat===cat)&&
+      (!q||e.name.toLowerCase().includes(q)||e.muscles.toLowerCase().includes(q)));
+    $('#pxList').innerHTML=list.length?list.map(e=>`
+      <button class="row tap" data-e="${e.id}" style="display:flex;width:100%;text-align:left;background:var(--surface);border-radius:11px;margin-bottom:6px;border:1px solid var(--border-soft)">
+        <div class="rt"><div class="rn" style="font-size:14px">${esc(e.name)}</div>
+        <div class="rs">${esc(e.muscles)} · ${esc(e.sets)}×${esc(e.reps)}</div></div>
+        <span class="chev">${svg('plus')}</span></button>`).join('')
+      :'<div class="empty"><p>No exercises match.</p></div>';
+    $$('[data-e]',$('#pxList')).forEach(b=>b.onclick=()=>{ closeSheet(); setTimeout(()=>cb(b.dataset.e),240); });
+  };
+  $('#pxQ').oninput=e=>{ q=e.target.value.toLowerCase().trim(); draw(); };
+  $$('#pxCats button').forEach(b=>b.onclick=()=>{
+    $$('#pxCats button').forEach(x=>{x.className='chip';}); b.className='chip a'; cat=b.dataset.c; draw(); });
+  draw();
+}
+
+/* ---------------------------------------------------- EXERCISE LIBRARY */
+const CATNAME={lower:'Legs',push:'Push',pull:'Pull',core:'Core',plyo:'Plyometrics',speed:'Speed & Agility',mobility:'Mobility',cardio:'Cardio'};
+let LQ='',LCAT='';
+function paneLibrary(c){
+  const cats=[...new Set(DB.exercises.map(e=>e.cat))];
+  const list=DB.exercises.filter(e=>(!LCAT||e.cat===LCAT)&&
+    (!LQ||e.name.toLowerCase().includes(LQ)||e.muscles.toLowerCase().includes(LQ)||(e.equip||'').toLowerCase().includes(LQ)));
+  c.innerHTML=`
+    <input class="inp" id="lqIn" placeholder="Search by name, muscle or equipment…" value="${esc(LQ)}" style="margin-bottom:11px">
+    <div class="swipe" style="margin-bottom:12px">
+      <button class="chip ${LCAT===''?'a':''}" data-c="">All ${DB.exercises.length}</button>
+      ${cats.map(k=>`<button class="chip ${LCAT===k?'a':''}" data-c="${k}">${esc(CATNAME[k]||k)} ${DB.exercises.filter(e=>e.cat===k).length}</button>`).join('')}
+    </div>
+    <button class="btn ghost block" id="newEx" style="margin-bottom:12px">${svg('plus')} Add exercise</button>
+    ${list.map(e=>`
+      <div class="card tight">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:15px;font-weight:750;letter-spacing:-.2px">${esc(e.name)}</div>
+            <div style="font-size:11.5px;color:var(--text-3);margin-top:3px">${esc(e.muscles)}</div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px">
+              <span class="tag ${e.cat==='lower'?'a':e.cat==='push'||e.cat==='pull'?'c':e.cat==='core'?'v':e.cat==='plyo'||e.cat==='speed'?'o':'g'}">${esc(CATNAME[e.cat]||e.cat)}</span>
+              <span class="tag">${e.sets}×${esc(e.reps)}</span>
+              <span class="tag">${esc(e.rpe)}</span>
+            </div>
+          </div>
+          <button class="icon-btn" data-ex="${e.id}">${svg('chev')}</button>
+        </div>
+      </div>`).join('')||'<div class="empty"><h4>Nothing found</h4><p>Try a different search.</p></div>'}`;
+  $('#lqIn').oninput=ev=>{ LQ=ev.target.value.toLowerCase().trim(); paneLibrary(c); const i=$('#lqIn'); i.focus(); i.setSelectionRange(i.value.length,i.value.length); };
+  $$('[data-c]',c).forEach(b=>b.onclick=()=>{ LCAT=b.dataset.c; paneLibrary(c); });
+  $$('[data-ex]',c).forEach(b=>b.onclick=()=>exerciseSheet(b.dataset.ex));
+  $('#newEx').onclick=()=>{
+    const n={id:'x'+uid(),name:'New exercise',cat:'lower',muscles:'',equip:'BW',sets:3,reps:'10',rpe:'RPE 7',rest:'60s',
+      tempo:'',how:'',cue:'',prog:'',reg:'',subs:'',notes:'',custom:true};
+    DB.exercises.push(n); save(true); exerciseSheet(n.id,true);
+  };
+}
+function exerciseSheet(id,editMode){
+  const e=exOf(id); if(!e)return;
+  if(!editMode){
+    const used=DB.workouts.filter(w=>['full','reduced','recovery'].some(v=>w.blocks[v].some(b=>b.ex===id)));
+    const hist=DB.sessions.filter(s=>s.done&&s.entries.some(x=>x.exerciseId===id)).slice(-8).reverse();
+    openSheet(e.name,`
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+        <span class="tag a">${esc(CATNAME[e.cat]||e.cat)}</span>
+        <span class="tag">${e.sets} × ${esc(e.reps)}</span>
+        <span class="tag">${esc(e.rpe)}</span>
+        <span class="tag">REST ${esc(e.rest)}</span>
+        ${e.tempo?`<span class="tag c">TEMPO ${esc(e.tempo)}</span>`:''}
+      </div>
+      ${e.muscles?`<div class="kv"><span class="k">Muscles</span><span class="v">${esc(e.muscles)}</span></div>`:''}
+      ${e.equip?`<div class="kv"><span class="k">Equipment</span><span class="v">${esc((e.equip||'').split('+').map(x=>EQ[x]||x).join(' + '))}</span></div>`:''}
+      ${e.how?`<div style="margin-top:16px"><div class="card-t" style="margin-bottom:7px">How to perform</div>
+        <p style="font-size:13.5px;line-height:1.6;color:var(--text-2)">${esc(e.how)}</p></div>`:''}
+      ${e.cue?`<div class="note acc"><b>Coaching cue:</b> ${esc(e.cue)}</div>`:''}
+      ${e.notes?`<div class="note warn">${esc(e.notes)}</div>`:''}
+      ${e.prog?`<div style="margin-top:16px"><div class="card-t" style="margin-bottom:7px">Progression</div>
+        <p style="font-size:13px;line-height:1.55;color:var(--text-2)">${esc(e.prog)}</p></div>`:''}
+      ${e.reg?`<div style="margin-top:13px"><div class="card-t" style="margin-bottom:7px">Regression (make it easier)</div>
+        <p style="font-size:13px;line-height:1.55;color:var(--text-2)">${esc(e.reg)}</p></div>`:''}
+      ${e.subs?`<div style="margin-top:13px"><div class="card-t" style="margin-bottom:7px">Substitutions</div>
+        <p style="font-size:13px;line-height:1.55;color:var(--text-2)">${esc(e.subs)}</p></div>`:''}
+      ${used.length?`<div style="margin-top:16px"><div class="card-t" style="margin-bottom:7px">Used in</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${used.map(w=>`<span class="chip">${esc(w.short)}</span>`).join('')}</div></div>`:''}
+      ${hist.length?`<div style="margin-top:16px"><div class="card-t" style="margin-bottom:7px">Your recent sets</div>
+        ${hist.map(s=>{ const en=s.entries.find(x=>x.exerciseId===id);
+          const sets=en.sets.filter(x=>x.done);
+          return `<div class="kv"><span class="k">${fmtDate(s.date)}</span><span class="v">${sets.map(x=>x.reps+(x.weight?'×'+x.weight+'kg':'')).join(' · ')||'—'}</span></div>`;}).join('')}
+      </div>`:''}
+    `,`<div class="btn-row"><button class="btn ghost" id="exDup">${svg('copy')} Duplicate</button>
+       <button class="btn primary" id="exEdit">${svg('edit')} Edit</button></div>`);
+    $('#exEdit').onclick=()=>exerciseSheet(id,true);
+    $('#exDup').onclick=()=>{ const n=Object.assign({},e,{id:'x'+uid(),name:e.name+' (copy)',custom:true});
+      DB.exercises.push(n); save(true); toast('Duplicated','ok'); exerciseSheet(n.id,true); };
+    return;
+  }
+  const F=[['name','Name','text'],['muscles','Muscle groups','text'],['equip','Equipment','text'],
+           ['sets','Sets','number'],['reps','Reps','text'],['rpe','RPE / RIR','text'],['rest','Rest','text'],['tempo','Tempo','text']];
+  openSheet('Edit · '+e.name,`
+    <div class="field"><label>Category</label><select class="inp" id="fcat">
+      ${Object.keys(CATNAME).map(k=>`<option value="${k}" ${e.cat===k?'selected':''}>${esc(CATNAME[k])}</option>`).join('')}
+    </select></div>
+    ${F.map(([k,l,t])=>`<div class="field"><label>${l}</label>
+      <input class="inp exF" data-k="${k}" type="${t}" ${t==='number'?'inputmode="numeric"':''} value="${esc(e[k]||'')}"></div>`).join('')}
+    ${[['how','Instructions'],['cue','Coaching cue'],['prog','Progression'],['reg','Regression'],['subs','Substitutions'],['notes','Personal notes']]
+      .map(([k,l])=>`<div class="field"><label>${l}</label><textarea class="inp exF" data-k="${k}">${esc(e[k]||'')}</textarea></div>`).join('')}
+    <button class="btn danger block" id="exDel">${svg('trash')} Delete exercise</button>
+  `,`<button class="btn primary big block" id="exSave">Save</button>`);
+  $('#exSave').onclick=()=>{
+    e.cat=$('#fcat').value;
+    $$('.exF').forEach(i=>{ const k=i.dataset.k; e[k]= k==='sets' ? (+i.value||1) : i.value.trim(); });
+    save(true); closeSheet(); toast('Saved','ok'); setTimeout(render,240);
+  };
+  $('#exDel').onclick=()=>{
+    const used=DB.workouts.filter(w=>['full','reduced','recovery'].some(v=>w.blocks[v].some(b=>b.ex===id)));
+    confirmSheet('Delete exercise?',
+      used.length?`<b>${esc(e.name)}</b> is used in ${used.length} workout${used.length>1?'s':''} (${used.map(w=>esc(w.short)).join(', ')}). It will be removed from them too.`
+                 :`<b>${esc(e.name)}</b> will be permanently removed.`,'Delete',()=>{
+      DB.exercises=DB.exercises.filter(x=>x.id!==id);
+      DB.workouts.forEach(w=>['full','reduced','recovery'].forEach(v=>{ w.blocks[v]=w.blocks[v].filter(b=>b.ex!==id); }));
+      save(true); toast('Deleted'); render();
+    },true);
+  };
+}
+
+/* ---------------------------------------------------- WARM-UPS pane */
+function paneWarmups(c){
+  c.innerHTML=`
+   <div class="note acc" style="margin-bottom:14px">Attached to every session automatically.</div>
+   ${(()=>{ /* the sport warm-up is generated from the sports you chose, so it
+        replaces the built-in one rather than sitting next to it */
+     const gen=sportsOf().filter(id=>SPORT_PROFILES[id]).map(id=>({k:'sport:'+id,w:sportWarmup(id),gen:true}));
+     const fixed=Object.keys(WARMUPS).filter(k=>k!=='tennis').map(k=>({k,w:WARMUPS[k]}));
+     return gen.concat(fixed).map(({w,gen})=>`
+     <div class="card">
+       <div class="card-h"><div class="card-t accent">${esc(w.name)}</div>
+         <div style="display:flex;gap:6px;align-items:center">${gen?'<span class="tag a">YOUR SPORT</span>':''}<span class="tag">~${w.dur} MIN</span></div></div>
+       ${w.items.map((i,n)=>`<div class="kv"><span class="k">${n+1}. ${esc(i.n)}</span><span class="v">${esc(i.d)}</span></div>`).join('')}
+     </div>`).join(''); })()}
+   <div class="sec-t">Cool-downs</div>
+   ${Object.entries(COOLDOWNS).map(([k,w])=>`
+     <div class="card">
+       <div class="card-h"><div class="card-t">${esc(w.name)}</div><span class="tag">~${w.dur} MIN</span></div>
+       ${w.items.map((i,n)=>`<div class="kv"><span class="k">${n+1}. ${esc(i.n)}</span><span class="v">${esc(i.d)}</span></div>`).join('')}
+     </div>`).join('')}`;
+}
+
+/* ---------------------------------------------------- HISTORY pane */
+function paneHistory(c){
+  const ss=DB.sessions.filter(s=>s.done).slice().reverse();
+  if(!ss.length){ c.innerHTML='<div class="empty"><div class="ei">'+svg('dumbbell')+'</div><h4>No sessions logged yet</h4><p>Completed workouts appear here with your planned-versus-actual numbers.</p></div>'; return; }
+  c.innerHTML=ss.map(s=>{
+    const w=DB.workouts.find(w=>w.id===s.workoutId);
+    return `<div class="card tight">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <div style="flex:1"><div style="font-size:14.5px;font-weight:750">${esc(s.workoutName||(w?w.name:'Session'))}</div>
+          <div style="font-size:11.5px;color:var(--text-3);margin-top:3px">${fmtDate(s.date)} · ${esc((s.variant||'full').toUpperCase())}</div></div>
+        <span class="tag ${s.variant==='full'?'a':s.variant==='reduced'?'o':'g'}">${s.durationMin||0} MIN</span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">
+        <span class="chip">${s.setsDone||0} sets</span>
+        <span class="chip">${rnd(s.volume,0)||0} kg·reps</span>
+        ${s.sessionRpe?`<span class="chip ${s.sessionRpe>=8?'o':'c'}">RPE ${s.sessionRpe}</span>`:''}
+        ${s.band?`<span class="chip ${s.band==='green'?'g':s.band==='yellow'?'y':s.band==='orange'?'o':'r'}">${s.band.toUpperCase()} day</span>`:''}
+      </div>
+      <button class="btn xs ghost" style="margin-top:9px" data-sh="${s.id}">View detail</button>
+    </div>`;}).join('');
+  $$('[data-sh]',c).forEach(b=>b.onclick=()=>sessionDetail(b.dataset.sh));
+}
+function sessionDetail(sid){
+  const s=DB.sessions.find(x=>x.id===sid); if(!s)return;
+  /* wired after the sheet renders, below */
+  openSheet(s.workoutName||'Session',`
+   <div class="stats c4" style="margin-bottom:16px">
+     ${statTile('Duration',s.durationMin,'m','a')}
+     ${statTile('Sets',s.setsDone,'','c')}
+     ${statTile('Volume',rnd(s.volume,0),'','')}
+     ${statTile('RPE',s.sessionRpe,'','o')}
+   </div>
+   <div class="card-t" style="margin-bottom:9px">Planned vs actual</div>
+   ${s.entries.map(en=>{
+     const done=en.sets.filter(x=>x.done);
+     return `<div class="card tight" style="margin-bottom:8px">
+       <div style="font-size:14px;font-weight:750;margin-bottom:7px">${esc(en.name)}${en.skipped?' <span class="tag r">SKIPPED</span>':''}</div>
+       <div class="kv"><span class="k">Planned</span><span class="v">${en.plannedSets} × ${esc(en.plannedReps)} @ ${esc(en.plannedRpe||'—')}</span></div>
+       <div class="kv"><span class="k">Actual</span><span class="v">${done.length?done.map(x=>x.reps+(x.weight?'×'+x.weight+'kg':'')+(x.rpe?' @'+x.rpe:'')).join(' · '):'—'}</span></div>
+       ${en.note?`<div class="note" style="font-size:11.5px">${esc(en.note)}</div>`:''}
+     </div>`;}).join('')}
+   ${s.notes?`<div class="note acc"><b>Session notes:</b> ${esc(s.notes)}</div>`:''}
+  `,`<button class="btn danger block" id="sdDel">${svg('trash')} Delete session</button>`,
+    `<button class="btn ghost block" id="sdCopy">${svg('copy')} Copy as text</button><button class="btn primary big block" onclick="closeSheet()">Done</button>`);
+  $('#sdDel').onclick=()=>confirmSheet('Delete session?','This removes it from your history and progress calculations permanently.','Delete',()=>{
+    DB.sessions=DB.sessions.filter(x=>x.id!==sid); save(true); toast('Deleted'); render(); },true);
+  const cp=$('#sdCopy'); if(cp) cp.onclick=()=>copySession(s);
+}

@@ -1,0 +1,666 @@
+
+/* =========================================================================
+   MENSTRUAL CYCLE — OPTIONAL, AND A PERSONALISATION SIGNAL ONLY
+   ------------------------------------------------------------------------
+   Off unless the user turns it on. Nothing here runs, renders or influences a
+   recommendation while DB.mcycle.on is false.
+
+   The prefix is `mc` because "cycle" is already taken: cycleByDate() and
+   DB.whoop.cycles mean a WHOOP physiological cycle, i.e. one day of recovery
+   data. Reusing the word here would have produced two unrelated meanings in
+   the same scope.
+
+   THE RULE THIS MODULE EXISTS TO OBEY: cycle context never decides anything
+   on its own. It contributes a small, capped adjustment, and only once the
+   user's OWN logs show a repeated association between a phase and how they
+   actually report and perform. With no evidence the contribution is exactly
+   zero, and the recommendation is whatever it would have been anyway. It
+   cannot lift a pain cap, because the caps are applied after every modifier.
+
+   Nothing here infers fertility, pregnancy, or any medical condition, and
+   nothing is transmitted anywhere — there is no transport in this app.
+   ====================================================================== */
+
+const mcOn = ()=> !!(DB && DB.mcycle && DB.mcycle.on);
+
+/* the day's cycle entry, kept inside the check-in so it is covered by the
+   same storage, backup and restore as everything else */
+function mcLog(date){
+  const c=DB.checkins&&DB.checkins[date];
+  return (c&&c.mc)||null;
+}
+function mcSetLog(date, patch){
+  DB.checkins[date]=Object.assign({date:date},DB.checkins[date]||{});
+  DB.checkins[date].mc=Object.assign({},DB.checkins[date].mc||{},patch);
+  return DB.checkins[date].mc;
+}
+
+/* Every date the user marked as bleeding, ascending. */
+function mcBleedDays(){
+  const out=[];
+  Object.keys(DB.checkins||{}).forEach(d=>{
+    const m=DB.checkins[d]&&DB.checkins[d].mc;
+    if(m&&m.bleeding) out.push(d);
+  });
+  return out.sort();
+}
+
+/* Period start dates: whatever the user told setup, plus any bleeding day
+   that follows at least two clear days. Derived rather than asked for, so
+   marking "bleeding today" is the only input a cycle needs. */
+function mcStarts(){
+  const seeded=(DB.mcycle&&Array.isArray(DB.mcycle.starts))?DB.mcycle.starts.slice():[];
+  const bleed=mcBleedDays();
+  const set={};
+  seeded.forEach(d=>{ if(d) set[d]=1; });
+  bleed.forEach(d=>{
+    const prev1=addDays(d,-1), prev2=addDays(d,-2);
+    if(bleed.indexOf(prev1)<0 && bleed.indexOf(prev2)<0) set[d]=1;
+  });
+  return Object.keys(set).sort();
+}
+
+/* Observed cycle lengths, and how consistent they are. No 28-day assumption
+   anywhere: if the user has not produced enough history, this says so. */
+function mcStats(){
+  const st=mcStarts();
+  const lens=[];
+  for(let i=1;i<st.length;i++){
+    const n=daysBetween(st[i-1],st[i]);
+    /* a gap under 15 days is almost certainly two entries for one period,
+       and one over 90 is a break in logging rather than a cycle */
+    if(n>=15&&n<=90) lens.push(n);
+  }
+  const typical=(DB.mcycle&&DB.mcycle.typicalLen)||null;
+  const m=lens.length?mean(lens):null;
+  const s=lens.length>1?sd(lens):null;
+  /* confidence describes the ESTIMATE, not the user */
+  let conf='none';
+  if(lens.length>=3 && s!=null && s<=2.5) conf='high';
+  else if(lens.length>=2 && s!=null && s<=4.5) conf='moderate';
+  else if(lens.length>=1 || typical) conf='low';
+  return {
+    n:lens.length, lens:lens,
+    mean:m!=null?rnd(m,1):null,
+    sd:s!=null?rnd(s,1):null,
+    typical:typical,
+    /* the length used for estimating, in order of authority */
+    use: typical || (m!=null?Math.round(m):null),
+    regular: (s!=null && s<=4.5),
+    confidence:conf
+  };
+}
+
+/* Observed period length, from actual runs of bleeding days. */
+function mcPeriodLen(){
+  const stated=(DB.mcycle&&DB.mcycle.typicalPeriod)||null;
+  if(stated) return stated;
+  const bleed=mcBleedDays();
+  if(!bleed.length) return null;
+  const runs=[]; let run=0;
+  for(let i=0;i<bleed.length;i++){
+    run++;
+    if(i===bleed.length-1 || daysBetween(bleed[i],bleed[i+1])>1){ runs.push(run); run=0; }
+  }
+  return runs.length?Math.round(median(runs)):null;
+}
+
+/* The three invariants every phase calculation needs. Building them is a
+   full scan of the check-ins, so anything that asks about many dates builds
+   one of these and passes it down rather than paying per date. */
+function mcCtx(){
+  const starts=mcStarts();
+  return {starts:starts, stats:mcStats(), plen:mcPeriodLen()||5};
+}
+
+/* Cycle day, counting the first day of the most recent period as day 1. */
+function mcDay(date, ctx){
+  const st=(ctx&&ctx.starts)||mcStarts();
+  let last=null;
+  for(let i=0;i<st.length;i++) if(st[i]<=date) last=st[i];
+  if(!last) return null;
+  const n=daysBetween(last,date)+1;
+  return n>0?n:null;
+}
+
+/* ESTIMATED phase. Never a claim about physiology, and never forced: with
+   irregular or thin history this returns 'unknown' rather than guessing. */
+function mcPhase(date, ctx){
+  const out={day:null, phase:'unknown', confidence:'none', label:'Unknown', note:''};
+  if(!mcOn()) return out;
+  const day=mcDay(date, ctx);
+  if(day==null){
+    out.note='No period logged yet, so there is nothing to count from.';
+    return out;
+  }
+  out.day=day;
+  const S=(ctx&&ctx.stats)||mcStats();
+  const plen=(ctx&&ctx.plen)||mcPeriodLen()||5;
+  /* bleeding the user actually reported beats any estimate */
+  const today=mcLog(date);
+  if(today&&today.bleeding){
+    out.phase='menstrual'; out.label='Menstrual';
+    out.confidence='reported';
+    out.note='You logged bleeding today.';
+    /* running longer than usual is a fact about the log, said plainly and
+       without a conclusion attached to it */
+    if(day>plen+2){
+      out.lateEnd=day-plen;
+      out.note+=' That is day '+day+', longer than your usual '+plen+'-day period.';
+    }
+    return out;
+  }
+  if(day<=plen){
+    out.phase='menstrual'; out.label='Menstrual';
+    out.confidence=S.confidence==='none'?'low':S.confidence;
+    out.note='Estimated from your period start.';
+    return out;
+  }
+  const len=S.use;
+  if(!len){
+    out.note='Not enough cycle history yet to estimate a phase.';
+    return out;
+  }
+  /* Past the usual length the arithmetic no longer knows where in the cycle
+     you are, so it stops claiming to. This is a statement about the ESTIMATE,
+     not about the person: no inference is drawn from a late cycle, and the
+     only consequence is that the cycle stops influencing readiness until a
+     new period is logged. */
+  if(day>len){
+    out.phase='late'; out.label='Past your usual length';
+    out.confidence='none';
+    out.late=day-len;
+    out.note='Day '+day+' is '+out.late+' day'+(out.late===1?'':'s')+' past your usual '
+      +len+'-day cycle. The phase estimate is paused until your next period is logged, '
+      +'and the cycle is not affecting your readiness score while it is.';
+    return out;
+  }
+  const ov=len-14;                      // luteal length is the stable part
+  if(ov<plen+2){                        // a very short cycle: do not pretend
+    out.note='Your usual cycle is too short for a reliable phase split.';
+    return out;
+  }
+  if(day>=ov-2 && day<=ov+1){ out.phase='ovulatory'; out.label='Ovulatory window'; }
+  else if(day<ov-2){ out.phase='follicular'; out.label='Follicular'; }
+  else { out.phase='luteal'; out.label='Luteal'; }
+  out.confidence = S.confidence==='none' ? 'low' : S.confidence;
+  out.note='Estimated from your logged cycle'+(S.n?'s ('+S.n+' recorded)':'')+'.';
+  /* an irregular history must not produce a confident-sounding phase */
+  if(!S.regular && S.n>=2){
+    out.confidence='low';
+    out.note='Your cycle length has varied by '+S.sd+' days, so this is a rough estimate.';
+  }
+  return out;
+}
+
+
+/* =========================================================================
+   WHERE THE CYCLE IS RIGHT NOW
+   ------------------------------------------------------------------------
+   One answer for every screen that wants to say something about today, so
+   the row, the sheet and the cycle page cannot drift apart. Every field is
+   derived from what the user logged; none of it is assumed.
+   ====================================================================== */
+function mcExpected(date, ctx){
+  ctx = ctx || mcCtx();
+  const day=mcDay(date, ctx);
+  const S=ctx.stats, plen=ctx.plen;
+  const out={day:day, plen:plen, len:S.use, state:'none',
+             periodDayOf:null, endsAbout:null, nextAbout:null, overdue:0};
+  if(day==null) return out;
+
+  const log=mcLog(date);
+  const bleeding=!!(log&&log.bleeding);
+  const st=ctx.starts, last=st.length?st[st.length-1]:null;
+
+  if(last){
+    if(plen)   out.endsAbout=addDays(last, plen-1);
+    if(S.use)  out.nextAbout=addDays(last, S.use);
+  }
+
+  if(bleeding || day<=plen){
+    out.state = (bleeding && day>plen+2) ? 'periodLate' : 'period';
+    out.periodDayOf = plen;
+    if(out.state==='periodLate') out.overdue=day-plen;
+    return out;
+  }
+  if(S.use && day>S.use){
+    out.state='late';
+    out.overdue=day-S.use;
+    return out;
+  }
+  out.state='mid';
+  return out;
+}
+
+/* The one-line version, for the row on Today. */
+function mcStateLine(date, ctx){
+  const e=mcExpected(date, ctx);
+  if(e.day==null) return null;
+  if(e.state==='period')
+    return 'Period day '+e.day+(e.plen?' of about '+e.plen:'');
+  if(e.state==='periodLate')
+    return 'Period day '+e.day+' — '+e.overdue+' past your usual '+e.plen;
+  if(e.state==='late')
+    return e.overdue+' day'+(e.overdue===1?'':'s')+' past your usual '+e.len+'-day cycle';
+  return null;
+}
+
+/* Enabling tracking used to leave you with nothing to count from. Specialist
+   trackers ask three questions up front and can say something useful the same
+   day; this asks the same three, and every one of them can be skipped. */
+function mcSetupSheet(onDone){
+  const M=DB.mcycle||{};
+  let startD=(M.starts&&M.starts.length)?M.starts[M.starts.length-1]:'';
+  const draw=()=>{
+    updateSheet('Set up cycle tracking',`
+      <p class="lede">Three questions, all optional. They let Baseline say
+        something useful today instead of waiting a month — and you can change
+        or clear any of them later.</p>
+      <div class="field"><label>When did your last period start?</label>
+        <input class="inp" type="date" id="mcS0" value="${esc(startD)}" max="${todayISO()}">
+        <div class="hint">This is the only one that matters much: everything
+          else is counted from it. Leave it blank and tracking starts from the
+          first day you log.</div></div>
+      <div class="grid2">
+        <div class="field"><label>Usual period length</label>
+          <input class="inp num" type="number" inputmode="numeric" min="1" max="15"
+                 id="mcP0" value="${M.typicalPeriod||''}" placeholder="days"></div>
+        <div class="field"><label>Usual cycle length</label>
+          <input class="inp num" type="number" inputmode="numeric" min="15" max="90"
+                 id="mcL0" value="${M.typicalLen||''}" placeholder="days"></div>
+      </div>
+      <div class="hint">Left blank, both are worked out from what you log. Nothing
+        is assumed — there is no 28-day default anywhere in this app.</div>
+      <div class="note">This stays on your device with everything else. It is never
+        sent anywhere, and nothing here is used to infer anything about your health
+        beyond counting days.</div>`,
+      `<button class="btn primary big block" id="mcS0go">Start tracking</button>
+       <button class="btn ghost block" id="mcS0skip">Skip for now</button>`);
+
+    const fin=(useDates)=>{
+      DB.mcycle=DB.mcycle||{on:false,starts:[],typicalLen:null,typicalPeriod:null,askedAt:null};
+      DB.mcycle.on=true;
+      if(useDates){
+        const s=($('#mcS0')||{}).value||'';
+        if(s && s<=todayISO()){
+          DB.mcycle.starts=(DB.mcycle.starts||[]).filter(x=>x!==s).concat([s]).sort();
+        }
+        const pv=($('#mcP0')||{}).value;
+        const lv=($('#mcL0')||{}).value;
+        DB.mcycle.typicalPeriod = pv===''||pv==null? null : clamp(+pv,1,15);
+        DB.mcycle.typicalLen    = lv===''||lv==null? null : clamp(+lv,15,90);
+      }
+      DB.mcycle.askedAt=todayISO();
+      save(true); closeSheet();
+      setTimeout(()=>{ if(onDone) onDone(); render(); },220);
+    };
+    const g=$('#mcS0go');   if(g) g.onclick=()=>fin(true);
+    const k=$('#mcS0skip'); if(k) k.onclick=()=>fin(false);
+  };
+  openSheet('Set up cycle tracking','','');
+  draw();
+}
+
+/* A short human line for the UI. */
+function mcSummary(date, ctx){
+  const p=mcPhase(date, ctx);
+  if(p.day==null) return {top:'Tracking enabled', sub:'Log today to start counting'};
+  if(p.phase==='unknown') return {top:'Day '+p.day, sub:'Phase estimate unavailable'};
+  return {top:'Day '+p.day+' · Estimated '+p.label.toLowerCase(),
+          sub:p.confidence==='reported'?'From what you logged today':'Based on your entries'};
+}
+
+/* =========================================================================
+   DID IT ACTUALLY MATTER, FOR THIS PERSON?
+   ------------------------------------------------------------------------
+   The question is never "what does the average person do in this phase".
+   It is "do THIS user's own logs show a repeated association between a phase
+   and how they report and perform". Until they do, the answer is no and the
+   influence is zero.
+   ====================================================================== */
+const MC_PHASES=['menstrual','follicular','ovulatory','luteal'];
+
+/* One 0-100 number per logged day, from the signals that exist. Deliberately
+   the same ingredients readiness already trusts, so an association here means
+   something about training rather than about mood alone. */
+function mcDayQuality(d, sessIdx){
+  const ci=DB.checkins[d]; if(!ci) return null;
+  const B=DB.baselines;
+  const bits=[], w=[];
+  if(ci.energy!=null){ bits.push(ci.energy*10); w.push(1); }
+  if(ci.soreness!=null){ bits.push((10-ci.soreness)*10); w.push(1); }
+  if(ci.motivation!=null){ bits.push(ci.motivation*10); w.push(0.6); }
+  const m=ci.mc||{};
+  if(m.cramps!=null){ bits.push((10-m.cramps)*10); w.push(1); }
+  if(ci.recovery!=null){ bits.push(clamp(ci.recovery,0,100)); w.push(1.4); }
+  if(ci.hrv!=null&&B.hrv&&B.hrvSd){
+    bits.push(clamp(50+((ci.hrv-B.hrv)/B.hrvSd)*22,0,100)); w.push(1.2);
+  }
+  /* what actually happened in training that day, when there is a session */
+  const s=sessIdx ? sessIdx[d]
+                  : (DB.sessions||[]).find(x=>x.date===d&&x.done);
+  if(s&&s.sessionRpe!=null){ bits.push(clamp((10-s.sessionRpe)*10,0,100)); w.push(0.8); }
+  if(!bits.length) return null;
+  let tot=0, tw=0;
+  bits.forEach((b,i)=>{ tot+=b*w[i]; tw+=w[i]; });
+  return tot/tw;
+}
+
+/* Per-phase observation: how this user's own days in that phase compare with
+   all their other logged days. Returns counts so thin evidence stays visibly
+   thin. */
+function mcEvidence(ctx){
+  const byPhase={}; const all=[];
+  /* one scan's worth of invariants for the whole loop, not one per day */
+  ctx = ctx || mcCtx();
+  /* sessions indexed once: the per-day lookup was a linear find */
+  const sess={};
+  (DB.sessions||[]).forEach(s=>{ if(s.done) sess[s.date]=s; });
+  MC_PHASES.forEach(p=>byPhase[p]=[]);
+  Object.keys(DB.checkins||{}).sort().forEach(d=>{
+    const q=mcDayQuality(d, sess); if(q==null) return;
+    all.push(q);
+    const p=mcPhase(d, ctx);
+    if(p.phase!=='unknown' && byPhase[p.phase]) byPhase[p.phase].push(q);
+  });
+  const S=ctx.stats;
+  const overallMean=all.length?mean(all):null;
+  const overallSd=all.length>1?sd(all):null;
+  const out={cycles:S.n, days:all.length, phases:{}, regular:S.regular};
+  MC_PHASES.forEach(p=>{
+    const v=byPhase[p];
+    const mu=v.length?mean(v):null;
+    /* Effect in standard deviations of this user's own day-to-day spread,
+       measured against the OTHER phases rather than against all days. The
+       all-days mean contains this phase, so a genuinely bad phase dragged the
+       comparison down and handed its complement a mirror-image positive. */
+    const others=[];
+    MC_PHASES.forEach(q=>{ if(q!==p) byPhase[q].forEach(x=>others.push(x)); });
+    const om=others.length?mean(others):null;
+    const z=(mu!=null&&om!=null&&overallSd>1)?(mu-om)/overallSd:null;
+    out.phases[p]={
+      n:v.length,
+      mean:mu!=null?rnd(mu,1):null,
+      /* still shown against the overall average, which is the number a
+         person can actually interpret */
+      diff:(mu!=null&&overallMean!=null)?rnd(mu-overallMean,1):null,
+      vsOthers:(mu!=null&&om!=null)?rnd(mu-om,1):null,
+      z:z!=null?rnd(z,2):null,
+      established:false      // decided below, once every phase has a z
+    };
+  });
+  /* At most ONE phase is established: the one with the clearest effect. The
+     question is whether a PARTICULAR cycle context matters for this person,
+     and two phases cannot both be the answer to that.
+     Requirements, all of them: enough recorded cycles, a cycle regular enough
+     for phase assignment to mean anything, enough days in the phase, and an
+     effect too big to be noise. */
+  if(S.n>=2 && S.regular){
+    let best=null;
+    MC_PHASES.forEach(p=>{
+      const e=out.phases[p];
+      if(e.n<6 || e.z==null || Math.abs(e.z)<0.40) return;
+      if(!best || Math.abs(e.z)>Math.abs(out.phases[best].z)) best=p;
+    });
+    if(best) out.phases[best].established=true;
+    out.dominant=best;
+  } else {
+    out.dominant=null;
+    /* why nothing is established, in a form the UI can repeat */
+    out.blocked = S.n<2 ? 'not enough recorded cycles yet'
+                        : 'your cycle length varies too much for phase estimates to mean much';
+  }
+  out.overall = overallMean!=null?rnd(overallMean,1):null;
+  return out;
+}
+
+/* The only place cycle context touches the recommendation.
+   Capped at +/-5 points on a 0-100 score, which cannot move a band on its own
+   from the middle of one to the middle of another, and is zero without
+   established personal evidence. */
+const MC_MAX_ADJUST=5;
+function mcAdjust(date, ctx){
+  const none={delta:0, line:null, phase:null};
+  if(!mcOn()) return none;
+  ctx = ctx || mcCtx();
+  const p=mcPhase(date, ctx);
+  /* A whitelist, not a blacklist: 'unknown' and 'late' both mean the phase is
+     not known, and any future state that is not one of the four real phases
+     must default to no influence rather than to whatever slips through. */
+  if(MC_PHASES.indexOf(p.phase)<0) return none;
+  const ev=mcEvidence(ctx);
+  const e=ev.phases[p.phase];
+  if(!e||!e.established) return none;
+  /* scale the observed effect, then clamp hard */
+  const delta=clamp(rnd(e.z*4,1), -MC_MAX_ADJUST, MC_MAX_ADJUST);
+  if(Math.abs(delta)<1) return none;
+  const worse=delta<0;
+  return {
+    delta, phase:p.phase,
+    /* correlation language only: an observation about their own logs, never a
+       claim about hormones or cause */
+    line:`Across ${e.n} logged days around your ${p.label.toLowerCase()} phase you have `+
+         `tended to report ${worse?'a harder time':'a better time'} than your own average. `+
+         `That observation is nudging today's score ${worse?'down':'up'} by ${Math.abs(delta)} `+
+         `— it is a pattern in your data, not a cause.`,
+    kind: worse?'warn':'pos'
+  };
+}
+
+/* What the user reported about today, in their own words, which outranks any
+   estimate (section 25: actual state beats prediction). */
+const MC_FEEL=[
+  {id:'strong',   name:'Strong',                 delta:4},
+  {id:'normal',   name:'Normal',                 delta:0},
+  {id:'low',      name:'Lower energy',           delta:-5},
+  {id:'discomfort',name:'Significant discomfort',delta:-10}
+];
+function mcFeelOf(date){
+  const m=mcLog(date);
+  if(!m||!m.feel) return null;
+  return MC_FEEL.find(f=>f.id===m.feel)||null;
+}
+
+/* Common symptoms, offered as chips. Nothing here is diagnostic. */
+const MC_SYMPTOMS=['Cramps','Headache','Bloating','Back pain','Breast tenderness',
+                   'Nausea','Low mood','Poor sleep','Food cravings','Acne'];
+
+/* Turning it off must be able to remove the data, not just hide it. */
+function mcWipe(){
+  if(DB.mcycle) DB.mcycle={on:false, starts:[], typicalLen:null, typicalPeriod:null, askedAt:null};
+  Object.keys(DB.checkins||{}).forEach(d=>{
+    if(DB.checkins[d] && DB.checkins[d].mc) delete DB.checkins[d].mc;
+  });
+}
+
+/* =========================================================================
+   CYCLE — INTERFACE
+   Small on purpose. One row on Today, one sheet to log, one page to look
+   back. No dashboard, and nothing at all when tracking is off.
+   ====================================================================== */
+
+/* The Today row. Returns '' when tracking is off, so Today is unchanged for
+   everybody who has not enabled it. */
+function mcRow(date){
+  if(!mcOn()) return '';
+  const s=mcSummary(date);
+  const st=mcStateLine(date);
+  const logged=!!mcLog(date);
+  return `<div class="rows" id="mcRow">
+    <button data-r="0">
+      <i class="rw-i">${svg('drop')}</i>
+      <span class="rw-x"><span class="rw-t">${esc(st||s.top)}</span>
+        <span class="rw-s">${esc(logged? (st? s.top : s.sub) : 'Log today')}</span></span>
+      <i class="rw-c">${svg('chev')}</i>
+    </button></div>`;
+}
+
+/* The daily log. Deliberately does not ask for energy, soreness or
+   motivation: the check-in already does, and asking twice is how a one-minute
+   routine becomes a chore. */
+function mcSheet(date){
+  const m=mcLog(date)||{};
+  const p=mcPhase(date);
+  openSheet('Cycle · '+fmtDate(date),`
+   ${p.day!=null?`<div class="rec" style="margin-top:0">
+     <div class="rec-l">${p.phase==='unknown'?'Cycle':'Estimated'}</div>
+     <div class="rec-t" style="font-size:20px">Day ${p.day}${
+       p.phase==='unknown'?'':' · '+esc(p.label)}</div>
+     <div class="rec-m">${esc(p.note)}</div>
+   </div>`:''}
+
+   <div class="field" style="margin-top:16px">
+     <label>Bleeding today?</label>
+     <div class="seg acc" id="mcBleed">
+       <button data-v="1" class="${m.bleeding?'on':''}">Yes</button>
+       <button data-v="0" class="${m.bleeding===false?'on':''}">No</button>
+     </div>
+   </div>
+
+   <div class="field" id="mcFlowWrap" ${m.bleeding?'':'hidden'}>
+     <label>Flow</label>
+     <div class="pills" id="mcFlow">
+       ${['Light','Medium','Heavy'].map(f=>
+         `<button data-v="${f}" class="${m.flow===f?'on':''}">${f}</button>`).join('')}
+     </div>
+   </div>
+
+   <div class="field"><label>How does today feel?</label>
+     <div class="pills" id="mcFeel">
+       ${MC_FEEL.map(f=>`<button data-v="${f.id}" class="${m.feel===f.id?'on':''}">${esc(f.name)}</button>`).join('')}
+     </div>
+     <div class="hint">Applied to today's recommendation straight away. What
+       you are actually experiencing outranks any estimate.</div>
+   </div>
+
+   ${sliderHTML('mcCramps','Cramps or pain',m.cramps??0,'None','Severe')}
+
+   <div class="field"><label>Anything else</label>
+     ${chipPicker({id:'mcSym', allowEmpty:true, emptyText:'None',
+        chosen:(m.symptoms||[]), all:MC_SYMPTOMS.map(s=>({id:s,name:s}))})}
+   </div>
+
+   <button class="tert" id="mcNoteT">${m.note?'Note':'Add a note'} ${svg('down')}</button>
+   <div id="mcNoteB" ${m.note?'':'hidden'}>
+     <div class="field"><textarea class="inp" id="mcNote" placeholder="Anything worth remembering">${esc(m.note||'')}</textarea></div>
+   </div>
+
+   <div class="hint" style="margin-top:14px">Stored on this device only, with
+     the rest of your data. Baseline does not interpret this medically and
+     never estimates fertility or pregnancy.</div>
+  `,`<button class="btn primary big block" id="mcSave">Save</button>`);
+
+  let symChosen=(m.symptoms||[]).slice();
+  const pills=(sel,cb)=>$$(sel+' button').forEach(b=>b.onclick=()=>{
+    $$(sel+' button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); haptic(); if(cb)cb(b); });
+  pills('#mcBleed', b=>{
+    const w=$('#mcFlowWrap');
+    if(b.dataset.v==='1') w.removeAttribute('hidden'); else w.setAttribute('hidden','');
+  });
+  pills('#mcFlow'); pills('#mcFeel');
+  wirePicker('mcSym', symChosen, MC_SYMPTOMS.map(s=>({id:s,name:s})),
+    next=>{ symChosen=next; mcSheet(date); }, 'Symptoms', true);
+  const nt=$('#mcNoteT'), nb=$('#mcNoteB');
+  if(nt&&nb) nt.onclick=()=>{
+    const open=nb.hasAttribute('hidden');
+    if(open) nb.removeAttribute('hidden'); else nb.setAttribute('hidden','');
+    nt.classList.toggle('open',open);
+  };
+
+  $('#mcSave').onclick=()=>{
+    const gv=sel=>{ const b=$(sel+' button.on'); return b?b.dataset.v:null; };
+    const bl=gv('#mcBleed');
+    mcSetLog(date,{
+      bleeding: bl==null? null : bl==='1',
+      flow: bl==='1' ? gv('#mcFlow') : null,
+      feel: gv('#mcFeel'),
+      cramps: +$('#mcCramps').value,
+      symptoms: symChosen.slice(),
+      note: ($('#mcNote')||{value:''}).value.trim(),
+      at: new Date().toISOString()
+    });
+    save(true); closeSheet(); toast('Saved','ok');
+    setTimeout(render,220);
+  };
+}
+
+/* The page. Status, history, and what the user's own data does or does not
+   show - stated as an observation, with its sample size. */
+function paneCycle(c){
+  const d=todayISO();
+  const p=mcPhase(d), S=mcStats(), ev=mcEvidence();
+  const starts=mcStarts().slice().reverse().slice(0,6);
+  const recent=Object.keys(DB.checkins||{}).filter(k=>DB.checkins[k].mc).sort().reverse().slice(0,10);
+  const ctx=mcCtx();
+  c.innerHTML=`
+  <div class="rec" style="margin-top:0">
+    <div class="rec-l">${p.phase==='unknown'?'Cycle':'Estimated'}</div>
+    <div class="rec-t" style="font-size:24px">${p.day!=null?'Day '+p.day:'Not started'}${
+      p.phase==='unknown'?'':' · '+esc(p.label)}</div>
+    <div class="rec-m">${esc(p.note||'Log a period to start counting.')}</div>
+    ${p.phase!=='unknown'&&p.confidence!=='reported'
+      ? `<div class="rec-m" style="color:var(--text-3)">Estimate confidence: ${esc(p.confidence)}</div>`:''}
+  </div>
+  <button class="btn primary big block" id="mcLogBtn">
+    ${mcLog(d)?'Update today':'Log today'}</button>
+
+  <div class="sec-t">Your cycles</div>
+  <div class="card">
+    <div class="kv"><span class="k">Recorded cycles</span><span class="v num">${S.n}</span></div>
+    <div class="kv"><span class="k">Average length</span><span class="v num">${S.mean!=null?S.mean+' days':'—'}</span></div>
+    <div class="kv"><span class="k">Variation</span><span class="v num">${S.sd!=null?'±'+S.sd+' days':'—'}</span></div>
+    ${S.typical?`<div class="kv"><span class="k">You told us</span><span class="v num">${S.typical} days</span></div>`:''}
+    <div class="kv"><span class="k">Period length</span><span class="v num">${mcPeriodLen()!=null?mcPeriodLen()+' days':'—'}</span></div>
+    ${S.n<2?`<div class="hint" style="margin-top:8px">Two complete cycles are needed before any estimate becomes meaningful. Nothing is assumed in the meantime.</div>`
+      :!S.regular?`<div class="hint" style="margin-top:8px">Your cycle length varies, so estimates here stay low-confidence. That is a normal thing for a cycle to do and it costs you nothing in the app.</div>`:''}
+  </div>
+
+  <div class="sec-t">What your own data shows</div>
+  <div class="card">
+    ${(()=>{
+      const rows=MC_PHASES.filter(k=>ev.phases[k].n>0);
+      if(!rows.length) return '<div class="hint">Nothing logged against a phase yet.</div>';
+      return rows.map(k=>{
+        const e=ev.phases[k];
+        return `<div class="kv"><span class="k">${esc(k.charAt(0).toUpperCase()+k.slice(1))}
+          <span style="color:var(--text-3);font-weight:600">· ${e.n} day${e.n===1?'':'s'}</span></span>
+          <span class="v num" style="color:${e.established?(e.z<0?'var(--orange)':'var(--green)'):'var(--text-3)'}">${
+            e.diff==null?'—':(e.diff>0?'+':'')+e.diff}</span></div>`;
+      }).join('')
+      + `<div class="hint" style="margin-top:9px">Difference from your own average across all logged days, on a 0–100 scale built from what you reported and how sessions went. ${
+        ev.dominant
+          ? 'The highlighted figure is an <b>observed association in your data</b> and is nudging your readiness score by up to 5 points. It is a correlation, not a cause.'
+          : ev.blocked
+            ? 'None of this is affecting your recommendations — '+esc(ev.blocked)+'.'
+            : 'No single phase stands out clearly enough yet, so none of this is affecting your recommendations.'}</div>`;
+    })()}
+  </div>
+
+  ${recent.length?`<div class="sec-t">Recent entries</div>
+  <div class="card">
+    ${recent.map(k=>{ const m=DB.checkins[k].mc, ph=mcPhase(k,ctx);
+      return `<div class="kv"><span class="k">${fmtDate(k)}${ph.day!=null?` · day ${ph.day}`:''}</span>
+        <span class="v">${[m.bleeding?'bleeding'+(m.flow?' ('+esc(m.flow.toLowerCase())+')':''):null,
+          m.cramps?('cramps '+m.cramps+'/10'):null,
+          m.feel?esc((MC_FEEL.find(f=>f.id===m.feel)||{}).name||''):null,
+          (m.symptoms&&m.symptoms.length)?esc(m.symptoms.join(', ')):null
+        ].filter(Boolean).join(' · ')||'logged'}</span></div>`;}).join('')}
+  </div>`:''}
+
+  ${starts.length?`<div class="sec-t">Period starts</div>
+  <div class="card">${starts.map(s=>
+    `<div class="kv"><span class="k">${fmtDate(s)}</span><span class="v num">${
+      (()=>{ const st=mcStarts(); const i=st.indexOf(s);
+        return i>0? daysBetween(st[i-1],s)+' days later' : '—'; })()}</span></div>`).join('')}
+  </div>`:''}
+
+  <div class="note">Baseline is not a medical device.
+    It does not estimate fertility or pregnancy, does not diagnose anything,
+    and cannot tell you whether a cycle is healthy. Anything that concerns you
+    belongs with a qualified healthcare professional.</div>`;
+
+  const b=$('#mcLogBtn'); if(b) b.onclick=()=>mcSheet(d);
+}
+function openCycle(){ pushPage({build:c=>{ appbar('Cycle'); paneCycle(c); }}); }

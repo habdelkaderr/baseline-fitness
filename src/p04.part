@@ -1,0 +1,1323 @@
+
+/* =========================================================================
+   CSV PARSING  (RFC4180-tolerant)
+   ====================================================================== */
+function parseCSV(text){
+  text = text.replace(/^﻿/,'');
+  const rows=[]; let row=[], f='', q=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i], n=text[i+1];
+    if(q){
+      if(c==='"'&&n==='"'){f+='"';i++;}
+      else if(c==='"'){q=false;}
+      else f+=c;
+    } else {
+      if(c==='"')q=true;
+      else if(c===','){row.push(f);f='';}
+      else if(c==='\r'){ }
+      else if(c==='\n'){row.push(f);f='';rows.push(row);row=[];}
+      else f+=c;
+    }
+  }
+  if(f!==''||row.length){row.push(f);rows.push(row);}
+  return rows.filter(r=>r.length>1||(r.length===1&&r[0].trim()!==''));
+}
+function toObjects(rows){
+  if(!rows.length) return {head:[],data:[]};
+  const head=rows[0].map(h=>h.trim());
+  const data=rows.slice(1).map(r=>{ const o={}; head.forEach((h,i)=>o[h]=(r[i]!=null?r[i].trim():'')); return o; });
+  return {head,data};
+}
+/* tolerant column lookup — matches on normalised substrings so that a
+   changed WHOOP header still resolves instead of silently producing nulls */
+function col(obj,...cands){
+  const keys=Object.keys(obj);
+  for(const c of cands){
+    const t=c.toLowerCase().replace(/[^a-z0-9]/g,'');
+    for(const k of keys){
+      if(k.toLowerCase().replace(/[^a-z0-9]/g,'')===t) return obj[k];
+    }
+  }
+  for(const c of cands){
+    const t=c.toLowerCase().replace(/[^a-z0-9]/g,'');
+    for(const k of keys){
+      const kk=k.toLowerCase().replace(/[^a-z0-9]/g,'');
+      if(kk.includes(t)||t.includes(kk)) return obj[k];
+    }
+  }
+  return undefined;
+}
+const numOr=(v)=>{ if(v==null||v==='')return null; const n=parseFloat(String(v).replace(/[^0-9.\-]/g,'')); return isNaN(n)?null:n; };
+function isoOf(v){
+  if(!v) return null;
+  const s=String(v).trim();
+  let m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return m[1]+'-'+m[2]+'-'+m[3];
+  const d=new Date(s);
+  if(!isNaN(d)) return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10);
+  return null;
+}
+
+
+/* Vendors disagree on sleep units: WHOOP and Fitbit give minutes, Oura and
+   Garmin often give seconds, some exports give decimal hours. Pick by
+   magnitude — nobody sleeps 30000 minutes, and nobody sleeps 7 minutes. */
+function sleepMinutes(v){
+  const n=numOr(v);
+  if(n==null) return null;
+  if(n>3000) return Math.round(n/60);   // seconds
+  if(n<=24)  return Math.round(n*60);   // decimal hours
+  return Math.round(n);                 // already minutes
+}
+
+/* =========================================================================
+   WHAT IS ALLOWED THROUGH THE IMPORT DOOR
+   ------------------------------------------------------------------------
+   `accept=` on a file input is a hint to the picker. It is not validation:
+   a renamed file, a drag-and-drop, or a platform that ignores the attribute
+   all reach the reader regardless. These are the checks that actually run.
+
+   Nothing here trusts the filename for anything except a first sieve - the
+   importer has always detected the KIND of file from its headers, which is
+   the right way round.
+   ====================================================================== */
+const IMPORT_MAX_MB   = 25;                       // per file
+const IMPORT_MAX_BYTES= IMPORT_MAX_MB*1024*1024;
+const IMPORT_MAX_ROWS = 200000;                   // ~500 years of daily rows
+const IMPORT_OK_EXT   = ['.csv','.txt'];
+/* Browsers disagree about the type they report for a CSV, and some report
+   nothing at all, so an empty type is allowed through to the content check
+   rather than rejected on a guess. */
+const IMPORT_OK_TYPE  = ['text/csv','text/plain','application/csv',
+                         'application/vnd.ms-excel','text/comma-separated-values',''];
+
+function importFileCheck(f){
+  const name=String(f&&f.name||'');
+  const lower=name.toLowerCase();
+  /* A filename is data, not a path. It is never used to open, write or
+     resolve anything - only shown back, escaped - but a name carrying
+     separators is a sign of something odd and there is no reason to accept
+     one. */
+  if(/[\\/\\\\]|\.\./.test(name))
+    return 'That filename looks wrong. Rename the file and try again.';
+  if(!IMPORT_OK_EXT.some(x=>lower.endsWith(x)))
+    return 'Only .csv files can be imported. This one is '+
+           (lower.match(/\.[a-z0-9]+$/)? lower.match(/\.[a-z0-9]+$/)[0] : 'not a CSV')+'.';
+  if(f.type && IMPORT_OK_TYPE.indexOf(f.type)<0)
+    return 'That file says it is '+f.type+', not a CSV.';
+  if(!f.size) return 'That file is empty.';
+  if(f.size>IMPORT_MAX_BYTES)
+    return 'That file is '+Math.round(f.size/1024/1024)+' MB. The limit is '+
+           IMPORT_MAX_MB+' MB — a full export is normally well under it.';
+  return null;
+}
+/* Bytes that claim to be a CSV but are not text at all. A NUL in the first
+   few kilobytes means a binary file with a .csv name on it. */
+function importLooksBinary(text){
+  return text.slice(0,4096).indexOf('\u0000')>=0;
+}
+
+/* =========================================================================
+   WHOOP IMPORT
+   ====================================================================== */
+function detectKind(head){
+  const h=head.map(x=>x.toLowerCase()).join('|');
+  if(h.includes('question text')) return 'journal';
+  if(h.includes('activity name')||h.includes('activity strain')) return 'workouts';
+  if(h.includes('day strain')||h.includes('recovery score')) return 'cycles';
+  if(h.includes('sleep onset')||h.includes('nap')) return 'sleeps';
+  /* Any other vendor's daily export: a date column plus at least one metric we
+     understand is enough. This is what lets Garmin, Oura, Fitbit, Polar,
+     Samsung and Apple Health exports come in through the same door. */
+  const hasDate = /date|day|timestamp|start/.test(h);
+  const hasMetric = /recovery|readiness|body ?battery|energy score|hrv|heart rate variability|resting|rhr|sleep|strain|load/.test(h);
+  if(hasDate && hasMetric) return 'cycles';
+  return null;
+}
+function importWhoopFile(name,text){
+  if(importLooksBinary(text))
+    return {file:name,kind:null,added:0,dupes:0,
+            error:'That is not a text file, whatever it is named'};
+  const rows=parseCSV(text);
+  if(rows.length<2) return {file:name,kind:null,added:0,dupes:0,error:'File is empty or has no data rows'};
+  if(rows.length>IMPORT_MAX_ROWS)
+    return {file:name,kind:null,added:0,dupes:0,
+            error:'That file has '+rows.length+' rows, which is more than this importer will take'};
+  const {head,data}=toObjects(rows);
+  const kind=detectKind(head);
+  if(!kind) return {file:name,kind:null,added:0,dupes:0,
+    error:'Unrecognised file — no date column, or no column that looks like recovery, HRV, resting heart rate, sleep or load'};
+
+  let added=0,dupes=0,bad=0,merged=0,naps=0;
+  if(kind==='cycles'||kind==='sleeps'){
+    const idx={}; DB.whoop.cycles.forEach((c,i)=>idx[c.date]=i);
+    data.forEach(r=>{
+      const date=isoOf(col(r,'Cycle start time','Sleep onset','Cycle start',
+                           'Date','Day','Calendar date','Timestamp','Start time','Summary date'));
+      if(!date){bad++;return;}
+      const rec={
+        date,
+        /* every vendor's daily score lands in the same slot: WHOOP recovery,
+           Garmin Body Battery / Training Readiness, Oura & Fitbit readiness,
+           Samsung energy, Polar Nightly Recharge */
+        recovery: numOr(col(r,'Recovery score %','Recovery score','Readiness score',
+                            'Daily readiness score','Body battery','Body battery max',
+                            'Training readiness','Energy score','Nightly recharge','Readiness')),
+        hrv:      numOr(col(r,'Heart rate variability (ms)','Heart rate variability',
+                            'HRV','Average HRV','HRV (ms)','Overnight HRV','Rmssd','Average hrv')),
+        rhr:      numOr(col(r,'Resting heart rate (bpm)','Resting heart rate',
+                            'RHR','Lowest resting heart rate','Average resting heart rate')),
+        resp:     numOr(col(r,'Respiratory rate (rpm)','Respiratory rate')),
+        skinTemp: numOr(col(r,'Skin temp (celsius)','Skin temp')),
+        spo2:     numOr(col(r,'Blood oxygen %','Blood oxygen')),
+        strain:   numOr(col(r,'Day Strain','Day strain','Training load','Cardio load',
+                            'Activity load','Exertion','Strain')),
+        kcal:     numOr(col(r,'Energy burned (cal)','Energy burned')),
+        sleepMin: sleepMinutes(col(r,'Asleep duration (min)','Asleep duration',
+                            'Total sleep duration','Sleep duration','Total sleep',
+                            'Time asleep','Minutes asleep','Sleep (h)')),
+        inBed:    numOr(col(r,'In bed duration (min)')),
+        sleepPerf:numOr(col(r,'Sleep performance %','Sleep performance')),
+        sleepNeed:numOr(col(r,'Sleep need (min)','Sleep need')),
+        sleepDebt:numOr(col(r,'Sleep debt (min)','Sleep debt')),
+        sleepEff: numOr(col(r,'Sleep efficiency %','Sleep efficiency')),
+        sleepCons:numOr(col(r,'Sleep consistency %','Sleep consistency')),
+        deep:     numOr(col(r,'Deep (SWS) duration (min)','Deep')),
+        rem:      numOr(col(r,'REM duration (min)','REM')),
+        light:    numOr(col(r,'Light sleep duration (min)','Light sleep')),
+        awake:    numOr(col(r,'Awake duration (min)','Awake')),
+        onset:    col(r,'Sleep onset')||null,
+        wake:     col(r,'Wake onset')||null
+      };
+      const nap=String(col(r,'Nap')||'').toLowerCase()==='true';
+      if(nap){naps++;return;}                                 // naps never overwrite a main sleep
+      const has = Object.keys(rec).some(k=>k!=='date'&&rec[k]!=null);
+      if(!has){bad++;return;}
+      if(idx[date]!=null){
+        /* WHOOP can produce two cycles inside one calendar day. This app is
+           day-keyed, so they are merged: the row carrying a recovery score
+           wins for the scored fields, and everything else fills gaps only. */
+        const cur=DB.whoop.cycles[idx[date]];
+        let changed=false;
+        if(rec.recovery!=null && cur.recovery==null){
+          for(const k in rec){ if(k!=='date'&&rec[k]!=null){cur[k]=rec[k];} }
+          changed=true;
+        } else {
+          for(const k in rec){ if(k==='date')continue; if(rec[k]!=null&&cur[k]==null){cur[k]=rec[k];changed=true;} }
+        }
+        if(changed) merged++; else dupes++;
+      } else {
+        idx[date]=DB.whoop.cycles.length; DB.whoop.cycles.push(rec); added++;
+      }
+    });
+    DB.whoop.cycles.sort((a,b)=>a.date<b.date?-1:1);
+    return {file:name,kind,added,dupes,bad,merged,naps,rows:data.length,days:DB.whoop.cycles.length};
+  }
+  else if(kind==='workouts'){
+    const seen=new Set(DB.whoop.workouts.map(w=>w.key));
+    data.forEach(r=>{
+      const st=col(r,'Workout start time');
+      const date=isoOf(st)||isoOf(col(r,'Cycle start time'));
+      const act=col(r,'Activity name')||'Activity';
+      if(!date){bad++;return;}
+      const key=(st||date)+'|'+act;
+      if(seen.has(key)){dupes++;return;}
+      seen.add(key);
+      DB.whoop.workouts.push({
+        key,date,activity:act,start:st||null,
+        min:numOr(col(r,'Duration (min)','Duration')),
+        strain:numOr(col(r,'Activity Strain','Activity strain')),
+        kcal:numOr(col(r,'Energy burned (cal)')),
+        maxHr:numOr(col(r,'Max HR (bpm)')), avgHr:numOr(col(r,'Average HR (bpm)')),
+        z1:numOr(col(r,'HR Zone 1 %')),z2:numOr(col(r,'HR Zone 2 %')),
+        z3:numOr(col(r,'HR Zone 3 %')),z4:numOr(col(r,'HR Zone 4 %')),z5:numOr(col(r,'HR Zone 5 %'))
+      });
+      added++;
+    });
+    DB.whoop.workouts.sort((a,b)=>a.date<b.date?-1:1);
+  }
+  else if(kind==='journal'){
+    const seen=new Set(DB.whoop.journal.map(j=>j.key));
+    data.forEach(r=>{
+      const date=isoOf(col(r,'Cycle start time'));
+      const q=col(r,'Question text');
+      if(!date||!q){bad++;return;}
+      const key=date+'|'+q;
+      if(seen.has(key)){dupes++;return;}
+      seen.add(key);
+      DB.whoop.journal.push({key,date,q,yes:String(col(r,'Answered yes')).toLowerCase()==='true'});
+      added++;
+    });
+  }
+  return {file:name,kind,added,dupes,bad,rows:data.length};
+}
+
+/* =========================================================================
+   ANALYTICS — baselines, trends, correlations
+   ====================================================================== */
+function recomputeBaselines(){
+  const c=DB.whoop.cycles;
+  if(c.length<14){
+    /* not enough data to establish anything — say so rather than guessing */
+    DB.baselines=Object.assign({},SEED_BASE,{
+      computed:false,
+      source: c.length ? `Only ${c.length} days of WHOOP data — at least 14 are needed before baselines mean anything.`
+                       : SEED_BASE.source
+    });
+    return DB.baselines;
+  }
+  const recent = c.slice(-90);
+  const g=k=>recent.map(x=>x[k]).filter(v=>v!=null);
+  const b=DB.baselines;
+  const set=(k,v,d)=>{ if(v!=null&&!isNaN(v)) b[k]=rnd(v,d==null?1:d); };
+  set('hrv',mean(g('hrv')));       set('hrvSd',sd(g('hrv')));
+  set('rhr',mean(g('rhr')));       set('rhrSd',sd(g('rhr')));
+  set('recovery',mean(g('recovery'))); set('recoverySd',sd(g('recovery')));
+  set('respRate',mean(g('resp')),2); set('respSd',sd(g('resp')),2);
+  set('strainMean',mean(g('strain'))); set('strainSd',sd(g('strain')));
+  set('sleepMean',mean(g('sleepMin')),0);
+  const need=median(g('sleepNeed')); if(need) b.sleepNeed=Math.round(need);
+  set('sleepPerf',mean(g('sleepPerf')));
+  b.computed=true; b.seeded=false; b.sleepNeedGeneric=false;
+  b.n=c.length; b.from=c[0].date; b.to=c[c.length-1].date;
+  b.source='Computed from your imported WHOOP data ('+c.length+' days; baselines use the most recent 90)';
+  return b;
+}
+const cycleByDate = d => DB.whoop.cycles.find(c=>c.date===d)||null;
+
+/* =========================================================================
+   SUBJECTIVE BASELINE
+   Without WHOOP the engine leans on how you feel — but "energy 6" means
+   nothing in isolation. These are YOUR rolling norms, so a 6 is read as
+   below par for someone who usually reports 8, and fine for someone who
+   usually reports 5. Needs at least 8 check-ins before it is used.
+   ====================================================================== */
+function subjectiveBaseline(before){
+  const rows=Object.keys(DB.checkins)
+    .filter(d=>!before||d<before)
+    .sort().slice(-60).map(d=>DB.checkins[d]);
+  if(rows.length<8) return {n:rows.length, ready:false};
+  const g=k=>rows.map(r=>r[k]).filter(v=>v!=null);
+  return {
+    n:rows.length, ready:true,
+    energy:mean(g('energy')), energySd:sd(g('energy')),
+    soreness:mean(g('soreness')), sorenessSd:sd(g('soreness')),
+    stress:mean(g('stress')), stressSd:sd(g('stress')),
+    motivation:mean(g('motivation'))
+  };
+}
+/* days since a genuinely easy day, and how many hard days are stacked up */
+function restPicture(date){
+  let consecutive=0, sinceEasy=99;
+  for(let i=1;i<=10;i++){
+    const l=dayDemand(addDays(date,-i)).load;
+    if(l>=8){ if(consecutive===i-1) consecutive=i; }
+    else if(sinceEasy===99) sinceEasy=i;
+  }
+  return {consecutive, sinceEasy};
+}
+function rollingHRV(date,days){
+  const idx=DB.whoop.cycles.filter(c=>c.date<=date).slice(-days);
+  return {hrv:mean(idx.map(c=>c.hrv)), rhr:mean(idx.map(c=>c.rhr)), n:idx.length};
+}
+/* -------------------------------------------------------------------------
+   ACTIVITY LOAD MODEL
+   Every logged activity — planned or not — produces a session Load Score on a
+   0–21 scale (deliberately comparable to WHOOP strain) plus a DEMAND VECTOR.
+   The demand vector is what makes the engine treat a football match, a long
+   run and an easy spin differently instead of applying one blanket rule.
+   This is an ESTIMATE, not a measurement. Where WHOOP strain exists for a day
+   it is preferred for the day total.
+   ---------------------------------------------------------------------- */
+const ACT_TYPES={
+  /* `upper` is RESISTANCE-style upper demand, not incidental arm work. A tennis
+     serve loads the shoulder but is nothing like an upper-body session, so it
+     stays low here and is handled separately as shoulder fatigue. */
+  /* `short` is for the one place with a single cell to fill - the week strip -
+     and matches the abbreviations it already uses for sessions. Everywhere
+     else the full name is shown, which is why these carried no emoji. */
+  tennis:     {name:'Tennis',           short:'Ten', base:1.00, lower:.90, upper:.35, expl:.90, impact:.80, dist:false, aerobic:.7, shoulder:.8},
+  padel:      {name:'Padel',            short:'Pad', base:0.85, lower:.80, upper:.30, expl:.75, impact:.70, dist:false, aerobic:.65, shoulder:.7},
+  squash:     {name:'Squash',           short:'Sqh', base:1.05, lower:.90, upper:.30, expl:.90, impact:.85, dist:false, aerobic:.85, shoulder:.75},
+  football:   {name:'Football / Soccer',short:'Ftbl',base:1.15, lower:1.00,upper:.15, expl:1.00,impact:.95, dist:false, aerobic:.9},
+  basketball: {name:'Basketball',       short:'Bball',base:1.10,lower:.95, upper:.35, expl:1.00,impact:.90, dist:false, aerobic:.85, shoulder:.4},
+  running:    {name:'Running',          short:'Run', base:1.00, lower:.90, upper:.10, expl:.35, impact:.90, dist:true,  aerobic:1.0},
+  cycling:    {name:'Cycling',          short:'Bike',base:0.70, lower:.60, upper:.05, expl:.20, impact:.10, dist:true,  aerobic:1.0},
+  swimming:   {name:'Swimming',         short:'Swim',base:0.80, lower:.30, upper:.95, expl:.25, impact:.05, dist:true,  aerobic:.95},
+  walking:    {name:'Walking',          short:'Walk',base:0.35, lower:.25, upper:.05, expl:.05, impact:.20, dist:true,  aerobic:.4},
+  hiking:     {name:'Hiking',           short:'Hike',base:0.60, lower:.70, upper:.10, expl:.15, impact:.50, dist:true,  aerobic:.7},
+  strength:   {name:'Strength (other)', short:'Str', base:0.80, lower:.60, upper:.70, expl:.35, impact:.25, dist:false, aerobic:.3},
+  climbing:   {name:'Climbing',         short:'Climb',base:0.85,lower:.45, upper:.95, expl:.55, impact:.20, dist:false, aerobic:.5},
+  volleyball: {name:'Volleyball',       short:'Vball',base:0.85,lower:.75, upper:.55, expl:.95, impact:.85, dist:false, aerobic:.6},
+  martial:    {name:'Martial arts',     short:'Mart',base:1.00, lower:.70, upper:.75, expl:.85, impact:.60, dist:false, aerobic:.8},
+  skiing:     {name:'Skiing / Boarding',short:'Ski', base:0.85, lower:.90, upper:.25, expl:.55, impact:.60, dist:false, aerobic:.6},
+  rowing:     {name:'Rowing',           short:'Row', base:0.90, lower:.60, upper:.75, expl:.35, impact:.10, dist:true,  aerobic:.95},
+  yoga:       {name:'Yoga / Pilates',   short:'Yoga',base:0.35, lower:.30, upper:.35, expl:.05, impact:.05, dist:false, aerobic:.2},
+  golf:       {name:'Golf',             short:'Golf',base:0.40, lower:.30, upper:.35, expl:.30, impact:.25, dist:false, aerobic:.3},
+  other:      {name:'Other activity',   short:'Act', base:0.75, lower:.55, upper:.45, expl:.45, impact:.45, dist:true,  aerobic:.6}
+};
+const LOAD_BANDS=[
+  {max:3,  label:'Minimal',   cls:'g', note:'negligible recovery cost'},
+  {max:7,  label:'Light',     cls:'g', note:'low recovery cost'},
+  {max:11, label:'Moderate',  cls:'y', note:'noticeable but manageable'},
+  {max:15, label:'High',      cls:'o', note:'expect a real next-day cost'},
+  {max:99, label:'Very high', cls:'r', note:'plan a genuine easy day after'}
+];
+const loadBand = v => LOAD_BANDS.find(b=>v<=b.max)||LOAD_BANDS[LOAD_BANDS.length-1];
+
+/* Load Score for one logged activity.
+   A figure the user entered - off a watch, or off a strap - is better data
+   than anything this formula can work out from a duration and a word, so it
+   wins outright. The estimate is what happens when there is not one. */
+function activityLoad(a){
+  if(a && a.strain!=null && !isNaN(+a.strain)) return clamp(+a.strain, 0, 21);
+  const t=ACT_TYPES[a.type]||ACT_TYPES.other;
+  const min=a.min||0, rpe=clamp(a.rpe||6,1,10);
+  if(!min) return 0;
+  const raw = t.base * min * Math.pow(rpe/10, 1.05);
+  return rnd(21*(1-Math.exp(-raw/60)),1);
+}
+/* Demand vector contribution of one activity */
+function activityDemand(a){
+  const t=ACT_TYPES[a.type]||ACT_TYPES.other, L=activityLoad(a);
+  return {load:L, lower:L*t.lower, upper:L*t.upper, expl:L*t.expl, impact:L*t.impact, type:a.type};
+}
+/* Load + demand for one of our own strength sessions */
+function sessionLoad(s){
+  const w=DB.workouts.find(w=>w.id===s.workoutId);
+  const type=(w&&w.type)||'strength';
+  const base={strength:.80,power:.95,core:.45,mobility:.20,cardio:.85,tennis:.45}[type]||.7;
+  const mins=s.durationMin||(w?w.est[s.variant||'full']:40);
+  const mult={full:1,reduced:.72,recovery:.42}[s.variant||'full'];
+  const rpe=clamp(s.sessionRpe||7,1,10);
+  const raw=base*mult*mins*Math.pow(rpe/10,1.05);
+  const L=rnd(21*(1-Math.exp(-raw/60)),1);
+  const prof={
+    strength:{lower:.55,upper:.55,expl:.25,impact:.2},
+    power:   {lower:.95,upper:.15,expl:1.0,impact:.85},
+    core:    {lower:.20,upper:.35,expl:.10,impact:.1},
+    cardio:  {lower:.80,upper:.10,expl:.35,impact:.7},
+    mobility:{lower:.10,upper:.10,expl:.02,impact:.05},
+    tennis:  {lower:.35,upper:.40,expl:.45,impact:.35}
+  }[type]||{lower:.5,upper:.5,expl:.3,impact:.3};
+  // refined by which workout it actually was
+  let lo=prof.lower, up=prof.upper, ex=prof.expl, im=prof.impact;
+  if(w){
+    if(w.id==='w_lowerA'||w.id==='w_lowerB'){lo=.95;up=.10;}
+    if(w.id==='w_upperA'||w.id==='w_upperB'){lo=.08;up=.95;}
+    if(w.id==='w_bike'){lo=.55;up=.05;ex=.15;im=.08;}            // cycling: aerobic, no pounding
+    if(w.id==='w_runEasy'){lo=.80;up=.08;ex=.25;im=.85;}
+    if(w.id==='w_runQuality'){lo=.88;up=.08;ex=.40;im=.90;}
+    if(w.id==='w_runInt'){lo=.92;up=.10;ex=.70;im=.95;}
+    if(w.id==='w_prep'){lo=.30;up=.35;ex=.45;im=.30;}
+  }
+  if(s.addCore) up=Math.min(1,up+0.12);
+  return {load:L, lower:L*lo, upper:L*up, expl:L*ex, impact:L*im, type:'session'};
+}
+/* Everything logged on one date */
+function dayItems(d){
+  const out=[];
+  DB.activities.filter(a=>a.date===d).forEach(a=>out.push(Object.assign({kind:'activity'},a,activityDemand(a))));
+  DB.sessions.filter(s=>s.date===d&&s.done).forEach(s=>{
+    const L=sessionLoad(s);
+    out.push(Object.assign({kind:'session',id:s.id,name:s.workoutName,min:s.durationMin,time:s.time||null,
+      rpe:s.sessionRpe,planned:true},L));
+  });
+  return out.sort((a,b)=>(a.time||'zz').localeCompare(b.time||'zz'));
+}
+function dayDemand(d){
+  const items=dayItems(d);
+  const agg={load:0,lower:0,upper:0,expl:0,impact:0,n:items.length,items};
+  items.forEach(i=>{ agg.load+=i.load||0; agg.lower+=i.lower||0; agg.upper+=i.upper||0; agg.expl+=i.expl||0; agg.impact+=i.impact||0; });
+  ['load','lower','upper','expl','impact'].forEach(k=>agg[k]=rnd(agg[k],1));
+  return agg;
+}
+/* Day total load: WHOOP day strain wins when present (it measures the whole day),
+   otherwise the sum of what you logged. */
+function loadForDate(d){
+  const c=cycleByDate(d);
+  if(c&&c.strain!=null) return {v:c.strain,src:'whoop'};
+  const dd=dayDemand(d);
+  return {v:dd.load||null, src:dd.load?'est':'none', demand:dd};
+}
+function rollingDemand(date,days){
+  const agg={load:0,lower:0,upper:0,expl:0,impact:0};
+  for(let i=1;i<=days;i++){ const dd=dayDemand(addDays(date,-i));
+    ['load','lower','upper','expl','impact'].forEach(k=>agg[k]+=dd[k]); }
+  ['load','lower','upper','expl','impact'].forEach(k=>agg[k]=rnd(agg[k],1));
+  return agg;
+}
+function acuteChronic(date){
+  const hist=[]; for(let i=0;i<28;i++){ const d=addDays(date,-1-i); const l=loadForDate(d); if(l.v!=null) hist.push({d,v:l.v}); }
+  const a7=hist.filter(x=>daysBetween(x.d,date)<=7);
+  const acute=sum(a7.map(x=>x.v));
+  const chronic=hist.length>=14? mean(hist.map(x=>x.v))*7 : null;
+  return {acute:acute||null, chronic, ratio:(chronic&&chronic>0)?acute/chronic:null, n7:a7.length, n28:hist.length};
+}
+function lastNCycles(n){ return DB.whoop.cycles.slice(-n); }
+
+function correlations(){
+  const c=DB.whoop.cycles.filter(x=>x.recovery!=null);
+  if(c.length<14) return [];
+  const out=[];
+  const push=(label,xs,ys,note)=>{ const r=pearson(xs,ys); if(r&&r.n>=12) out.push({label,r:r.r,n:r.n,note}); };
+  const rec=c.map(x=>x.recovery), hrv=c.map(x=>x.hrv), rhr=c.map(x=>x.rhr);
+  push('Sleep duration → Recovery', c.map(x=>x.sleepMin), rec);
+  push('Sleep performance → Recovery', c.map(x=>x.sleepPerf), rec);
+  push('Sleep debt → Recovery', c.map(x=>x.sleepDebt), rec);
+  push('Sleep consistency → Recovery', c.map(x=>x.sleepCons), rec);
+  push('Deep sleep → Recovery', c.map(x=>x.deep), rec);
+  push('REM sleep → Recovery', c.map(x=>x.rem), rec);
+  push('Respiratory rate → Recovery', c.map(x=>x.resp), rec);
+  push('Skin temperature → HRV', c.map(x=>x.skinTemp), hrv);
+  // previous-day strain
+  const prev=c.map((x,i)=> i>0 ? c[i-1].strain : null);
+  push("Yesterday's strain → Recovery", prev, rec);
+  push("Yesterday's strain → HRV", prev, hrv);
+  push("Yesterday's strain → Resting HR", prev, rhr);
+  // main-sport effect (WHOOP workouts + your own activity log)
+  const tset=new Set([
+    ...DB.whoop.workouts.filter(w=>mainSportActs().some(a=>new RegExp(a,'i').test(w.activity))).map(w=>w.date),
+    ...DB.activities.filter(a=>isMainSportAct(a.type)).map(a=>a.date)]);
+  if(tset.size>=6){
+    const tsub=c.map((x,i)=> i>0 ? (tset.has(c[i-1].date)?1:0) : null);
+    push(SPORT_LABEL()+' yesterday (1/0) → Recovery', tsub, rec);
+  }
+  // own logged sessions
+  const sset=new Set(DB.sessions.filter(s=>s.done).map(s=>s.date));
+  if(sset.size>=10){
+    const ssub=c.map((x,i)=> i>0 ? (sset.has(c[i-1].date)?1:0) : null);
+    push('Strength session yesterday (1/0) → Recovery', ssub, rec);
+  }
+  // demand vectors from your own activity log
+  if(DB.activities.length>=12){
+    push("Yesterday's lower-body demand → Recovery", c.map((x,i)=> i>0? dayDemand(c[i-1].date).lower : null), rec);
+    push("Yesterday's explosive demand → Recovery", c.map((x,i)=> i>0? dayDemand(c[i-1].date).expl : null), rec);
+    push("Yesterday's total logged load → HRV", c.map((x,i)=> i>0? dayDemand(c[i-1].date).load : null), hrv);
+  }
+  // checkin subjective
+  const ciDates=Object.keys(DB.checkins);
+  if(ciDates.length>=14){
+    const rows=c.filter(x=>DB.checkins[x.date]);
+    if(rows.length>=12){
+      push('Your energy rating → Recovery', rows.map(x=>DB.checkins[x.date].energy), rows.map(x=>x.recovery));
+      push('Your soreness rating → Recovery', rows.map(x=>DB.checkins[x.date].soreness), rows.map(x=>x.recovery));
+      push('Your stress rating → HRV', rows.map(x=>DB.checkins[x.date].stress), rows.map(x=>x.hrv));
+    }
+  }
+  return out.sort((a,b)=>Math.abs(b.r)-Math.abs(a.r));
+}
+const rLabel = r =>{ const a=Math.abs(r); return a<.2?'negligible':a<.35?'weak':a<.5?'moderate':a<.7?'strong':'very strong'; };
+
+/* =========================================================================
+   READINESS ENGINE
+   Multi-signal. Never relies on the recovery score alone.
+   ====================================================================== */
+function readiness(date, ci){
+  const B=DB.baselines, S=DB.settings;
+  ci = ci || DB.checkins[date] || {};
+  const parts=[], why=[];
+  let tot=0, wt=0;
+  const add=(key,score,weight,line,kind)=>{
+    if(score==null) return;
+    parts.push({key,score:rnd(score,1),weight});
+    tot+=score*weight; wt+=weight;
+    if(line) why.push({t:line,k:kind||'info'});
+  };
+
+  /* ---- 1. WHOOP recovery score (weight 26) ---- */
+  if(ci.recovery!=null){
+    add('recovery', clamp(ci.recovery,0,100), 26,
+      `Recovery <b>${ci.recovery}%</b> — ${ci.recovery>=67?'green band':ci.recovery>=34?'yellow band':'red band'} (your 6-month average is ${rnd(B.recovery,0)}%).`,
+      ci.recovery>=67?'pos':ci.recovery>=34?'warn':'neg');
+  }
+  /* ---- 2. HRV vs personal baseline (weight 18) ---- */
+  let hrvZ=null;
+  if(ci.hrv!=null&&B.hrv&&B.hrvSd){
+    hrvZ=(ci.hrv-B.hrv)/B.hrvSd;
+    add('hrv', clamp(50+hrvZ*22,0,100), 18,
+      `HRV <b>${ci.hrv} ms</b> is ${Math.abs(hrvZ)<0.4?'right at':hrvZ>0?'<b>'+rnd(Math.abs(hrvZ),1)+' SD above</b>':'<b>'+rnd(Math.abs(hrvZ),1)+' SD below</b>'} your ${rnd(B.hrv,0)} ms baseline.`,
+      hrvZ>0.4?'pos':hrvZ<-1?'neg':hrvZ<-0.4?'warn':'info');
+  }
+  /* ---- 3. Resting HR vs baseline (weight 12) ---- */
+  let rhrZ=null;
+  if(ci.rhr!=null&&B.rhr&&B.rhrSd){
+    rhrZ=(ci.rhr-B.rhr)/B.rhrSd;
+    add('rhr', clamp(50-rhrZ*22,0,100), 12,
+      `Resting HR <b>${ci.rhr} bpm</b> vs a ${rnd(B.rhr,0)} bpm baseline${rhrZ>1?' — <b>elevated</b>':rhrZ<-0.7?' — nicely suppressed':''}.`,
+      rhrZ>1.2?'neg':rhrZ>0.6?'warn':rhrZ<-0.5?'pos':'info');
+  }
+  /* ---- 4. Sleep vs need (weight 18) ---- */
+  let shortfall=null;
+  if(ci.sleepMin!=null){
+    const need=ci.sleepNeed||B.sleepNeed||480;
+    const generic=!ci.sleepNeed&&B.sleepNeedGeneric;
+    shortfall=need-ci.sleepMin;
+    let s;
+    if(shortfall<=0) s=95;
+    else if(shortfall<=60) s=85-(shortfall/60)*10;
+    else if(shortfall<=120) s=75-((shortfall-60)/60)*30;
+    else s=Math.max(10,45-(shortfall-120)/6);
+    const tail = generic ? ' (against a generic 8h target — import WHOOP for your own sleep need)' : '';
+    add('sleep', s, 18,
+      shortfall<=0 ? `Slept <b>${fmtMin(ci.sleepMin)}</b> — at or above the ${fmtMin(need)} target${tail}.`
+      : shortfall<=60 ? `Slept <b>${fmtMin(ci.sleepMin)}</b>, ${Math.round(shortfall)} min under target${tail} — a shortfall this small rarely costs much.`
+      : `Slept <b>${fmtMin(ci.sleepMin)}</b>, <b>${Math.round(shortfall)} min short</b> of target${tail}. Past about an hour short, recovery usually suffers.`,
+      shortfall<=60?'pos':shortfall<=120?'warn':'neg');
+  } else if(ci.sleepPerf!=null){
+    add('sleep', clamp(ci.sleepPerf,0,100), 18, `Sleep performance <b>${ci.sleepPerf}%</b>.`, ci.sleepPerf>=80?'pos':ci.sleepPerf>=65?'warn':'neg');
+  }
+  /* ---- 5. Yesterday's strain (weight 10) ---- */
+  if(ci.prevStrain!=null){
+    const v=ci.prevStrain; let s;
+    if(v<=8) s=90; else if(v<=12) s=90-(v-8)/4*20; else if(v<=14) s=70-(v-12)/2*15;
+    else s=Math.max(20,55-(v-14)*7);
+    add('prevStrain', s, 10,
+      v>=S.hardStrain ? `Yesterday's strain was <b>${rnd(v,1)}</b> — in your 14+ band, which has historically cost about 20 recovery points the next day.`
+      : v>=10 ? `Yesterday's strain <b>${rnd(v,1)}</b> — moderate load still in the system.`
+      : `Yesterday's strain <b>${rnd(v,1)}</b> — low, minimal carry-over.`,
+      v>=S.hardStrain?'neg':v>=10?'warn':'pos');
+  }
+  /* ---- 6. Subjective state ----
+     Carries more weight when there is no physiology to lean on, because then
+     it is the best signal available — not because it suddenly got better. */
+  const physio = (ci.recovery!=null) || (ci.hrv!=null&&B.hrv) || (ci.rhr!=null&&B.rhr);
+  const subW = physio ? 16 : 30;
+  const hasSub = ci.energy!=null||ci.soreness!=null||ci.stress!=null||ci.motivation!=null;
+  if(hasSub){
+    const e=ci.energy??6, so=ci.soreness??3, st=ci.stress??4, mo=ci.motivation??6;
+    /* Cramps, when reported, are discomfort like soreness is discomfort: they
+       join this term rather than becoming a phase rule. Only counted if the
+       user actually entered a number. */
+    const cr=(ci.mc&&ci.mc.cramps!=null)?ci.mc.cramps:null;
+    const base=(e*.35+(10-so)*.32+(10-st)*.15+mo*.18)*10;
+    const s=clamp(cr!=null ? base*0.82 + (10-cr)*10*0.18 : base, 0, 100);
+    const bits=[];
+    if(e<=4)bits.push('energy low'); else if(e>=8)bits.push('energy high');
+    if(so>=7)bits.push('<b>soreness high</b>'); else if(so<=2)bits.push('no soreness');
+    if(st>=7)bits.push('stress high');
+    if(mo<=3)bits.push('motivation low'); else if(mo>=8)bits.push('motivation high');
+    if(cr!=null&&cr>=7)bits.push('<b>cramps significant</b>'); else if(cr!=null&&cr>=4)bits.push('cramps present');
+    add('subjective', s, subW,
+      `You reported energy ${e}/10, soreness ${so}/10, stress ${st}/10, motivation ${mo}/10${
+        cr!=null?`, cramps ${cr}/10`:''}${bits.length?' — '+bits.join(', ')+'.':'.'}`,
+      s>=70?'pos':s>=50?'info':'warn');
+  }
+
+  /* ---- 7. Signals that replace physiology when WHOOP is absent ----
+     These are derived from what you have actually logged, so they are real
+     measurements of training state — not invented stand-ins for HRV. */
+  const SB=subjectiveBaseline(date);
+  if(!physio){
+    /* a) how today compares with YOUR OWN normal, not a population norm */
+    if(SB.ready && (ci.energy!=null||ci.soreness!=null)){
+      let z=0, parts2=[];
+      if(ci.energy!=null&&SB.energySd>0.3){
+        const ez=(ci.energy-SB.energy)/SB.energySd; z+=ez;
+        if(Math.abs(ez)>=0.8) parts2.push(`energy ${ez>0?'above':'below'} your usual ${rnd(SB.energy,1)}`);
+      }
+      if(ci.soreness!=null&&SB.sorenessSd>0.3){
+        const sz=(SB.soreness-ci.soreness)/SB.sorenessSd; z+=sz;
+        if(Math.abs(sz)>=0.8) parts2.push(`soreness ${sz<0?'above':'below'} your usual ${rnd(SB.soreness,1)}`);
+      }
+      add('ownNorm', clamp(50+z*16,0,100), 12,
+        parts2.length? `Compared with your own ${SB.n}-day average: ${parts2.join(' and ')}.`
+                     : `Today is close to your own ${SB.n}-day average for how you feel.`,
+        z>0.8?'pos':z<-0.8?'warn':'info');
+    }
+    /* b) accumulated load from the activity log — the honest stand-in for strain */
+    const rd7=rollingDemand(date,7), rd3=rollingDemand(date,3);
+    if(rd7.load>0||DB.activities.length||DB.sessions.some(s=>s.done)){
+      const acwr2=acuteChronic(date);
+      let s2=70;
+      if(rd3.load>=32) s2=32; else if(rd3.load>=22) s2=48; else if(rd3.load>=12) s2=62;
+      else if(rd3.load<=4) s2=86;
+      add('loadState', s2, 16,
+        rd3.load>=22 ? `You have accumulated <b>${rd3.load}</b> of load in three days — that is a lot without a physiological read to confirm you are handling it.`
+        : rd3.load<=4 ? `Only ${rd3.load} load logged in the last three days — you are fresh.`
+        : `Three-day load is ${rd3.load}, seven-day ${rd7.load} — a normal working level.`,
+        s2>=70?'pos':s2>=50?'info':'warn');
+    }
+    /* c) rest debt — consecutive hard days without an easy one */
+    const RP=restPicture(date);
+    if(RP.consecutive>=2){
+      const s3=RP.consecutive>=4?30:RP.consecutive===3?45:62;
+      add('restDebt', s3, 10,
+        `<b>${RP.consecutive} consecutive days</b> of real training with no easy day. Without recovery data to check, that alone is reason to be careful.`,
+        RP.consecutive>=3?'warn':'info');
+    } else if(RP.sinceEasy<=1 && rd7.load>0){
+      add('restDebt', 82, 8, 'You took an easy day recently — load is well spaced.','pos');
+    }
+  }
+
+  let score = wt>0 ? tot/wt : 62;
+  const flags=[];
+
+  /* ---- Modifiers ---- */
+  // Acute:chronic workload
+  const acwr=acuteChronic(date);
+  if(acwr.ratio!=null&&acwr.n28>=14){
+    if(acwr.ratio>1.5){ score-=9; flags.push('spike'); why.push({t:`7-day load is <b>${rnd(acwr.ratio,2)}×</b> your 28-day average — a sharp spike. Volume pulled back.`,k:'neg'}); }
+    else if(acwr.ratio>1.3){ score-=5; flags.push('rising'); why.push({t:`7-day load is ${rnd(acwr.ratio,2)}× your 28-day average — climbing faster than usual.`,k:'warn'}); }
+    else if(acwr.ratio<0.7){ why.push({t:`7-day load is only ${rnd(acwr.ratio,2)}× your 28-day average — you have room to push.`,k:'pos'}); }
+  }
+  // Consecutive poor recovery
+  let streak=0;
+  for(let i=1;i<=6;i++){
+    const d=addDays(date,-i+1), cc=cycleByDate(d), cd=DB.checkins[d];
+    const rv=(i===1?(ci.recovery??(cc&&cc.recovery)):(cd&&cd.recovery)??(cc&&cc.recovery));
+    if(rv!=null&&rv<50) streak++; else break;
+  }
+  if(streak>=3){ score-=12; flags.push('streak3'); why.push({t:`<b>${streak} consecutive days</b> under 50% recovery. This is an accumulated-fatigue pattern, not a one-off bad night.`,k:'neg'}); }
+  else if(streak===2){ score-=6; flags.push('streak2'); why.push({t:`Second consecutive day under 50% recovery — treating today as a step back rather than a push.`,k:'warn'}); }
+  // HRV / RHR hard flags
+  if(hrvZ!=null&&hrvZ<=-1.5){ score-=6; flags.push('hrvLow'); why.push({t:`HRV is more than <b>1.5 SD below baseline</b> — a genuine autonomic signal, not noise.`,k:'neg'}); }
+  if(rhrZ!=null&&rhrZ>=1.5){ score-=6; flags.push('rhrHigh'); why.push({t:`Resting HR is more than <b>1.5 SD above baseline</b>. If this holds for several days alongside feeling unwell, treat it as a health signal rather than a training one.`,k:'neg'}); }
+  if(hrvZ!=null&&rhrZ!=null&&hrvZ<-1&&rhrZ>1){ score-=5; flags.push('bothOff'); why.push({t:`HRV down <i>and</i> resting HR up together — the clearest stress signature in your data.`,k:'neg'}); }
+  // Respiratory rate
+  if(ci.resp!=null&&B.respRate&&B.respSd){
+    const z=(ci.resp-B.respRate)/B.respSd;
+    if(z>2.2){ score-=7; flags.push('resp'); why.push({t:`Respiratory rate <b>${rnd(ci.resp,1)}</b> vs a very stable ${rnd(B.respRate,1)} baseline. In your data this metric barely moves, so a jump is worth noting — if you also feel unwell, rest rather than train.`,k:'neg'}); }
+  }
+  /* ---- Cycle context (optional, and only ever a nudge) ----
+     Two separate things, in the order the spec requires:
+       1. what the user SAID about today - their own report, which outranks
+          any estimate and is applied whenever they gave one;
+       2. an association found in their OWN history, applied only once it is
+          established, and capped at +/-5.
+     Both sit above the pain caps below, so neither can lift one. */
+  if(mcOn()){
+    /* one context for the feel line and the pattern check below */
+    const mcC=mcCtx();
+    const fe=mcFeelOf(date);
+    if(fe && fe.delta!==0){
+      score+=fe.delta;
+      flags.push('mcFeel');
+      why.push({t:`You reported feeling <b>${fe.name.toLowerCase()}</b> today, which is applied directly — what you are actually experiencing outranks any estimate.`,
+                k:fe.delta<0?'warn':'pos'});
+    }
+    const mcA=mcAdjust(date, mcC);
+    if(mcA.delta){
+      score+=mcA.delta;
+      flags.push('mcPattern');
+      why.push({t:mcA.line, k:mcA.kind});
+    }
+  }
+
+  // Pain overrides
+  let capBand=null;
+  if(ci.pain==='Moderate'){ capBand='orange'; flags.push('pain'); why.push({t:`<b>Moderate pain reported</b> — capped at a low-readiness session and loaded movements removed for the painful area.`,k:'neg'}); }
+  if(ci.pain==='Significant'){ capBand='red'; flags.push('painBad'); why.push({t:`<b>Significant pain reported</b> — training replaced with recovery work. Persistent or worsening pain should be assessed by a qualified healthcare professional.`,k:'neg'}); }
+
+  score=clamp(score,0,100);
+  const bd=DB.settings.bands;
+  let band = score>=bd.green?'green' : score>=bd.yellow?'yellow' : score>=bd.orange?'orange' : 'red';
+  const order=['red','orange','yellow','green'];
+  if(capBand && order.indexOf(band)>order.indexOf(capBand)) band=capBand;
+
+  /* which inputs actually contributed, and how confident that makes us.
+     Missing signals reduce influence — they are never replaced with guesses. */
+  const used=parts.map(p=>p.key);
+  const sources={
+    whoop: used.filter(k=>['recovery','hrv','rhr','prevStrain'].indexOf(k)>=0),
+    manual: used.filter(k=>['sleep','subjective','ownNorm','loadState','restDebt'].indexOf(k)>=0),
+    coverage: rnd(wt/100,2)
+  };
+  sources.label = sources.whoop.length
+    ? `WHOOP (${sources.whoop.length} signal${sources.whoop.length>1?'s':''}) + how you feel`
+    : `how you feel and your training history (${sources.manual.length} signal${sources.manual.length>1?'s':''})`;
+  /* confidence reflects how much of the model was actually informed */
+  sources.confidence = wt>=70?'high' : wt>=45?'moderate' : 'low';
+  sources.subjectiveBaseline = SB.ready ? SB.n : 0;
+
+  return {score:rnd(score,0), band, parts, why, flags, acwr, streak, sources, weight:wt,
+          hrvZ:hrvZ!=null?rnd(hrvZ,2):null, rhrZ:rhrZ!=null?rnd(rhrZ,2):null, shortfall,
+          /* null unless tracking is on: nothing downstream can accidentally
+             read a cycle value for somebody who never enabled it */
+          mc: mcOn()? (function(){ const c=mcCtx();
+            return {phase:mcPhase(date,c), adjust:mcAdjust(date,c), feel:mcFeelOf(date)}; })() : null};
+}
+
+const BAND = {
+  green :{label:'GREEN', name:'High readiness',   color:'var(--green)',  v:'FULL',     txt:'Train the full planned session at the prescribed effort.'},
+  yellow:{label:'YELLOW',name:'Moderate readiness',color:'var(--yellow)',v:'REDUCED',  txt:'Keep the movements, cut the volume and cap the effort.'},
+  orange:{label:'ORANGE',name:'Low readiness',    color:'var(--orange)', v:'RECOVERY', txt:'Recovery-focused session — movement quality, no fatigue.'},
+  red   :{label:'RED',   name:'Very low readiness',color:'var(--red)',   v:'REST',     txt:'Rest or gentle mobility only. Training today costs more than it returns.'}
+};
+
+/* =========================================================================
+   DAILY TRAINING DECISION ENGINE
+   ------------------------------------------------------------------------
+   There is no fixed weekly calendar. Every day the engine scores every
+   training option against: readiness, how recently each body system was
+   loaded, what the week already contains, the goal hierarchy, and the time
+   available — then returns ONE recommendation with its reasoning.
+
+   Goal hierarchy: built by priorityList() from the sports and outcomes
+   chosen in setup — nothing in it is fixed to a particular sport.
+
+   ====================================================================== */
+
+/* ---------- week accounting (Monday start) ---------- */
+function weekStartOf(date){ return addDays(date, -((dowOf(date)+6)%7)); }
+function catOfWorkout(w){
+  if(!w) return 'strength';
+  if(w.id==='w_lowerA'||w.id==='w_lowerB') return 'lower';
+  if(w.id==='w_upperA'||w.id==='w_upperB') return 'upper';
+  if(w.id==='w_core') return 'core';
+  if(w.id==='w_prep') return 'prep';
+  if(w.type==='power') return 'power';
+  if(w.type==='mobility') return 'mobility';
+  if(w.id==='w_bike') return 'bike';
+  if(w.type==='cardio') return 'run';
+  return 'strength';
+}
+/* `sport` means "one of the sports this user chose in setup" — the set comes
+   from their profile, never from a hardcoded list. Anything else athletic
+   falls into `otherSport`. */
+const ACT_CAT = t =>
+    t==='running' ? 'run' : t==='cycling' ? 'bike' : t==='walking' ? 'walk'
+  : t==='yoga' ? 'mobility' : t==='strength' ? 'strength'
+  : isMainSportAct(t) ? 'sport' : 'otherSport';
+
+function weekProgress(date){
+  const start=weekStartOf(date), days=[];
+  for(let i=0;i<7;i++){ const d=addDays(start,i); if(d<=date) days.push(d); }
+  const p={lower:0,upper:0,power:0,core:0,run:0,bike:0,mobility:0,sport:0,otherSport:0,strength:0,
+           runMin:0,bikeMin:0,sportMin:0,load:0,start,days,elapsed:days.length};
+  DB.sessions.filter(s=>s.done&&days.indexOf(s.date)>=0).forEach(s=>{
+    const cat=s.category||catOfWorkout(DB.workouts.find(w=>w.id===s.workoutId));
+    if(p[cat]!=null) p[cat]++;
+    if(cat==='lower'||cat==='upper'||cat==='strength') p.strength++;
+    if(s.addCore) p.core++;
+    if(cat==='run') p.runMin+=s.durationMin||0;
+    if(cat==='bike') p.bikeMin+=s.durationMin||0;
+  });
+  DB.activities.filter(a=>days.indexOf(a.date)>=0).forEach(a=>{
+    const c=ACT_CAT(a.type);
+    if(p[c]!=null) p[c]++;
+    if(c==='run') p.runMin+=a.min||0;
+    if(c==='bike') p.bikeMin+=a.min||0;
+    /* "your sport" is whatever the profile says it is — a runner's runs count
+       here too, even though they are categorised as conditioning. */
+    if(isMainSportAct(a.type)){ p.sportMin+=a.min||0; if(c!=='sport') p.sport++; }
+  });
+  days.forEach(d=>{ p.load+=dayDemand(d).load; });
+  p.load=rnd(p.load,1);
+  return p;
+}
+
+/* ---------- how long since each system was last loaded ---------- */
+/* "for 5 days" / "in over two weeks" / "yet" - whichever the data supports.
+   `n` is the systemHistory sentinel, `span` is how many days of history exist. */
+function sinceSpan(n, span){
+  if(n!==99) return 'for '+n+' days';
+  if(!span) return 'yet — this is your first day of logging';
+  if(span<14) return 'in the '+span+' day'+(span===1?'':'s')+' you have logged';
+  return 'in over two weeks';
+}
+
+function systemHistory(date){
+  /* `lower`/`expl` are LOAD-based — anything that loaded the legs counts,
+     because that is what matters when deciding whether legs are ready.
+     `upper` is TRAINING-based — an overhead serve is shoulder fatigue, not an
+     upper-body session, and must not block upper-body work. */
+  const h={lower:99,upper:99,expl:99,core:99,run:99,bike:99,sport:99,mobility:99,anyHard:99};
+  /* 99 means "not found in the 14 days below". That is NOT the same as "never",
+     and every sentence built from it used to assume the second reading - so a
+     user on their first day was told their legs had been idle for a fortnight.
+     Record how much history actually exists so the prose can tell them apart.
+     Scoring is unaffected: for deciding what to train, never and not-for-a-
+     fortnight should both mean "due". */
+  h.spanDays=(function(){
+    let first=null;
+    const see=d=>{ if(d && (!first||d<first)) first=d; };
+    (DB.sessions||[]).forEach(s=>{ if(s.done) see(s.date); });
+    (DB.activities||[]).forEach(a=>see(a.date));
+    Object.keys(DB.checkins||{}).forEach(see);
+    ((DB.whoop&&DB.whoop.cycles)||[]).forEach(c=>see(c.date));
+    if(!first) return 0;
+    return Math.max(0, daysBetween(first, date));
+  })();
+  const load={lower3:0,upper3:0,expl3:0,impact3:0,lower7:0,upper7:0,expl7:0,run7:0,sport7:0,
+              load3:0,load7:0,shoulder3:0};
+  const UPPER_SPORT={swimming:1,climbing:1,rowing:1,martial:1,volleyball:1,strength:1};
+  for(let i=1;i<=14;i++){
+    const d=addDays(date,-i), dd=dayDemand(d);
+    if(i<=3){ load.lower3+=dd.lower; load.upper3+=dd.upper; load.expl3+=dd.expl; load.impact3+=dd.impact; load.load3+=dd.load; }
+    if(i<=7){ load.lower7+=dd.lower; load.upper7+=dd.upper; load.expl7+=dd.expl; load.load7+=dd.load; }
+    if(dd.load>=11 && h.anyHard===99) h.anyHard=i;
+    if(dd.lower>=6 && h.lower===99) h.lower=i;
+    if(dd.expl>=5 && h.expl===99) h.expl=i;
+    DB.sessions.filter(s=>s.done&&s.date===d).forEach(s=>{
+      const c=s.category||catOfWorkout(DB.workouts.find(w=>w.id===s.workoutId));
+      if((c==='upper'||c==='strength')&&h.upper===99) h.upper=i;
+      if(c==='core'&&h.core===99) h.core=i;
+      if(s.addCore&&h.core===99) h.core=i;
+      if(c==='mobility'&&h.mobility===99) h.mobility=i;
+      if(c==='run'&&h.run===99) h.run=i;
+      if(c==='bike'&&h.bike===99) h.bike=i;
+      if(c==='power'&&h.expl>i) h.expl=i;
+    });
+    DB.activities.filter(a=>a.date===d).forEach(a=>{
+      const c=ACT_CAT(a.type), T=ACT_TYPES[a.type]||ACT_TYPES.other;
+      if(c==='run'){ if(h.run===99)h.run=i; if(i<=7)load.run7+=a.min||0; }
+      if(c==='bike'&&h.bike===99) h.bike=i;
+      if(isMainSportAct(a.type)){ if(h.sport===99)h.sport=i; if(i<=7)load.sport7+=a.min||0; }
+      if(c==='mobility'&&h.mobility===99) h.mobility=i;
+      if(UPPER_SPORT[a.type]&&h.upper===99) h.upper=i;
+      if(i<=3&&T.shoulder) load.shoulder3+=activityLoad(a)*T.shoulder;
+    });
+  }
+  ['lower3','upper3','expl3','impact3','lower7','upper7','expl7','load3','load7','shoulder3']
+    .forEach(k=>load[k]=rnd(load[k],1));
+  /* spanDays is lifted out of `h` deliberately: `h` becomes H.since, and every
+     call site reads H.spanDays. Leaving it inside made it undefined at every
+     one of them, which turned "over two weeks" into "your first day" for
+     everybody - worse than the bug it was fixing. */
+  return {since:h, load, spanDays:h.spanDays};
+}
+
+/* ---------- which A/B variant to alternate to ---------- */
+function alternate(idA,idB){
+  for(const s of DB.sessions.slice().reverse()){
+    if(!s.done) continue;
+    if(s.workoutId===idA) return idB;
+    if(s.workoutId===idB) return idA;
+  }
+  return idA;
+}
+
+/* ---------- the candidate set ---------- */
+function candidates(){
+ const T=DB.targets||{};
+ const gear=(DB.profile&&DB.profile.gear)||[];
+ const canRun = gear.indexOf('run')>=0 || T.run>0 || sportsOf().indexOf('running')>=0;
+ const canBike= gear.indexOf('bike')>=0 || T.bike>0 || sportsOf().indexOf('cycling')>=0;
+ const wantsPower = anySport(x=>x.explosive) || T.power>0;
+ const list=[
+ {id:'lower',  label:'Lower Body Strength', base:100, minBand:'yellow', sys:'lower',
+  pick:()=>alternate('w_lowerA','w_lowerB'), canCore:true, goal:sysGoalText('lower')},
+ {id:'power',  label:'Power & Plyometrics', base:88, minBand:'green', sys:'expl',
+  pick:()=>'w_power', canCore:true, goal:sysGoalText('expl'), need:wantsPower},
+ {id:'core',   label:'Core & Anti-Rotation', base:84, minBand:'orange', sys:'core',
+  pick:()=>'w_core', canCore:false, goal:sysGoalText('core')},
+ {id:'upper',  label:'Upper Body Strength', base:78, minBand:'yellow', sys:'upper',
+  pick:()=>alternate('w_upperA','w_upperB'), canCore:true, goal:sysGoalText('upper')},
+ {id:'run_int',label:'Interval Run', base:66, minBand:'green', sys:'run',
+  pick:()=>'w_runInt', canCore:false, goal:'Repeat-sprint ability — hard efforts with short recoveries.', need:canRun},
+ {id:'run_q',  label:'Tempo Run', base:62, minBand:'green', sys:'run',
+  pick:()=>'w_runQuality', canCore:false, goal:'Raises the aerobic ceiling so your level holds when it gets long.', need:canRun},
+ {id:'run_e',  label:'Easy Aerobic Run', base:60, minBand:'yellow', sys:'run',
+  pick:()=>'w_runEasy', canCore:true, goal:sysGoalText('run'), need:canRun},
+ {id:'bike',   label:'Zone 2 Bike', base:52, minBand:'orange', sys:'bike',
+  pick:()=>'w_bike', canCore:true, goal:sysGoalText('bike'), need:canBike},
+ {id:'mobility',label:'Mobility & Recovery', base:44, minBand:'red', sys:'mobility',
+  pick:()=>'w_recovery', canCore:false, goal:sysGoalText('mobility')},
+ {id:'rest',   label:'Rest', base:30, minBand:'red', sys:'rest',
+  pick:()=>null, canCore:false, goal:'Training today would cost more than it returns.'}
+ ];
+ /* drop options the user has no equipment or reason for; never drop them all */
+ const kept=list.filter(c=>c.need!==false);
+ return kept.length>=3?kept:list;
+}
+
+const BAND_RANK={red:0,orange:1,yellow:2,green:3};
+
+/* =========================================================================
+   THE ENGINE
+   ====================================================================== */
+function recommend(date, ci, rd){
+  ci = ci || DB.checkins[date] || {};
+  rd = rd || readiness(date, ci);
+  const H=systemHistory(date), P=weekProgress(date), T=DB.targets, ph=currentPhase();
+  const band=rd.band, rank=BAND_RANK[band];
+  const sore=ci.soreness!=null?ci.soreness:3;
+  const time=ci.availTime||sessMin();
+  const yd=dayDemand(addDays(date,-1));
+  /* `sportToday` is the modern field; `tennisToday` is read only so old
+     check-ins saved before the rename still behave the same way. */
+  const flagSport  = ci.sportToday===true || ci.tennisToday===true;
+  const loggedSport= DB.activities.some(a=>a.date===date&&isMainSportAct(a.type));
+  const SPN = SPORT_LABEL();
+  const yTop=yd.items.slice().sort((a,b)=>(b.load||0)-(a.load||0))[0];
+  const yName=yTop ? (yTop.kind==='activity' ? (ACT_TYPES[yTop.type]||ACT_TYPES.other).name.toLowerCase() : 'your strength session') : null;
+
+  const scored=candidates().map(c=>{
+    let s=c.base; const notes=[]; let blocked=null;
+    const add=(v,txt,kind)=>{ s+=v; if(txt) notes.push({v,t:txt,k:kind||(v>0?'pos':'neg')}); };
+
+    /* ---- 1. readiness gate (safety first) ---- */
+    if(rank < BAND_RANK[c.minBand]) blocked=`needs ${c.minBand} readiness, today is ${band}`;
+    if(band==='green') { if(c.sys==='mobility') add(-14,null); if(c.id==='rest') add(-26,null); }
+    if(band==='yellow'){ if(c.sys==='expl') add(-30,'Yellow readiness — plyometric quality would be down.','warn');
+                         if(c.id==='run_int'||c.id==='run_q') add(-26,'Not a green day — quality running is off the table.','warn');
+                         if(c.sys==='mobility') add(+6,null); }
+    if(band==='orange'){ if(c.sys==='lower'||c.sys==='upper') add(-34,'Orange readiness — strength work returns little today.','warn');
+                         if(c.sys==='mobility') add(+34,'Orange readiness — movement quality without fatigue is the useful thing today.','pos');
+                         if(c.sys==='bike') add(+12,'Easy spinning is well tolerated even on a low-readiness day.','pos');
+                         if(c.sys==='core') add(-10,null); }
+    if(band==='red'){ if(c.sys==='mobility') add(+40,'Red readiness — mobility and down-regulation only.','warn');
+                      if(c.id==='rest') add(+34,'Red readiness — full rest is on the table.','warn'); }
+
+    /* ---- 2. pain overrides ---- */
+    if(ci.pain==='Significant' && c.sys!=='rest' && c.sys!=='mobility') blocked='significant pain reported';
+    if(ci.pain==='Moderate' && ['lower','expl','upper','run'].indexOf(c.sys)>=0) blocked='moderate pain reported';
+
+    /* ---- 2b. standing limitations ----
+       Unlike a pain flag, these persist until they expire, and they steer
+       rather than stop: the systems an injured area loads are pushed down,
+       everything else carries on so you do not decondition wholesale. */
+    const limSys=limitSystems(date);
+    if(limSys.length){
+      const names=limitsText(date);
+      if(limSys.indexOf(c.sys)>=0){
+        const severe=activeLimits(date).some(l=>l.severity==='high');
+        if(severe) blocked=`your ${names} is flagged as a significant limitation`;
+        else add(-40,`Your ${names} is flagged — this session loads exactly that.`,'warn');
+      } else if(c.sys==='mobility'){
+        add(+16,`Mobility is a productive way to train around your ${names}.`,'pos');
+      } else if(c.sys==='upper' && limSys.every(s=>s==='expl'||s==='run')){
+        add(+12,`Upper body is unaffected by your ${names}.`,'pos');
+      }
+    }
+
+    /* ---- 3. system freshness — the core of the decision ---- */
+    if(c.sys==='lower'){
+      if(H.since.lower===1) add(-46,`Your legs were loaded yesterday (${esc(yName||'activity')}, lower-body demand ${yd.lower}).`,'neg');
+      else if(H.since.lower===2) add(-12,'Legs were loaded two days ago — recovering but not fully fresh.','warn');
+      else if(H.since.lower>=3) add(+22,`No real lower-body load ${sinceSpan(H.since.lower,H.spanDays)} — legs are ready.`,'pos');
+      if(H.load.lower3>=18) add(-24,`Lower-body demand over 3 days is ${H.load.lower3} — high.`,'neg');
+      if(sore>=7) blocked=`leg soreness ${sore}/10`;
+      else if(sore>=5) add(-18,`Leg soreness ${sore}/10.`,'warn');
+      if(H.since.sport===1) add(-20,SPN+' yesterday already put real load through the legs.','warn');
+    }
+    if(c.sys==='expl'){
+      /* plyometrics need fresh LEGS, not just an absence of recent jumping */
+      if(H.since.lower<=1) add(-44,`Your legs were loaded yesterday (${esc(yName||'activity')}, lower-body demand ${yd.lower}) — plyometrics need fresh legs, not tired ones.`,'neg');
+      else if(H.since.lower===2) add(-14,'Legs were loaded two days ago — jump output would be down.','warn');
+      if(H.load.lower3>=14) add(-24,`Lower-body demand over 3 days is ${H.load.lower3} — too much accumulated leg load for quality jumping.`,'neg');
+      if(H.load.impact3>=14) add(-20,`Accumulated impact over 3 days is ${H.load.impact3} from running and court work.`,'warn');
+      if(H.since.expl<=1) add(-50,'Explosive work in the last 24 hours.','neg');
+      else if(H.since.expl===2) add(-18,'Explosive work two days ago.','warn');
+      else if(H.since.expl>=4&&H.since.lower>=3) add(+20,'Legs are fresh and there has been no explosive work for days.','pos');
+      if(H.load.expl3>=14) add(-30,`Explosive demand over 3 days is ${H.load.expl3} — plyometrics on top of that is where soft-tissue injuries happen.`,'neg');
+      if(sore>=5) blocked=`soreness ${sore}/10 — jump quality and landing control would be compromised`;
+      if(H.since.sport<=1) add(-22,SPN+' in the last 24 hours already loaded jumping, cutting and landing.','warn');
+      if(ph.plyo==='minimal'||ph.plyo==='test only') add(-20,`Week ${ph.absWeek} is ${ph.name} — plyometric volume is deliberately low.`,'info');
+      if(rd.score>=80) add(+8,'Readiness is high — a good day for power work.','pos');
+    }
+    if(c.sys==='upper'){
+      if(H.since.upper<=1) add(-42,'Upper body was trained yesterday.','neg');
+      else if(H.since.upper===2) add(-8,null);
+      else if(H.since.upper>=3) add(+18,`No upper-body work ${sinceSpan(H.since.upper,H.spanDays)}.`,'pos');
+      if(H.load.upper3>=12) add(-20,`Upper-body demand over 3 days is ${H.load.upper3}.`,'neg');
+      /* the key asymmetry, and the finding from your own data: legs being
+         loaded does NOT block upper work — lifting cost you nothing on
+         next-day recovery, while a second hard leg day cost you 11 points. */
+      if(H.since.lower<=1||H.since.sport<=1)
+        add(+26,`Yesterday's ${esc(yName||'session')} went through your legs, so upper body is the productive choice that costs them nothing.`,'pos');
+      if(H.load.shoulder3>=14) add(-14,`Your sport has loaded the shoulder recently (${H.load.shoulder3}) — pressing volume kept sensible.`,'warn');
+      else if(H.since.sport<=1&&anySport(x=>x.overhead)) add(-8,'Overhead work loaded the shoulder yesterday — pressing volume kept sensible.','info');
+      if(sore>=8) add(-14,'General soreness is high.','warn');
+    }
+    if(c.sys==='core'){
+      if(H.since.core<=1) add(-34,'Core was trained yesterday.','neg');
+      else if(H.since.core>=3) add(+16,'Core has not been trained in several days.','pos');
+      if(sore>=7) add(-10,null);
+    }
+    if(c.sys==='run'){
+      if(H.since.run<=1) add(-34,'You ran yesterday.','neg');
+      else if(H.since.run>=4) add(+14,'No running for several days.','pos');
+      if(H.since.sport<=1) add(-30,SPN+' yesterday already covered the running stimulus — adding a run would be duplicate leg load.','neg');
+      if(H.load.impact3>=18) add(-24,`Accumulated impact over 3 days is ${H.load.impact3} — more pounding is not the useful stimulus.`,'neg');
+      /* rolling 7 days, not the calendar week, so a Monday is not blind */
+      if(H.load.sport7>=180) add(-26,`You have done ${Math.round(H.load.sport7)} minutes of ${SPN.toLowerCase()} in the last 7 days — your running conditioning is already well covered.`,'warn');
+      else if(H.load.sport7>=100) add(-14,`${Math.round(H.load.sport7)} minutes of ${SPN.toLowerCase()} in the last 7 days already supplies running volume.`,'warn');
+      if(sore>=6) add(-20,`Leg soreness ${sore}/10.`,'warn');
+      /* interference: do not blunt higher-priority leg work with a run */
+      if(H.since.lower>=3 && rank>=3) add(-16,'Legs are fresh — that freshness is worth more spent on strength or power than on a run.','info');
+      if(c.id==='run_int'){
+        if(H.load.sport7>=100) add(-24,SPN+' already supplies repeated high-intensity running this week.','warn');
+        if(H.load.expl3>=10) add(-18,'Recent explosive load makes intervals a poor addition.','warn');
+      }
+      if(c.id==='run_e' && H.load.load3>=26) add(+8,'An easy aerobic session is the low-cost way to keep training on a loaded week.','pos');
+    }
+    if(c.sys==='bike'){
+      if(H.since.bike<=1) add(-26,'You rode yesterday.','neg');
+      if(H.load.impact3>=16) add(+22,`Impact load is high (${H.load.impact3}) — the bike gives you aerobic work with none of the pounding.`,'pos');
+      if(sore>=6) add(+14,`Soreness ${sore}/10 — cycling is the low-cost aerobic option.`,'pos');
+      if(H.since.sport<=1) add(+8,'Good active-recovery choice the day after '+SPN.toLowerCase()+'.','pos');
+      if(rank>=3 && H.since.lower>=3) add(-20,'You are green with fresh legs — a bike ride under-uses the day.','info');
+    }
+    if(c.sys==='mobility'){
+      if(H.since.mobility<=1) add(-20,'Mobility done yesterday.','neg');
+      else if(H.since.mobility>=4) add(+10,'No dedicated mobility work in several days.','pos');
+      if(H.load.load3>=30) add(+16,`Three-day load of ${H.load.load3} — a genuine down day protects the next hard one.`,'pos');
+    }
+    if(c.sys==='rest'){
+      if(H.since.anyHard>=3 && band!=='red') add(-24,'Nothing hard in recent days — a full rest day is not what you need.','info');
+      if(rd.streak>=2) add(+24,'Consecutive poor-recovery days.','warn');
+      if(H.load.load7>=70) add(+14,`Weekly load of ${H.load.load7} is high.`,'warn');
+    }
+
+    /* ---- 4. your sport today (logged, or flagged on an older check-in) ---- */
+    if(flagSport||loggedSport){
+      const lc=SPN.toLowerCase();
+      if(c.sys==='lower') blocked=`you are doing ${lc} today — heavy legs before or after it is the pattern that costs you most`;
+      if(c.sys==='expl') blocked=`you are doing ${lc} today — it already supplies explosive load`;
+      if(c.sys==='run') blocked=`you are doing ${lc} today`;
+      if(c.sys==='upper') add(+18,`${SPN} today — upper body is the one strength session that does not compete with it.`,'pos');
+      if(c.sys==='core') add(+14,`Core work sits comfortably alongside a ${lc} day.`,'pos');
+      if(c.sys==='mobility') add(+10,null);
+      if(c.sys==='bike') add(-16,null);
+    }
+
+    /* ---- 5. weekly targets — guidelines, with diminishing returns ---- */
+    const tgtMap={lower:'lower',upper:'upper',expl:'power',core:'core',run:'run',bike:'bike',mobility:'mobility'};
+    const key=tgtMap[c.sys];
+    if(key && T[key]){
+      const done=P[key]||0, target=T[key];
+      const pace=P.elapsed/7;
+      if(done>=target){
+        add(-20, `You have already done ${done} of ${target} ${(targetMeta()[key]||[key])[0].toLowerCase()} this week — no need to force more.`,'info');
+      } else {
+        const gap=(target-done)/target;
+        const behind=done < target*pace - 0.35;
+        add(Math.round(gap*16), behind?`You are behind on ${(targetMeta()[key]||[key])[0].toLowerCase()} this week (${done} of ${target}).`:null,'info');
+        if(behind) add(6,null);
+      }
+    }
+
+    /* ---- 6. time available ---- */
+    const wid=c.pick?c.pick():null;
+    const wk=wid?DB.workouts.find(w=>w.id===wid):null;
+    if(wk){
+      if(time < wk.est.recovery) add(-30,`Only ${time} minutes available.`,'warn');
+      else if(time < wk.est.reduced) add(-6,null);
+    }
+    if(time<=20 && (c.sys==='core'||c.sys==='mobility')) add(+16,`With ${time} minutes, this is the highest-value thing you can actually finish.`,'pos');
+
+    return {c, score:blocked?-999:Math.round(s), blocked, notes, wid};
+  });
+
+  scored.sort((a,b)=>b.score-a.score);
+  let win=scored.find(x=>!x.blocked) || scored[scored.length-1];
+
+  /* ---- variant / intensity ---- */
+  let variant = band==='green'?'full' : band==='yellow'?'reduced' : 'recovery';
+  if(win.c.sys==='mobility'||win.c.sys==='rest') variant='full';
+  if(win.c.sys==='expl'&&band==='green'&&rd.score<80) variant='full';
+  if(yd.load>=14 && variant==='full' && ['lower','expl','upper'].indexOf(win.c.sys)>=0) variant='reduced';
+
+  /* ---- what you said about the last few sessions ----
+     One step, and only when the last three rated sessions agree. Harder is
+     allowed only from a green band, so a run of "too easy" can never put
+     volume onto a day the physiology is already arguing against. The band
+     itself is untouched, so every readiness rule and both pain caps stand. */
+  const VSTEP=['recovery','reduced','full'];
+  const fbias=feedbackBias();
+  if(fbias.bias && win.c.sys!=='rest' && win.c.sys!=='mobility'){
+    const at=VSTEP.indexOf(variant);
+    if(fbias.bias>0 && band==='green' && at<VSTEP.length-1){
+      variant=VSTEP[at+1]; why.push({t:fbias.line,k:'pos'});
+    } else if(fbias.bias<0 && at>0){
+      variant=VSTEP[at-1]; why.push({t:fbias.line,k:'warn'});
+    }
+  }
+
+  /* ---- optional core add-on ---- */
+  let addCore=false;
+  const coreWk=DB.workouts.find(w=>w.id==='w_core');
+  if(win.c.canCore && win.c.sys!=='core' && H.since.core>=2 && (P.core||0)<(T.core||3)
+     && band!=='red' && band!=='orange'){
+    const primaryMin=(DB.workouts.find(w=>w.id===win.wid)||{est:{full:40}}).est[variant]||40;
+    if(time >= primaryMin + 14) addCore=true;
+  }
+
+  /* ---- time trim ---- */
+  const wk=DB.workouts.find(w=>w.id===win.wid);
+  let est=wk?(wk.est[variant]||wk.est.full):0;
+  const trimNotes=[];
+  if(wk && time>0 && est+(addCore?12:0) > time){
+    if(addCore && est<=time){ addCore=false; trimNotes.push({t:`Core add-on dropped to fit ${time} minutes.`,k:'info'}); }
+    else if(variant==='full' && wk.est.reduced<=time){ variant='reduced'; est=wk.est.reduced;
+      trimNotes.push({t:`Trimmed to the reduced version to fit ${time} minutes — it keeps the two highest-value movements.`,k:'info'}); }
+    else if(variant!=='recovery' && wk.est.recovery<=time){ variant='recovery'; est=wk.est.recovery;
+      trimNotes.push({t:`Short version — ${time} minutes available. Something beats nothing.`,k:'info'}); }
+    else trimNotes.push({t:`This needs about ${est} min and you have ${time}. Work down the list in order and stop when time runs out — exercises are ordered by priority.`,k:'info'}); }
+  if(wk) est=(wk.est[variant]||wk.est.full)+(addCore?12:0);
+
+  /* ---- pre-sport prep when you are playing today ---- */
+  let prep=null;
+  if((flagSport||loggedSport)) prep='w_prep';
+
+  /* ---- intensity label ---- */
+  const intensity = win.c.sys==='rest' ? 'None'
+    : win.c.sys==='mobility' ? 'Very low'
+    : variant==='recovery' ? 'Low'
+    : variant==='reduced' ? 'Moderate'
+    : win.c.sys==='expl' ? 'High (quality-limited)'
+    : win.c.id==='run_int' ? 'High'
+    : win.c.id==='run_e'||win.c.sys==='bike' ? 'Low–moderate'
+    : 'Moderate–high';
+
+  /* ---- assemble the reasons ----
+     First a single plain-language sentence built from the actual inputs, the
+     way a coach would open. Then the specific decision drivers. */
+  const why=[];
+  const bits=[];
+  if(ci.recovery!=null) bits.push(`recovery <b>${ci.recovery}%</b>`);
+  if(ci.sleepMin!=null) bits.push(`sleep <b>${fmtMin(ci.sleepMin)}</b>`);
+  if(ci.hrv!=null&&rd.hrvZ!=null) bits.push(`HRV <b>${ci.hrv} ms</b> (${rd.hrvZ>0?'+':''}${rd.hrvZ} SD)`);
+  if(ci.soreness!=null) bits.push(`soreness <b>${ci.soreness}/10</b>`);
+  if(ci.energy!=null) bits.push(`energy <b>${ci.energy}/10</b>`);
+  const legLine = H.since.lower===99 ? (H.spanDays>=14
+      ? 'your legs have not taken real load in over two weeks'
+      : 'your legs have not taken real load since you started logging')
+    : H.since.lower===1 ? 'your legs were loaded yesterday'
+    : `your legs were last loaded ${H.since.lower} days ago`;
+  const verdict = win.c.sys==='rest' ? 'Today the useful thing is nothing at all.'
+    : win.c.sys==='mobility' ? 'Movement quality without fatigue is what pays today.'
+    : variant==='full' ? `Your load and readiness support a full ${win.c.label.toLowerCase()} session.`
+    : variant==='reduced' ? `That supports ${win.c.label.toLowerCase()} at reduced volume.`
+    : `That supports a light ${win.c.label.toLowerCase()} session only.`;
+  if(bits.length) why.push({t:`${bits.join(', ')} — and ${legLine}. ${verdict}`,k:rd.band==='green'?'pos':rd.band==='yellow'?'info':'warn'});
+  else why.push({t:`No check-in numbers yet, so this is based on your training history alone. ${verdict}`,k:'info'});
+
+  win.notes.filter(n=>Math.abs(n.v)>=8).slice(0,5).forEach(n=>{ if(n.t) why.push({t:n.t,k:n.k}); });
+  trimNotes.forEach(n=>why.push(n));
+  if(addCore) why.push({t:`Core added — it is a primary goal, it has been ${H.since.core===99?(H.spanDays>=14?'a while':'nothing yet'):H.since.core+' days'} since the last session, and it stacks cleanly on this one.`,k:'pos'});
+  /* What was rejected, and why. This is the thing no other training app
+     does, so it is returned separately rather than appended to the reasons
+     list, where it read as one more bullet. Up to three, strongest first. */
+  const ruledOut=[];
+  scored.filter(x=>x!==win).forEach(x=>{
+    if(ruledOut.length>=3) return;
+    if(x.blocked){ ruledOut.push({label:x.c.label, why:x.blocked, hard:true}); return; }
+    const neg=x.notes.filter(n=>n.v<=-14&&n.t)[0];
+    if(neg) ruledOut.push({label:x.c.label, why:neg.t, hard:false});
+  });
+
+  return {
+    id:win.c.id, label:win.c.label, goalNote:win.c.goal,
+    workoutId:win.wid, variant, addCore, est, intensity, prep,
+    isSport:flagSport||loggedSport, sportName:SPN, readiness:rd, why, ruledOut,
+    scored, week:P, history:H, phase:ph, notes:why
+  };
+}
+
+/* ---------- build the actual session (primary + optional core) ----------
+   Each block is resolved against the user's equipment: the program shape is
+   identical for everyone, but a gym user gets the barbell version where a
+   no-gym user gets the bodyweight one. */
+function sessionBlocks(rec){
+  const out=[];
+  /* The block plan, applied. This function never called currentPhase(), so
+     PHASES[].vol and PHASES[].rpeCap - both of them shown to the user in
+     progressionCard() - changed nothing at all. */
+  const ph=currentPhase();
+  const date=(rec&&rec.date)||todayISO();
+  const bonus=blockBonus(ph,date);
+  let given=0;
+  /* What is already in this session. Without it, three movements the user
+     cannot do all resolve to the same substitute, because each block is
+     resolved on its own and that substitute is the best answer to each
+     question asked separately. */
+  const taken=new Set();
+  const push=b=>{
+    const orig=exOf(b.ex);
+    const res=resolveExercise(b.ex, taken);
+    /* Still a duplicate means nothing distinct was available for this slot.
+       Six different movements beats seven with the same one three times, and
+       no authored workout repeats an exercise - every repeat that reaches
+       here is an artefact of substitution. */
+    if(res && taken.has(res.id)) return;
+    if(res) taken.add(res.id); else if(orig) taken.add(orig.id);
+    const nb=Object.assign({},b);
+    if(res&&orig&&res.id!==orig.id){
+      nb.ex=res.id; nb.swappedFrom=orig.name;
+      /* the substitute carries its own sensible loading */
+      nb.reps=res.reps; nb.rpe=res.rpe; nb.rest=res.rest; nb.tempo=res.tempo||'';
+      nb.note=(b.note?b.note+' ':'')+
+        ((orig.tier||0)>userTier()
+          ? `Swapped from ${orig.name} — needs equipment you do not have.`
+          : `Using ${res.name} instead of ${orig.name} — better option with your equipment.`);
+    }
+    const sh=shapeBlock(nb, ph);
+    /* the extra set for a later block goes on the first movements, which are
+       the ones the session is actually about */
+    if(given<bonus && typeof sh.sets==='number' && sh.sets>=2){
+      sh.sets+=1; given++;
+      sh.progNote=(sh.progNote?sh.progNote+' ':'')
+        +'One extra set — block '+ph.block+' of this cycle.';
+    }
+    out.push(sh);
+  };
+  const wk=DB.workouts.find(w=>w.id===rec.workoutId);
+  if(wk){ (wk.blocks[rec.variant]&&wk.blocks[rec.variant].length?wk.blocks[rec.variant]:wk.blocks.full).forEach(push); }
+  if(rec.addCore){
+    const cw=DB.workouts.find(w=>w.id==='w_core');
+    if(cw){ const v=rec.variant==='full'?'reduced':'recovery';
+      (cw.blocks[v]||[]).slice(0,3).forEach(b=>push(Object.assign({},b,{note:(b.note?b.note+' ':'')+'Core add-on.'}))); }
+  }
+  return out;
+}
+
+/* backwards-compatible alias used by older call sites */
+function planFor(date, ci, rd){
+  const r=recommend(date, ci, rd);
+  /* Record what was advised, on the day, before anything is known about what
+     happened. Re-deriving it later would be contaminated: the engine reads the
+     session history, so a recommendation recomputed after the fact already
+     knows the outcome. Today only, written once, never overwritten. */
+  if(DB.decisions && date===todayISO() && !DB.decisions[date]){
+    DB.decisions[date]={id:r.id, label:r.label, band:r.readiness?r.readiness.band:null,
+                        score:r.readiness?r.readiness.score:null, at:new Date().toISOString()};
+    save();
+  }
+  return {workoutId:r.workoutId, variant:r.variant, est:r.est, notes:r.why, ruledOut:r.ruledOut,
+          isSport:r.isSport, readiness:r.readiness, addCore:r.addCore, rec:r};
+}
+
+/* How many calendar weeks since the plan started actually contained training.
+   A week counts if it holds one completed session or one logged activity. */
+/* A week the user told us they were away is not a week they skipped. */
+function awayWeek(weekStartISO){
+  const u=(DB.profile&&DB.profile.awayUntil)||null;
+  if(!u) return false;
+  return weekStartISO<=u;
+}
+function trainedWeeks(fromISO,toISO){
+  if(!fromISO) return 0;
+  let n=0, cur=weekStartOf(fromISO);
+  const end=weekStartOf(toISO), guard=520;          // ten years is plenty
+  for(let i=0; cur<=end && i<guard; i++){
+    const wEnd=addDays(cur,6);
+    const trained =
+      (DB.sessions||[]).some(s=>s.done && s.date>=cur && s.date<=wEnd) ||
+      (DB.activities||[]).some(a=>a.date>=cur && a.date<=wEnd);
+    if(trained) n++;
+    cur=addDays(cur,7);
+  }
+  return n;
+}
+function currentPhase(){
+  const p=DB.profile;
+  let wk, elapsed=null, paused=0;
+  if(p.planStart){
+    const diff=daysBetween(p.planStart,todayISO());
+    elapsed = diff>=0 ? Math.floor(diff/7)+1 : 1;  // a future start means week 1, never negative
+    /* Progression is earned, not scheduled. The block advances on weeks you
+       actually trained, so illness or travel pauses the plan rather than
+       skipping you past the volume that makes a peak week make sense. It can
+       never run ahead of the calendar either. */
+    const done=trainedWeeks(p.planStart,todayISO());
+    wk = Math.min(elapsed, Math.max(1,done));
+    paused = Math.max(0, elapsed - wk);
+  } else wk = p.planWeek||1;
+  wk = Math.max(1, wk|0);
+  const w = ((wk-1)%8+8)%8+1;                      // JS % is signed; force into 1–8
+  return Object.assign({}, PHASES[w-1]||PHASES[0],
+    {w, block:Math.floor((wk-1)/8)+1, absWeek:wk, elapsedWeek:elapsed, pausedWeeks:paused});
+}

@@ -1,0 +1,594 @@
+
+/* =========================================================================
+   WARM-UP LIBRARY
+   ====================================================================== */
+/* =========================================================================
+   HOW TO DO EACH WARM-UP MOVEMENT
+   One line each, written for someone who has not seen the movement before.
+   Keyed by the exact name used in WARMUPS / PREP_BLOCKS / FOCUS_BLOCKS.
+   ====================================================================== */
+const WARMUP_HOW={
+  'Easy bike or brisk walk':'Any easy movement that raises your temperature. You should be able to hold a conversation throughout.',
+  'Easy jog or bike':'Gentle and continuous. The aim is warm, not tired.',
+  'Easy jog or walk':'Conversational pace. Stop well before it feels like training.',
+  'Easy jog, spin or brisk walk':'Whatever is to hand. Easy enough to breathe through your nose.',
+  'Easy walk or spin':'Very light. This is temperature, not fitness.',
+  'Easy jog around the court':'Two or three easy laps, gradually adding some sideways and backwards steps.',
+  'Leg swings front/back':'Hold something for balance. Swing one leg forwards and back, relaxed, letting the range grow with each swing.',
+  'Leg swings lateral':'Hold support and swing one leg across your body and out to the side. Keep your hips facing forwards.',
+  'Leg swings all directions':'Front to back, then side to side, on each leg. Relaxed swings, not forced stretches.',
+  'Leg swings + hip circles':'Swing each leg front to back, then draw slow circles with the knee in both directions.',
+  'Hip circles + leg swings':'Big slow circles with the knee, then relaxed swings front to back.',
+  'Arm circles':'Big slow circles forwards, then backwards. Let the shoulder move through its full range.',
+  'Arm circles + leg swings':'Arm circles both ways, then relaxed leg swings. Whole body, low effort.',
+  'Ankle dorsiflexion rock':'In a half-kneeling or split stance, drive the front knee forwards over the toes and back. Keep the heel down.',
+  'Bodyweight squats':'Feet shoulder width. Sit down between your hips, going a little deeper each rep.',
+  'Glute bridge':'Lie on your back, feet flat. Push through the heels to lift the hips, squeeze at the top, lower slowly.',
+  'Walking lunge':'Long step forwards, back knee towards the floor, drive up and through onto the other leg.',
+  'Split squat':'One foot forward, one back. Drop straight down, not forwards. Control the lowering.',
+  'Pogo hops':'Small, fast, springy hops on the spot. Stay on the balls of your feet and keep the knees fairly straight.',
+  'Calf raises':'Rise onto your toes, pause at the top, lower slowly. Hold something if you need balance.',
+  'Calf stretch (straight + bent knee)':'Push one heel into the floor with the leg straight, then again with the knee bent. Both hit different parts of the calf.',
+  'Adductor rock':'On hands and knees, take one leg out to the side, foot flat. Rock your hips back and forth.',
+  '90/90 hip switch':'Sit with both knees bent at right angles, one leg in front and one to the side. Rotate the knees over to swap sides without using your hands.',
+  'Couch stretch':'Back foot up against a wall or sofa, kneeling on the other. Tuck your pelvis under until you feel the front of the hip.',
+  'Pigeon stretch':'Front shin across in front of you, back leg straight behind. Fold forwards gently over the front leg.',
+  'Cat-cow':'On hands and knees, round your back and drop your head, then arch and lift your chest. Slow, with the breath.',
+  'Bird dog':'On hands and knees, reach one arm and the opposite leg out straight. Keep your hips level and do not let your back sag.',
+  'Dead bug':'On your back, arms up and knees bent at ninety degrees. Lower one arm and the opposite leg, keeping your lower back flat to the floor.',
+  'Band pull-apart':'Hold a band at chest height, arms straight. Pull it apart until it touches your chest, squeezing the shoulder blades.',
+  'Band face pull':'Band at head height. Pull towards your face, elbows high and wide, ending with your hands beside your ears.',
+  'Band shoulder dislocates':'Wide grip on a band overhead. Take it slowly back behind your head and return. Widen your grip if it is tight.',
+  'Shoulder CARs':'Lift one arm and trace the largest slow circle you can without moving your torso. Quality over size.',
+  'Scapular push-ups':'In a push-up position with straight arms, let your chest sink between the shoulder blades, then push the upper back to the ceiling.',
+  'Incline push-ups':'Hands on a bench or wall. Lower your chest under control, push away. The higher the hands, the easier it is.',
+  'Wall slides':'Back and arms against a wall. Slide the arms up overhead keeping the wrists and elbows in contact for as long as you can.',
+  'Doorway chest stretch':'Forearm on a door frame, elbow at shoulder height. Step through gently until you feel the chest open.',
+  'Thoracic rotation (open book)':'On your side, knees bent, arms out in front. Open the top arm across your body and follow it with your eyes.',
+  'High knees':'Jog on the spot bringing the knees to hip height. Quick feet, tall posture.',
+  'Butt kicks':'Jog on the spot flicking the heels up towards your backside. Stay light and quick.',
+  'A-skips':'Skip forwards driving one knee up to hip height with the toe pulled up. Land under your hips, not in front.',
+  'Build-up runs':'Run about twenty metres, starting easy and finishing near your top speed. Walk back.',
+  'Build-up sprints':'Short accelerations, each a little faster than the last. Stop well short of a maximal effort on the first few.',
+  'Lateral shuffle':'Stay low, push off the trailing leg and keep your feet from clicking together. Both directions.',
+  'Lateral shuffle + crossover':'Shuffle sideways, then cross the trailing leg over the front for a few steps. Both directions.',
+  'Countermovement jumps':'Dip quickly then jump, using your arms. Land softly through the whole foot. Not maximal in a warm-up.',
+  'Drop and stick':'Step off a low box or step, land on both feet and freeze absolutely still for two seconds.',
+  'Single-leg RDL (bodyweight)':'Stand on one leg, hinge at the hip and reach forwards as the free leg goes back. Keep the hips square and the back flat.',
+  'Split step + first step':'Small hop landing on both feet, then explode one step in whichever direction you choose.',
+  'Serve shadow swings':'Full service motion with no ball, building from slow to near full speed over the set.',
+  'Shadow swings / rotational throws':'Rehearse your sport swing with no ball, or throw a light ball sideways into a wall, rotating through the hips.',
+  'Slow nasal breathing':'In through the nose for four seconds, out for six, into your belly rather than your chest.',
+  'Legs up the wall':'Lie on your back with your legs resting up a wall. Breathe slowly and let everything settle.',
+  'Gentle full-body stretch':'Move slowly through whatever feels tight. Hold nothing painfully, and keep breathing.',
+  "World's greatest stretch":'From a deep lunge, put the inside hand on the floor and rotate the other arm up to the ceiling. Follow your hand with your eyes, then swap sides.'
+};
+const warmupHow = n => WARMUP_HOW[n] || '';
+
+const WARMUPS = {
+  lower:{name:'Lower-Body RAMP',dur:8,items:[
+    {n:'Easy bike or brisk walk',d:'3 min — raise temperature'},
+    {n:'Leg swings front/back',d:'12 each leg'},
+    {n:'Leg swings lateral',d:'12 each leg'},
+    {n:'Ankle dorsiflexion rock',d:'10 each side'},
+    {n:'Bodyweight squats',d:'15, progressively deeper'},
+    {n:'Glute bridge',d:'15, 2s squeeze'},
+    {n:'Walking lunge',d:'8 each leg'},
+    {n:'Pogo hops',d:'20 — wake up the tendons'}
+  ]},
+  upper:{name:'Upper-Body RAMP',dur:6,items:[
+    {n:'Arm circles',d:'15 forward, 15 back'},
+    {n:'Band pull-apart',d:'20 light'},
+    {n:'Wall slides',d:'10'},
+    {n:'Shoulder CARs',d:'3 each side, very slow'},
+    {n:'Scapular push-ups',d:'12'},
+    {n:'Incline push-ups',d:'10 easy'},
+    {n:'Band face pull',d:'15 light'}
+  ]},
+  power:{name:'Power & Movement Prep',dur:12,items:[
+    {n:'Easy jog or bike',d:'4 min'},
+    {n:'Leg swings all directions',d:'10 each'},
+    {n:"World's greatest stretch",d:'4 each side'},
+    {n:'A-skips',d:'2 × 15 m'},
+    {n:'High knees',d:'2 × 15 m'},
+    {n:'Butt kicks',d:'2 × 15 m'},
+    {n:'Lateral shuffle',d:'2 × 10 m each way'},
+    {n:'Pogo hops',d:'2 × 20'},
+    {n:'Build-up runs',d:'3 × 20 m at 60/75/85%'},
+    {n:'Split squat',d:'8 each leg, bodyweight'}
+  ]},
+  tennis:{name:'On-Court / Pre-Tennis Prep',dur:10,items:[
+    {n:'Easy jog around the court',d:'3 min'},
+    {n:'Leg swings + hip circles',d:'10 each'},
+    {n:'90/90 hip switch',d:'8 each side'},
+    {n:'Lateral shuffle + crossover',d:'2 × baseline width'},
+    {n:'Split step + first step',d:'6 reactions'},
+    {n:'Band pull-apart',d:'20'},
+    {n:'Band face pull',d:'15'},
+    {n:'Shoulder CARs',d:'3 each side'},
+    {n:'Serve shadow swings',d:'10 building to 80%'},
+    {n:'Build-up sprints',d:'3 × 10 m'}
+  ]},
+  core:{name:'Core Activation',dur:4,items:[
+    {n:'Cat-cow',d:'10'},
+    {n:'Dead bug',d:'8 each side, slow'},
+    {n:'Bird dog',d:'8 each side'},
+    {n:'Glute bridge',d:'15'}
+  ]},
+  easy:{name:'Light Movement Prep',dur:5,items:[
+    {n:'Easy walk or spin',d:'3 min'},
+    {n:'Cat-cow',d:'10'},
+    {n:'Arm circles + leg swings',d:'10 each'},
+    {n:'Bodyweight squats',d:'10 easy'}
+  ]}
+};
+const COOLDOWNS = {
+  lower:{name:'Lower Cool-Down',dur:7,items:[
+    {n:'Easy walk or spin',d:'3 min — flush the legs'},
+    {n:'Couch stretch',d:'45s each side'},
+    {n:'Pigeon stretch',d:'45s each side'},
+    {n:'Calf stretch (straight + bent knee)',d:'40s each'},
+    {n:'Slow nasal breathing',d:'2 min, 4s in / 6s out'}
+  ]},
+  upper:{name:'Upper Cool-Down',dur:5,items:[
+    {n:'Band shoulder dislocates',d:'10 slow'},
+    {n:'Doorway chest stretch',d:'40s each side'},
+    {n:'Thoracic rotation (open book)',d:'8 each side'},
+    {n:'Slow nasal breathing',d:'2 min'}
+  ]},
+  power:{name:'Power Cool-Down',dur:8,items:[
+    {n:'Easy jog or walk',d:'5 min — clear the legs'},
+    {n:'Ankle dorsiflexion rock',d:'10 each'},
+    {n:'Couch stretch',d:'45s each side'},
+    {n:'Adductor rock',d:'10'},
+    {n:'Slow nasal breathing',d:'2 min'}
+  ]},
+  easy:{name:'Down-Regulation',dur:6,items:[
+    {n:'Slow nasal breathing',d:'3 min, 4s in / 6s out — drives parasympathetic tone'},
+    {n:'Legs up the wall',d:'2 min'},
+    {n:'Gentle full-body stretch',d:'as needed'}
+  ]}
+};
+
+/* =========================================================================
+   WORKOUT TEMPLATES  —  each has FULL / REDUCED / RECOVERY variants
+   b = block entries: {ex:id, sets, reps, rest, rpe, tempo, note}
+   ====================================================================== */
+function seedWorkouts(){ return [
+{id:'w_lowerA',name:'Lower A — Max Force & Single-Leg',short:'Lower A',type:'strength',accent:'accent',
+ focus:'Quads, glutes, single-leg strength, knee & ankle resilience',
+ warm:'lower',cool:'lower',est:{full:52,reduced:34,recovery:20},
+ desc:'Your heaviest leg day. Where no barbell is available, slow eccentrics and pauses do the same job. This is the session that builds the base under every push-off and first step.',
+ blocks:{
+  full:[
+   {ex:'pl01',sets:2,reps:'20',rest:'45s',rpe:'RPE 5',note:'Primer only — wakes the tendons before strength work.'},
+   {ex:'lx01',sets:4,reps:'8–12',rest:'90s',rpe:'RPE 8',tempo:'4-1-1-0'},
+   {ex:'lx02',sets:3,reps:'8–12 / leg',rest:'75s',rpe:'RPE 8',tempo:'3-1-1-0'},
+   {ex:'lx09',sets:3,reps:'8–12 / leg',rest:'60s',rpe:'RPE 7–8',tempo:'3-1-1-0'},
+   {ex:'lx17',sets:3,reps:'12–20 / leg',rest:'45s',rpe:'RPE 8',tempo:'2-1-2-2'},
+   {ex:'lx18',sets:3,reps:'15–25',rest:'45s',rpe:'RPE 7'},
+   {ex:'co09',sets:3,reps:'10–14 / side',rest:'45s',rpe:'RPE 7'}
+  ],
+  reduced:[
+   {ex:'pl01',sets:2,reps:'15',rest:'45s',rpe:'RPE 5'},
+   {ex:'lx01',sets:3,reps:'8–10',rest:'90s',rpe:'RPE 7',tempo:'3-1-1-0',note:'Cap at RPE 7 — leave 3 reps in reserve.'},
+   {ex:'lx03',sets:2,reps:'10 / leg',rest:'60s',rpe:'RPE 7',note:'Floor split squat instead of Bulgarian — less stability cost.'},
+   {ex:'lx09',sets:2,reps:'10 / leg',rest:'60s',rpe:'RPE 7'},
+   {ex:'lx17',sets:2,reps:'15 / leg',rest:'45s',rpe:'RPE 7'},
+   {ex:'co09',sets:2,reps:'10 / side',rest:'45s',rpe:'RPE 6'}
+  ],
+  recovery:[
+   {ex:'lx15',sets:3,reps:'30–45s',rest:'60s',rpe:'RPE 6',note:'Isometric only — loads the quads with near-zero joint and recovery cost.'},
+   {ex:'lx13',sets:2,reps:'12 / leg',rest:'45s',rpe:'RPE 5'},
+   {ex:'lx18',sets:2,reps:'15',rest:'45s',rpe:'RPE 5'},
+   {ex:'co06',sets:2,reps:'8 / side',rest:'40s',rpe:'RPE 5'},
+   {ex:'mo01',sets:2,reps:'8 / side',rest:'—',rpe:'Easy'},
+   {ex:'mo03',sets:2,reps:'45s / side',rest:'—',rpe:'Easy'}
+  ]}},
+
+{id:'w_upperA',name:'Upper A — Push, Delts & V-Taper',short:'Upper A',type:'strength',accent:'cyan',
+ focus:'Shoulders, chest, triceps — the width and definition half of your physique goal',
+ warm:'upper',cool:'upper',est:{full:46,reduced:30,recovery:18},
+ desc:'Deltoid-led pressing. With light dumbbells the growth driver is proximity to failure plus slow eccentrics rather than load — the lateral raises here are the single biggest lever on shoulder width.',
+ blocks:{
+  full:[
+   {ex:'up05',sets:4,reps:'6–14',rest:'75s',rpe:'RPE 8',tempo:'3-1-1-0',note:'Primary vertical press — hips stacked high.'},
+   {ex:'up01',sets:4,reps:'8–20',rest:'75s',rpe:'RPE 8',tempo:'3-1-1-0'},
+   {ex:'up10',sets:4,reps:'15–25',rest:'45s',rpe:'RPE 9',tempo:'2-1-3-0',note:'Take the last set to genuine failure, then 8 partials.'},
+   {ex:'up08',sets:3,reps:'12–20',rest:'60s',rpe:'RPE 8',tempo:'3-0-1-1'},
+   {ex:'up15',sets:3,reps:'12–20',rest:'45s',rpe:'RPE 8',tempo:'3-1-1-0'},
+   {ex:'ul09',sets:3,reps:'15–25',rest:'45s',rpe:'RPE 7',note:'Shoulder insurance — never skip this on a pressing day.'},
+   {ex:'co07',sets:3,reps:'20–40s',rest:'60s',rpe:'RPE 8'}
+  ],
+  reduced:[
+   {ex:'up05',sets:3,reps:'6–10',rest:'75s',rpe:'RPE 7',tempo:'3-0-1-0'},
+   {ex:'up01',sets:3,reps:'8–15',rest:'60s',rpe:'RPE 7'},
+   {ex:'up10',sets:3,reps:'15–20',rest:'45s',rpe:'RPE 8',note:'Stop 2 reps short of failure today.'},
+   {ex:'ul09',sets:2,reps:'15',rest:'45s',rpe:'RPE 6'},
+   {ex:'co07',sets:2,reps:'20s',rest:'45s',rpe:'RPE 7'}
+  ],
+  recovery:[
+   {ex:'ul08',sets:3,reps:'20',rest:'40s',rpe:'RPE 5'},
+   {ex:'ul09',sets:3,reps:'15',rest:'40s',rpe:'RPE 5'},
+   {ex:'ul10',sets:2,reps:'8 each',rest:'45s',rpe:'RPE 5'},
+   {ex:'mo07',sets:2,reps:'10',rest:'—',rpe:'Easy'},
+   {ex:'mo13',sets:2,reps:'10',rest:'—',rpe:'Easy'},
+   {ex:'mo05',sets:2,reps:'8 / side',rest:'—',rpe:'Easy'}
+  ]}},
+
+{id:'w_power',name:'Power & Movement',short:'Power',type:'power',accent:'violet',
+ focus:'Explosive power, acceleration, deceleration, change of direction, serve jump',
+ warm:'power',cool:'power',est:{full:48,reduced:32,recovery:18},
+ desc:'The most sport-specific session of the week. Everything here is quality-limited: if output drops, the set is over. Never chase fatigue on a power day.',
+ blocks:{
+  full:[
+   {ex:'pl01',sets:3,reps:'25',rest:'45s',rpe:'RPE 6'},
+   {ex:'pl02',sets:4,reps:'4',rest:'90s',rpe:'Max quality',note:'Full recovery between sets. Stop the exercise the moment height drops.'},
+   {ex:'pl09',sets:4,reps:'5',rest:'75s',rpe:'Max quality',note:'Drive up AND into the court.'},
+   {ex:'pl04',sets:3,reps:'6 / side',rest:'75s',rpe:'RPE 7',note:'Stick every landing for a full second.'},
+   {ex:'sp02',sets:6,reps:'1 × 15 m',rest:'90s',rpe:'95%',note:'Walk back fully. This is speed work, not conditioning.'},
+   {ex:'sp06',sets:4,reps:'4',rest:'60s',rpe:'RPE 7'},
+   {ex:'sp03',sets:4,reps:'1 each side',rest:'90s',rpe:'RPE 8'},
+   {ex:'co12',sets:3,reps:'8–12 / side',rest:'45s',rpe:'RPE 7'}
+  ],
+  reduced:[
+   {ex:'pl01',sets:2,reps:'20',rest:'45s',rpe:'RPE 5'},
+   {ex:'pl02',sets:3,reps:'3',rest:'90s',rpe:'Sub-max',note:'About 85% effort — technical quality only.'},
+   {ex:'pl04',sets:2,reps:'5 / side',rest:'60s',rpe:'RPE 6'},
+   {ex:'sp04',sets:3,reps:'6 × 8 m',rest:'45s',rpe:'RPE 6'},
+   {ex:'sp06',sets:3,reps:'3',rest:'60s',rpe:'RPE 6',note:'Mechanics focus, slower approach.'},
+   {ex:'co09',sets:2,reps:'10 / side',rest:'45s',rpe:'RPE 6'}
+  ],
+  recovery:[
+   {ex:'mo02',sets:2,reps:'5 / side',rest:'—',rpe:'Easy'},
+   {ex:'mo01',sets:2,reps:'8 / side',rest:'—',rpe:'Easy'},
+   {ex:'mo04',sets:2,reps:'10 / side',rest:'—',rpe:'Easy'},
+   {ex:'co06',sets:2,reps:'8 / side',rest:'40s',rpe:'RPE 5'},
+   {ex:'cd05',sets:1,reps:'20 min',rest:'—',rpe:'RPE 2–3'}
+  ]}},
+
+{id:'w_upperB',name:'Upper B — Pull, Posture & Arms',short:'Upper B',type:'strength',accent:'cyan',
+ focus:'Lats, mid-back, rear delts, biceps — V-taper width and serving shoulder health',
+ warm:'upper',cool:'upper',est:{full:44,reduced:30,recovery:16},
+ desc:'Without a pull-up bar, band and dumbbell pulling is your entire back. This session drives both the V-taper and the posture that protects your serving shoulder.',
+ blocks:{
+  full:[
+   {ex:'ul06',sets:4,reps:'15–25',rest:'60s',rpe:'RPE 8',tempo:'2-1-2-0',note:'Your only true vertical pull — prioritise it for lat width.'},
+   {ex:'ul01',sets:4,reps:'12–20',rest:'60s',rpe:'RPE 8',tempo:'2-1-2-0'},
+   {ex:'ul03',sets:3,reps:'15–25',rest:'60s',rpe:'RPE 8',tempo:'2-1-3-0',note:'Slow eccentric is the load. 5 kg is plenty at this tempo.'},
+   {ex:'ul09',sets:3,reps:'15–25',rest:'45s',rpe:'RPE 7'},
+   {ex:'ul08',sets:3,reps:'20–30',rest:'40s',rpe:'RPE 7'},
+   {ex:'ul12',sets:3,reps:'15–25',rest:'45s',rpe:'RPE 9',tempo:'2-1-3-1',note:'Drop straight into band curls when the dumbbells fail.'},
+   {ex:'ul13',sets:2,reps:'15–25',rest:'45s',rpe:'RPE 9'},
+   {ex:'co13',sets:3,reps:'30–45s / side',rest:'45s',rpe:'RPE 7'}
+  ],
+  reduced:[
+   {ex:'ul06',sets:3,reps:'15–20',rest:'60s',rpe:'RPE 7'},
+   {ex:'ul01',sets:3,reps:'12–18',rest:'60s',rpe:'RPE 7'},
+   {ex:'ul09',sets:3,reps:'15',rest:'45s',rpe:'RPE 6'},
+   {ex:'ul08',sets:2,reps:'20',rest:'40s',rpe:'RPE 6'},
+   {ex:'ul12',sets:2,reps:'15',rest:'45s',rpe:'RPE 8'}
+  ],
+  recovery:[
+   {ex:'ul08',sets:3,reps:'20',rest:'40s',rpe:'RPE 5'},
+   {ex:'ul09',sets:3,reps:'15',rest:'40s',rpe:'RPE 5'},
+   {ex:'ul10',sets:2,reps:'8 each',rest:'45s',rpe:'RPE 5'},
+   {ex:'ul15',sets:2,reps:'10',rest:'40s',rpe:'RPE 5'},
+   {ex:'mo05',sets:2,reps:'8 / side',rest:'—',rpe:'Easy'},
+   {ex:'mo13',sets:2,reps:'10',rest:'—',rpe:'Easy'}
+  ]}},
+
+{id:'w_lowerB',name:'Lower B — Posterior Chain & Ankles',short:'Lower B',type:'strength',accent:'accent',
+ focus:'Hamstrings, glutes, calves, adductors — injury-proofing and push-off power',
+ warm:'lower',cool:'lower',est:{full:46,reduced:30,recovery:18},
+ desc:'The protective session. Hamstring and groin strength are the biggest insurance policies in any sport with sprinting or cutting, and strong calves feed every push-off.',
+ blocks:{
+  full:[
+   {ex:'lx10',sets:4,reps:'12–18',rest:'75s',rpe:'RPE 8',tempo:'4-1-1-0'},
+   {ex:'lx11',sets:3,reps:'4–6',rest:'90s',rpe:'RPE 9',tempo:'5s eccentric',note:'Brutal soreness for 3–4 days. Never within 48h of your sport.'},
+   {ex:'lx05',sets:3,reps:'8–10 / side',rest:'60s',rpe:'RPE 7'},
+   {ex:'lx19',sets:3,reps:'15–40s / side',rest:'45s',rpe:'RPE 8',note:'Top groin-injury prevention exercise. Build the time slowly.'},
+   {ex:'lx16',sets:4,reps:'15–25',rest:'45s',rpe:'RPE 8',tempo:'2-1-1-2'},
+   {ex:'lx18',sets:3,reps:'15–25',rest:'45s',rpe:'RPE 7'},
+   {ex:'co03',sets:3,reps:'25–50s / side',rest:'45s',rpe:'RPE 8'}
+  ],
+  reduced:[
+   {ex:'lx10',sets:3,reps:'12–15',rest:'75s',rpe:'RPE 7',tempo:'3-1-1-0'},
+   {ex:'lx12',sets:3,reps:'10',rest:'60s',rpe:'RPE 7',note:'Sliding curl instead of Nordics — far lower soreness cost.'},
+   {ex:'lx13',sets:3,reps:'12 / leg',rest:'45s',rpe:'RPE 7'},
+   {ex:'lx16',sets:3,reps:'15',rest:'45s',rpe:'RPE 7'},
+   {ex:'co03',sets:2,reps:'25s / side',rest:'45s',rpe:'RPE 7'}
+  ],
+  recovery:[
+   {ex:'lx13',sets:2,reps:'12 / leg',rest:'45s',rpe:'RPE 5'},
+   {ex:'lx20',sets:3,reps:'5 × 8s',rest:'30s',rpe:'RPE 5'},
+   {ex:'lx18',sets:2,reps:'15',rest:'45s',rpe:'RPE 5'},
+   {ex:'mo09',sets:2,reps:'10',rest:'—',rpe:'Easy'},
+   {ex:'mo12',sets:2,reps:'8 / side',rest:'—',rpe:'Easy'},
+   {ex:'mo11',sets:2,reps:'40s / side',rest:'—',rpe:'Easy'}
+  ]}},
+
+{id:'w_prep',name:'Sport Day — Prep & Maintain',short:'Sport Prep',type:'tennis',accent:'green',
+ focus:'Activation before you play, joint maintenance after',
+ /* warm:'sport' resolves through warmupFor() to a warm-up assembled for
+    whichever sports the profile names — see sportWarmup() */
+ warm:'sport',cool:'easy',est:{full:22,reduced:14,recovery:10},
+ desc:'Short work built AROUND your sport, not competing with it. Offered whenever you log your sport for today. It adds priming and protection without adding meaningful load.',
+ blocks:{
+  full:[
+   {ex:'pl01',sets:2,reps:'20',rest:'40s',rpe:'RPE 5',note:'Before court — primes ankle stiffness for the split step.'},
+   {ex:'sp01',sets:3,reps:'6 reactions',rest:'45s',rpe:'RPE 6',note:'Before court.'},
+   {ex:'pl09',sets:3,reps:'4',rest:'60s',rpe:'Sub-max',note:'Before court — primes the serve pattern, does not fatigue it.'},
+   {ex:'ul09',sets:3,reps:'15–20',rest:'40s',rpe:'RPE 6',note:'AFTER court — shoulder maintenance.'},
+   {ex:'ul08',sets:2,reps:'20',rest:'40s',rpe:'RPE 6',note:'AFTER court.'},
+   {ex:'lx18',sets:2,reps:'15–20',rest:'40s',rpe:'RPE 6',note:'AFTER court — shin and deceleration protection.'},
+   {ex:'co09',sets:2,reps:'10 / side',rest:'40s',rpe:'RPE 6',note:'AFTER court.'}
+  ],
+  reduced:[
+   {ex:'pl01',sets:2,reps:'15',rest:'40s',rpe:'RPE 5',note:'Before court.'},
+   {ex:'sp01',sets:2,reps:'5 reactions',rest:'45s',rpe:'RPE 5',note:'Before court.'},
+   {ex:'ul09',sets:2,reps:'15',rest:'40s',rpe:'RPE 5',note:'After court.'},
+   {ex:'ul08',sets:2,reps:'20',rest:'40s',rpe:'RPE 5',note:'After court.'}
+  ],
+  recovery:[
+   {ex:'ul09',sets:2,reps:'15',rest:'40s',rpe:'RPE 4'},
+   {ex:'mo01',sets:2,reps:'8 / side',rest:'—',rpe:'Easy'},
+   {ex:'mo04',sets:2,reps:'10 / side',rest:'—',rpe:'Easy'},
+   {ex:'mo11',sets:2,reps:'40s / side',rest:'—',rpe:'Easy'}
+  ]}},
+
+{id:'w_core',name:'Core & Anti-Rotation',short:'Core',type:'core',accent:'violet',
+ focus:'Anti-extension, anti-rotation, anti-lateral flexion, force transfer',
+ warm:'core',cool:'easy',est:{full:26,reduced:18,recovery:12},
+ desc:'Trained as a force-transfer system, not as abs. Every exercise here teaches the trunk to resist movement so your legs can drive the racquet.',
+ blocks:{
+  full:[
+   {ex:'co09',sets:3,reps:'10–14 / side',rest:'45s',rpe:'RPE 7'},
+   {ex:'co01',sets:3,reps:'15–30s',rest:'60s',rpe:'RPE 9'},
+   {ex:'co03',sets:3,reps:'25–50s / side',rest:'45s',rpe:'RPE 8'},
+   {ex:'co05',sets:3,reps:'8–12 / side',rest:'45s',rpe:'RPE 7',tempo:'3-1-3-0'},
+   {ex:'co13',sets:3,reps:'30–45s / side',rest:'45s',rpe:'RPE 7'},
+   {ex:'co12',sets:3,reps:'8–12 / side',rest:'45s',rpe:'RPE 7'},
+   {ex:'co08',sets:2,reps:'20–40s',rest:'45s',rpe:'RPE 7'}
+  ],
+  reduced:[
+   {ex:'co09',sets:2,reps:'10 / side',rest:'45s',rpe:'RPE 6'},
+   {ex:'co01',sets:2,reps:'15s',rest:'60s',rpe:'RPE 7'},
+   {ex:'co03',sets:2,reps:'25s / side',rest:'45s',rpe:'RPE 7'},
+   {ex:'co05',sets:2,reps:'8 / side',rest:'45s',rpe:'RPE 6'}
+  ],
+  recovery:[
+   {ex:'co06',sets:2,reps:'8 / side',rest:'40s',rpe:'RPE 5'},
+   {ex:'co05',sets:2,reps:'8 / side',rest:'40s',rpe:'RPE 5'},
+   {ex:'mo06',sets:2,reps:'10',rest:'—',rpe:'Easy'},
+   {ex:'mo01',sets:2,reps:'8 / side',rest:'—',rpe:'Easy'}
+  ]}},
+
+{id:'w_recovery',name:'Recovery & Mobility Flow',short:'Recovery',type:'mobility',accent:'green',
+ focus:'Down-regulation, tissue quality, joint range, parasympathetic drive',
+ warm:'easy',cool:'easy',est:{full:28,reduced:20,recovery:16},
+ desc:'This is a real session with a real purpose, not a rest day with extra steps. Your best 14-day recovery window of the last six months was your LOWEST training window — protecting these days is what makes the hard days work.',
+ blocks:{
+  full:[
+   {ex:'cd05',sets:1,reps:'20 min',rest:'—',rpe:'RPE 2–3',note:'Or an easy walk in daylight — daylight also helps anchor your body clock.'},
+   {ex:'mo01',sets:2,reps:'10 / side',rest:'—',rpe:'Easy'},
+   {ex:'mo02',sets:2,reps:'5 / side',rest:'—',rpe:'Easy'},
+   {ex:'mo03',sets:2,reps:'60s / side',rest:'—',rpe:'Easy'},
+   {ex:'mo10',sets:2,reps:'60s / side',rest:'—',rpe:'Easy'},
+   {ex:'mo05',sets:2,reps:'10 / side',rest:'—',rpe:'Easy'},
+   {ex:'mo04',sets:2,reps:'12 / side',rest:'—',rpe:'Easy'},
+   {ex:'mo13',sets:2,reps:'10',rest:'—',rpe:'Easy'},
+   {ex:'mo11',sets:2,reps:'40s / side',rest:'—',rpe:'Easy'}
+  ],
+  reduced:[
+   {ex:'mo01',sets:2,reps:'8 / side',rest:'—',rpe:'Easy'},
+   {ex:'mo03',sets:2,reps:'45s / side',rest:'—',rpe:'Easy'},
+   {ex:'mo05',sets:2,reps:'8 / side',rest:'—',rpe:'Easy'},
+   {ex:'mo11',sets:2,reps:'40s / side',rest:'—',rpe:'Easy'},
+   {ex:'mo06',sets:2,reps:'10',rest:'—',rpe:'Easy'}
+  ],
+  recovery:[
+   {ex:'mo06',sets:2,reps:'10',rest:'—',rpe:'Easy'},
+   {ex:'mo03',sets:2,reps:'60s / side',rest:'—',rpe:'Easy'},
+   {ex:'mo10',sets:2,reps:'60s / side',rest:'—',rpe:'Easy'},
+   {ex:'cd06',sets:1,reps:'20 min',rest:'—',rpe:'RPE 2'}
+  ]}},
+
+{id:'w_runEasy',name:'Easy Aerobic Run',short:'Easy Run',type:'cardio',accent:'cyan',
+ focus:'Aerobic base — recovery between points, third-set endurance',
+ warm:'easy',cool:'easy',est:{full:45,reduced:32,recovery:24},
+ desc:'Conversational running. Your aerobic base is what lets you recover between points and hold your level late in a match. Almost all of it should feel easier than you think it should.',
+ blocks:{
+  full:[
+   {ex:'cd01',sets:1,reps:'30–40 min',rest:'—',rpe:'RPE 4–5',note:'Roughly 128–148 bpm for you. If you cannot speak a full sentence, slow down.'},
+   {ex:'lx18',sets:2,reps:'20',rest:'45s',rpe:'RPE 6',note:'After running — protects the shins.'},
+   {ex:'mo11',sets:2,reps:'40s / side',rest:'—',rpe:'Easy'}
+  ],
+  reduced:[
+   {ex:'cd01',sets:1,reps:'20–25 min',rest:'—',rpe:'RPE 4',note:'Keep it genuinely easy.'},
+   {ex:'mo11',sets:2,reps:'40s / side',rest:'—',rpe:'Easy'}
+  ],
+  recovery:[
+   {ex:'cd06',sets:1,reps:'25–30 min',rest:'—',rpe:'RPE 2',note:'Walk rather than run today.'},
+   {ex:'mo12',sets:2,reps:'8 / side',rest:'—',rpe:'Easy'}
+  ]}},
+
+{id:'w_runQuality',name:'Tempo Run',short:'Tempo Run',type:'cardio',accent:'orange',
+ focus:'Aerobic power and running economy',
+ warm:'easy',cool:'easy',est:{full:42,reduced:30,recovery:22},
+ desc:'Comfortably hard continuous running. Used sparingly — if your sport already gives you high-intensity work, this is here to raise the aerobic ceiling, not to make you tired.',
+ blocks:{
+  full:[
+   {ex:'cd08',sets:1,reps:'18–25 min at tempo',rest:'—',rpe:'RPE 6–7',note:'10 min easy in, 5–10 min easy out.'},
+   {ex:'lx18',sets:2,reps:'20',rest:'45s',rpe:'RPE 6'},
+   {ex:'mo11',sets:2,reps:'40s / side',rest:'—',rpe:'Easy'}
+  ],
+  reduced:[
+   {ex:'cd08',sets:1,reps:'2 × 8 min, 3 min easy between',rest:'—',rpe:'RPE 6'},
+   {ex:'mo11',sets:2,reps:'40s / side',rest:'—',rpe:'Easy'}
+  ],
+  recovery:[
+   {ex:'cd01',sets:1,reps:'25 min',rest:'—',rpe:'RPE 4',note:'Drop the tempo work — easy running only today.'}
+  ]}},
+
+{id:'w_runInt',name:'Repeat-Sprint Conditioning',short:'Intervals',type:'cardio',accent:'orange',
+ focus:'Repeat-sprint ability using a 20s:40s work:rest structure',
+ warm:'power',cool:'power',est:{full:38,reduced:26,recovery:18},
+ desc:'Built on a 20s work / 40s rest structure that mirrors the stop-start demands of most field and court sports. Genuinely hard — the engine only offers this on a green day when your legs are fresh.',
+ blocks:{
+  full:[
+   {ex:'cd03',sets:10,reps:'20s hard / 40s easy',rest:'Built in',rpe:'RPE 8'},
+   {ex:'sp04',sets:3,reps:'6 × 8 m',rest:'45s',rpe:'RPE 7'},
+   {ex:'lx18',sets:2,reps:'20',rest:'45s',rpe:'RPE 6'}
+  ],
+  reduced:[
+   {ex:'cd07',sets:6,reps:'1 min hard / 2 min easy',rest:'Built in',rpe:'RPE 7',note:'Bike intervals — same aerobic stimulus, no impact cost.'},
+   {ex:'mo11',sets:2,reps:'40s / side',rest:'—',rpe:'Easy'}
+  ],
+  recovery:[
+   {ex:'cd05',sets:1,reps:'25 min',rest:'—',rpe:'RPE 2–3'}
+  ]}},
+
+{id:'w_bike',name:'Zone 2 Bike',short:'Bike',type:'cardio',accent:'cyan',
+ focus:'Aerobic base with almost no impact cost',
+ warm:'easy',cool:'easy',est:{full:50,reduced:35,recovery:25},
+ desc:'Your low-impact aerobic option. When the legs are beaten up but your recovery is fine, this buys aerobic fitness without adding pounding.',
+ blocks:{
+  full:[
+   {ex:'cd02',sets:1,reps:'40–55 min',rest:'—',rpe:'RPE 4–5',note:'Cadence above 80 rpm, effort genuinely conversational.'},
+   {ex:'mo03',sets:2,reps:'45s / side',rest:'—',rpe:'Easy',note:'Cycling shortens the hip flexors — do not skip this.'}
+  ],
+  reduced:[
+   {ex:'cd02',sets:1,reps:'30 min',rest:'—',rpe:'RPE 4'},
+   {ex:'mo03',sets:2,reps:'45s / side',rest:'—',rpe:'Easy'}
+  ],
+  recovery:[
+   {ex:'cd05',sets:1,reps:'20–30 min',rest:'—',rpe:'RPE 2–3'},
+   {ex:'mo03',sets:2,reps:'45s / side',rest:'—',rpe:'Easy'}
+  ]}}
+];}
+
+/* =========================================================================
+   8-WEEK PROGRESSION PLAN
+   ====================================================================== */
+const PHASES=[
+ {w:1,name:'Re-Entry',vol:0.8,rpeCap:7,plyo:'low',
+  goal:'Rebuild the habit and the tissue tolerance. Deliberately easier than you can handle.',
+  focus:'Technique on every lift. Establish honest RPE. Do not chase soreness.'},
+ {w:2,name:'Build',vol:1.0,rpeCap:8,plyo:'moderate',
+  goal:'Full prescribed volume. Add reps within the given range.',
+  focus:'Hit the top of each rep range before considering anything harder.'},
+ {w:3,name:'Build +',vol:1.1,rpeCap:8,plyo:'moderate',
+  goal:'Add one set to the first two exercises of each strength session.',
+  focus:'Highest volume week of block 1. Expect real fatigue by Friday.'},
+ {w:4,name:'Deload',vol:0.6,rpeCap:6,plyo:'minimal',
+  goal:'Cut volume by 40%, cap effort at RPE 6, keep the movements.',
+  focus:'This is where adaptation actually happens. Do not skip it.'},
+ {w:5,name:'Intensify',vol:1.0,rpeCap:8,plyo:'moderate',
+  goal:'Move to harder exercise VARIATIONS rather than more reps.',
+  focus:'Bulgarian → paused. Push-up → feet elevated. Skater squat range increases.'},
+ {w:6,name:'Intensify +',vol:1.05,rpeCap:9,plyo:'high',
+  goal:'Hardest variations you can perform with clean technique.',
+  focus:'Plyometric quality is the limiter — stop sets when output falls.'},
+ {w:7,name:'Peak',vol:1.1,rpeCap:9,plyo:'high',
+  goal:'Peak week. Highest quality output of the block.',
+  focus:'Test-quality jumps and sprints. Strength sets close to failure.'},
+ {w:8,name:'Deload + Retest',vol:0.55,rpeCap:6,plyo:'test only',
+  goal:'Deload, then retest your benchmarks on a GREEN day.',
+  focus:'Retest: CMJ height, broad jump, 5-10-5 time, push-ups, plank, single-leg calf raises.'}
+];
+
+/* =========================================================================
+   BENCHMARK TESTS
+   ====================================================================== */
+const TESTS=[
+ {id:'t_cmj',name:'Countermovement Jump',unit:'cm',dir:'up',cat:'Power',how:'Mark your standing reach on a wall, then chalk your fingers and jump as high as possible. Best of 3. Measure the difference.'},
+ {id:'t_broad',name:'Broad Jump',unit:'cm',dir:'up',cat:'Power',how:'Two-footed jump for distance from a standing start. Measure from the toe line to the rear heel. Best of 3.'},
+ {id:'t_505',name:'5-10-5 Pro Agility',unit:'s',dir:'down',cat:'Agility',how:'Markers 5 m apart. Time yourself on video. Best of 2 per side.'},
+ {id:'t_sprint',name:'20 m Sprint',unit:'s',dir:'down',cat:'Speed',how:'Time a flat 20 m from a standing start. Best of 3 with full recovery.'},
+ {id:'t_pushup',name:'Push-Ups (max)',unit:'reps',dir:'up',cat:'Upper',how:'Maximum strict push-ups with full range in one set.'},
+ {id:'t_plank',name:'RKC Plank Hold',unit:'s',dir:'up',cat:'Core',how:'Maximum hold with full-body tension. Stop when the hips drop.'},
+ {id:'t_sideplank',name:'Side Plank Hold',unit:'s',dir:'up',cat:'Core',how:'Maximum hold per side. Record the weaker side.'},
+ {id:'t_calf',name:'Single-Leg Calf Raise',unit:'reps',dir:'up',cat:'Lower',how:'Maximum full-range reps on one leg. Record the weaker side.'},
+ {id:'t_wallsit',name:'Wall Sit',unit:'s',dir:'up',cat:'Lower',how:'Maximum hold at 90° knee angle.'},
+ {id:'t_sls',name:'Skater Squat (max reps)',unit:'reps',dir:'up',cat:'Lower',how:'Maximum controlled reps per leg to a consistent touch height.'},
+ {id:'t_copen',name:'Copenhagen Plank',unit:'s',dir:'up',cat:'Core',how:'Maximum hold per side, long lever. Record the weaker side.'}
+];
+
+/* =========================================================================
+   DEFAULT DATABASE
+   ====================================================================== */
+function freshDB(){
+  return {
+    version:1, created:new Date().toISOString(),
+    profile:{
+      /* A fresh profile knows nothing about you. Every field below is either
+         empty or null, and the UI renders that as "None" rather than as an
+         incomplete profile. The engine's own fallbacks live in the working
+         accessors (sportsOf, trainDays, sessMin) in p03b — not here. */
+      name:'',
+      goalPrimary:'', goalSecondary:'',
+      equipment:[],
+      units:'metric',
+      sessionMin:null, startDate:todayISO(), planWeek:1, planStart:todayISO(),
+      /* Which wearable, if any. null = first run, ask. See SOURCES: a device
+         is described by the fields it provides, and no device is privileged.
+         `mode` is kept in sync only so older saved data keeps working. */
+      source:null, sourceFields:null, mode:null, onboarded:false,
+      /* about you — all optional, used only for context and never required */
+      age:null, sex:null, heightCm:null, weightKg:null,
+      /* equipment tier: 0 minimal · 1 home · 2 full gym */
+      tier:0, preferBest:true, gear:[], dbKg:null, equipNote:'',
+      /* where you train decides which way round the equipment question is
+         asked; null until you have been asked */
+      place:null, gearKg:{},
+      /* goals — arrays, with the first entry leading */
+      /* standing injuries: [{id, area, side, severity, until, note}] — these
+         persist and expire, unlike the one-day pain flag in the check-in */
+      limits:[],
+      /* no sport, no goal, no schedule until the user says so */
+      sports:[], sport:null,
+      physiques:[], physique:null,
+      daysPerWeek:null,
+      /* deliberate breaks, so a gap in the log reads as "away" rather than
+         as a fortnight of missed training */
+      awayUntil:null, awayReason:'',
+      /* exercises that hurt, with an expiry. Lighter than an injury, which
+         is a body area and a date; this is "not this movement, for now". */
+      avoid:[]
+    },
+    meta:{ created:new Date().toISOString(), schema:SCHEMA_VERSION, lastBackup:null, lastBackupCount:null },
+    /* Weekly GUIDELINES, not quotas. The daily engine decides the order and
+       will happily miss a target rather than train you into the ground. */
+    /* No targets until setup derives them from what the user actually chose.
+       An empty object is the honest state: targetKeys() hides every zero, so
+       the week view says "no targets yet" instead of inventing ten sessions
+       a week for somebody who has not told us anything. */
+    targets:{},
+    settings:{
+      bands:{green:72,yellow:56,orange:42},
+      autoAdjust:true, hardStrain:14, restTimerOn:true,
+      /* sound is on because it belongs to a timer the user started; alerts
+         are off because they need a permission nobody has granted yet */
+      sound:true, notify:false
+    },
+    /* Optional cycle tracking. Off, with nothing in it, until the user says
+       otherwise. `starts` holds period start dates only; the daily entries
+       live on the check-in they belong to. */
+    mcycle:{on:false, starts:[], typicalLen:null, typicalPeriod:null, askedAt:null},
+    plans:{},
+    /* what the engine advised each day, written on the day. Kept separate
+       from plans (which is your override) so adherence can be measured. */
+    decisions:{},
+    baselines:Object.assign({},SEED_BASE,{computed:false,seeded:true}),
+    whoop:{cycles:[],workouts:[],journal:[],imports:[]},
+    checkins:{},
+    exercises:builtInExercises(),
+    workouts:seedWorkouts(),
+    sessions:[],
+    activities:[],
+    tests:[],
+    physique:[],
+    ui:{tab:'today', tourDone:false, digestSeen:null}
+  };
+}

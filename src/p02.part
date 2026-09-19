@@ -1,0 +1,1391 @@
+<script>
+"use strict";
+/* ============================================================================
+   BASELINE — Adaptive Training System
+   Single-file, offline-first. All data stays in this browser (localStorage).
+   Private, local-first, no server. Works with or without WHOOP.
+   ========================================================================= */
+
+/* ---------------------------------------------------------------- utilities */
+const $  = (s,r)=> (r||document).querySelector(s);
+const $$ = (s,r)=> Array.from((r||document).querySelectorAll(s));
+const el = (t,a,h)=>{const n=document.createElement(t); if(a) for(const k in a){ if(k==='class')n.className=a[k]; else if(k.startsWith('on'))n.addEventListener(k.slice(2),a[k]); else if(a[k]!=null)n.setAttribute(k,a[k]); } if(h!=null)n.innerHTML=h; return n;};
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = ()=> Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const dv   =(v,d=0)=>{ const r=rnd(v,d); return r==null?'—':r; };
+const rnd  =(v,d=0)=>{ if(v==null||isNaN(v))return null; const m=Math.pow(10,d); return Math.round(v*m)/m; };
+const mean = a =>{ const v=a.filter(x=>x!=null&&!isNaN(x)); return v.length? v.reduce((s,x)=>s+x,0)/v.length : null; };
+const sd   = a =>{ const v=a.filter(x=>x!=null&&!isNaN(x)); if(v.length<2)return null; const m=mean(v); return Math.sqrt(v.reduce((s,x)=>s+(x-m)*(x-m),0)/(v.length-1)); };
+const median=a=>{ const v=a.filter(x=>x!=null&&!isNaN(x)).sort((x,y)=>x-y); if(!v.length)return null; const i=Math.floor(v.length/2); return v.length%2?v[i]:(v[i-1]+v[i])/2; };
+const sum  = a => a.filter(x=>x!=null&&!isNaN(x)).reduce((s,x)=>s+x,0);
+const todayISO = ()=> new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
+const addDays  = (iso,n)=>{ const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
+const dowOf    = iso => new Date(iso+'T12:00:00').getDay();          // 0=Sun
+const DOW_NAME = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const DOW_FULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const fmtDate  = iso =>{ const d=new Date(iso+'T12:00:00'); return DOW_NAME[d.getDay()]+' '+d.getDate()+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]; };
+const fmtMin   = m =>{ if(m==null||isNaN(m))return '—'; const h=Math.floor(m/60), r=Math.round(m%60); return h? h+'h '+String(r).padStart(2,'0')+'m' : r+'m'; };
+const mmss     = s =>{ s=Math.max(0,Math.round(s)); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };
+/* A session clock. mmss is fine for a rest timer but a two-hour bike ride
+   would read as '127:14', so this rolls over into hours. */
+const hms      = s =>{ s=Math.max(0,Math.round(s));
+  const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), x=s%60;
+  return h? h+':'+String(m).padStart(2,'0')+':'+String(x).padStart(2,'0')
+          : m+':'+String(x).padStart(2,'0'); };
+/* Minutes between two "HH:MM" strings, or null if either is missing. An end
+   before a start means it ran past midnight, which a late game genuinely
+   does, so it wraps rather than going negative. */
+function minsBetween(from,to){
+  const p=s=>{ const m=/^([0-9]{1,2}):([0-9]{2})$/.exec(String(s||'').trim());
+               if(!m) return null;
+               const h=+m[1], mi=+m[2];
+               return (h<24 && mi<60) ? h*60+mi : null; };
+  const a=p(from), b=p(to);
+  if(a==null||b==null) return null;
+  let d=b-a; if(d<0) d+=1440;
+  return d;
+}
+/* "HH:MM" that many minutes after another one */
+function timePlus(from,mins){
+  const m=/^([0-9]{1,2}):([0-9]{2})$/.exec(String(from||'').trim());
+  if(!m || mins==null) return '';
+  const t=(((+m[1])*60+(+m[2])+(+mins))%1440+1440)%1440;
+  return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');
+}
+
+/* minutes per kilometre as 5:42 */
+const paceStr  = p =>{ if(p==null||!isFinite(p)||p<=0) return '—';
+  const m=Math.floor(p), s=Math.round((p-m)*60);
+  return (s===60? (m+1)+':00' : m+':'+String(s).padStart(2,'0'))+' /km'; };
+const daysBetween=(a,b)=> Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00'))/864e5);
+function pearson(xs,ys){
+  const p=[]; for(let i=0;i<xs.length;i++) if(xs[i]!=null&&ys[i]!=null&&!isNaN(xs[i])&&!isNaN(ys[i])) p.push([xs[i],ys[i]]);
+  if(p.length<8) return null;
+  const mx=mean(p.map(v=>v[0])), my=mean(p.map(v=>v[1]));
+  let n=0,dx=0,dy=0; p.forEach(([x,y])=>{n+=(x-mx)*(y-my); dx+=(x-mx)**2; dy+=(y-my)**2;});
+  if(!dx||!dy) return null;
+  return {r:n/Math.sqrt(dx*dy), n:p.length};
+}
+const ICON = {
+  today:'<path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1z"/><path d="M9 21v-7h6v7"/>',
+  dumbbell:'<path d="M6.5 6.5v11M3 9v6M17.5 6.5v11M21 9v6M6.5 12h11"/>',
+  tennis:'<circle cx="12" cy="12" r="9"/><path d="M5 5c4.5 4 4.5 10 0 14M19 5c-4.5 4-4.5 10 0 14"/>',
+  chart:'<path d="M3 20h18"/><path d="M6 20v-6M11 20V7M16 20v-9M21 20v-4"/>',
+  pulse:'<path d="M3 12h4l2.5-7 4 14L16 12h5"/>',
+  gear:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-1.8-.3 1.6 1.6 0 00-1 1.5V21a2 2 0 11-4 0v-.1A1.6 1.6 0 008 19.4a1.6 1.6 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00.3-1.8 1.6 1.6 0 00-1.5-1H2a2 2 0 110-4h.1A1.6 1.6 0 003.6 8a1.6 1.6 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 001.8.3H8a1.6 1.6 0 001-1.5V2a2 2 0 114 0v.1a1.6 1.6 0 001 1.5 1.6 1.6 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00-.3 1.8V8a1.6 1.6 0 001.5 1H22a2 2 0 110 4h-.1a1.6 1.6 0 00-1.5 1z"/>',
+  chev:'<path d="M9 18l6-6-6-6"/>', down:'<path d="M6 9l6 6 6-6"/>',
+  left:'<path d="M15 18l-6-6 6-6"/>',
+  check:'<path d="M20 6L9 17l-5-5"/>', x:'<path d="M18 6L6 18M6 6l12 12"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>', undo:'<path d="M3 7v6h6"/><path d="M3.5 13a9 9 0 102.1-7"/>',
+  edit:'<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>',
+  copy:'<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>',
+  trash:'<path d="M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2M19 6l-1 14a1 1 0 01-1 1H7a1 1 0 01-1-1L5 6"/>',
+  play:'<path d="M6 4l14 8-14 8z"/>', up:'<path d="M18 15l-6-6-6 6"/>',
+  down2:'<path d="M6 9l6 6 6-6"/>', dl:'<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+  ul:'<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>',
+  flame:'<path d="M12 2s4 4.5 4 8a4 4 0 01-8 0c0-1 .5-2 .5-2S7 10 6 12a6 6 0 1012 0c0-5-6-10-6-10z"/>',
+  moon:'<path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/>',
+  heart:'<path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 10-7.8 7.8l8.8 8.8 8.8-8.8a5.5 5.5 0 000-7.8z"/>',
+  timer:'<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/>',
+  book:'<path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>',
+  run:'<circle cx="16" cy="4" r="2"/><path d="M12 21l1.5-6-3-2.5L9 17M10.5 12.5L8 8l4-1.5 3 2.5 3 1"/>',
+  bike:'<circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M15 6a1 1 0 100-2 1 1 0 000 2zM12 17.5L9 9l4-1 2.5 3.5H18"/>',
+  target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
+  ruler:'<path d="M3.5 9.5h17a1 1 0 011 1v3a1 1 0 01-1 1h-17a1 1 0 01-1-1v-3a1 1 0 011-1z"/><path d="M7 9.5v2M11 9.5v3M15 9.5v2M19 9.5v3"/>',
+  info:'<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/>',
+  /* the open readiness ring — the app's own mark, and sport-neutral */
+  ring:'<path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5"/>',
+  /* device types — enough to tell a ring from a band from a watch */
+  watch:'<rect x="6.5" y="6.5" width="11" height="11" rx="3.4"/><path d="M9.5 6.5V3.5h5v3M9.5 17.5v3h5v-3"/>',
+  band:'<rect x="3" y="9" width="18" height="6" rx="3"/><path d="M8.5 9v6M15.5 9v6"/>',
+  ringfull:'<circle cx="12" cy="12" r="6.6"/>',
+  /* equipment */
+  eband:'<path d="M4 12c2.6-5.2 13.4-5.2 16 0-2.6 5.2-13.4 5.2-16 0z"/>',
+  bench:'<path d="M3 10.5h18v3H3zM6.5 13.5V19M17.5 13.5V19"/>',
+  pullbar:'<path d="M3 5.5h18M8 5.5v4M16 5.5v4M12 9.5v3"/>',
+  kettle:'<path d="M9.2 7.4a3 3 0 015.6 0"/><path d="M7 9.4h10a6 6 0 11-10 0z"/>',
+  medball:'<circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16"/>',
+  barbell:'<path d="M2 12h20M5 8v8M19 8v8M8.5 9.5v5M15.5 9.5v5"/>',
+  cable:'<path d="M5 4v6a7 7 0 0014 0V4"/><circle cx="12" cy="18.5" r="2.4"/>',
+  /* metrics */
+  drop:'<path d="M12 3.2s6 6.6 6 10.2a6 6 0 11-12 0C6 9.8 12 3.2 12 3.2z"/>',
+  thermo:'<path d="M10 14.2V5a2 2 0 114 0v9.2a4 4 0 11-4 0z"/>'
+};
+const FILLED={play:1};
+const svg=(k,cls)=>`<svg class="${cls||''}" viewBox="0 0 24 24" fill="${FILLED[k]?'currentColor':'none'}" stroke="currentColor" stroke-width="${FILLED[k]?0:2}" stroke-linecap="round" stroke-linejoin="round">${ICON[k]||''}</svg>`;
+
+/* =========================================================================
+   AUDIBLE CUES
+   Synthesised rather than shipped. An audio file would be bytes in the page, a
+   request to make, and one more thing to get wrong offline; four short tones
+   are about thirty lines of maths. Browsers will not start an AudioContext
+   outside a user gesture, so it is created lazily and resumed on every use.
+   ====================================================================== */
+let AC=null;
+function soundOn(){ return !(DB&&DB.settings) || DB.settings.sound!==false; }
+function audioCtx(){
+  if(!soundOn()) return null;
+  try{
+    if(!AC){ const C=window.AudioContext||window.webkitAudioContext; if(!C) return null; AC=new C(); }
+    if(AC.state==='suspended'){ const r=AC.resume(); if(r&&r.catch) r.catch(()=>{}); }
+    return AC;
+  }catch(e){ return null; }
+}
+function beep(freq,dur,delay,vol){
+  const c=audioCtx(); if(!c) return;
+  try{
+    const t0=c.currentTime+(delay||0), d=dur||0.14;
+    const o=c.createOscillator(), g=c.createGain();
+    o.type='sine'; o.frequency.setValueAtTime(freq,t0);
+    /* an exponential ramp cannot touch zero, hence the near-silent floor:
+       a square-edged gain change is an audible click on its own */
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002,vol||0.16),t0+0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001,t0+d);
+    o.connect(g); g.connect(c.destination);
+    o.start(t0); o.stop(t0+d+0.04);
+  }catch(e){}
+}
+const SOUND={
+  tick: ()=>beep(880,0.05,0,0.06),                                   // 3, 2, 1
+  rest: ()=>{ beep(784,0.14,0,0.17); beep(1046,0.22,0.15,0.17); },   // rest over
+  set:  ()=>beep(660,0.06,0,0.08),                                   // set logged
+  done: ()=>{ beep(523,0.12,0,0.15); beep(659,0.12,0.12,0.15);
+              beep(784,0.26,0.24,0.15); }                            // session saved
+};
+
+/* =========================================================================
+   LOCAL ALERTS
+   ------------------------------------------------------------------------
+   This is NOT a push notification and the distinction is the whole point.
+   Web Push would mean a push service, a server, and a subscription endpoint
+   identifying this device sitting on it. There is none of that here: the
+   phone raises its own alert, for a timer the phone itself is running, and
+   nothing about you leaves the device. Off until the user asks for it, and
+   permission is only ever requested from a tap.
+   ====================================================================== */
+function notifySupported(){ return typeof Notification!=='undefined'; }
+function notifyState(){ return notifySupported()? Notification.permission : 'unsupported'; }
+function notifyAsk(cb){
+  if(!notifySupported()) return cb&&cb('unsupported');
+  const done=p=>{ if(cb){ const f=cb; cb=null; f(p||notifyState()); } };
+  try{
+    /* two spellings of the same call: Safari kept the callback form long
+       after everyone else returned a promise */
+    const r=Notification.requestPermission(done);
+    if(r&&r.then) r.then(done).catch(()=>done('denied'));
+  }catch(e){ done('denied'); }
+}
+function notifyOn(){ return !!(DB&&DB.settings&&DB.settings.notify) && notifyState()==='granted'; }
+function notify(title,body){
+  if(!notifyOn()) return;
+  const opt={body:body||'', tag:'baseline-timer', renotify:true,
+             icon:'icons/icon-192.png', badge:'icons/icon-192.png'};
+  try{
+    /* through the service worker where there is one, because a page that is
+       hidden or discarded cannot raise a Notification itself */
+    if(navigator.serviceWorker && navigator.serviceWorker.ready){
+      navigator.serviceWorker.ready
+        .then(reg=>{ try{ reg.showNotification(title,opt); }
+                     catch(e){ try{ new Notification(title,opt); }catch(e2){} } })
+        .catch(()=>{ try{ new Notification(title,opt); }catch(e){} });
+    } else { new Notification(title,opt); }
+  }catch(e){}
+}
+
+let toastT;
+function toast(msg,kind){ const t=$('#toast'); t.textContent=msg; t.className=(kind||'')+' on'; clearTimeout(toastT); toastT=setTimeout(()=>t.className=t.className.replace('on','').trim(),2400); }
+function haptic(){ try{ if(navigator.vibrate) navigator.vibrate(8);}catch(e){} }
+
+/* =========================================================================
+   LOCAL DATA STORE  —  privacy-first, per-device, no server
+   ------------------------------------------------------------------------
+   Architecture:
+        GitHub Pages  ->  delivers application code only
+        Browser       ->  runs the app
+        IndexedDB     ->  THIS device's private data
+   Nothing here ever leaves the device. There is no account, no sync, no
+   telemetry and no remote database. Two people using the app, or one person
+   on two devices, have entirely separate datasets by construction — the only
+   way to move data is an explicit JSON backup.
+
+   IndexedDB is the primary durable store, with a real per-collection schema
+   and versioned migrations. localStorage holds only tiny boot preferences.
+   The whole dataset is held in memory as `DB` while the app runs so the UI
+   stays synchronous; writes are debounced back to IndexedDB.
+   ====================================================================== */
+const DB_NAME='baseline';
+const DB_VERSION=2;                 // bump to add/alter object stores
+const SCHEMA_VERSION=2;             // bump to transform stored records
+/* A readable build stamp. Without one, a tester reporting "it's broken" cannot
+   tell you whether they are on today's build or a cached copy from last week,
+   which is most of the diagnosis. Bump this on every deploy. */
+const APP_BUILD='2026-09-18';
+/* The last few errors, kept in memory only, so a bug report can carry
+   something better than "it stopped working". Never written to disk, never
+   sent anywhere — it is read only by the diagnostics button. */
+const ERRLOG=[];
+function noteError(what){
+  ERRLOG.push(String(what).slice(0,160));
+  if(ERRLOG.length>5) ERRLOG.shift();
+}
+window.addEventListener('error',e=>noteError((e.message||'error')+' @'+(e.lineno||'?')));
+window.addEventListener('unhandledrejection',e=>
+  noteError('promise: '+((e.reason&&e.reason.message)||e.reason||'?')));
+
+/* =========================================================================
+   DIAGNOSTICS
+   A short, copyable summary for a bug report. Deliberately contains no
+   training data: counts only, never values, notes, dates of sessions or
+   anything a person entered. It goes to the clipboard, not to a server.
+   ====================================================================== */
+function diagnostics(){
+  const P=(DB&&DB.profile)||{};
+  const standalone = (window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)
+                     || window.navigator.standalone===true;
+  const ua=navigator.userAgent||'';
+  const dev = /iPhone/.test(ua)?'iPhone' : /iPad/.test(ua)?'iPad'
+            : /Android/.test(ua)?'Android' : /Mac/.test(ua)?'Mac'
+            : /Windows/.test(ua)?'Windows' : 'other';
+  const br  = /CriOS/.test(ua)?'Chrome iOS' : /FxiOS/.test(ua)?'Firefox iOS'
+            : /Edg\//.test(ua)?'Edge' : /Chrome/.test(ua)?'Chrome'
+            : /Safari/.test(ua)?'Safari' : 'other';
+  const osm = ua.match(/OS (\d+[_.]\d+)/) || ua.match(/Version\/(\d+)/);
+  const n=(a)=>Array.isArray(a)?a.length:0;
+  const L=[];
+  L.push(`Baseline build ${APP_BUILD} (schema ${SCHEMA_VERSION})`);
+  L.push(`${dev}${osm?' '+osm[1].replace('_','.'):''} \u00b7 ${br} \u00b7 ${standalone?'installed':'browser tab'} \u00b7 ${window.innerWidth}x${window.innerHeight}`);
+  L.push(`Theme: ${themePref()}`);
+  L.push(`Storage: ${Store.mode||'?'} \u00b7 eviction protection ${Store.persisted===true?'granted':Store.persisted===false?'DENIED':'unknown'}`);
+  L.push(`Setup: ${P.onboarded?'complete':'NOT FINISHED'} \u00b7 wearable ${P.source||'?'} \u00b7 sports ${(P.sports||[]).join('+')||'-'} \u00b7 gear ${(P.gear||[]).join('+')||'none'}`);
+  L.push(`Data: ${n(DB.sessions)} sessions, ${n(DB.activities)} activities, ${Object.keys(DB.checkins||{}).length} check-ins, ${n(DB.tests)} tests, ${n(DB.whoop&&DB.whoop.cycles)} imported days, ${n(P.limits)} limitations`);
+  L.push(`Errors: ${ERRLOG.length?ERRLOG.join(' | '):'none'}`);
+  return L.join('\n');
+}
+function copyDiagnostics(){
+  const txt=diagnostics();
+  const done=()=>toast('Diagnostics copied — paste it into your message','ok');
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done).catch(()=>showDiagnostics(txt));
+  } else showDiagnostics(txt);
+}
+/* clipboard access is refused in some browsers; show the text so it can still
+   be selected by hand rather than failing silently */
+function showDiagnostics(txt){
+  openSheet('Diagnostics',
+    `<p class="hint" style="margin-bottom:12px">Copy this and send it over. It contains no training data \u2014 counts only.</p>
+     <textarea class="inp" id="diagTxt" style="min-height:190px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px">${esc(txt||diagnostics())}</textarea>`,
+    `<button class="btn primary big block" onclick="closeSheet()">Done</button>`);
+  const el=$('#diagTxt'); if(el){ el.focus(); el.select(); }
+}
+const KEY='baseline.tps.v1';        // legacy localStorage blob (v1 installs)
+const PREF='baseline.prefs';        // tiny, non-sensitive boot hints
+
+/* collection -> object store definition */
+const STORES={
+  sessions  :{key:'id',   idx:['date']},
+  activities:{key:'id',   idx:['date','type']},
+  checkins  :{key:'date', idx:[]},
+  exercises :{key:'id',   idx:['cat']},
+  workouts  :{key:'id',   idx:[]},
+  tests     :{key:'id',   idx:['testId','date']},
+  physique  :{key:'id',   idx:['date']},
+  wCycles   :{key:'date', idx:[]},
+  wWorkouts :{key:'key',  idx:['date']},
+  wJournal  :{key:'key',  idx:['date']},
+  wImports  :{key:'at',   idx:[]}
+};
+/* singleton objects live in one keyed store */
+const KV_KEYS=['profile','settings','targets','baselines','plans','decisions','ui','meta','mcycle'];
+/* =========================================================================
+   THEME
+   Light by default, dark when the system asks for it, and an explicit
+   override if the user would rather pin one. Stored in localStorage rather
+   than the main record so it can be applied before the database has opened —
+   otherwise the app flashes the wrong theme on every launch.
+   ====================================================================== */
+const THEMES=[{id:'auto',name:'Match system'},{id:'light',name:'Light'},{id:'dark',name:'Dark'}];
+function themePref(){
+  try{ return localStorage.getItem('baseline.theme')||'auto'; }catch(e){ return 'auto'; }
+}
+function systemIsDark(){
+  return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme:dark)').matches);
+}
+function applyTheme(mode){
+  const m=mode||themePref();
+  const r=document.documentElement;
+  if(m==='auto') r.removeAttribute('data-theme');
+  else r.setAttribute('data-theme',m);
+  /* keep the browser chrome — status bar, form controls — in step */
+  const dark = m==='dark' || (m==='auto' && systemIsDark());
+  const meta=document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.setAttribute('content', dark?'#0B0C0E':'#FBFBF9');
+  return m;
+}
+function setTheme(mode){
+  try{ localStorage.setItem('baseline.theme',mode); }catch(e){}
+  applyTheme(mode);
+}
+applyTheme();
+/* follow the system live while set to auto */
+if(window.matchMedia){
+  const mq=window.matchMedia('(prefers-color-scheme:dark)');
+  const onChange=()=>{ if(themePref()==='auto') applyTheme('auto'); };
+  if(mq.addEventListener) mq.addEventListener('change',onChange);
+  else if(mq.addListener) mq.addListener(onChange);
+}
+
+/* collections written on an ordinary save (WHOOP is large and rarely changes) */
+const LIGHT=['sessions','activities','checkins','exercises','workouts','tests','physique'];
+const HEAVY=['wCycles','wWorkouts','wJournal','wImports'];
+
+const IDB={
+  db:null, ok:false, err:null,
+  open(){ return new Promise(res=>{
+    try{
+      if(!self.indexedDB){ IDB.err='IndexedDB unavailable'; return res(false); }
+      const r=indexedDB.open(DB_NAME,DB_VERSION);
+      r.onupgradeneeded=ev=>{
+        const db=r.result;
+        /* schema migration: additive only, never destructive */
+        Object.keys(STORES).forEach(name=>{
+          const def=STORES[name];
+          let st;
+          if(!db.objectStoreNames.contains(name)) st=db.createObjectStore(name,{keyPath:def.key});
+          else st=r.transaction.objectStore(name);
+          def.idx.forEach(f=>{ if(!st.indexNames.contains('by_'+f)) st.createIndex('by_'+f,f,{unique:false}); });
+        });
+        if(!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+        IDB.upgradedFrom=ev.oldVersion;
+      };
+      r.onsuccess=()=>{
+        IDB.db=r.result; IDB.ok=true;
+        IDB.db.onversionchange=()=>{ try{ IDB.db.close(); }catch(e){} IDB.ok=false; };
+        IDB.db.onclose=()=>{ IDB.ok=false; };
+        res(true);
+      };
+      r.onerror=()=>{ IDB.err=(r.error&&r.error.name)||'open failed'; res(false); };
+      r.onblocked=()=>{ IDB.err='blocked by another tab'; res(false); };
+      setTimeout(()=>{ if(!IDB.ok) res(false); },2500);   // never stall boot
+    }catch(e){ IDB.err=e.message; res(false); }
+  });},
+  tx(names,mode){ return IDB.db.transaction(names,mode); },
+  all(store){ return new Promise(res=>{
+    if(!IDB.ok) return res([]);
+    try{ const r=IDB.tx([store],'readonly').objectStore(store).getAll();
+      r.onsuccess=()=>res(r.result||[]); r.onerror=()=>res([]);
+    }catch(e){ res([]); }
+  });},
+  getKV(k){ return new Promise(res=>{
+    if(!IDB.ok) return res(null);
+    try{ const r=IDB.tx(['kv'],'readonly').objectStore('kv').get(k);
+      r.onsuccess=()=>res(r.result==null?null:r.result); r.onerror=()=>res(null);
+    }catch(e){ res(null); }
+  });},
+  /* write a set of collections + kv singletons in ONE transaction */
+  writeAll(collections, kv){ return new Promise(res=>{
+    if(!IDB.ok) return res(false);
+    try{
+      const names=collections.slice(); if(kv) names.push('kv');
+      const tx=IDB.tx(names,'readwrite');
+      tx.oncomplete=()=>res(true);
+      tx.onerror=()=>res(false);
+      tx.onabort=()=>{ Store.quotaHit=(tx.error&&tx.error.name==='QuotaExceededError'); res(false); };
+      collections.forEach(name=>{
+        const st=tx.objectStore(name);
+        st.clear();                                   // full replace keeps memory and disk identical
+        const rows=collectionRows(name);
+        for(let i=0;i<rows.length;i++){ try{ st.put(rows[i]); }catch(e){} }
+      });
+      if(kv){ const st=tx.objectStore('kv'); KV_KEYS.forEach(k=>{ try{ st.put(DB[k]!==undefined?DB[k]:null,k); }catch(e){} }); }
+    }catch(e){ res(false); }
+  });},
+  wipe(){ return new Promise(res=>{
+    if(!IDB.ok) return res(false);
+    try{
+      const names=Object.keys(STORES).concat('kv');
+      const tx=IDB.tx(names,'readwrite');
+      tx.oncomplete=()=>res(true); tx.onerror=()=>res(false); tx.onabort=()=>res(false);
+      names.forEach(n=>{ try{ tx.objectStore(n).clear(); }catch(e){} });
+    }catch(e){ res(false); }
+  });}
+};
+/* map a store name onto the in-memory collection it mirrors */
+function collectionRows(name){
+  switch(name){
+    case 'checkins': return Object.keys(DB.checkins||{}).map(d=>Object.assign({date:d},DB.checkins[d]));
+    case 'wCycles':   return DB.whoop.cycles||[];
+    case 'wWorkouts': return DB.whoop.workouts||[];
+    case 'wJournal':  return DB.whoop.journal||[];
+    case 'wImports':  return (DB.whoop.imports||[]).map(x=>Object.assign({},x,{at:x.at||new Date().toISOString()}));
+    default: return DB[name]||[];
+  }
+}
+
+function withTimeout(p,ms,fallback){
+  return Promise.race([
+    Promise.resolve(p).catch(()=>fallback),
+    new Promise(r=>setTimeout(()=>r(fallback),ms))
+  ]);
+}
+
+const Store={
+  idb:false, local:false, mem:{}, persisted:null, quotaHit:false, lastWrite:null, writing:false,
+  async init(){
+    try{ localStorage.setItem('__bl_probe','1'); localStorage.removeItem('__bl_probe'); this.local=true; }
+    catch(e){ this.local=false; }
+    this.idb=await withTimeout(IDB.open(),2500,false);
+    /* Never awaited: on a secure origin this can stay pending indefinitely
+       while the browser decides, which would hang boot and show a blank app. */
+    this.requestPersist();
+    return this;
+  },
+  requestPersist(){
+    try{
+      if(navigator.storage&&navigator.storage.persist){
+        withTimeout(navigator.storage.persist(),3000,null)
+          .then(v=>{ if(v!=null){ this.persisted=v; try{ updateBanner(); }catch(e){} } }).catch(()=>{});
+      }
+    }catch(e){}
+  },
+  get mode(){ return this.idb?'IndexedDB':this.local?'localStorage (fallback)':'memory only'; },
+  get durable(){ return this.idb||this.local; },
+  /* Small preferences, in localStorage because they must be readable before
+     IndexedDB has opened: the theme, and the id of a workout left running.
+     A live workout is training data, so it is cleared by both delete paths
+     and is listed in DATA-PRIVACY.md rather than described as nothing. */
+  pref(k,v){
+    try{
+      const o=JSON.parse(localStorage.getItem(PREF)||'{}');
+      if(v===undefined) return o[k];
+      o[k]=v; localStorage.setItem(PREF,JSON.stringify(o));
+    }catch(e){ return undefined; }
+  },
+  /* ---- load the whole dataset into memory ---- */
+  async loadAll(){
+    if(this.idb){
+      const out={};
+      for(const k of KV_KEYS) out[k]=await IDB.getKV(k);
+      const cols={};
+      for(const name of Object.keys(STORES)) cols[name]=await IDB.all(name);
+      const any = KV_KEYS.some(k=>out[k]) || Object.keys(cols).some(k=>cols[k].length);
+      if(any) return {kv:out, cols};
+    }
+    /* v1 installs kept one JSON blob in localStorage — migrate it in */
+    if(this.local){
+      try{ const raw=localStorage.getItem(KEY); if(raw) return {legacy:JSON.parse(raw)}; }catch(e){}
+    }
+    return null;
+  },
+  /* ---- persist ---- */
+  async write(heavy){
+    if(!DB) return false;
+    this.writing=true;
+    let ok=false;
+    const cols = heavy ? LIGHT.concat(HEAVY) : LIGHT.slice();
+    if(this.idb) ok = await IDB.writeAll(cols,true);
+    if(!ok && this.local){
+      /* fallback for browsers where IndexedDB is unavailable */
+      try{ localStorage.setItem(KEY,JSON.stringify(DB)); ok=true; this.quotaHit=false; }
+      catch(e){ this.quotaHit=true; }
+    }
+    this.writing=false;
+    if(ok) this.lastWrite=Date.now();
+    return ok;
+  },
+  async clearAll(){
+    if(this.idb) await IDB.wipe();
+    this.purgeLegacy();
+    try{ localStorage.removeItem(PREF); }catch(e){}
+  },
+  /* The whole-DB JSON blob that `write` falls back to when IndexedDB is
+     unavailable. It contains imported health data, so anything that claims
+     to delete that data has to remove it too - whether or not this session
+     happens to be using it. Skipping that is how a deletion claim becomes
+     untrue on the one device where it mattered. */
+  purgeLegacy(){
+    try{ localStorage.removeItem(KEY); }catch(e){}
+  },
+  async estimate(){
+    try{ if(navigator.storage&&navigator.storage.estimate) return await withTimeout(navigator.storage.estimate(),2000,null); }catch(e){}
+    return null;
+  },
+  counts(){
+    if(!DB) return {};
+    return {sessions:(DB.sessions||[]).length, activities:(DB.activities||[]).length,
+      checkins:Object.keys(DB.checkins||{}).length, exercises:(DB.exercises||[]).length,
+      workouts:(DB.workouts||[]).length, cycles:(DB.whoop.cycles||[]).length,
+      whoopWorkouts:(DB.whoop.workouts||[]).length, journal:(DB.whoop.journal||[]).length};
+  }
+};
+
+let DB=null, saveT=null, saveHeavyPending=false;
+function save(now,heavy){
+  if(heavy) saveHeavyPending=true;
+  clearTimeout(saveT);
+  const go=()=>{
+    const h=saveHeavyPending; saveHeavyPending=false;
+    Store.write(h).then(ok=>{
+      if(!ok) toast(Store.quotaHit?'Storage full — export a backup':'Could not save — export a backup','err');
+      updateBanner();
+    });
+  };
+  if(now) go(); else saveT=setTimeout(go,300);
+}
+/* WHOOP stores are large and only change on import/restore/erase */
+const saveWhoop=()=>save(true,true);
+
+/* the honest warning when data will not survive a reload */
+function updateBanner(){
+  const el2=document.getElementById('sbanner'); if(!el2)return;
+  if(Store.durable && !Store.quotaHit){ el2.className=''; el2.innerHTML=''; return; }
+  el2.className='on';
+  el2.innerHTML = Store.quotaHit
+    ? `<b>Storage is full.</b> Recent changes may not have been saved. Export a JSON backup now, then remove old data.
+       <button id="sbBk">Export backup</button>`
+    : `<b>This page cannot save data.</b> Your browser is blocking local storage for this page, so anything you enter will be lost when you close the tab.
+       <button id="sbFix">How to fix this →</button>`;
+  const a=document.getElementById('sbBk'); if(a)a.onclick=exportJSON;
+  const b=document.getElementById('sbFix'); if(b)b.onclick=()=>{ openSetup(); };
+}
+
+/* where is this running? drives the Setup screen */
+const ENV={
+  get proto(){ return location.protocol; },
+  get isFile(){ return location.protocol==='file:'; },
+  get isHttps(){ return location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1'; },
+  get standalone(){ return !!(window.navigator.standalone) ||
+    (window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches); },
+  get iOS(){ return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1); },
+  get safari(){ return /^((?!chrome|android|crios|fxios|edgios).)*safari/i.test(navigator.userAgent); },
+  get desktop(){ return window.matchMedia&&window.matchMedia('(min-width: 900px)').matches; },
+  get canInstall(){ return this.isHttps && !this.standalone; }
+};
+
+/* =========================================================================
+   BASELINES
+   Nothing physiological is invented. Until a WHOOP export is imported these
+   stay null, the UI shows them as "not established", and the engine drops
+   those signals from its weighting rather than substituting a population
+   average and presenting it as the user's own baseline.
+   The one exception is a generic 8h sleep-need placeholder, labelled as
+   generic everywhere it appears.
+   ====================================================================== */
+const SEED_BASE = {
+  source:'No WHOOP data imported — physiological baselines not established.',
+  hrv:null, hrvSd:null, rhr:null, rhrSd:null,
+  recovery:null, recoverySd:null,
+  sleepNeed:480, sleepNeedGeneric:true,
+  sleepMean:null, sleepPerf:null,
+  respRate:null, respSd:null,
+  strainMean:null, strainSd:null,
+  computed:false, n:0, from:null, to:null
+};
+/* does THIS device actually hold WHOOP data? */
+const hasWhoop  = ()=> !!(DB&&DB.whoop&&DB.whoop.cycles&&DB.whoop.cycles.length>=7);
+const whoopMode = ()=> !!(DB&&DB.profile&&DB.profile.source&&DB.profile.source!=='none');
+
+/* =========================================================================
+   EXERCISE LIBRARY
+   Every exercise declares the equipment it needs; you are only ever shown
+   1 resistance band · bicycle · running · open space. Nothing else.
+   ====================================================================== */
+const EQ = {BW:'Bodyweight', DB:'Dumbbells', BAND:'Resistance band', WALL:'Wall', FLOOR:'Floor',
+            CHAIR:'Chair/step (check stability)', BIKE:'Bicycle', RUN:'Open ground', TOWEL:'Towel/sliders'};
+
+function seedExercises(){ return [
+/* ---------------- LOWER BODY — STRENGTH ---------------- */
+{id:'lx01',name:'Tempo Goblet Squat',cat:'lower',muscles:'Quads, glutes, core',equip:'DB',sets:4,reps:'8–12',rpe:'RPE 8 (2 RIR)',rest:'90s',tempo:'4-1-1-0',
+ how:'Hold one dumbbell vertically at chest height. Feet shoulder-width, toes slightly out. Lower over 4 seconds, pause 1 second at the bottom, stand normally.',
+ cue:'Knees track over the middle toes. Chest tall, ribs down. Push the floor away.',
+ prog:'Add 1 rep per set each week. At 4×12 move to 5-second eccentric, then to 3-second pause, then progress to Bulgarian Split Squat.',
+ reg:'Bodyweight squat with the same tempo, or reduce depth to a comfortable range.',
+ subs:'Bodyweight Tempo Squat · Wall Sit · Split Squat',
+ notes:'With only 5 kg, TIME UNDER TENSION is your load. Never rush the eccentric.'},
+
+{id:'lx02',name:'Bulgarian Split Squat',cat:'lower',muscles:'Quads, glutes, adductors, stabilisers',equip:'DB+CHAIR',sets:3,reps:'8–12 / leg',rpe:'RPE 8',rest:'75s / leg',tempo:'3-1-1-0',
+ how:'Rear foot on a stable chair or step roughly knee height, front foot ~60 cm forward. Lower until the front thigh is near parallel, drive up through the front heel.',
+ cue:'90% of the weight stays in the front leg. Keep the front shin close to vertical for quads, lean slightly forward for glutes.',
+ prog:'Bodyweight → holding 1 DB → holding 2 DB → 3s pause at the bottom → 1.5 reps (full, half, full).',
+ reg:'Static Split Squat with the rear foot on the floor.',
+ subs:'Split Squat · Reverse Lunge · Skater Squat',
+ notes:'CONFIRM the chair is stable and will not slide before loading it. If in doubt, use the floor-based Split Squat.'},
+
+{id:'lx03',name:'Split Squat',cat:'lower',muscles:'Quads, glutes',equip:'DB',sets:3,reps:'10–14 / leg',rpe:'RPE 7–8',rest:'60s / leg',tempo:'3-1-1-0',
+ how:'Long split stance, both feet on the floor. Drop the back knee straight down to just above the ground, drive back up through the front foot.',
+ cue:'Vertical torso. Back knee travels down, not forward.',
+ prog:'Reps → add DBs → pause at the bottom → elevate the front foot for extra range.',
+ reg:'Shorten the range, or hold a wall for balance.',
+ subs:'Bulgarian Split Squat · Reverse Lunge'},
+
+{id:'lx04',name:'Reverse Lunge',cat:'lower',muscles:'Quads, glutes, hamstrings',equip:'DB',sets:3,reps:'8–12 / leg',rpe:'RPE 7–8',rest:'75s',tempo:'2-0-1-0',
+ how:'Step backwards into a lunge, lower the back knee to just above the floor, then drive through the front heel to return.',
+ cue:'Step back far enough that the front knee stays over the ankle. Torso stays tall.',
+ prog:'Bodyweight → DBs → deficit (front foot on a low step) → add a knee drive at the top.',
+ reg:'Hold a wall, or reduce the depth.',
+ subs:'Split Squat · Walking Lunge · Step-Up'},
+
+{id:'lx05',name:'Lateral Lunge',cat:'lower',muscles:'Adductors, glute medius, quads',equip:'DB',sets:3,reps:'8–10 / side',rpe:'RPE 7',rest:'60s',tempo:'3-1-1-0',
+ how:'Step wide to one side, sit back into that hip while the other leg stays straight. Push back to the centre.',
+ cue:'Sit INTO the hip, do not just bend the knee. Both feet stay flat and forward.',
+ prog:'Add DBs → add a pause → progress to Cossack Squat.',
+ reg:'Reduce the depth or hold onto support.',
+ subs:'Cossack Squat · Skater Squat',
+ notes:'Directly trains the wide-ball defensive lunge and open-stance loading.'},
+
+{id:'lx06',name:'Cossack Squat',cat:'lower',muscles:'Adductors, quads, glutes, ankle mobility',equip:'BW',sets:3,reps:'6–10 / side',rpe:'RPE 7',rest:'60s',tempo:'3-1-1-0',
+ how:'Very wide stance. Shift fully onto one leg, sinking as low as control allows while the other leg straightens with the toes up.',
+ cue:'Heel of the working leg stays down. Chest up.',
+ prog:'Depth → pause → hold a DB at the chest as a counterbalance.',
+ reg:'Hold a wall, or use a partial range.',
+ subs:'Lateral Lunge'},
+
+{id:'lx07',name:'Skater Squat',cat:'lower',muscles:'Quads, glutes, single-leg stability',equip:'BW',sets:3,reps:'5–10 / leg',rpe:'RPE 8',rest:'75s',tempo:'3-1-1-0',
+ how:'Stand on one leg, other leg trailing behind. Hinge and lower until the rear knee lightly touches the floor (use a towel), then stand.',
+ cue:'Reach the arms forward to counterbalance. Control the descent — no crashing.',
+ prog:'Counterbalance with DBs → reduce the pad height → full pistol progression.',
+ reg:'Hold a wall with one hand, or use a higher touch point.',
+ subs:'Bulgarian Split Squat · Step-Down',
+ notes:'Best single-leg strength builder available without a gym.'},
+
+{id:'lx08',name:'Step-Up',cat:'lower',muscles:'Quads, glutes',equip:'DB+CHAIR',sets:3,reps:'8–12 / leg',rpe:'RPE 7',rest:'60s',tempo:'2-0-1-1',
+ how:'Step onto a stable surface of knee height or lower, driving through the whole foot. Lower under control — do not push off the bottom leg.',
+ cue:'The working leg does everything. Lower slowly for 2–3 seconds.',
+ prog:'Height → DBs → slow eccentric → explosive drive with knee lift.',
+ reg:'Lower step height.',
+ subs:'Reverse Lunge · Split Squat',
+ notes:'ONLY if you have a confirmed stable, non-slip surface at a safe height. Otherwise substitute.'},
+
+{id:'lx09',name:'Single-Leg RDL',cat:'lower',muscles:'Hamstrings, glutes, spinal erectors, balance',equip:'DB',sets:3,reps:'8–12 / leg',rpe:'RPE 7–8',rest:'60s',tempo:'3-1-1-0',
+ how:'Stand on one leg holding a DB in the opposite hand. Hinge at the hip, the free leg extending straight back, until you feel a strong hamstring stretch. Return by squeezing the glute.',
+ cue:'Hips stay square to the floor — do not let the back hip open. Slight knee bend held constant.',
+ prog:'Bodyweight → 1 DB → 2 DB → 3s pause at the bottom → deficit.',
+ reg:'Touch the back toe down for balance, or hold a wall.',
+ subs:'DB RDL · Band Good Morning',
+ notes:'Hamstring strength is the single best protector against the sprint/lunge injuries tennis produces.'},
+
+{id:'lx10',name:'DB Romanian Deadlift',cat:'lower',muscles:'Hamstrings, glutes, erectors',equip:'DB',sets:3,reps:'12–18',rpe:'RPE 8',rest:'75s',tempo:'4-1-1-0',
+ how:'Both DBs in front of the thighs. Push the hips back, keep a long spine, slide the DBs down the legs until the hamstrings are loaded, then drive the hips forward.',
+ cue:'This is a HIP movement, not a back movement. Bar path stays glued to the legs.',
+ prog:'Reps → 4–5s eccentric → pause → progress to Single-Leg RDL.',
+ reg:'Reduce range.',
+ subs:'Single-Leg RDL · Band Good Morning'},
+
+{id:'lx11',name:'Nordic Curl Eccentric',cat:'lower',muscles:'Hamstrings (eccentric)',equip:'BW',sets:3,reps:'4–6',rpe:'RPE 9',rest:'90s',tempo:'5-0-X-0',
+ how:'Kneel with the ankles anchored under a heavy immovable object (or a partner). Lower the torso forward as slowly as possible, catch with the hands, push back up.',
+ cue:'Hips stay extended — do not fold at the waist. Fight the whole way down.',
+ prog:'Slow the descent → increase the range before the catch → fewer assisted reps.',
+ reg:'Band-assisted, or hands on a raised surface to shorten the range.',
+ subs:'Sliding Leg Curl · Single-Leg RDL',
+ notes:'Very high hamstring stimulus. Start with 2 sets — this causes serious soreness for 3–4 days. Never before tennis.'},
+
+{id:'lx12',name:'Sliding Leg Curl',cat:'lower',muscles:'Hamstrings, glutes',equip:'TOWEL',sets:3,reps:'8–14',rpe:'RPE 8',rest:'60s',tempo:'2-0-3-0',
+ how:'Lie on your back, heels on towels on a smooth floor. Bridge the hips up, then slide the heels out and drag them back in without letting the hips drop.',
+ cue:'Hips stay high the entire set. Slow on the way out.',
+ prog:'Reps → single leg → longer slide.',
+ reg:'Double leg, shorter range.',
+ subs:'Nordic Curl Eccentric · Glute Bridge March'},
+
+{id:'lx13',name:'Single-Leg Glute Bridge',cat:'lower',muscles:'Glutes, hamstrings',equip:'BW',sets:3,reps:'10–15 / leg',rpe:'RPE 7',rest:'45s',tempo:'2-0-1-2',
+ how:'Lie on your back, one foot planted, the other knee pulled to the chest. Drive the hips up through the heel and squeeze at the top for 2 seconds.',
+ cue:'Ribs down, do not arch the lower back. The glute should burn, not the hamstring.',
+ prog:'Reps → pause length → DB on the hip → foot elevated.',
+ reg:'Double-leg glute bridge.',
+ subs:'Hip Thrust (floor) · Glute Bridge March'},
+
+{id:'lx14',name:'Floor Hip Thrust',cat:'lower',muscles:'Glutes',equip:'DB',sets:3,reps:'12–20',rpe:'RPE 8',rest:'60s',tempo:'2-0-1-2',
+ how:'Upper back against a stable sofa or chair edge, DBs resting across the hips. Drive the hips to full extension, pause, lower under control.',
+ cue:'Finish with a hard glute squeeze and a posterior pelvic tilt. Chin tucked.',
+ prog:'Reps → 3s pause → single leg.',
+ reg:'Floor glute bridge without support.',
+ subs:'Single-Leg Glute Bridge',
+ notes:'Only if you have a stable, non-sliding surface at roughly bench height.'},
+
+{id:'lx15',name:'Wall Sit',cat:'lower',muscles:'Quads (isometric)',equip:'WALL',sets:3,reps:'30–75s',rpe:'RPE 8',rest:'60s',tempo:'Isometric',
+ how:'Back flat against the wall, thighs at 90°, feet flat. Hold.',
+ cue:'Weight in the heels, knees over the ankles. Breathe normally — do not hold your breath.',
+ prog:'Add 10s per week → hold a DB → single-leg wall sit.',
+ reg:'Higher knee angle, shorter hold.',
+ subs:'Isometric Split Squat Hold',
+ notes:'Excellent low-joint-stress quad work for ORANGE recovery days.'},
+
+{id:'lx16',name:'Standing Calf Raise',cat:'lower',muscles:'Gastrocnemius, soleus, Achilles',equip:'DB',sets:4,reps:'15–25',rpe:'RPE 8',rest:'45s',tempo:'2-1-1-2',
+ how:'Stand on the edge of a step (or the floor), rise as high as possible, pause 1s at the top, lower slowly to a full stretch.',
+ cue:'FULL range. Most people cut the top and the bottom and get nothing.',
+ prog:'Reps → DBs → single leg → 3s pause.',
+ reg:'Floor instead of a step, both legs.',
+ subs:'Single-Leg Calf Raise'},
+
+{id:'lx17',name:'Single-Leg Calf Raise',cat:'lower',muscles:'Gastrocnemius, soleus, ankle stability',equip:'BW',sets:3,reps:'12–20 / leg',rpe:'RPE 8',rest:'45s',tempo:'2-1-1-2',
+ how:'One foot on a step edge, fingertips on a wall for balance only. Full rise, 1s pause, slow full stretch.',
+ cue:'Do not push through the wall — it is balance, not support.',
+ prog:'Reps → hold a DB → 3s eccentric.',
+ reg:'Two legs.',
+ subs:'Standing Calf Raise',
+ notes:'Ankle and calf strength directly feeds serve drive and repeated push-off.'},
+
+{id:'lx18',name:'Tibialis Raise',cat:'lower',muscles:'Tibialis anterior, shin',equip:'WALL',sets:3,reps:'15–25',rpe:'RPE 7',rest:'45s',tempo:'2-0-2-1',
+ how:'Back against a wall, feet ~40 cm out. Keeping the heels down, pull the toes up towards the shins as far as possible, lower slowly.',
+ cue:'Full lift, full lower. Expect a strong burn in the front of the shin.',
+ prog:'Reps → move the feet further from the wall → add a light DB across the toes.',
+ reg:'Feet closer to the wall.',
+ subs:'Heel Walks',
+ notes:'The best available insurance against shin splints and it improves deceleration control.'},
+
+{id:'lx19',name:'Copenhagen Plank',cat:'lower',muscles:'Adductors, groin, obliques',equip:'CHAIR',sets:3,reps:'15–40s / side',rpe:'RPE 8',rest:'45s',tempo:'Isometric',
+ how:'Side plank position with the TOP leg resting on a chair. Lift the hips and the bottom leg off the floor.',
+ cue:'Squeeze the top leg down into the surface. Body in a straight line.',
+ prog:'Short lever (knee on the chair) → long lever (foot on the chair) → add reps of hip raises.',
+ reg:'Bottom knee down, short lever.',
+ subs:'Side Plank · Adductor Squeeze',
+ notes:'Groin strains are a top-3 tennis injury. This is the most evidence-backed prevention exercise available.'},
+
+{id:'lx20',name:'Adductor Squeeze',cat:'lower',muscles:'Adductors',equip:'BW',sets:3,reps:'5 × 8s',rpe:'RPE 7',rest:'30s',tempo:'Isometric',
+ how:'Lying on your back, knees bent, ball or rolled towel between the knees. Squeeze hard for 8 seconds, relax 3.',
+ cue:'Build tension gradually over 2 seconds — do not snap into it.',
+ prog:'Longer holds → straighter legs (longer lever).',
+ reg:'Softer squeeze.',
+ subs:'Copenhagen Plank'},
+
+/* ---------------- PLYOMETRICS / POWER ---------------- */
+{id:'pl01',name:'Pogo Hops',cat:'plyo',muscles:'Calves, Achilles, ankle stiffness',equip:'BW',sets:3,reps:'20–30',rpe:'RPE 6',rest:'60s',tempo:'Fast',
+ how:'Small, fast, springy hops on the balls of the feet with almost straight knees. Minimum ground contact time.',
+ cue:'Bounce off the ground like it is hot. The ankles do the work, not the knees.',
+ prog:'Contacts → height → single leg → lateral pogos.',
+ reg:'Fewer reps, lower height.',
+ subs:'Ankle Stiffness Hops',
+ notes:'Always the FIRST plyometric in any session — it primes the tendons.'},
+
+{id:'pl02',name:'Countermovement Jump',cat:'plyo',muscles:'Quads, glutes, calves — full-body power',equip:'BW',sets:4,reps:'3–5',rpe:'RPE 7 (max effort, low volume)',rest:'75–90s',tempo:'Explosive',
+ how:'Quick dip to a quarter squat and jump as high as possible. Land softly, reset fully between reps.',
+ cue:'QUALITY over quantity. If the jump height visibly drops, the set is finished.',
+ prog:'Track your best height. Progress by jumping higher, not more.',
+ reg:'Sub-maximal jumps, or Squat Jump from a pause.',
+ subs:'Squat Jump · Broad Jump',
+ notes:'This is your serve-jump driver. Never chase fatigue on this exercise.'},
+
+{id:'pl03',name:'Squat Jump (paused)',cat:'plyo',muscles:'Quads, glutes — concentric power',equip:'BW',sets:3,reps:'4–6',rpe:'RPE 7',rest:'75s',tempo:'Pause then explode',
+ how:'Descend to a quarter squat, hold for 2 full seconds to remove the stretch reflex, then jump maximally.',
+ cue:'Kill all the bounce in the pause, then explode from a dead stop.',
+ prog:'Height → longer pause → single-leg variation.',
+ reg:'Fewer reps.',
+ subs:'Countermovement Jump'},
+
+{id:'pl04',name:'Lateral Bound (Skater)',cat:'plyo',muscles:'Glute medius, quads, lateral power',equip:'BW',sets:3,reps:'5–8 / side',rpe:'RPE 7',rest:'75s',tempo:'Explosive',
+ how:'Push off one leg laterally, land on the opposite leg, and STICK the landing for a full second before bounding back.',
+ cue:'Land quietly on a stable, slightly bent knee that does not cave inward.',
+ prog:'Distance → stick quality → continuous bounds without pausing.',
+ reg:'Shorter distance, longer pause between reps.',
+ subs:'Lateral Lunge · Skater Squat',
+ notes:'The closest direct match to wide-ball recovery and open-stance push-off.'},
+
+{id:'pl05',name:'Broad Jump',cat:'plyo',muscles:'Glutes, hamstrings — horizontal power',equip:'BW',sets:3,reps:'3–5',rpe:'RPE 7',rest:'90s',tempo:'Explosive',
+ how:'Two-footed jump for maximum distance. Land in an athletic absorbed position and hold it.',
+ cue:'Drive the arms hard. Land soft — absorb through the hips.',
+ prog:'Distance. Mark your best and test it monthly.',
+ reg:'Sub-maximal distance with focus on landing.',
+ subs:'Countermovement Jump',
+ notes:'Horizontal power transfers to first-step acceleration better than vertical jumping does.'},
+
+{id:'pl06',name:'Depth Drop & Stick',cat:'plyo',muscles:'Landing mechanics, eccentric strength',equip:'CHAIR',sets:3,reps:'4–6',rpe:'RPE 6',rest:'60s',tempo:'Absorb',
+ how:'Step (do not jump) off a low surface ~30 cm. Land on both feet in an athletic position and freeze completely for 2 seconds.',
+ cue:'Silent landing. Knees track over the toes, hips back, chest up.',
+ prog:'Height (slowly) → single-leg landing → drop into an immediate jump.',
+ reg:'Lower height, or jump in place and stick.',
+ subs:'Jump & Stick',
+ notes:'Deceleration training. This is what protects your knees during hard direction changes.'},
+
+{id:'pl07',name:'Split Jump',cat:'plyo',muscles:'Quads, glutes — alternating power',equip:'BW',sets:3,reps:'6–10 total',rpe:'RPE 7',rest:'75s',tempo:'Explosive',
+ how:'From a lunge position, jump and switch legs in the air, landing softly in the opposite lunge.',
+ cue:'Soft landings, upright torso. Do not let the back knee slam.',
+ prog:'Reps → height → continuous rhythm.',
+ reg:'Step through instead of jumping.',
+ subs:'Reverse Lunge · Lateral Bound'},
+
+{id:'pl08',name:'Single-Leg Hop & Stick',cat:'plyo',muscles:'Single-leg power & stability',equip:'BW',sets:3,reps:'4–6 / leg',rpe:'RPE 7',rest:'60s',tempo:'Explosive',
+ how:'Hop forward on one leg and stick the landing on the same leg for 2 seconds before the next rep.',
+ cue:'The knee must not collapse inwards on landing. Stick it, then reset.',
+ prog:'Distance → multi-directional hops → continuous.',
+ reg:'Smaller hop, or hop and land on two feet.',
+ subs:'Lateral Bound'},
+
+{id:'pl09',name:'Serve-Jump Simulation',cat:'plyo',muscles:'Leg drive, hip extension, trunk',equip:'BW',sets:4,reps:'4–6',rpe:'RPE 7',rest:'75s',tempo:'Explosive',
+ how:'Adopt your serve stance. Load into the trophy position, then drive up and forward off both legs into the court, landing on the front foot.',
+ cue:'Drive UP and INTO the court, not just up. The legs lead, the arm follows.',
+ prog:'Height → add the arm swing → add a light band around the hips for resistance.',
+ reg:'Half-effort, focus on the movement pattern.',
+ subs:'Countermovement Jump',
+ notes:'Pattern-specific power. Keep the volume low — 20 quality reps beats 60 tired ones.'},
+
+{id:'pl10',name:'Ankle Stiffness Hops',cat:'plyo',muscles:'Achilles, calves',equip:'BW',sets:3,reps:'15–20 / leg',rpe:'RPE 6',rest:'45s',tempo:'Fast',
+ how:'Single-leg pogo hops in place, minimal knee bend, fast ground contacts.',
+ cue:'Stay tall. Bounce, do not squat.',
+ prog:'Contacts → height → hopping forward and laterally.',
+ reg:'Double leg.',
+ subs:'Pogo Hops'},
+
+/* ---------------- SPEED / AGILITY / TENNIS MOVEMENT ---------------- */
+{id:'sp01',name:'Split-Step Reaction Drill',cat:'speed',muscles:'Reactive ankles, first step',equip:'RUN',sets:4,reps:'6 reactions',rpe:'RPE 7',rest:'60s',tempo:'Reactive',
+ how:'Small split-step hop, land on the balls of the feet, and immediately explode 3–4 m in a random direction you choose mid-air.',
+ cue:'Land and go in the same beat. No pause between landing and the first step.',
+ prog:'React faster → longer sprints out → add a partner or a random call.',
+ reg:'Pre-plan the direction.',
+ subs:'Lateral Shuffle'},
+
+{id:'sp02',name:'Acceleration Sprints (10–20 m)',cat:'speed',muscles:'Full body — acceleration',equip:'RUN',sets:6,reps:'1 × 15 m',rpe:'RPE 8 (95% effort)',rest:'60–90s full recovery',tempo:'Max',
+ how:'From a split-step or staggered stance, accelerate maximally for 10–20 m. Walk back fully before the next rep.',
+ cue:'Aggressive forward body lean for the first 5 steps. Drive the ground backwards.',
+ prog:'Add reps (max 8) → add a reactive start → vary the start position.',
+ reg:'Reduce to 85% effort or fewer reps.',
+ subs:'Hill Sprints · Lateral Shuffle',
+ notes:'Needs FULL recovery between reps. This is quality work, not conditioning.'},
+
+{id:'sp03',name:'5-10-5 Pro Agility',cat:'speed',muscles:'COD, deceleration, lateral power',equip:'RUN',sets:4,reps:'1 rep each side',rpe:'RPE 8',rest:'90s',tempo:'Max',
+ how:'Three markers 5 m apart. Start at the middle, sprint 5 m right, touch, 10 m left, touch, 5 m back through the middle.',
+ cue:'Get LOW into the turns. Plant the outside foot hard and change direction off it.',
+ prog:'Time it with your phone and chase your own best.',
+ reg:'Reduce to 75% effort, focus on the mechanics of the turn.',
+ subs:'Lateral Shuffle · Spider Drill'},
+
+{id:'sp04',name:'Lateral Shuffle',cat:'speed',muscles:'Adductors, glute medius, lateral movement',equip:'RUN',sets:4,reps:'6 × 8 m',rpe:'RPE 7',rest:'45s',tempo:'Quick',
+ how:'Athletic stance, shuffle sideways without the feet crossing, then push back the other way.',
+ cue:'Stay low the whole time — no bobbing up and down. Push off the trailing leg.',
+ prog:'Speed → distance → add a band around the thighs.',
+ reg:'Slower, shorter distance.',
+ subs:'5-10-5 Pro Agility'},
+
+{id:'sp05',name:'Spider / Star Drill',cat:'speed',muscles:'COD, tennis court coverage',equip:'RUN',sets:3,reps:'1 full circuit',rpe:'RPE 8',rest:'2 min',tempo:'Max',
+ how:'Five markers arranged like a tennis court coverage pattern. Sprint from the centre to each marker, touch, and recover to the centre each time.',
+ cue:'Always recover facing forward with a split step at the centre.',
+ prog:'Time the circuit → add more markers → add a racquet.',
+ reg:'Jog the recovery, sprint only the outward legs.',
+ subs:'5-10-5 Pro Agility'},
+
+{id:'sp06',name:'Deceleration Drill',cat:'speed',muscles:'Eccentric quads, braking',equip:'RUN',sets:4,reps:'4 reps',rpe:'RPE 7',rest:'60s',tempo:'Accel–brake',
+ how:'Accelerate hard for 10 m, then stop as fast as possible within 3 m and hold an athletic position.',
+ cue:'Drop the hips, shorten the steps, chest over the knees. Do not stop with straight legs.',
+ prog:'Faster approach → shorter braking zone → brake into a direction change.',
+ reg:'Slower approach speed.',
+ subs:'Depth Drop & Stick',
+ notes:'Braking force in tennis exceeds accelerating force. Most players never train it.'},
+
+{id:'sp07',name:'Crossover Step Start',cat:'speed',muscles:'Hips, first step',equip:'RUN',sets:3,reps:'5 / side',rpe:'RPE 7',rest:'60s',tempo:'Explosive',
+ how:'From a ready position, open the hip and cross the far leg over to sprint 5 m laterally — the movement used to chase a wide ball.',
+ cue:'Open the hip first, do not step backwards before going.',
+ prog:'Speed → longer distance → reactive start.',
+ reg:'Walk through the pattern slowly.',
+ subs:'Lateral Shuffle'},
+
+/* ---------------- CORE ---------------- */
+{id:'co01',name:'RKC Plank',cat:'core',muscles:'Anti-extension, deep core',equip:'BW',sets:3,reps:'15–30s',rpe:'RPE 9',rest:'60s',tempo:'Isometric',
+ how:'Forearm plank, but actively squeeze glutes, quads and fists as hard as possible while pulling the elbows towards the toes.',
+ cue:'Maximum full-body tension. If you can hold this over 30 seconds you are not squeezing hard enough.',
+ prog:'Increase the intensity of the contraction, not the duration. Then progress to long-lever.',
+ reg:'Standard plank, knees down.',
+ subs:'Long-Lever Plank · Hollow Body Hold',
+ notes:'Far better than 3-minute planks. Quality of tension beats duration.'},
+
+{id:'co02',name:'Long-Lever Plank',cat:'core',muscles:'Anti-extension',equip:'BW',sets:3,reps:'20–45s',rpe:'RPE 8',rest:'60s',tempo:'Isometric',
+ how:'Plank with the elbows shifted well forward of the shoulders, increasing the lever arm.',
+ cue:'Ribs down, pelvis tucked. Do not let the lower back sag.',
+ prog:'Move the elbows further forward → add a DB on the back → lift one foot.',
+ reg:'Standard plank.',
+ subs:'RKC Plank'},
+
+{id:'co03',name:'Side Plank',cat:'core',muscles:'Anti-lateral flexion, obliques, QL',equip:'BW',sets:3,reps:'25–50s / side',rpe:'RPE 8',rest:'45s',tempo:'Isometric',
+ how:'Forearm side plank, body in one straight line, hips stacked and lifted.',
+ cue:'Push the floor away with the bottom shoulder. Do not let the hips drop.',
+ prog:'Time → top leg lifted → add hip dips → hold a DB.',
+ reg:'Bottom knee down.',
+ subs:'Copenhagen Plank · Suitcase Carry'},
+
+{id:'co04',name:'Side Plank Hip Dip',cat:'core',muscles:'Obliques, QL',equip:'BW',sets:3,reps:'10–15 / side',rpe:'RPE 8',rest:'45s',tempo:'2-0-1-1',
+ how:'From a side plank, lower the hip towards the floor under control and drive it back up past neutral.',
+ cue:'Controlled range. Squeeze at the top.',
+ prog:'Reps → hold a DB → long lever.',
+ reg:'Static side plank.',
+ subs:'Side Plank'},
+
+{id:'co05',name:'Dead Bug',cat:'core',muscles:'Anti-extension, core–hip coordination',equip:'BW',sets:3,reps:'8–12 / side',rpe:'RPE 7',rest:'45s',tempo:'3-1-3-0',
+ how:'On your back, arms up, knees at 90°. Lower the opposite arm and leg slowly towards the floor while keeping the lower back flat, then return.',
+ cue:'The lower back must stay pressed down the entire time. The moment it lifts, shorten the range.',
+ prog:'Slower tempo → straighter leg → hold DBs → add a band for anti-extension.',
+ reg:'Legs only, or arms only.',
+ subs:'Bird Dog · Hollow Body Hold'},
+
+{id:'co06',name:'Bird Dog',cat:'core',muscles:'Anti-rotation, spinal stability, glutes',equip:'BW',sets:3,reps:'8–12 / side',rpe:'RPE 6',rest:'45s',tempo:'2-2-2-0',
+ how:'On hands and knees, extend the opposite arm and leg fully, hold 2 seconds, return with control.',
+ cue:'Hips stay level — imagine balancing a glass of water on your lower back.',
+ prog:'Hold time → add a band → bring the elbow to the knee between reps.',
+ reg:'Arm only or leg only.',
+ subs:'Dead Bug'},
+
+{id:'co07',name:'Hollow Body Hold',cat:'core',muscles:'Anterior chain, anti-extension',equip:'BW',sets:3,reps:'20–40s',rpe:'RPE 8',rest:'60s',tempo:'Isometric',
+ how:'On your back, press the lower back into the floor, lift the shoulders and legs, arms overhead. Hold the banana shape.',
+ cue:'Lower back stays glued down. Raise the legs higher if it lifts.',
+ prog:'Time → arms overhead → hollow rocks → hold a DB.',
+ reg:'Tuck the knees, hands by the sides.',
+ subs:'Dead Bug · Long-Lever Plank'},
+
+{id:'co08',name:'Bear Hold / Bear Crawl',cat:'core',muscles:'Total-body core stability',equip:'BW',sets:3,reps:'20–40s',rpe:'RPE 7',rest:'45s',tempo:'Isometric/slow',
+ how:'Hands and toes down, knees hovering 3 cm off the floor, back flat. Hold, or crawl forward moving opposite hand and foot.',
+ cue:'Hips stay low and level. Do not rock side to side when crawling.',
+ prog:'Time → crawling distance → lateral crawls.',
+ reg:'Knees down between reps.',
+ subs:'RKC Plank'},
+
+{id:'co09',name:'Band Pallof Press',cat:'core',muscles:'Anti-rotation — force transfer',equip:'BAND',sets:3,reps:'10–14 / side',rpe:'RPE 7',rest:'45s',tempo:'2-2-2-0',
+ how:'Band anchored at chest height to your side. Hold it at the sternum, press it straight out, hold 2 seconds, return.',
+ cue:'Resist the rotation. The hips and shoulders must not turn at all.',
+ prog:'Band tension → step further from the anchor → hold longer → half-kneeling → split stance.',
+ reg:'Move closer to the anchor.',
+ subs:'Band Anti-Rotation Hold · Suitcase Carry',
+ notes:'The single most tennis-relevant core exercise. Groundstroke force transfer is anti-rotation, not rotation.'},
+
+{id:'co10',name:'Band Anti-Rotation Hold',cat:'core',muscles:'Obliques, deep core',equip:'BAND',sets:3,reps:'20–30s / side',rpe:'RPE 8',rest:'45s',tempo:'Isometric',
+ how:'Same setup as the Pallof Press, but press out and simply hold the position while breathing normally.',
+ cue:'Brace like you are about to be pushed. Keep breathing.',
+ prog:'Time → tension → split stance.',
+ reg:'Reduce tension.',
+ subs:'Band Pallof Press'},
+
+{id:'co11',name:'Half-Kneeling Band Chop',cat:'core',muscles:'Rotational control, obliques',equip:'BAND',sets:3,reps:'10–12 / side',rpe:'RPE 7',rest:'45s',tempo:'2-0-2-0',
+ how:'Half-kneeling, band anchored high on one side. Pull diagonally down and across the body, controlling the return.',
+ cue:'Rotate through the mid-back, not the lower back. Hips stay square and still.',
+ prog:'Tension → slower eccentric → standing → add a step.',
+ reg:'Reduce range and tension.',
+ subs:'Band Rotational Press'},
+
+{id:'co12',name:'Band Rotational Press',cat:'core',muscles:'Rotational power, force transfer',equip:'BAND',sets:3,reps:'8–12 / side',rpe:'RPE 7',rest:'45s',tempo:'Explosive out, slow back',
+ how:'Athletic stance, band anchored behind you. Rotate through the back hip and press explosively across the body.',
+ cue:'Power starts at the back foot — rotate the hip, then the torso, then the arm. Exactly the groundstroke sequence.',
+ prog:'Tension → speed → add a step into it.',
+ reg:'Slower, less tension.',
+ subs:'Half-Kneeling Band Chop',
+ notes:'Trains the kinetic chain sequence that generates racquet head speed.'},
+
+{id:'co13',name:'Suitcase Carry',cat:'core',muscles:'Anti-lateral flexion, grip, traps',equip:'DB',sets:3,reps:'30–45s / side',rpe:'RPE 7',rest:'45s',tempo:'Walk',
+ how:'Hold ONE dumbbell at your side and walk tall, resisting the pull to one side.',
+ cue:'Shoulders level, ribs down. Do not lean away from the weight.',
+ prog:'Time → distance → slower march with a knee lift.',
+ reg:'Shorter carries.',
+ subs:'Suitcase March · Side Plank',
+ notes:'With a 5 kg DB, extend the time rather than adding weight.'},
+
+{id:'co14',name:'Suitcase March',cat:'core',muscles:'Anti-lateral flexion, hip flexors',equip:'DB',sets:3,reps:'10–16 / side',rpe:'RPE 7',rest:'45s',tempo:'2-1-2-0',
+ how:'Standing with one DB at your side, march slowly, driving each knee to hip height and pausing 1 second.',
+ cue:'No side bend, no rushing. The torso stays completely still.',
+ prog:'Pause length → reps → both DBs overhead.',
+ reg:'No pause, lower knee lift.',
+ subs:'Suitcase Carry'},
+
+{id:'co15',name:'Mountain Climbers',cat:'core',muscles:'Core, hip flexors, conditioning',equip:'BW',sets:3,reps:'20–40 total',rpe:'RPE 7',rest:'45s',tempo:'Fast',
+ how:'Plank position, drive the knees alternately towards the chest quickly without the hips rising.',
+ cue:'Hips stay low and level. Speed comes from the legs, not from bouncing.',
+ prog:'Reps → speed → cross-body variation.',
+ reg:'Slower, or hands elevated.',
+ subs:'Bear Crawl'},
+
+{id:'co16',name:'Reverse Crunch',cat:'core',muscles:'Lower abs, posterior pelvic tilt',equip:'BW',sets:3,reps:'12–18',rpe:'RPE 7',rest:'45s',tempo:'2-0-3-0',
+ how:'On your back, knees bent, curl the pelvis up off the floor towards the ribs, then lower over 3 seconds.',
+ cue:'Lift with the abs by curling the pelvis — do not swing the legs.',
+ prog:'Slower eccentric → straighter legs → hips elevated.',
+ reg:'Smaller range.',
+ subs:'Hollow Body Hold'},
+
+{id:'co17',name:'Hollow Rock',cat:'core',muscles:'Anterior chain',equip:'BW',sets:3,reps:'12–20',rpe:'RPE 8',rest:'45s',tempo:'Rhythmic',
+ how:'Hold a hollow body shape and rock back and forth from the shoulders to the hips, keeping the shape rigid.',
+ cue:'The body shape never changes — only the contact point moves.',
+ prog:'Reps → longer lever with arms overhead.',
+ reg:'Hollow body hold instead.',
+ subs:'Hollow Body Hold'},
+
+/* ---------------- UPPER PUSH ---------------- */
+{id:'up01',name:'Push-Up',cat:'push',muscles:'Chest, front delts, triceps, core',equip:'BW',sets:4,reps:'8–20',rpe:'RPE 8 (2 RIR)',rest:'75s',tempo:'3-1-1-0',
+ how:'Hands slightly wider than the shoulders, body in a straight line. Lower the chest to just above the floor over 3 seconds, pause, press up.',
+ cue:'Elbows at about 45° from the body, not flared to 90°. Squeeze the glutes to keep the body rigid.',
+ prog:'Reps → 4s eccentric → 2s pause at the bottom → feet elevated → archer push-up.',
+ reg:'Hands on a raised surface (incline push-up) — the higher the easier.',
+ subs:'Incline Push-Up · DB Floor Press',
+ notes:'Your primary chest builder. Progress the leverage, not the load.'},
+
+{id:'up02',name:'Feet-Elevated Push-Up',cat:'push',muscles:'Upper chest, front delts, triceps',equip:'CHAIR',sets:4,reps:'6–15',rpe:'RPE 8',rest:'75s',tempo:'3-1-1-0',
+ how:'Push-up with the feet on a chair, shifting more load to the upper chest and shoulders.',
+ cue:'Do not let the hips sag. Full range — chest to the floor.',
+ prog:'Reps → higher elevation → pause reps → archer.',
+ reg:'Standard push-up.',
+ subs:'Push-Up · Pike Push-Up'},
+
+{id:'up03',name:'Archer Push-Up',cat:'push',muscles:'Chest, triceps — unilateral emphasis',equip:'BW',sets:3,reps:'4–8 / side',rpe:'RPE 8',rest:'75s',tempo:'3-0-1-0',
+ how:'Wide hand position. Lower towards one hand while the other arm stays nearly straight, then press back up.',
+ cue:'The straight arm assists only. Keep the hips square.',
+ prog:'Reps → deeper range → less assistance from the straight arm → one-arm progression.',
+ reg:'Standard push-up.',
+ subs:'Push-Up',
+ notes:'The main path to genuine strength gains once standard push-ups exceed 20 reps.'},
+
+{id:'up04',name:'Diamond Push-Up',cat:'push',muscles:'Triceps, inner chest',equip:'BW',sets:3,reps:'6–15',rpe:'RPE 8',rest:'60s',tempo:'3-1-1-0',
+ how:'Hands together forming a diamond under the chest. Lower the chest to the hands, elbows tucked tight.',
+ cue:'Elbows stay close to the ribs throughout.',
+ prog:'Reps → feet elevated → slower eccentric.',
+ reg:'Close-grip push-up on the knees or on an incline.',
+ subs:'Push-Up · Band Triceps Pushdown'},
+
+{id:'up05',name:'Pike Push-Up',cat:'push',muscles:'Front & side delts, triceps',equip:'BW',sets:3,reps:'6–14',rpe:'RPE 8',rest:'75s',tempo:'3-1-1-0',
+ how:'Downward-dog position, hips high. Lower the crown of the head towards the floor between the hands, then press back up.',
+ cue:'Keep the hips stacked high over the shoulders — that is what makes it a shoulder exercise.',
+ prog:'Reps → feet elevated on a chair → deficit with hands raised → toward handstand push-up.',
+ reg:'Hands elevated, hips lower.',
+ subs:'DB Overhead Press · Band Overhead Press',
+ notes:'Your best available vertical pressing movement for deltoid mass and broader shoulders.'},
+
+{id:'up06',name:'Elevated Pike Push-Up',cat:'push',muscles:'Delts, upper traps, triceps',equip:'CHAIR',sets:3,reps:'5–12',rpe:'RPE 8',rest:'75s',tempo:'3-1-1-0',
+ how:'Pike push-up with the feet on a chair, bringing the torso closer to vertical.',
+ cue:'Nearly vertical torso. Head travels down between the hands.',
+ prog:'Reps → higher elevation → hands on books for a deficit.',
+ reg:'Floor pike push-up.',
+ subs:'Pike Push-Up'},
+
+{id:'up07',name:'DB Floor Press',cat:'push',muscles:'Chest, triceps, front delts',equip:'DB',sets:3,reps:'12–20',rpe:'RPE 8',rest:'60s',tempo:'3-1-1-0',
+ how:'Lying on the floor, press both DBs from the chest to lockout. The upper arms stop when the elbows touch the floor.',
+ cue:'Slow eccentric, hard squeeze at the top. With 5 kg, chase the burn not the weight.',
+ prog:'Reps → 4s eccentric → 2s pause on the floor → single arm.',
+ reg:'Reduce reps.',
+ subs:'Push-Up',
+ notes:'Useful on days when wrist loading from push-ups is uncomfortable.'},
+
+{id:'up08',name:'DB Overhead Press',cat:'push',muscles:'Delts, triceps, upper chest',equip:'DB',sets:3,reps:'12–20',rpe:'RPE 8',rest:'60s',tempo:'3-0-1-1',
+ how:'Standing or half-kneeling, press both DBs from the shoulders to full lockout overhead.',
+ cue:'Ribs down — do not arch the lower back. Biceps end beside the ears.',
+ prog:'Reps → slow eccentric → single arm → half-kneeling for more core demand.',
+ reg:'Seated, fewer reps.',
+ subs:'Pike Push-Up · Band Overhead Press'},
+
+{id:'up09',name:'DB Arnold Press',cat:'push',muscles:'All three deltoid heads',equip:'DB',sets:3,reps:'12–18',rpe:'RPE 8',rest:'60s',tempo:'3-0-2-0',
+ how:'Start with the palms facing you at shoulder height. Rotate the palms outward as you press overhead, reverse on the way down.',
+ cue:'Smooth continuous rotation. Control the whole path.',
+ prog:'Reps → slower tempo → pause at the top.',
+ reg:'Standard overhead press.',
+ subs:'DB Overhead Press'},
+
+{id:'up10',name:'DB Lateral Raise',cat:'push',muscles:'Side deltoids — shoulder width',equip:'DB',sets:4,reps:'15–25',rpe:'RPE 9 (near failure)',rest:'45s',tempo:'2-1-3-0',
+ how:'Slight forward lean, DBs at the sides. Raise out to shoulder height leading with the elbows, pause, lower over 3 seconds.',
+ cue:'Lead with the elbows, not the hands. No swinging — if you need momentum, slow down instead.',
+ prog:'Reps → 4s eccentric → 2s pause at the top → partial burnout reps after failure → lean-away single arm.',
+ reg:'Fewer reps, or bend the elbows more to shorten the lever.',
+ subs:'Band Lateral Raise',
+ notes:'5 kg is actually a GOOD lateral raise weight. This is your #1 exercise for visible shoulder width and V-taper.'},
+
+{id:'up11',name:'Band Lateral Raise',cat:'push',muscles:'Side delts',equip:'BAND',sets:3,reps:'15–25',rpe:'RPE 9',rest:'45s',tempo:'2-1-2-0',
+ how:'Stand on the band, raise the arms out to the sides against increasing tension.',
+ cue:'The band gets harder at the top — that is exactly where the side delt works hardest. Do not cheat the top.',
+ prog:'Shorten the band → more reps → slower eccentric.',
+ reg:'Longer band.',
+ subs:'DB Lateral Raise',
+ notes:'Excellent paired immediately after DB lateral raises as a drop set.'},
+
+{id:'up12',name:'DB Front Raise',cat:'push',muscles:'Front delts',equip:'DB',sets:3,reps:'12–20',rpe:'RPE 8',rest:'45s',tempo:'2-1-3-0',
+ how:'Raise the DBs straight forward to shoulder height, pause, lower slowly.',
+ cue:'No body swing. Stop at shoulder height.',
+ prog:'Reps → slower eccentric → pause.',
+ reg:'Alternate arms.',
+ subs:'Band Front Raise',
+ notes:'Low priority — your front delts already get plenty from pressing and serving.'},
+
+{id:'up13',name:'Band Overhead Press',cat:'push',muscles:'Delts, triceps',equip:'BAND',sets:3,reps:'12–20',rpe:'RPE 8',rest:'60s',tempo:'2-0-2-0',
+ how:'Stand on the band, press the handles overhead to lockout.',
+ cue:'Tension increases at the top — keep pressing all the way.',
+ prog:'Shorten the band → reps → single arm.',
+ reg:'Longer band.',
+ subs:'DB Overhead Press'},
+
+{id:'up14',name:'Band Triceps Pushdown',cat:'push',muscles:'Triceps',equip:'BAND',sets:3,reps:'15–25',rpe:'RPE 9',rest:'45s',tempo:'2-1-2-0',
+ how:'Band anchored high. Elbows pinned to the sides, extend the forearms down and squeeze hard at the bottom.',
+ cue:'Only the forearms move. Elbows do not drift forward.',
+ prog:'Tension → reps → 2s squeeze at lockout.',
+ reg:'Less tension.',
+ subs:'DB Overhead Triceps Extension'},
+
+{id:'up15',name:'DB Overhead Triceps Extension',cat:'push',muscles:'Triceps (long head)',equip:'DB',sets:3,reps:'12–20',rpe:'RPE 8',rest:'45s',tempo:'3-1-1-0',
+ how:'Hold one DB with both hands overhead. Lower it behind the head with a deep stretch, then extend.',
+ cue:'Elbows stay narrow and pointing forward. Big stretch at the bottom is where the growth is.',
+ prog:'Reps → slower eccentric → pause in the stretch → single arm.',
+ reg:'Reduce range.',
+ subs:'Band Triceps Pushdown · Diamond Push-Up'},
+
+/* ---------------- UPPER PULL ---------------- */
+{id:'ul01',name:'Band Row',cat:'pull',muscles:'Lats, rhomboids, rear delts, biceps',equip:'BAND',sets:4,reps:'12–20',rpe:'RPE 8',rest:'60s',tempo:'2-1-2-0',
+ how:'Band anchored at chest height. Row the handles to the ribs, driving the elbows back and squeezing the shoulder blades.',
+ cue:'Pull with the elbows, not the hands. Squeeze for a full second at the back.',
+ prog:'Step further from the anchor → shorten the band → slower eccentric → single arm.',
+ reg:'Step closer to the anchor.',
+ subs:'DB Bent-Over Row · Inverted Row',
+ notes:'Without a pull-up bar, band and DB rows are your entire back. Do not skip them — they drive both posture and V-taper.'},
+
+{id:'ul02',name:'Band Single-Arm Row',cat:'pull',muscles:'Lats, mid-back, core anti-rotation',equip:'BAND',sets:3,reps:'12–18 / side',rpe:'RPE 8',rest:'45s',tempo:'2-1-2-0',
+ how:'One handle, staggered stance. Row to the hip while resisting torso rotation.',
+ cue:'Let the shoulder blade travel forward at the stretch, then pull it back and down.',
+ prog:'Tension → reps → slower eccentric.',
+ reg:'Less tension.',
+ subs:'DB Bent-Over Row'},
+
+{id:'ul03',name:'DB Bent-Over Row',cat:'pull',muscles:'Lats, rhomboids, rear delts',equip:'DB',sets:4,reps:'15–25',rpe:'RPE 8–9',rest:'60s',tempo:'2-1-3-0',
+ how:'Hinge forward to about 45°, flat back. Row both DBs to the lower ribs, pause, lower slowly.',
+ cue:'With light weight, the pause and slow eccentric are the whole exercise. Squeeze the blades together hard.',
+ prog:'Reps → 3–4s eccentric → 2s squeeze → single-arm.',
+ reg:'Support the chest on a chair.',
+ subs:'Band Row'},
+
+{id:'ul04',name:'DB Single-Arm Row',cat:'pull',muscles:'Lats, mid-back',equip:'DB+CHAIR',sets:3,reps:'15–25 / side',rpe:'RPE 8',rest:'45s',tempo:'2-1-3-0',
+ how:'One hand and knee on a chair, other arm rowing the DB from a full stretch to the hip.',
+ cue:'Full stretch at the bottom, elbow past the ribs at the top.',
+ prog:'Reps → slower eccentric → 2s pause.',
+ reg:'Standing, hand on the thigh.',
+ subs:'Band Single-Arm Row'},
+
+{id:'ul05',name:'Inverted Row',cat:'pull',muscles:'Lats, mid-back, biceps',equip:'CHAIR',sets:3,reps:'6–15',rpe:'RPE 8',rest:'75s',tempo:'2-1-2-0',
+ how:'Lie under a sturdy table or between two stable chairs with a broom handle. Body straight, pull the chest to the edge.',
+ cue:'Body rigid like a plank. Chest touches, not the chin.',
+ prog:'Lower the body angle → feet elevated → slower eccentric.',
+ reg:'Bend the knees, raise the body angle.',
+ subs:'Band Row',
+ notes:'ONLY with a confirmed stable surface that will take your full bodyweight. Test it carefully first.'},
+
+{id:'ul06',name:'Band Lat Pulldown',cat:'pull',muscles:'Lats — V-taper width',equip:'BAND',sets:3,reps:'15–25',rpe:'RPE 8',rest:'60s',tempo:'2-1-2-0',
+ how:'Anchor the band high (door top or a branch). Kneel and pull the handles down to the chest, elbows driving down and back.',
+ cue:'Think of pulling the elbows into your back pockets. Feel the lats, not the arms.',
+ prog:'Tension → kneel further back → slower eccentric → single arm.',
+ reg:'Less tension.',
+ subs:'Band Straight-Arm Pulldown',
+ notes:'Your only true vertical pull. Prioritise it for lat width and the V-taper.'},
+
+{id:'ul07',name:'Band Straight-Arm Pulldown',cat:'pull',muscles:'Lats (isolated)',equip:'BAND',sets:3,reps:'15–20',rpe:'RPE 8',rest:'45s',tempo:'2-1-2-0',
+ how:'Band anchored high, arms straight. Pull down in an arc to the thighs, keeping the elbows locked.',
+ cue:'Pure lat isolation — you should feel it directly under the armpits.',
+ prog:'Tension → pause at the bottom → reps.',
+ reg:'Less tension.',
+ subs:'Band Lat Pulldown'},
+
+{id:'ul08',name:'Band Pull-Apart',cat:'pull',muscles:'Rear delts, rhomboids, posture',equip:'BAND',sets:3,reps:'20–30',rpe:'RPE 7',rest:'40s',tempo:'2-1-2-0',
+ how:'Hold the band at shoulder height with straight arms, pull it apart until it touches the chest, squeeze, return slowly.',
+ cue:'Squeeze the shoulder blades. Do not shrug.',
+ prog:'Reps → shorten the band → 2s hold at the end range.',
+ reg:'Wider grip.',
+ subs:'Band Face Pull · Prone Y-T-W',
+ notes:'Do these almost daily. They directly counter the forward-shoulder posture that serving creates.'},
+
+{id:'ul09',name:'Band Face Pull',cat:'pull',muscles:'Rear delts, external rotators, traps',equip:'BAND',sets:3,reps:'15–25',rpe:'RPE 7',rest:'45s',tempo:'2-1-2-0',
+ how:'Band anchored at face height. Pull the handles towards the forehead, rotating the hands so the knuckles finish pointing behind you.',
+ cue:'Finish in a double-biceps pose. External rotation is the whole point.',
+ prog:'Tension → reps → 2s hold at the end.',
+ reg:'Less tension.',
+ subs:'Band Pull-Apart',
+ notes:'The single best shoulder-health exercise for a serving athlete. Non-negotiable.'},
+
+{id:'ul10',name:'Prone Y-T-W',cat:'pull',muscles:'Lower traps, rear delts, scapular control',equip:'BW',sets:3,reps:'8 each letter',rpe:'RPE 7',rest:'45s',tempo:'2-2-2-0',
+ how:'Lie face down. Lift the arms off the floor in a Y shape, then a T, then a W, holding each for 2 seconds.',
+ cue:'Thumbs up. Lift from the shoulder blades, not the hands. Keep the neck neutral.',
+ prog:'Hold time → hold the DBs → more reps.',
+ reg:'Fewer reps, no hold.',
+ subs:'Band Pull-Apart · Superman'},
+
+{id:'ul11',name:'Band Reverse Fly',cat:'pull',muscles:'Rear delts',equip:'BAND',sets:3,reps:'15–25',rpe:'RPE 8',rest:'45s',tempo:'2-1-2-0',
+ how:'Band anchored at chest height, arms crossed and straight. Pull the arms apart and back in a wide arc.',
+ cue:'Rear delts, not traps. Keep the shoulders down away from the ears.',
+ prog:'Tension → reps → 2s hold.',
+ reg:'Less tension.',
+ subs:'Band Face Pull'},
+
+{id:'ul12',name:'DB Bicep Curl',cat:'pull',muscles:'Biceps',equip:'DB',sets:3,reps:'15–25',rpe:'RPE 9',rest:'45s',tempo:'2-1-3-1',
+ how:'Curl both DBs with the elbows pinned to the sides, squeeze at the top, lower over 3 seconds.',
+ cue:'No swinging. With 5 kg the eccentric and the squeeze are everything.',
+ prog:'Reps → 4s eccentric → 2s peak squeeze → 1.5 reps → drop into band curls.',
+ reg:'Fewer reps.',
+ subs:'Band Curl · Hammer Curl'},
+
+{id:'ul13',name:'DB Hammer Curl',cat:'pull',muscles:'Brachialis, brachioradialis, forearms',equip:'DB',sets:3,reps:'15–25',rpe:'RPE 9',rest:'45s',tempo:'2-1-3-0',
+ how:'Neutral grip (palms facing each other) throughout the curl.',
+ cue:'Brachialis growth is what pushes the biceps up and makes the arm look thicker from the side.',
+ prog:'Reps → slower eccentric → cross-body variation.',
+ reg:'Fewer reps.',
+ subs:'DB Bicep Curl'},
+
+{id:'ul14',name:'Band Curl',cat:'pull',muscles:'Biceps',equip:'BAND',sets:3,reps:'20–30',rpe:'RPE 9',rest:'40s',tempo:'2-1-2-0',
+ how:'Stand on the band and curl the handles with constant tension.',
+ cue:'Peak tension at the top. Never let the band go slack.',
+ prog:'Shorten the band → reps.',
+ reg:'Longer band.',
+ subs:'DB Bicep Curl',
+ notes:'Best used as an immediate drop set straight after DB curls.'},
+
+{id:'ul15',name:'Superman',cat:'pull',muscles:'Spinal erectors, glutes, posture',equip:'BW',sets:3,reps:'10–15',rpe:'RPE 6',rest:'40s',tempo:'2-2-2-0',
+ how:'Lie face down and lift the chest, arms and legs off the floor. Hold 2 seconds.',
+ cue:'Lengthen rather than crunch. Keep the neck neutral and look at the floor.',
+ prog:'Hold time → reps → alternating swimmer variation.',
+ reg:'Arms only or legs only.',
+ subs:'Prone Y-T-W'},
+
+/* ---------------- MOBILITY ---------------- */
+{id:'mo01',name:'90/90 Hip Switch',cat:'mobility',muscles:'Hip internal & external rotation',equip:'FLOOR',sets:2,reps:'8–10 / side',rpe:'Easy',rest:'—',tempo:'Slow',
+ how:'Seated with both knees bent at 90°, one leg in front and one to the side. Rotate the knees to switch sides under control.',
+ cue:'Chest tall. Do not use the hands unless you need them.',
+ prog:'Hands off the floor → pause and lift the front knee at the end range.',
+ reg:'Use the hands for support, smaller range.',
+ subs:'Hip Flexor Stretch',
+ notes:'Hip internal rotation is the most limited and most important joint range for open-stance hitting.'},
+
+{id:'mo02',name:"World's Greatest Stretch",cat:'mobility',muscles:'Hips, hamstrings, T-spine, adductors',equip:'FLOOR',sets:2,reps:'5 / side',rpe:'Easy',rest:'—',tempo:'Slow',
+ how:'Deep lunge, opposite hand down. Drop the back knee, drive the elbow towards the instep, then rotate the top arm open to the sky.',
+ cue:'Reach the fingertips as far as possible on the rotation and follow with your eyes.',
+ prog:'Add a 3s hold at each end range.',
+ reg:'Back knee down throughout.',
+ subs:'Thoracic Rotation'},
+
+{id:'mo03',name:'Couch Stretch',cat:'mobility',muscles:'Hip flexors, quads',equip:'WALL',sets:2,reps:'45–60s / side',rpe:'Easy',rest:'—',tempo:'Hold',
+ how:'Rear foot up against a wall or sofa, front foot forward in a lunge. Squeeze the rear glute and bring the torso upright.',
+ cue:'Tuck the pelvis first — that is what makes it work. Breathe.',
+ prog:'Longer holds, more upright torso.',
+ reg:'Rear foot on the floor.',
+ subs:'Hip Flexor Stretch',
+ notes:'Directly opposes the hip flexor tightness that comes from cycling and sitting.'},
+
+{id:'mo04',name:'Ankle Dorsiflexion Rock',cat:'mobility',muscles:'Ankle, calf',equip:'WALL',sets:2,reps:'10–12 / side',rpe:'Easy',rest:'—',tempo:'Slow',
+ how:'Half-kneeling, front foot ~10 cm from a wall. Drive the knee forward over the toes towards the wall without lifting the heel.',
+ cue:'Heel STAYS down. Move the foot further back as it improves.',
+ prog:'Increase the distance from the wall.',
+ reg:'Move closer.',
+ subs:'Calf Stretch',
+ notes:'Ankle range limits how low you can get into a split step and a wide-ball lunge.'},
+
+{id:'mo05',name:'Thoracic Rotation (Open Book)',cat:'mobility',muscles:'Mid-back rotation',equip:'FLOOR',sets:2,reps:'8–10 / side',rpe:'Easy',rest:'—',tempo:'Slow',
+ how:'Side-lying, knees bent at 90° stacked, arms straight out in front. Open the top arm across the body, following it with your eyes.',
+ cue:'The knees stay stacked and still — the rotation comes from the mid-back only.',
+ prog:'Add a 3s hold at the end range.',
+ reg:'Smaller range.',
+ subs:"World's Greatest Stretch",
+ notes:'Serve and groundstroke rotation should come from here, not the lower back.'},
+
+{id:'mo06',name:'Cat-Cow',cat:'mobility',muscles:'Spine',equip:'FLOOR',sets:2,reps:'10',rpe:'Easy',rest:'—',tempo:'Slow',
+ how:'On hands and knees, alternate between arching and rounding the spine, moving segment by segment.',
+ cue:'Move slowly with the breath — inhale into the arch, exhale into the round.',
+ prog:'More segmental control.',
+ reg:'Smaller range.',
+ subs:'Thoracic Rotation'},
+
+{id:'mo07',name:'Wall Slides',cat:'mobility',muscles:'Shoulders, scapular upward rotation',equip:'WALL',sets:2,reps:'10–12',rpe:'Easy',rest:'—',tempo:'Slow',
+ how:'Back against the wall, forearms on the wall. Slide the arms overhead while keeping the wrists, elbows and lower back in contact.',
+ cue:'Ribs down. If the lower back arches, reduce the range.',
+ prog:'Full overhead range with contact maintained.',
+ reg:'Smaller range.',
+ subs:'Shoulder CARs',
+ notes:'Prepares the shoulder for overhead serving load.'},
+
+{id:'mo08',name:'Shoulder CARs',cat:'mobility',muscles:'Full shoulder joint range',equip:'BW',sets:2,reps:'3–5 / side',rpe:'Easy',rest:'—',tempo:'Very slow',
+ how:'Slowly trace the largest possible circle with one arm, keeping the rest of the body completely still.',
+ cue:'Take 20 seconds per circle. Control every degree.',
+ prog:'Slower, larger circles.',
+ reg:'Smaller circles.',
+ subs:'Wall Slides'},
+
+{id:'mo09',name:'Adductor Rock',cat:'mobility',muscles:'Adductors, groin',equip:'FLOOR',sets:2,reps:'10–12',rpe:'Easy',rest:'—',tempo:'Slow',
+ how:'On hands and knees, extend one leg out to the side with the foot flat. Rock the hips back and forth.',
+ cue:'Keep the back flat. Feel the stretch in the inner thigh.',
+ prog:'Wider position, deeper rock.',
+ reg:'Narrower position.',
+ subs:'Cossack Squat'},
+
+{id:'mo10',name:'Pigeon Stretch',cat:'mobility',muscles:'Glutes, hip external rotation',equip:'FLOOR',sets:2,reps:'45–60s / side',rpe:'Easy',rest:'—',tempo:'Hold',
+ how:'Front shin across the body, back leg extended straight behind. Fold forward over the front leg.',
+ cue:'Keep the hips square. Breathe into the stretch rather than forcing it.',
+ prog:'Deeper fold, longer hold.',
+ reg:'Lying figure-4 stretch instead.',
+ subs:'90/90 Hip Switch'},
+
+{id:'mo11',name:'Calf Stretch',cat:'mobility',muscles:'Gastrocnemius, soleus',equip:'WALL',sets:2,reps:'40s / side',rpe:'Easy',rest:'—',tempo:'Hold',
+ how:'Hands on a wall, one leg back with the heel down and the knee straight (gastroc), then repeat with the knee bent (soleus).',
+ cue:'Do both versions — they stretch different muscles.',
+ prog:'Longer holds.',
+ reg:'Shorter holds.',
+ subs:'Ankle Dorsiflexion Rock'},
+
+{id:'mo12',name:'Hamstring Flow',cat:'mobility',muscles:'Hamstrings, posterior chain',equip:'FLOOR',sets:2,reps:'8–10 / side',rpe:'Easy',rest:'—',tempo:'Slow',
+ how:'From a standing hinge, alternate between a straight-leg reach and a bent-knee position, moving smoothly through the range.',
+ cue:'Move through the range rather than holding — dynamic before training, static after.',
+ prog:'Greater range.',
+ reg:'Bend the knees more.',
+ subs:'Single-Leg RDL (unloaded)'},
+
+{id:'mo13',name:'Band Shoulder Dislocates',cat:'mobility',muscles:'Shoulders, chest, thoracic',equip:'BAND',sets:2,reps:'8–12',rpe:'Easy',rest:'—',tempo:'Slow',
+ how:'Wide grip on the band, take the arms from in front of the thighs over the head and behind the back, then reverse.',
+ cue:'Start very wide and narrow the grip only as the range improves. Never force it.',
+ prog:'Narrower grip.',
+ reg:'Wider grip.',
+ subs:'Wall Slides'},
+
+/* ---------------- CARDIO ---------------- */
+{id:'cd01',name:'Zone 2 Run',cat:'cardio',muscles:'Aerobic base',equip:'RUN',sets:1,reps:'25–45 min',rpe:'RPE 4–5',rest:'—',tempo:'Conversational',
+ how:'Steady easy running where you could hold a full conversation. Roughly 65–75% of max HR (about 128–148 bpm for you).',
+ cue:'If you cannot speak a full sentence, you are going too fast. Most people run their easy days too hard.',
+ prog:'Add 5 minutes per week, up to about 45 minutes.',
+ reg:'Run/walk intervals, or switch to the bike.',
+ subs:'Zone 2 Bike',
+ notes:'Builds the aerobic base that lets you recover between points and hold quality into a third set.'},
+
+{id:'cd02',name:'Zone 2 Bike',cat:'cardio',muscles:'Aerobic base (low impact)',equip:'BIKE',sets:1,reps:'30–60 min',rpe:'RPE 4–5',rest:'—',tempo:'Conversational',
+ how:'Steady easy cycling at a conversational effort.',
+ cue:'Keep the cadence above 80 rpm and the effort genuinely easy.',
+ prog:'Add 5–10 minutes per week.',
+ reg:'Shorter duration.',
+ subs:'Zone 2 Run',
+ notes:'Your default aerobic option when the legs are sore or recovery is low — almost no impact cost.'},
+
+{id:'cd03',name:'Tennis Interval Run',cat:'cardio',muscles:'Repeat-sprint ability',equip:'RUN',sets:8,reps:'20s hard / 40s easy',rpe:'RPE 8',rest:'Built in',tempo:'Intervals',
+ how:'8–12 rounds of 20 seconds hard running followed by 40 seconds walking or easy jogging.',
+ cue:'The 20:40 work-to-rest ratio mirrors real tennis point and changeover structure.',
+ prog:'Add rounds (max 12) → extend the work to 25s → shorten the rest to 35s.',
+ reg:'Fewer rounds, longer rest.',
+ subs:'Hill Sprints · Bike Intervals',
+ notes:'The most tennis-specific conditioning you can do off court.'},
+
+{id:'cd04',name:'Hill Sprints',cat:'cardio',muscles:'Power endurance, glutes, calves',equip:'RUN',sets:6,reps:'10–15s uphill',rpe:'RPE 9',rest:'90s walk down',tempo:'Max',
+ how:'Find a moderate hill. Sprint hard for 10–15 seconds, walk back down fully before repeating.',
+ cue:'Powerful drive, tall posture. Stop the session when speed drops noticeably.',
+ prog:'Add 1 rep per week, up to 10.',
+ reg:'Fewer reps, shallower hill.',
+ subs:'Acceleration Sprints',
+ notes:'Lower impact stress than flat sprinting, with a high power stimulus.'},
+
+{id:'cd05',name:'Recovery Spin',cat:'cardio',muscles:'Blood flow, active recovery',equip:'BIKE',sets:1,reps:'20–35 min',rpe:'RPE 2–3',rest:'—',tempo:'Very easy',
+ how:'Very light cycling on flat ground with a high cadence and almost no resistance.',
+ cue:'This should feel almost too easy. If you are breathing hard, slow down.',
+ prog:'Do not progress this — it is meant to stay easy.',
+ reg:'Shorter.',
+ subs:'Easy Walk',
+ notes:'Your primary RED and ORANGE day option. Promotes recovery without adding meaningful load.'},
+
+{id:'cd06',name:'Easy Walk',cat:'cardio',muscles:'Active recovery',equip:'RUN',sets:1,reps:'20–40 min',rpe:'RPE 2',rest:'—',tempo:'Easy',
+ how:'Relaxed walking, ideally outdoors and in daylight.',
+ cue:'Morning daylight also helps anchor your body clock — a direct win for your sleep consistency.',
+ prog:'—',
+ reg:'—',
+ subs:'Recovery Spin',
+ notes:'Walking carries almost no recovery cost — it is the safest thing to add on a low day.'},
+
+{id:'cd08',name:'Tempo Run',cat:'cardio',muscles:'Aerobic power, running economy',equip:'RUN',sets:1,reps:'15–25 min at tempo',rpe:'RPE 6–7',rest:'—',tempo:'Comfortably hard',
+ how:'Warm up 10 min easy, then run 15–25 minutes at a pace you could hold for about an hour — breathing is controlled but conversation is limited to short phrases. Cool down 5–10 min easy.',
+ cue:'This should feel "comfortably hard", never a race. If you are gasping, you have gone too fast and turned it into an interval session.',
+ prog:'Add 3–5 minutes per week up to 25 min, then increase the pace slightly rather than the duration.',
+ reg:'Break it into 2 × 10 min with 3 min easy between.',
+ subs:'Zone 2 Run · Bike Intervals',
+ notes:'Raises the ceiling on your aerobic base without the neural cost of sprint work. Use sparingly — tennis already supplies plenty of high-intensity running.'},
+
+{id:'cd07',name:'Bike Intervals',cat:'cardio',muscles:'Aerobic power (low impact)',equip:'BIKE',sets:6,reps:'1 min hard / 2 min easy',rpe:'RPE 8',rest:'Built in',tempo:'Intervals',
+ how:'6–10 rounds of 1 minute of hard cycling followed by 2 minutes easy.',
+ cue:'Hard but repeatable — the last round should look like the first.',
+ prog:'Add rounds → extend the work interval.',
+ reg:'Fewer rounds.',
+ subs:'Tennis Interval Run',
+ notes:'Use instead of running intervals when the legs are beaten up from tennis.'}
+];}
