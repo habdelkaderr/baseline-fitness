@@ -55,7 +55,11 @@
   --violet:#6446C8;
   --green:#1C8455;
   --yellow:#966A0E;
-  --orange:#B35A0C;
+  /* darkened from #B35A0C, which measured 4.31:1 against --surface-2 and so
+     failed AA for the 11.5px text it is used for. Nothing had ever rendered
+     that pairing until the set card began showing "below last time" inside a
+     tinted panel — which is how a long-standing contrast bug stayed hidden. */
+  --orange:#A85409;
   --red:#C03A31;
   --pink:#B83A71;
 
@@ -66,8 +70,8 @@
   --violet-wash:rgba(100,70,200,.08);
   --green-wash:rgba(28,132,85,.08);
   --yellow-wash:rgba(150,106,14,.10);
-  --orange-wash:rgba(179,90,12,.09);
-  --orange-line:rgba(179,90,12,.32);
+  --orange-wash:rgba(168,84,9,.09);
+  --orange-line:rgba(168,84,9,.32);
   --red-wash:rgba(192,58,49,.08);
   --red-line:rgba(192,58,49,.30);
   --pink-wash:rgba(184,58,113,.08);
@@ -623,14 +627,18 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .row .chev svg{width:17px;height:17px;stroke-width:2.4;display:block}
 
 /* ---------- Sheet / modal ---------- */
+/* z-index note: #wmode (the full-screen workout) is 300. Anything modal has
+   to sit above it, or every sheet opened mid-workout - including the exit
+   confirmation and its Cancel button - renders underneath and cannot be
+   reached. That was a real bug, not a theoretical one. */
 .scrim{
-  position:fixed;inset:0;background:var(--scrim);z-index:200;
+  position:fixed;inset:0;background:var(--scrim);z-index:420;
   backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
   opacity:0;pointer-events:none;transition:opacity .22s;
 }
 .scrim.on{opacity:1;pointer-events:auto}
 .sheet{
-  position:fixed;left:0;right:0;bottom:0;z-index:201;
+  position:fixed;left:0;right:0;bottom:0;z-index:421;
   max-width:680px;margin:0 auto;
   background:var(--bg-elev);border-radius:var(--r-xl) var(--r-xl) 0 0;
   border-top:1px solid var(--border);
@@ -661,7 +669,7 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 /* ---------- Toast ---------- */
 #toast{
   position:fixed;left:50%;bottom:calc(var(--nav-h) + var(--sa-b) + 16px);
-  transform:translate(-50%,18px);z-index:400;
+  transform:translate(-50%,18px);z-index:500;
   background:var(--surface-3);color:var(--text);border:1px solid var(--border);
   padding:12px 18px;border-radius:14px;font-size:13.5px;font-weight:650;
   opacity:0;pointer-events:none;transition:all .24s;box-shadow:var(--shadow-lg);
@@ -739,47 +747,38 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .lastrow .lp.up{color:var(--green)}
 .lastrow .lp.down{color:var(--orange)}
 .lastrow .lp svg{width:13px;height:13px;stroke-width:2.8}
-.setlist{margin-top:18px}
+.setlist{margin-top:16px}
+
+/* ---------- The warm-up movement row ---------- */
 .setrow{
   display:flex;align-items:center;gap:10px;padding:12px;border-radius:var(--r-md);
   background:var(--surface);border:1px solid var(--border-soft);margin-bottom:8px;
 }
-.setrow.done{border-color:var(--accent-line);background:var(--accent-wash)}
-.setrow.cur{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .setrow .sn{
   width:32px;height:32px;border-radius:9px;background:var(--surface-3);flex:0 0 32px;
   display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:800;color:var(--text-3);
 }
-.setrow.done .sn{background:var(--accent);color:var(--accent-ink)}
-.setrow .si{flex:1;display:flex;gap:9px;min-width:0}
 
 /* ---------- Stepper: the primary way to record a number ----------
    A 44px target either side of the value, with the value still typeable for
    anything the increments do not cover. */
 .stp{display:flex;align-items:center;border:1px solid var(--border);
   border-radius:10px;background:var(--surface-2);overflow:hidden;min-width:0}
-.stp button{flex:0 0 40px;width:40px;height:44px;border:0;background:none;
+.stp button{flex:0 0 40px;width:40px;height:48px;border:0;background:none;
   color:var(--text-2);font-size:20px;font-weight:600;line-height:1;
   display:flex;align-items:center;justify-content:center;cursor:pointer;
   font-family:inherit;padding:0}
 .stp button:active{background:var(--surface-3)}
 .stp button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-.stp input{flex:1;width:100%;min-width:0;height:44px;min-height:44px;
+.stp input{flex:1;width:100%;min-width:0;height:48px;min-height:48px;
   border:0;border-left:1px solid var(--border);border-right:1px solid var(--border);
-  background:none;text-align:center;font-size:16px;font-weight:750;
+  background:none;text-align:center;font-size:19px;font-weight:800;
   font-variant-numeric:tabular-nums;color:var(--text);padding:0}
 .stp input:focus{outline:none;background:var(--surface)}
-.setrow.done .stp{border-color:var(--accent-line)}
-.setrow input{
-  width:100%;min-width:0;min-height:42px;text-align:center;border-radius:10px;
-  background:var(--surface-2);border:1px solid var(--border);color:var(--text);
-  font-size:16px;font-weight:700;padding:0 4px;
-}
-.setrow input:focus{outline:none;border-color:var(--accent)}
-/* A primed value is a suggestion until it is confirmed, so it is shown muted.
-   Once the set is ticked it becomes a record and reads at full strength. */
-.setrow:not(.done) .stp input{color:var(--text-3)}
-.setrow.done .stp input{color:var(--text)}
+.sfield{flex:1;min-width:0}
+.sl{font-size:9px;color:var(--text-3);text-align:center;font-weight:750;
+  letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px}
+
 /* a warm-up movement that can explain itself */
 .setrow.wu.has-how{cursor:pointer}
 .setrow.wu.has-how:active{background:var(--surface-2)}
@@ -794,30 +793,91 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 }
 .wu-x svg{width:16px;height:16px;display:block}
 .setrow.wu.open .wu-x{transform:rotate(180deg)}
-.setrow[data-row]{cursor:pointer}
-.setrow[data-row]:active{background:var(--surface-2)}
-.setrow.done[data-row]:active{background:var(--accent-wash)}
-.setrow .sl{font-size:9px;color:var(--text-3);text-align:center;font-weight:750;letter-spacing:.5px;text-transform:uppercase;margin-bottom:3px}
-.sfield{flex:1;min-width:0}
-.tick{
-  width:44px;height:44px;border-radius:12px;flex:0 0 44px;
-  background:var(--surface-3);display:flex;align-items:center;justify-content:center;color:var(--text-3);
-  border:1px solid var(--border);
-}
-.tick.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
-.tick svg{width:21px;height:21px;stroke-width:3}
 
-/* Rest timer */
-.rest{
-  position:fixed;left:0;right:0;bottom:0;z-index:310;max-width:680px;margin:0 auto;
-  background:var(--surface-2);border-top:1px solid var(--accent);
-  padding:14px var(--gut-r) calc(14px + var(--sa-b)) var(--gut-l);
-  display:none;align-items:center;gap:14px;
-  box-shadow:0 -8px 32px var(--scrim);
+/* ---------- THE SET YOU ARE ON ----------
+   One card, and nothing competing with it. Sets you have not reached are not
+   drawn: they are not decisions you are making now, and four editable rows of
+   them was the reason the screen was hard to read mid-session. */
+.wnow{
+  border:1px solid var(--accent);box-shadow:0 0 0 1px var(--accent);
+  border-radius:var(--r-lg);background:var(--bg-elev);
+  padding:16px;margin-bottom:var(--sp-2);
 }
-.rest.on{display:flex}
-.rest .rt{font-size:30px;font-weight:850;color:var(--accent);letter-spacing:-1px;min-width:78px}
-.rest .rl{flex:1;font-size:12px;color:var(--text-3);font-weight:650;line-height:1.35}
+.wnow-t{
+  display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+  font-size:13.5px;font-weight:850;letter-spacing:.4px;text-transform:uppercase;
+  color:var(--accent);margin-bottom:12px;
+}
+.wnow-t span{
+  font-size:11px;font-weight:700;letter-spacing:0;text-transform:none;
+  color:var(--text-3);text-align:right;min-width:0;overflow-wrap:anywhere;
+}
+.wnow-f{display:flex;gap:10px;margin-bottom:12px}
+.wnow .lastrow{margin-bottom:12px}
+.wnow .hint{margin:0 0 12px}
+.wnow>:last-child{margin-bottom:0}
+.wlog{margin-bottom:0}
+.wlog svg{width:18px;height:18px;stroke-width:3}
+.wnow.fin{border-color:var(--accent-line);box-shadow:none;background:var(--accent-wash)}
+.wnow.fin .wnow-t{color:var(--text)}
+.wnow.fin p{font-size:13.5px;color:var(--text-2);line-height:1.55;margin:0 0 12px}
+
+/* what you have already logged: one strip of chips, tap to undo */
+.wdone{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:var(--sp-2)}
+.wdone .wd-l{font-size:9.5px;font-weight:800;letter-spacing:.5px;
+  text-transform:uppercase;color:var(--text-3)}
+.wdone .wd-h{font-size:11px;font-weight:600;color:var(--text-3)}
+.wdone button{
+  display:inline-flex;align-items:center;gap:6px;min-height:36px;
+  padding:6px 12px;border-radius:999px;font-family:inherit;cursor:pointer;
+  background:var(--accent-wash);border:1px solid var(--accent-line);color:var(--text);
+  font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;
+}
+.wdone button i{font-style:normal;font-weight:850;color:var(--accent)}
+.wdone button:active{background:var(--surface-3)}
+
+/* ---------- Rest, inside the set that started it ----------
+   It used to be a bar fixed to the bottom of the screen, far enough from the
+   tick that started it that it did not read as connected to anything. */
+.wrest{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:10px 12px;margin-bottom:12px;border-radius:12px;
+  background:var(--accent-wash);border:1px solid var(--accent-line);
+}
+.wrt{font-size:24px;font-weight:850;color:var(--accent);letter-spacing:-.8px;
+  min-width:62px;font-variant-numeric:tabular-nums}
+.wrl{flex:1;min-width:92px;font-size:11.5px;color:var(--text-2);
+  font-weight:650;line-height:1.35}
+.wrest .btn{margin-bottom:0}
+
+/* ---------- A hold: a countdown, not a rep count ---------- */
+.hold{
+  display:flex;flex-direction:column;align-items:center;gap:9px;
+  padding:14px 12px;margin-bottom:12px;border-radius:12px;
+  background:var(--surface-2);border:1px solid var(--border);
+}
+.hold .hl{font-size:9.5px;font-weight:800;letter-spacing:.6px;
+  text-transform:uppercase;color:var(--text-3);text-align:center}
+.hold .ht{font-size:42px;font-weight:850;letter-spacing:-1.8px;line-height:1;
+  font-variant-numeric:tabular-nums;color:var(--text)}
+.hold.run{border-color:var(--accent);background:var(--accent-wash)}
+.hold.run .ht{color:var(--accent)}
+.hold .btn{margin-bottom:0;min-width:172px;justify-content:center}
+.hold .btn svg{width:17px;height:17px}
+
+/* one line of how to do it, with the rest of it one tap away */
+.wm-how{
+  display:block;width:100%;text-align:left;margin-top:10px;font-family:inherit;
+  background:var(--surface-2);border:1px solid var(--border-soft);
+  border-radius:var(--r-md);padding:11px 13px;cursor:pointer;
+  font-size:12.5px;line-height:1.5;color:var(--text-2);font-weight:600;
+}
+.wm-how i{font-style:normal;font-weight:800;color:var(--accent);white-space:nowrap}
+.wm-how:active{background:var(--surface-3)}
+
+/* the plan, said in words rather than in coach notation */
+.wm-plain{font-size:12.5px;color:var(--text-2);font-weight:600;
+  margin-top:7px;line-height:1.5}
 
 /* ---------- Misc ---------- */
 .kv{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--border-soft);font-size:13.5px}
@@ -975,7 +1035,6 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
   .sheet-h::before{display:none}
   .sheet-h{padding-top:18px}
   #toast{bottom:28px;left:calc(50% + var(--nav-w)/2)}
-  .rest{left:var(--nav-w);right:0;margin:0 auto;max-width:620px;border-radius:14px 14px 0 0}
   .row.tap:hover{background:var(--surface-2)}
   .card{transition:border-color .15s}
   .btn:hover{filter:brightness(1.08)}
@@ -1028,12 +1087,6 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
   <div class="wm-prog"><i id="wmProg" style="width:0%"></i></div>
   <div class="wm-b" id="wmBody"></div>
   <div class="wm-f" id="wmFoot"></div>
-</div>
-<div class="rest" id="rest">
-  <div class="rt num" id="restT">0:00</div>
-  <div class="rl" id="restL">Rest</div>
-  <button class="btn sm" id="restAdd">+30s</button>
-  <button class="btn sm primary" id="restSkip">Skip</button>
 </div>
 
 <div id="toast"></div>
@@ -1124,6 +1177,85 @@ const ICON = {
 };
 const FILLED={play:1};
 const svg=(k,cls)=>`<svg class="${cls||''}" viewBox="0 0 24 24" fill="${FILLED[k]?'currentColor':'none'}" stroke="currentColor" stroke-width="${FILLED[k]?0:2}" stroke-linecap="round" stroke-linejoin="round">${ICON[k]||''}</svg>`;
+
+/* =========================================================================
+   AUDIBLE CUES
+   Synthesised rather than shipped. An audio file would be bytes in the page, a
+   request to make, and one more thing to get wrong offline; four short tones
+   are about thirty lines of maths. Browsers will not start an AudioContext
+   outside a user gesture, so it is created lazily and resumed on every use.
+   ====================================================================== */
+let AC=null;
+function soundOn(){ return !(DB&&DB.settings) || DB.settings.sound!==false; }
+function audioCtx(){
+  if(!soundOn()) return null;
+  try{
+    if(!AC){ const C=window.AudioContext||window.webkitAudioContext; if(!C) return null; AC=new C(); }
+    if(AC.state==='suspended'){ const r=AC.resume(); if(r&&r.catch) r.catch(()=>{}); }
+    return AC;
+  }catch(e){ return null; }
+}
+function beep(freq,dur,delay,vol){
+  const c=audioCtx(); if(!c) return;
+  try{
+    const t0=c.currentTime+(delay||0), d=dur||0.14;
+    const o=c.createOscillator(), g=c.createGain();
+    o.type='sine'; o.frequency.setValueAtTime(freq,t0);
+    /* an exponential ramp cannot touch zero, hence the near-silent floor:
+       a square-edged gain change is an audible click on its own */
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002,vol||0.16),t0+0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001,t0+d);
+    o.connect(g); g.connect(c.destination);
+    o.start(t0); o.stop(t0+d+0.04);
+  }catch(e){}
+}
+const SOUND={
+  tick: ()=>beep(880,0.05,0,0.06),                                   // 3, 2, 1
+  rest: ()=>{ beep(784,0.14,0,0.17); beep(1046,0.22,0.15,0.17); },   // rest over
+  set:  ()=>beep(660,0.06,0,0.08),                                   // set logged
+  done: ()=>{ beep(523,0.12,0,0.15); beep(659,0.12,0.12,0.15);
+              beep(784,0.26,0.24,0.15); }                            // session saved
+};
+
+/* =========================================================================
+   LOCAL ALERTS
+   ------------------------------------------------------------------------
+   This is NOT a push notification and the distinction is the whole point.
+   Web Push would mean a push service, a server, and a subscription endpoint
+   identifying this device sitting on it. There is none of that here: the
+   phone raises its own alert, for a timer the phone itself is running, and
+   nothing about you leaves the device. Off until the user asks for it, and
+   permission is only ever requested from a tap.
+   ====================================================================== */
+function notifySupported(){ return typeof Notification!=='undefined'; }
+function notifyState(){ return notifySupported()? Notification.permission : 'unsupported'; }
+function notifyAsk(cb){
+  if(!notifySupported()) return cb&&cb('unsupported');
+  const done=p=>{ if(cb){ const f=cb; cb=null; f(p||notifyState()); } };
+  try{
+    /* two spellings of the same call: Safari kept the callback form long
+       after everyone else returned a promise */
+    const r=Notification.requestPermission(done);
+    if(r&&r.then) r.then(done).catch(()=>done('denied'));
+  }catch(e){ done('denied'); }
+}
+function notifyOn(){ return !!(DB&&DB.settings&&DB.settings.notify) && notifyState()==='granted'; }
+function notify(title,body){
+  if(!notifyOn()) return;
+  const opt={body:body||'', tag:'baseline-timer', renotify:true,
+             icon:'icons/icon-192.png', badge:'icons/icon-192.png'};
+  try{
+    /* through the service worker where there is one, because a page that is
+       hidden or discarded cannot raise a Notification itself */
+    if(navigator.serviceWorker && navigator.serviceWorker.ready){
+      navigator.serviceWorker.ready
+        .then(reg=>{ try{ reg.showNotification(title,opt); }
+                     catch(e){ try{ new Notification(title,opt); }catch(e2){} } })
+        .catch(()=>{ try{ new Notification(title,opt); }catch(e){} });
+    } else { new Notification(title,opt); }
+  }catch(e){}
+}
 
 let toastT;
 function toast(msg,kind){ const t=$('#toast'); t.textContent=msg; t.className=(kind||'')+' on'; clearTimeout(toastT); toastT=setTimeout(()=>t.className=t.className.replace('on','').trim(),2400); }
@@ -2874,7 +3006,10 @@ function freshDB(){
     targets:{},
     settings:{
       bands:{green:72,yellow:56,orange:42},
-      autoAdjust:true, hardStrain:14, restTimerOn:true
+      autoAdjust:true, hardStrain:14, restTimerOn:true,
+      /* sound is on because it belongs to a timer the user started; alerts
+         are off because they need a permission nobody has granted yet */
+      sound:true, notify:false
     },
     /* Optional cycle tracking. Off, with nothing in it, until the user says
        otherwise. `starts` holds period start dates only; the daily entries
@@ -3495,6 +3630,13 @@ function lastPerformance(exId, beforeDate, excludeSessionId){
     const p=sets.map(x=>parseFloat(x.rpe)).filter(v=>!isNaN(v));
     return {
       date:s.date, sessionName:s.workoutName||'', sets,
+      /* what was ASKED of you that day, so "did you finish it" is answerable.
+         Without this, progression can only see what went in, never whether
+         what went in was the whole of it. */
+      plannedSets: (+en.plannedSets)||sets.length,
+      plannedReps: en.plannedReps||'',
+      plannedRpe:  en.plannedRpe||'',
+      skipped:     !!en.skipped,
       topWeight: w.length?Math.max(...w):null,
       topReps:   r.length?Math.max(...r):null,
       bestRpe:   p.length?Math.max(...p):null,
@@ -3508,11 +3650,13 @@ function lastPerformance(exId, beforeDate, excludeSessionId){
   }
   return null;
 }
-/* "3 × 10 @ 12 kg" from a set list, collapsing identical sets */
-function setsSummary(sets){
+/* "3 × 10 @ 12 kg" from a set list, collapsing identical sets. `timed` makes
+   it "3 × 40s": a hold recorded as the number 40 must never read as 40 reps. */
+function setsSummary(sets,timed){
   if(!sets||!sets.length) return '';
   const parts=sets.map(s=>{
-    const r=s.reps||'—', w=(s.weight!==''&&s.weight!=null)?(' @ '+s.weight+' kg'):'';
+    const r=(s.reps||s.reps===0)?String(s.reps)+(timed?'s':''):'—';
+    const w=(s.weight!==''&&s.weight!=null)?(' @ '+s.weight+' kg'):'';
     return r+w;
   });
   const all=parts.every(x=>x===parts[0]);
@@ -3532,6 +3676,237 @@ function progressVs(prev, entry){
   if(pct>=2)  return {up:true,  pct:Math.round(pct), vol};
   if(pct<=-8) return {up:false, pct:Math.round(pct), vol};
   return {up:null, pct:Math.round(pct), vol};
+}
+
+
+/* =========================================================================
+   PROGRESSIVE OVERLOAD, EARNED
+   ------------------------------------------------------------------------
+   See the note above shapeBlock for what the block plan does. This half is
+   about the numbers on one exercise, and about the gate that governs every
+   upward lever in the app.
+
+   The gate exists because overload on top of a plan nobody completes is not
+   progression, it is a number going up. It is measured from what is already
+   recorded per set - planned sets against sets actually logged - and it
+   always says why it is open or shut.
+   ====================================================================== */
+const PROG_WINDOW=14;        // days of history the gate looks at
+const PROG_MIN_SESSIONS=2;   // before there is anything to measure
+const PROG_SET_PCT=0.85;     // of the prescribed sets, actually logged
+const HOLD_STEP=5;           // seconds a hold grows by when it is earned
+
+/* =========================================================================
+   IS THIS A HOLD?
+   ------------------------------------------------------------------------
+   Derived from the prescription rather than listed, so a new exercise is
+   classified without anyone maintaining a table. The block tables contain
+   both per-set holds and whole-session durations and they are not the same
+   thing: '30–45s' and '40s / side' are holds you can put a countdown on,
+   while '20 min', '20s hard / 40s easy' and '5 × 8s' are a ride, an interval
+   structure and a rep-and-hold hybrid. So: seconds only, three minutes or
+   less, and no interval structure.
+   ====================================================================== */
+const HOLD_MAX_SEC=180;
+function setSecs(reps){
+  const txt=String(reps==null?'':reps);
+  if(!txt) return null;
+  /* anything with a second unit of time, a distance, or an effort structure
+     is not one number with a countdown on it */
+  if(/min|hour|hard|easy|×|\bx\s*[0-9]|reaction|\bm\b|metre|meter|jump/i.test(txt)) return null;
+  const m=txt.match(/([0-9]+)\s*(?:[–-]\s*([0-9]+)\s*)?s(?:ec|econds?)?\b/i);
+  if(!m) return null;
+  const a=+m[1], b=m[2]?+m[2]:+m[1];
+  const lo=Math.min(a,b), hi=Math.max(a,b);
+  if(!(hi>0) || hi>HOLD_MAX_SEC) return null;
+  return {lo:lo, hi:hi, perSide:/\/\s*(side|leg|arm)|each/i.test(txt)};
+}
+/* "30–45 seconds per side", for a screen that must not say "reps" */
+function secsLabel(t){
+  if(!t) return '';
+  return (t.lo===t.hi? t.hi+' seconds' : t.lo+'–'+t.hi+' seconds')
+       + (t.perSide? ' per side' : '');
+}
+
+/* A rep prescription as numbers, or null when it is not reps at all:
+   '30–40 min', '45s' and 'per side' are all in the block tables. */
+function repRange(reps){
+  const txt=String(reps==null?'':reps);
+  if(/min|sec|hour/i.test(txt)) return null;
+  const ns=txt.match(/[0-9]+/g);
+  if(!ns||!ns.length) return null;
+  const lo=+ns[0], hi=ns.length>1?+ns[1]:+ns[0];
+  if(!(lo>0)) return null;
+  return {lo:Math.min(lo,hi), hi:Math.max(lo,hi)};
+}
+
+/* How much of what was prescribed actually got logged, over the last
+   fortnight. Sets, not sessions: turning up and doing half of it is the case
+   this has to catch. */
+function completionRate(date){
+  const to=date||todayISO(), from=addDays(to,-(PROG_WINDOW-1));
+  const ss=(DB.sessions||[]).filter(s=>s.done && s.date>=from && s.date<=to
+                                      && Array.isArray(s.entries));
+  let planned=0, logged=0, skipped=0;
+  ss.forEach(s=>s.entries.forEach(e=>{
+    const ps=(+e.plannedSets)||((e.sets||[]).length);
+    planned+=ps;
+    logged+=(e.sets||[]).filter(x=>x.done).length;
+    if(e.skipped) skipped++;
+  }));
+  return {sessions:ss.length, planned:planned, logged:logged, skipped:skipped,
+          pct: planned? logged/planned : null};
+}
+
+/* Is anything allowed to get harder? One answer, one reason, used by every
+   upward lever so they cannot disagree with each other. */
+function progressGate(date){
+  const c=completionRate(date);
+  const pc=c.pct==null?0:Math.round(c.pct*100);
+  if(c.sessions<PROG_MIN_SESSIONS)
+    return Object.assign({ok:false, line:'Nothing is being pushed up yet: there '
+      +(c.sessions===1?'is 1 finished session':'are '+c.sessions+' finished sessions')
+      +' in the last two weeks and it takes '+PROG_MIN_SESSIONS+' to measure anything.'}, c);
+  if(c.pct==null || c.pct<PROG_SET_PCT)
+    return Object.assign({ok:false, line:'Holding the numbers where they are: '
+      +pc+'% of the sets prescribed in the last two weeks went in. Overload '
+      +'resumes at '+Math.round(PROG_SET_PCT*100)+'%.'}, c);
+  return Object.assign({ok:true, line:'You logged '+pc+'% of the sets prescribed '
+    +'in the last two weeks, so the numbers are moving up.'}, c);
+}
+
+/* The eight-week cycle repeats, and the progression card has always said
+   "same structure, harder variations". This is what makes the second time
+   round harder. Capped at two extra sets, never in a deload week, and never
+   without the gate. */
+function blockBonus(ph, date){
+  if(!ph || !(ph.block>1)) return 0;
+  if(ph.vol<1) return 0;
+  if(!progressGate(date).ok) return 0;
+  return Math.min(2, ph.block-1);
+}
+
+/* An RPE prescription, capped. 'RPE 8–9' under a cap of 6 must not read
+   'RPE 6–6'. */
+function capRpe(s, cap){
+  if(!cap) return s;
+  const txt=String(s==null?'':s);
+  if(!/[0-9]/.test(txt)) return s;
+  let hit=false;
+  let out=txt.replace(/[0-9]+/g, n=>{ if(+n>cap){ hit=true; return String(cap); } return n; });
+  if(!hit) return s;
+  return out.replace(/([0-9]+)\s*[–-]\s*\1/g, '$1');
+}
+
+/* =========================================================================
+   The block plan, finally applied.
+   PHASES[].vol and PHASES[].rpeCap were displayed to the user for every one
+   of the eight weeks and read by nothing. A deload week was prescribed
+   identically to a peak week. Bounded to one set either way so the change is
+   predictable: a re-entry or deload week takes a set off each multi-set
+   movement and lowers the prescribed effort, and that is all.
+   ====================================================================== */
+function shapeBlock(b, ph){
+  if(!ph) return b;
+  const nb=Object.assign({},b);
+  if(typeof nb.sets==='number' && nb.sets>=2 && ph.vol && ph.vol!==1){
+    const want=clamp(Math.round(nb.sets*ph.vol), nb.sets-1, nb.sets+1);
+    if(want!==nb.sets && want>=1){
+      nb.progNote='Week '+ph.absWeek+' is '+ph.name+' — '
+        +(want<nb.sets? nb.sets+' sets cut to '+want : 'one set added')+'.';
+      nb.sets=want;
+    }
+  }
+  const rp=capRpe(nb.rpe, ph.rpeCap);
+  if(rp!==nb.rpe){
+    nb.progNote=(nb.progNote?nb.progNote+' ':'')
+      +'Effort capped at RPE '+ph.rpeCap+' this week.';
+    nb.rpe=rp;
+  }
+  return nb;
+}
+
+/* =========================================================================
+   What today's numbers should be, and why.
+   Double progression: reps inside the range first, then load with the reps
+   back at the bottom. Every step has to be earned twice - once by the gate,
+   once by what actually happened on this exercise last time.
+   ====================================================================== */
+function nextTarget(en, date){
+  const out={kind:'hold', reps:null, weight:null, line:null};
+  if(!en) return out;
+  const rng=repRange(en.plannedReps);
+  const live=(typeof W!=='undefined'&&W)?W.id:null;
+  const prev=lastPerformance(en.exerciseId, null, live);
+
+  if(!prev) return Object.assign(out,{kind:'new',
+    line:'First time on this one — today sets the baseline to beat.'});
+  /* a hold progresses in seconds, and nothing on its screen may say "reps" */
+  const hold=setSecs(en.plannedReps);
+  if(hold){
+    const gateH=progressGate(date);
+    const secs=prev.sets.map(s=>parseFloat(s.reps)).filter(v=>!isNaN(v));
+    const lowS=secs.length?Math.min.apply(null,secs):null;
+    const needH=prev.plannedSets||prev.sets.length;
+    if(!gateH.ok)  return Object.assign(out,{kind:'hold', line:gateH.line, gate:gateH});
+    if(prev.skipped) return Object.assign(out,{kind:'hold',
+      line:'You skipped this last time, so the target is unchanged.'});
+    if(prev.sets.length<needH) return Object.assign(out,{kind:'hold',
+      line:'Last time '+prev.sets.length+' of '+needH+' sets went in, so the target is the same again.'});
+    if(lowS==null) return out;
+    if(lowS<hold.hi) return Object.assign(out,{kind:'secs',
+      reps:String(Math.min(hold.hi, lowS+HOLD_STEP)),
+      line:'Target '+Math.min(hold.hi,lowS+HOLD_STEP)+' seconds — '+HOLD_STEP
+        +' more than every set held last time.'});
+    return Object.assign(out,{kind:'secs', reps:String(lowS+HOLD_STEP),
+      line:'Target '+(lowS+HOLD_STEP)+' seconds — you held '+lowS
+        +' on every set last time, so the hold gets longer.'});
+  }
+  if(!rng) return Object.assign(out,{kind:'na',
+    line:'Held at the prescribed effort — this one is not counted in reps.'});
+
+  const gate=progressGate(date);
+  const sets=prev.sets;                                   // logged sets only
+  const reps=sets.map(s=>parseFloat(s.reps)).filter(v=>!isNaN(v));
+  const wts =sets.map(s=>parseFloat(s.weight)).filter(v=>!isNaN(v));
+  const lowReps=reps.length?Math.min.apply(null,reps):null;
+  const topW   =wts.length?Math.max.apply(null,wts):null;
+  const need   =prev.plannedSets||sets.length;
+  const pRpeM  =String(prev.plannedRpe||en.plannedRpe||'').match(/([0-9]+)/);
+  const pRpe   =pRpeM?+pRpeM[1]:null;
+
+  if(!gate.ok)            return Object.assign(out,{kind:'hold', line:gate.line, gate:gate});
+  if(prev.skipped)        return Object.assign(out,{kind:'hold',
+    line:'You skipped this last time, so the target is unchanged.'});
+  if(sets.length<need)    return Object.assign(out,{kind:'hold',
+    line:'Last time '+sets.length+' of '+need+' sets went in, so the target is the same again.'});
+  if(lowReps==null)       return out;
+
+  /* short of the top of the range: one more rep, on every set */
+  if(lowReps<rng.hi){
+    const want=Math.min(rng.hi, lowReps+1);
+    return Object.assign(out,{kind:'reps', reps:String(want),
+      weight: topW!=null?String(topW):null,
+      line:'Target '+want+' reps — one more than every set managed last time.'});
+  }
+  /* at the top of the range, but it cost more than it was supposed to */
+  if(pRpe!=null && prev.bestRpe!=null && prev.bestRpe>pRpe){
+    return Object.assign(out,{kind:'hold',
+      line:'You reached '+rng.hi+' last time but at RPE '+prev.bestRpe
+        +'. Same numbers again until it comes in at '+pRpe+'.'});
+  }
+  /* earned: add load, reps back to the bottom of the range */
+  if(topW!=null && topW>0){
+    const step=stepSize('weight', topW);
+    const nw=Math.round((topW+step)*100)/100;
+    return Object.assign(out,{kind:'load', weight:String(nw), reps:String(rng.lo),
+      line:'+'+step+' kg on last time — you hit '+rng.hi+' on every set'
+        +(prev.bestRpe!=null?' at RPE '+prev.bestRpe:'')+'.'});
+  }
+  /* nothing to load, so the reps keep going past the range */
+  return Object.assign(out,{kind:'reps', reps:String(lowReps+1),
+    line:'No load to add on this one, so the target is '+(lowReps+1)
+      +' reps — one past last time.'});
 }
 
 /* the tier implied by what is ticked — used only for labelling */
@@ -4227,6 +4602,31 @@ function avoidList(date){
   const d=date||todayISO();
   return ((DB.profile&&DB.profile.avoid)||[]).filter(a=>a&&a.until>=d);
 }
+/* Can this exercise carry a number of kilograms? Derived from what it needs,
+   so a new exercise is classified without anyone maintaining a list. A band
+   has no kg value and bodyweight has no kg value; a dumbbell, kettlebell,
+   barbell, cable stack or medicine ball does. */
+/* The first sentence of how to do it. A name is not an instruction, and
+   somebody who has never done a tempo goblet squat should not have to open a
+   sheet to find out what one is. The full text, the progression rule and the
+   alternatives stay one tap away under More: the point is to answer "what am
+   I doing" without turning the set screen back into a reference manual. */
+function briefHow(ex){
+  if(!ex) return '';
+  const src=String(ex.how||'').trim();
+  if(!src) return String(ex.cue||'').trim();
+  const m=src.match(/^[^.!?]+[.!?]/);
+  let s=(m? m[0] : src).trim();
+  if(s.length>140) s=s.slice(0,137).replace(/\s+\S*$/,'')+'…';
+  return s;
+}
+
+const LOADABLE_NEEDS={db:1, kb:1, bb:1, cable:1, ball:1};
+function exLoadable(ex){
+  if(!ex) return false;
+  return (deriveNeeds(ex)||[]).some(n=>LOADABLE_NEEDS[n]);
+}
+
 const isAvoided = (exId,date)=> avoidList(date).some(a=>a.exId===exId);
 function avoidExercise(exId, why){
   DB.profile.avoid=(DB.profile.avoid||[]).filter(a=>a.exId!==exId);
@@ -5522,6 +5922,13 @@ function recommend(date, ci, rd){
    no-gym user gets the bodyweight one. */
 function sessionBlocks(rec){
   const out=[];
+  /* The block plan, applied. This function never called currentPhase(), so
+     PHASES[].vol and PHASES[].rpeCap - both of them shown to the user in
+     progressionCard() - changed nothing at all. */
+  const ph=currentPhase();
+  const date=(rec&&rec.date)||todayISO();
+  const bonus=blockBonus(ph,date);
+  let given=0;
   const push=b=>{
     const orig=exOf(b.ex);
     const res=resolveExercise(b.ex);
@@ -5535,7 +5942,15 @@ function sessionBlocks(rec){
           ? `Swapped from ${orig.name} — needs equipment you do not have.`
           : `Using ${res.name} instead of ${orig.name} — better option with your equipment.`);
     }
-    out.push(nb);
+    const sh=shapeBlock(nb, ph);
+    /* the extra set for a later block goes on the first movements, which are
+       the ones the session is actually about */
+    if(given<bonus && typeof sh.sets==='number' && sh.sets>=2){
+      sh.sets+=1; given++;
+      sh.progNote=(sh.progNote?sh.progNote+' ':'')
+        +'One extra set — block '+ph.block+' of this cycle.';
+    }
+    out.push(sh);
   };
   const wk=DB.workouts.find(w=>w.id===rec.workoutId);
   if(wk){ (wk.blocks[rec.variant]&&wk.blocks[rec.variant].length?wk.blocks[rec.variant]:wk.blocks.full).forEach(push); }
@@ -6563,6 +6978,18 @@ function setAway(until, reason){
 function noticeRow(date){
   const d=date||todayISO();
 
+  /* 0 · a session still running from earlier today. Nothing outranks this:
+     everything else on the screen is about deciding what to train, and that
+     decision has already been made. */
+  const pw=pausedWorkout();
+  if(pw){
+    const k=sum(pw.entries.map(e=>e.sets.filter(s=>s.done).length));
+    return {id:'paused', icon:'play',
+      t:pw.pausedAt?'Workout paused':'Workout still open',
+      s:pw.workoutName+' · '+(k? k+' set'+(k===1?'':'s')+' logged' : 'nothing logged yet'),
+      go:()=>resumeWorkout()};
+  }
+
   /* 1 · away: the most important thing to say, because it explains why the
      rest of the screen looks paused */
   if(isAway(d)){
@@ -7429,7 +7856,24 @@ function progressionCard(){
         <div class="rt"><div class="rn" style="font-size:14px">${esc(p.name)}</div><div class="rs">${esc(p.goal)}</div></div>
         <div class="rv" style="font-size:11.5px;text-align:right">${Math.round(p.vol*100)}%<br><span style="color:var(--text-3);font-weight:600">RPE ${p.rpeCap}</span></div></div>`;}).join('')}
     ${ph.pausedWeeks>0?`<div class="note warn">You are in <b>week ${ph.absWeek}</b>, not week ${ph.elapsedWeek}: ${ph.pausedWeeks} week${ph.pausedWeeks>1?'s':''} passed with nothing logged, and the plan waited rather than moving on without you.</div>`:''}
-    <div class="note acc">After week 8 the cycle repeats as <b>block ${ph.block+1}</b> — same structure, harder variations.</div>
+    ${(()=>{
+      /* The percentages above are a promise, and until now nothing kept it.
+         This says whether the OTHER half of progression - the numbers on each
+         exercise - is currently moving, and why. */
+      const g=progressGate();
+      const bb=blockBonus(ph, todayISO());
+      return `<div class="sec-t">Getting harder</div>
+        <div class="note ${g.ok?'acc':'warn'}">${esc(g.line)}</div>
+        <div class="kv"><span class="k">This week's volume</span>
+          <span class="v">${Math.round(ph.vol*100)}% of the plan</span></div>
+        <div class="kv"><span class="k">Effort ceiling</span>
+          <span class="v">RPE ${ph.rpeCap}</span></div>
+        <div class="kv"><span class="k">Extra sets for block ${ph.block}</span>
+          <span class="v">${bb? '+'+bb+' set'+(bb===1?'':'s') : 'none'}</span></div>`;
+    })()}
+    <div class="note acc">After week 8 the cycle repeats as <b>block ${ph.block+1}</b> —
+      same structure, with an extra set on the first movement of each strength
+      session once you are completing the sets you are given.</div>
     </div>
   </div>`;
 }
@@ -9509,6 +9953,17 @@ function settingsBody(v){
      <div style="margin-top:12px"><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
        <input type="checkbox" id="sRest" ${S.restTimerOn?'checked':''} style="width:22px;height:22px;accent-color:var(--accent)">
        Rest timer in workout mode</label></div>
+     <div style="margin-top:12px"><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
+       <input type="checkbox" id="sSound" ${S.sound!==false?'checked':''} style="width:22px;height:22px;accent-color:var(--accent)">
+       Sound for timers and logged sets</label>
+       <div class="hint">Short tones the app makes itself. Nothing is downloaded and it works offline.</div></div>
+     <div style="margin-top:12px"><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
+       <input type="checkbox" id="sNotify" ${S.notify?'checked':''} ${notifyState()==='unsupported'?'disabled':''} style="width:22px;height:22px;accent-color:var(--accent)">
+       Alert me when a rest timer finishes</label>
+       <div class="hint" id="sNotifyH">${
+         notifyState()==='unsupported' ? 'This browser cannot show alerts.'
+         : notifyState()==='denied' ? 'Your browser has blocked alerts for this app. Turn them back on in its site settings.'
+         : 'Lets you put the phone down mid-session. This is a local alert raised by your own device for a timer your own device is running — not a push notification. There is no server, no subscription and nothing about you leaves the phone.'}</div></div>
    </div>
 
    <div class="card spane about" style="${Store.durable?'':'border-color:var(--red-line)'}">
@@ -9756,17 +10211,48 @@ function settingsBody(v){
     const hs=num('sHs'); if(hs!=null) S.hardStrain=hs;
     S.autoAdjust=ck('sAuto',true);
     S.restTimerOn=ck('sRest',true);
+    S.sound=ck('sSound',true);
+    /* never left true without the permission that makes it mean anything */
+    S.notify=ck('sNotify',false) && notifyState()==='granted';
     if(reDerive) applyGoalTargets(); else pruneTargets();
     save();
   };
   $$('#view input, #view textarea, #view select').forEach(i=>{
     i.addEventListener('change',persist); i.addEventListener('input',persist); });
   /* the two behaviour switches confirm they took effect */
-  ['sAuto','sRest'].forEach(id=>{ const e=$('#'+id); if(!e)return;
+  /* the alert switch has to go and ask for something, so it cannot be a
+     plain persist target: permission is requested from this tap and the
+     checkbox is put back if the browser says no */
+  (function(){
+    const e=$('#sNotify'); if(!e) return;
+    e.addEventListener('change',()=>{
+      const h=$('#sNotifyH');
+      if(!e.checked){ DB.settings.notify=false; save(); toast('Alerts off','ok'); return; }
+      if(notifyState()==='granted'){
+        DB.settings.notify=true; save(); toast('Alerts on','ok');
+        notify('Alerts are on','Baseline will tell you when a rest timer finishes.');
+        return;
+      }
+      notifyAsk(p=>{
+        if(p==='granted'){
+          DB.settings.notify=true; save(); toast('Alerts on','ok');
+          notify('Alerts are on','Baseline will tell you when a rest timer finishes.');
+        } else {
+          e.checked=false; DB.settings.notify=false; save();
+          if(h) h.textContent='Your browser blocked alerts for this app. Turn them back on in its site settings, then try again.';
+          toast('Your browser blocked alerts','err');
+        }
+      });
+    });
+  })();
+  ['sAuto','sRest','sSound'].forEach(id=>{ const e=$('#'+id); if(!e)return;
     e.addEventListener('change',()=>{
       const on=e.checked;
+      if(id==='sSound'&&on) SOUND.set();      // hear what you just turned on
       toast(id==='sAuto'
         ? (on?'Readiness will adjust your session volume':'Sessions will always come at full volume')
+        : id==='sSound'
+        ? (on?'Sound on':'Sound off')
         : (on?'Rest timer on':'Rest timer off'),'ok');
     });
   });
@@ -9804,7 +10290,8 @@ let restTimer=null, restLeft=0;
 
 function startWorkout(wid,variant,date,rec){
   const wk=DB.workouts.find(x=>x.id===wid); if(!wk){toast('Workout not found','err');return;}
-  const blocks = sessionBlocks(Object.assign({addCore:false},rec||{},{workoutId:wid,variant}));
+  const blocks = sessionBlocks(Object.assign({addCore:false},rec||{},
+    {workoutId:wid, variant:variant, date:date||todayISO()}));
   if(!blocks.length){ toast('This version has no exercises','err'); return; }
   const rd=DB.checkins[date]?readiness(date,DB.checkins[date]):null;
   W={
@@ -9821,6 +10308,10 @@ function startWorkout(wid,variant,date,rec){
       return { exerciseId:b.ex, name:e.name, plannedSets:n,
         plannedReps:b.reps||e.reps, plannedRpe:b.rpe||e.rpe, plannedRest:b.rest||e.rest,
         tempo:b.tempo||e.tempo||'', note:'', blockNote:b.note||'', cue:e.cue||'', subs:e.subs||'',
+        progNote:b.progNote||'',
+        /* a hold is timed, not counted: derived here once so nothing
+           downstream has to parse the prescription again */
+        timed:setSecs(b.reps||e.reps),
         skipped:false,
         sets:Array.from({length:n},()=>({reps:'',weight:'',rpe:'',done:false})) };})
   };
@@ -9828,6 +10319,9 @@ function startWorkout(wid,variant,date,rec){
      drawn. Shown muted until confirmed, so nothing is recorded that the user
      has not ticked - but the common case, repeating last week, is one tap. */
   W.entries.forEach(primeSets);
+  /* a gesture the browser will accept: without this the first rest tone of
+     the session is silently dropped */
+  audioCtx();
   $('#wmode').classList.add('on');
   document.body.style.overflow='hidden';
   drawWM();
@@ -9841,21 +10335,130 @@ function startWorkout(wid,variant,date,rec){
 function primeSets(en){
   const prev=lastPerformance(en.exerciseId, null, W?W.id:null);
   const planReps=String(en.plannedReps||'').replace(/[^0-9]/g,' ').trim().split(/\s+/)[0]||'';
+  /* What today's numbers SHOULD be, and the sentence that says why. Held on
+     the entry so the set card can show the reason next to the number: a
+     figure that moved without explanation is worse than one that did not. */
+  const tg=nextTarget(en, W?W.date:todayISO());
+  en.target=tg;
   en.sets.forEach((s,n)=>{
     if(s.done) return;                      // a resumed session keeps its log
     if(s.reps==='' || s.weight===''){
       const src = prev ? (prev.sets[Math.min(n, prev.sets.length-1)]||null) : null;
-      if(s.reps==='')   s.reps   = (src&&src.reps!=null&&src.reps!=='') ? String(src.reps) : planReps;
-      if(s.weight==='') s.weight = (src&&src.weight!=null&&src.weight!=='') ? String(src.weight) : '';
+      const lastReps=(src&&src.reps!=null&&src.reps!=='') ? String(src.reps) : planReps;
+      const lastW   =(src&&src.weight!=null&&src.weight!=='') ? String(src.weight) : '';
+      if(s.reps==='')   s.reps   = (tg&&tg.reps!=null)   ? tg.reps   : lastReps;
+      if(s.weight==='') s.weight = (tg&&tg.weight!=null) ? tg.weight : lastW;
     }
   });
 }
 function exitWM(discard){
-  const fin=()=>{ $('#wmode').classList.remove('on'); document.body.style.overflow=''; stopRest(); W=null; render(); };
-  const anyDone = W && W.entries.some(e=>e.sets.some(s=>s.done));
-  if(discard||!anyDone) return fin();
-  confirmSheet('Leave workout?','You have logged sets. Finish the session to save it, or discard and lose this log.','Discard',()=>{ fin(); },true);
+  const fin=()=>{ cancelAuto(); stopRest(); clearHold();
+                  $('#wmode').classList.remove('on'); document.body.style.overflow='';
+                  W=null; render(); };
+  if(discard){ try{ Store.pref('live',null); }catch(e){} return fin(); }
+
+  /* Always ask. This used to leave silently whenever nothing had been logged
+     yet, which is exactly when a mis-tap on a 44px button is most likely, and
+     it never offered the third answer people actually want: pause. */
+  const logged=W? sum(W.entries.map(e=>e.sets.filter(s=>s.done).length)) : 0;
+  openSheet('Leave this workout?',
+    `<p class="lede">${logged
+      ? logged+' set'+(logged===1?'':'s')+' logged so far. Pausing keeps all of it and offers the session back on Today.'
+      : 'Nothing is logged yet. Pausing keeps your place so you can pick it up later today.'}</p>`,
+    `<button class="btn primary big block" id="wmPause">Pause — finish it later</button>
+     <button class="btn ghost block" id="wmKeep">Cancel — keep training</button>
+     <button class="btn danger block" id="wmDrop">Discard this workout</button>`);
+  $('#wmKeep').onclick=()=>closeSheet();
+  $('#wmPause').onclick=()=>{
+    if(W){ W.pausedAt=Date.now(); W.endedAt=Date.now(); saveLive(); }
+    closeSheet(); toast('Paused — pick it up from Today','ok');
+    setTimeout(fin,240);
+  };
+  $('#wmDrop').onclick=()=>{
+    closeSheet();
+    setTimeout(()=>confirmSheet('Discard this workout?',
+      logged? 'Everything you logged in this session is lost. This cannot be undone.'
+            : 'Nothing was logged, so nothing is lost.',
+      'Discard',()=>{ try{ Store.pref('live',null); }catch(e){} fin(); },true),260);
+  };
 }
+
+/* A session left running earlier today, if there is one to offer back.
+   Kept deliberately loose about `pausedAt`: a session interrupted by a phone
+   call or a browser tab being evicted deserves the same offer as one somebody
+   paused on purpose. */
+function pausedWorkout(){
+  try{
+    const lv=Store.pref('live');
+    if(!lv) return null;
+    const live=JSON.parse(lv);
+    if(!live || live.done || !live.entries) return null;
+    if(live.date!==todayISO()) return null;
+    return live;
+  }catch(e){ return null; }
+}
+function resumeWorkout(){
+  const live=pausedWorkout(); if(!live) return;
+  W=live;
+  /* the clock should count the time you trained, not the time the phone
+     spent in your pocket */
+  W.startedAt=Date.now()-((live.endedAt||Date.now())-live.startedAt);
+  delete W.pausedAt;
+  $('#wmode').classList.add('on'); document.body.style.overflow='hidden';
+  drawWM();
+}
+
+/* ---- finishing an exercise moves you on by itself ----
+   Ticking the last set used to leave you on a screen with nothing left to do
+   and a button that said "Skip to next". */
+let WMNEXT=null;
+function cancelAuto(){ if(WMNEXT){ clearTimeout(WMNEXT); WMNEXT=null; } }
+function autoPending(){ return WMNEXT!==null; }
+function armAuto(i){
+  cancelAuto();
+  WMNEXT=setTimeout(()=>{
+    WMNEXT=null;
+    if(!W || W.step!==i) return;
+    const en=W.entries[i];
+    if(!en || !en.sets.length || !en.sets.every(s=>s.done)) return;
+    nextStep();
+  },1600);
+}
+
+/* ---- the plan, in words ----
+   "RPE 7 · rest 60s · tempo 2-0-2-1" is the plan written for a coach. The
+   exact figures are still there, one tap away under More. */
+function effortWords(rpe, timed){
+  const m=String(rpe==null?'':rpe).match(/(\d+)/);
+  if(!m) return '';
+  const v=+m[1];
+  /* A hold has no reps to have left in reserve, and "reps in reserve" is the
+     very notation this line exists to replace. Same scale, the only unit a
+     hold has: how much longer you could have held it. */
+  if(timed){
+    if(v<=5) return 'comfortable — you could hold it a good deal longer';
+    if(v===6) return 'working, with a fair bit left';
+    if(v===7) return 'hard — a few seconds more in you';
+    if(v===8) return 'hard — a couple of seconds from shaking';
+    if(v===9) return 'very hard — right on the edge';
+    return 'held until it gives out';
+  }
+  if(v<=5) return 'comfortable — several reps left over';
+  if(v===6) return 'working, with a few reps left over';
+  if(v===7) return 'hard, with about 3 reps left in you';
+  if(v===8) return 'hard, with about 2 reps left in you';
+  if(v===9) return 'very hard — one rep left in you';
+  return 'as hard as you can go';
+}
+function restWords(rest){
+  const sec=parseRest(rest);
+  if(!sec) return '';
+  if(sec<=45)  return 'short rests, about '+sec+' seconds';
+  if(sec<=75)  return 'about a minute between sets';
+  if(sec<=105) return 'about a minute and a half between sets';
+  return 'about '+Math.round(sec/60)+' minutes between sets';
+}
+
 /* "REDUCED" told a first-time user nothing. */
 const VARIANT_NAME={full:'Full session', reduced:'Reduced volume', recovery:'Recovery session'};
 
@@ -9890,14 +10493,16 @@ function drawWM(){
 function drawWarmup(){
   const wk=DB.workouts.find(x=>x.id===W.workoutId);
   const wu=warmupFor(wk);
+  const first=W.entries[0];
   $('#wmBody').innerHTML=`
     <div class="wm-ex">Warm-up</div>
     <div class="wm-sub">${esc(wu.name)} · about ${wu.dur} minutes</div>
+    <div class="wm-plain">Then ${W.entries.length} exercise${W.entries.length===1?'':'s'}, starting with ${esc(first?first.name:'training')}.</div>
     ${wk.desc?`<div class="note acc">${esc(wk.desc)}</div>`:''}
     ${wu.items.some(it=>warmupHow(it.n))
       ? '<div class="hint" style="margin:14px 2px 2px">Tap any movement to see how to do it.</div>'
       : ''}
-    <div style="margin-top:18px">
+    <div class="setlist">
       ${wu.items.map((it,n)=>{
         const how=warmupHow(it.n);
         return `<div class="setrow wu${how?' has-how':''}" style="align-items:flex-start"
@@ -9912,11 +10517,11 @@ function drawWarmup(){
           ${how?`<i class="wu-x">${svg('down')}</i>`:''}
         </div>`;}).join('')}
     </div>
-    <div class="note">Do not skip this. It makes the first working set as good as the last.</div>
-    <div style="margin-top:18px"><div class="card-t" style="margin-bottom:10px">Then, today's ${W.entries.length} exercises</div>
-      ${W.entries.map((e,n)=>`<div class="kv"><span class="k">${n+1}. ${esc(e.name)}</span>
-        <span class="v">${e.plannedSets} × ${esc(e.plannedReps)}</span></div>`).join('')}</div>`;
-  $('#wmFoot').innerHTML=`<button class="btn primary big block" id="wmGo">Warm-up done — start training</button>`;
+    <div class="note">Do not skip this. It makes the first working set as good as the last.</div>`;
+  /* the same footer as every exercise that follows, so this reads as step 0
+     of one flow rather than a separate screen with its own vocabulary */
+  $('#wmFoot').innerHTML=
+    `<button class="btn primary big block" id="wmGo">Start 1 · ${esc(first?first.name:'training')}</button>`;
   /* Collapsed by default: somebody who knows what a leg swing is should not
      have to scroll past 53 paragraphs to start training. */
   $$('#wmBody [data-wu]').forEach(r=>{
@@ -9933,67 +10538,120 @@ function drawWarmup(){
   });
   $('#wmGo').onclick=()=>{ W.step=0; drawWM(); window.scrollTo(0,0); $('#wmBody').scrollTop=0; };
 }
+
 function drawExercise(en,i,total){
   const e=exOf(en.exerciseId);
+  /* a kg field only where kilograms mean something - plus the escape hatch
+     for anyone who hangs a plate off a weighted pull-up */
+  const showKg = exLoadable(e) || !!en.wantWeight;
+  const nSets  = en.sets.length;
+  const cur    = en.sets.findIndex(s=>!s.done);   // the one set that matters
+  const allDone= cur<0;
+  const planReps=String(en.plannedReps||'').replace(/[^0-9]/g,' ').trim().split(/\s+/)[0]||'';
+  const prev   = lastPerformance(en.exerciseId, null, W.id);
+  const prevW  = n=>{ if(!prev) return '';
+                      const m=prev.sets[Math.min(n,prev.sets.length-1)];
+                      return (m&&m.weight!==''&&m.weight!=null)?String(m.weight):''; };
+  /* What comes after the thing you are doing right now, named. "Skip to next"
+     told you there was a next; it never told you what, so there was no way to
+     know whether you were two sets from the end of the exercise or two sets
+     from the end of the session. */
+  const nextLabel=(()=>{
+    if(cur>=0 && cur<nSets-1) return 'Next: set '+(cur+2)+' of '+nSets;
+    if(i<total-1){ const nx=W.entries[i+1];
+      return 'Next: '+nx.name+' · set 1 of '+nx.sets.length; }
+    return 'Next: finish the workout';
+  })();
+  /* a hold logged as the number 40 must never read back as "40 reps" */
+  const tm=en.timed;
+  const label  = (s,n)=>{ const r=s.reps||planReps||'—';
+                          const w=(showKg&&s.weight!==''&&s.weight!=null)?s.weight:'';
+                          const unit=tm? r+'s' : r+' reps';
+                          return w!==''? (tm? r+'s×'+w+'kg' : r+'×'+w+'kg') : unit; };
+
+  /* what you did last time - the number you are trying to beat, small enough
+     to sit inside the card instead of pushing the controls off the screen */
+  const lastHTML=(()=>{
+    if(!prev) return `<div class="lastrow none">First time doing this — today's numbers become the target to beat.</div>`;
+    const ago=daysBetween(prev.date, W.date);
+    const p=progressVs(prev, en);
+    return `<div class="lastrow${p&&p.up===true?' up':p&&p.up===false?' down':''}">
+      <div class="ll">Last time <i>${ago<=0?'today':ago===1?'yesterday':ago+' days ago'}</i></div>
+      <div class="lv">${esc(setsSummary(prev.sets, !!tm))}${prev.bestRpe?` · RPE ${prev.bestRpe}`:''}</div>
+      ${p&&p.up===true?`<div class="lp up">${svg('up')} ${p.pct}% more volume so far</div>`:''}
+      ${p&&p.up===false?`<div class="lp down">${svg('down2')} ${Math.abs(p.pct)}% below last time — fine on a low-readiness day</div>`:''}
+    </div>`;})();
+
+  /* rest belongs to the set that started it, so it is drawn inside the card */
+  const restHTML = (restActive() && REST.ex===i) ? `<div class="wrest">
+      <span class="wrt num" id="restT">${mmss(restRemaining())}</span>
+      <span class="wrl" id="restL">Rest after set ${REST.set+1}${allDone?'':` · then set ${cur+1} of ${nSets}`}</span>
+      <button class="btn sm" id="restAdd">+30s</button>
+      <button class="btn sm primary" id="restSkip">Skip rest</button>
+    </div>` : '';
+
+  /* the sets already logged: one strip, tap a chip to take it back */
+  const doneHTML = en.sets.some(s=>s.done) ? `<div class="wdone">
+      <span class="wd-l">Logged</span>
+      ${en.sets.map((s,n)=>!s.done?'':`<button data-undo="${n}"
+         aria-label="Undo set ${n+1}"><i>${n+1}</i> ${esc(label(s,n))}</button>`).join('')}
+      <span class="wd-h">tap to undo</span>
+    </div>` : '';
+
+  const primed = !allDone && !en.sets.some(s=>s.done)
+              && (en.sets[cur].reps!=='' || en.sets[cur].weight!=='');
+
+  const cardHTML = allDone
+    ? `<div class="wnow fin" id="wmDoneN">
+         <div class="wnow-t">${esc(en.name)} done<span>${nSets} set${nSets===1?'':'s'} logged</span></div>
+         <p id="wmNextP">${esc(nextLabel.replace(/^Next: /,'Moving on to '))}…</p>
+         <button class="btn ghost block" id="wmStay">Stay on this exercise</button>
+       </div>`
+    : `<div class="wnow">
+         <div class="wnow-t">Set ${cur+1} of ${nSets}<span>${esc(nextLabel)}</span></div>
+         ${restHTML}
+         ${lastHTML}
+         ${tm?(()=>{
+           /* a countdown, not a rep count. It logs the set itself when it
+              finishes, so holding one is genuinely one tap. */
+           const on = holdActive() && HOLD.ex===i && HOLD.set===cur;
+           const want = +en.sets[cur].reps || tm.hi;
+           return `<div class="hold${on?' run':''}">
+             <div class="hl">${on? 'Holding' : 'Hold for '+want+' seconds'
+               +(tm.perSide?' per side':'')}</div>
+             <div class="ht num" id="holdT">${mmss(on?holdRemaining():want)}</div>
+             <button class="btn ${on?'ghost':'primary'}" id="holdBtn" data-secs="${want}">${
+               on? svg('x')+' Stop' : svg('play')+' Start the hold'}</button>
+           </div>`;})():''}
+         <div class="wnow-f">
+           <div class="sfield"><div class="sl">${tm?'Seconds':'Reps'}</div>${
+             stepper(cur,'reps',en.sets[cur].reps,tm?String(tm.hi):planReps,
+                     tm?5:null, tm?'Seconds held':'Reps')}</div>
+           ${showKg?`<div class="sfield"><div class="sl">kg</div>${stepper(cur,'weight',en.sets[cur].weight,prevW(cur))}</div>`:''}
+         </div>
+         ${primed?`<div class="hint">${
+            (en.target&&en.target.line) ? esc(en.target.line)
+            : prev ? 'Filled in from last time — change it first if today was different.'
+            : 'Filled in from the plan — change it first if you did something else.'}</div>`:''}
+         <button class="btn ${tm?'ghost':'primary'} big block wlog" data-log="${cur}">${svg('check')} Log set ${cur+1}${
+           tm&&en.sets[cur].reps? ' · '+esc(en.sets[cur].reps)+'s' : ''}</button>
+       </div>`;
+
   $('#wmBody').innerHTML=`
     <div class="wm-ex">${esc(en.name)}</div>
-    <div class="wm-sub">${en.plannedSets} sets × ${esc(en.plannedReps)} · ${esc(en.plannedRpe||'')} · rest ${esc(en.plannedRest||'—')}${en.tempo?' · tempo '+esc(en.tempo):''}</div>
-    ${(()=>{ /* what you did last time — the thing you are trying to beat */
-      const prev=lastPerformance(en.exerciseId, null, W.id);
-      if(!prev) return `<div class="lastrow none">First time doing this — today's numbers become the target to beat.</div>`;
-      const ago=daysBetween(prev.date, W.date);
-      const p=progressVs(prev, en);
-      return `<div class="lastrow${p&&p.up===true?' up':p&&p.up===false?' down':''}">
-        <div class="ll">Last time <i>${ago<=0?'today':ago===1?'yesterday':ago+' days ago'}</i></div>
-        <div class="lv">${esc(setsSummary(prev.sets))}${prev.bestRpe?` · RPE ${prev.bestRpe}`:''}</div>
-        ${p&&p.up===true?`<div class="lp up">${svg('up')} ${p.pct}% more volume so far</div>`:''}
-        ${p&&p.up===false?`<div class="lp down">${svg('down2')} ${Math.abs(p.pct)}% below last time — fine on a low-readiness day</div>`:''}
-      </div>`;})()}
+    <div class="wm-sub">${nSets} set${nSets===1?'':'s'} of ${
+       tm? esc(secsLabel(tm)) : esc(en.plannedReps)+' reps'}</div>
+    ${(()=>{ const bits=[effortWords(en.plannedRpe, !!tm), restWords(en.plannedRest)].filter(Boolean);
+       return bits.length?`<div class="wm-plain">${esc(bits.join(' · '))}</div>`:''; })()}
+    ${(()=>{ const h=briefHow(e);
+       return h?`<button class="wm-how" id="wmHowLine">${esc(h)} <i>More</i></button>`:''; })()}
     ${en.blockNote?`<div class="note warn">${esc(en.blockNote)}</div>`:''}
-    ${(()=>{
-      /* Say where the numbers came from. A pre-filled value the user cannot
-         account for is worse than an empty one; a pre-filled value they can
-         see the provenance of is what makes one-tap logging honest. */
-      const anyDone=en.sets.some(s=>s.done);
-      const primed=en.sets.some(s=>s.weight!=='||s.reps!==');
-      if(anyDone||!primed) return '';
-      const pv=lastPerformance(en.exerciseId,null,W.id);
-      return `<div class="hint" style="margin:10px 2px 0">${pv
-        ? 'Filled in from last time — tap a set to confirm, or change it first.'
-        : 'Filled in from the plan — tap a set to confirm, or change it first.'}</div>`;
-    })()}
     <div class="setlist">
-      <div class="setrow" style="background:none;border:0;padding:0 12px 4px;margin-bottom:2px">
-        <div class="sn" style="background:none"></div>
-        <div class="si"><div class="sfield"><div class="sl">Reps</div></div>
-          <div class="sfield"><div class="sl">kg</div></div></div>
-        <div style="flex:0 0 44px"></div>
-      </div>
-      ${en.sets.map((s,n)=>`
-        <div class="setrow ${s.done?'done':''} ${!s.done&&en.sets.slice(0,n).every(x=>x.done)?'cur':''}"
-             data-row="${n}" role="button" tabindex="0"
-             aria-label="Set ${n+1}${s.done?', done':', tap to complete'}">
-          <div class="sn">${n+1}</div>
-          <div class="si">
-            <div class="sfield">${stepper(n,'reps',s.reps,
-              String(en.plannedReps).replace(/[^0-9]/g,' ').trim().split(/\s+/)[0]||'')}</div>
-            <div class="sfield">${stepper(n,'weight',s.weight,(()=>{
-              /* last time's weight as the placeholder: a starting point you
-                 can accept or beat, never a value silently recorded */
-              const pv=lastPerformance(en.exerciseId,null,W.id);
-              if(!pv) return '';
-              const m=pv.sets[Math.min(n,pv.sets.length-1)];
-              return (m&&m.weight!==''&&m.weight!=null)?String(m.weight):'';})())}</div>
-          </div>
-          <button class="tick ${s.done?'on':''}" data-t="${n}"
-                  aria-label="${s.done?'Undo set':'Complete set'} ${n+1}">${svg('check')}</button>
-        </div>`).join('')}
+      ${cardHTML}
+      ${doneHTML}
     </div>
-    ${en.sets.every(s=>s.done)?'':`
-    <button class="btn ghost block" id="wmAll">${svg('check')} Log the rest as shown</button>`}
     <div class="btn-row">
-      <button class="btn sm ghost" id="wmAddSet">${svg('plus')} Set</button>
-      <button class="btn sm ghost" id="wmUndo">${svg('undo')} Undo</button>
+      <button class="btn sm ghost" id="wmAddSet">${svg('plus')} Add a set</button>
       <button class="btn sm ghost" id="wmMore">More</button>
     </div>
     ${en.sets.some(s=>s.done)?`
@@ -10005,10 +10663,11 @@ function drawExercise(en,i,total){
     </div>`:''}
     ${en.note?`<div class="note"><b>Your note:</b> ${esc(en.note)}</div>`:''}`;
 
-  const allDone=en.sets.every(s=>s.done);
+  /* "Skip to next" was on screen even when every set was logged. */
   $('#wmFoot').innerHTML=`<div class="btn-row">
       ${i>0?`<button class="btn ghost" id="wmPrev">Back</button>`:''}
-      <button class="btn ${allDone?'primary':'ghost'}" id="wmNext" style="flex:2">${i<total-1?(allDone?'Next exercise':'Skip to next'):'Finish workout'}</button>
+      <button class="btn ${allDone?'primary':'ghost'}" id="wmNext" style="flex:2">${
+        i<total-1?'Next exercise':'Finish workout'}</button>
     </div>`;
 
   /* one place that writes a set value, whether it came from a stepper button
@@ -10032,10 +10691,11 @@ function drawExercise(en,i,total){
     const sn=+inp.dataset.s;
     if(sn>=0 && en.sets[sn]) en.sets[sn].touched=true;
     const k=inp.dataset.k, dir=+b.dataset.d;
-    const cur = inp.value!=='' ? parseFloat(inp.value)
-              : (inp.placeholder!=='' ? parseFloat(inp.placeholder) : NaN);
-    const base = isNaN(cur) ? 0 : cur;
-    const step = stepSize(k, base);
+    const cv = inp.value!=='' ? parseFloat(inp.value)
+             : (inp.placeholder!=='' ? parseFloat(inp.placeholder) : NaN);
+    const base = isNaN(cv) ? 0 : cv;
+    /* an explicit increment wins: seconds do not move one at a time */
+    const step = inp.dataset.step ? +inp.dataset.step : stepSize(k, base);
     let next = base + dir*step;
     if(k==='rpe') next=clamp(next,1,10);
     if(next<0) next=0;
@@ -10045,7 +10705,8 @@ function drawExercise(en,i,total){
     putVal(inp.dataset.s, k, inp.value);
     haptic();
   });
-  /* completing a set: the whole row is the target, not just the tick */
+  /* logging a set, and taking one back: the only two things that change the
+     record on this screen */
   const complete=(n)=>{
     const s=en.sets[n];
     s.done=!s.done;
@@ -10059,56 +10720,95 @@ function drawExercise(en,i,total){
         if(nx.done || nx.touched) continue;
         nx.reps=s.reps; nx.weight=s.weight;
       }
-      haptic();
-      const rest=parseRest(en.plannedRest);
-      if(DB.settings.restTimerOn&&rest&&!(n===en.sets.length-1&&i===total-1)) startRest(rest,en.name,n+1,en.sets.length);
+      haptic(); SOUND.set();
+      if(en.sets.every(x=>x.done)){
+        /* the exercise is finished - say so and move on rather than leaving
+           somebody on a screen with nothing left to do on it */
+        stopRest(); armAuto(i);
+      } else {
+        const rest=parseRest(en.plannedRest);
+        if(DB.settings.restTimerOn && rest) startRest(rest,en.name,n+1,en.sets.length);
+      }
+    } else {
+      cancelAuto(); stopRest();
     }
     saveLive(); drawWM();
   };
-  $$('[data-t]').forEach(b=>b.onclick=ev=>{ ev.stopPropagation(); complete(+b.dataset.t); });
-  /* tapping the row itself, anywhere that is not a stepper control */
-  $$('#wmBody .setrow[data-row]').forEach(r=>r.onclick=ev=>{
-    if(ev.target.closest('.stp')) return;
-    complete(+r.dataset.row);
-  });
-  /* one tap for an exercise that went exactly as shown */
-  const la=$('#wmAll');
-  if(la) la.onclick=()=>{
-    en.sets.forEach((s,n)=>{
-      if(s.done) return;
-      s.done=true;
-      if(!s.reps){ const ph=String(en.plannedReps).replace(/[^0-9–\-]/g,'').split(/[–\-]/)[0]; s.reps=ph||''; }
-      if(!s.rpe){ const m=String(en.plannedRpe||'').match(/(\d+)/); if(m)s.rpe=m[1]; }
-    });
-    haptic(); stopRest(); saveLive(); drawWM();
+  $$('#wmBody [data-log]').forEach(b=>b.onclick=ev=>{
+    ev.stopPropagation(); complete(+b.dataset.log); });
+  $$('#wmBody [data-undo]').forEach(b=>b.onclick=ev=>{
+    ev.stopPropagation(); complete(+b.dataset.undo); });
+
+  const hb=$('#holdBtn');
+  if(hb) hb.onclick=()=>{
+    if(holdActive() && HOLD.ex===i) return stopHold();
+    startHold(+hb.dataset.secs||(tm?tm.hi:30), cur, en.name);
   };
-  $('#wmAddSet').onclick=()=>{ en.sets.push({reps:'',weight:'',rpe:'',done:false}); en.plannedSets=en.sets.length; saveLive(); drawWM(); };
-  $('#wmUndo').onclick=()=>{
-    for(let n=en.sets.length-1;n>=0;n--) if(en.sets[n].done){ en.sets[n].done=false; stopRest(); saveLive(); drawWM(); return; }
-    toast('Nothing to undo');
+  const rSkip=$('#restSkip'); if(rSkip) rSkip.onclick=()=>{ stopRest(); drawWM(); };
+  const rAdd =$('#restAdd');  if(rAdd)  rAdd.onclick=()=>restAdd30();
+  const stay =$('#wmStay');   if(stay)  stay.onclick=()=>{
+    cancelAuto();
+    const p=$('#wmDoneN p'); if(p) p.textContent='Staying here. Add a set, rate the effort, or press Next exercise when you are ready.';
+    stay.remove();
   };
-  /* the three things you do between exercises, not during a set */
+
+  $('#wmAddSet').onclick=()=>{
+    cancelAuto();
+    en.sets.push({reps:'',weight:'',rpe:'',done:false});
+    en.plannedSets=en.sets.length; saveLive(); drawWM();
+  };
+  /* the things you do between exercises, not during a set.
+     Each row carries the function it runs. It used to dispatch on the row
+     index, so adding a conditional row shifted every index below it and wired
+     the wrong handler to the wrong label. */
   $('#wmMore').onclick=()=>{
-    openSheet(en.name,navRows('wmMoreRows',[
-      {t:'How to do it', s:en.cue? en.cue.slice(0,44)+'…' : 'Cue, progression and alternatives', icon:'book'},
-      {t:'Why this exercise?', s:'What it covers and why it was picked', icon:'info'},
-      {t:'Replace exercise',   s:'Something else for the same target', icon:'undo'},
-      {t:'This hurt',          s:'Keep it out of my sessions for 3 weeks', icon:'thermo'},
-      {t:'Add a note',         s:en.note?'Note saved':'Form, how it felt', icon:'edit'},
-      {t:'Skip this exercise', s:'Recorded as skipped, not failed', icon:'x'}
-    ]));
+    const rows=[
+      {t:'How to do it', s:en.cue? en.cue.slice(0,44)+'…' : 'Cue, progression and the plan in full',
+       icon:'book', run:()=>wmHow()},
+      {t:'Why this exercise?', s:'What it covers and why it was picked',
+       icon:'info', run:()=>wmWhy()},
+      /* only where a kilogram is not already on offer */
+      exLoadable(exOf(en.exerciseId)) ? null : {
+        t: en.wantWeight? 'Remove the weight field' : 'Add weight',
+        s: en.wantWeight? 'Back to reps only' : 'For a vest, belt or a held dumbbell',
+        icon:'barbell',
+        run:()=>{ en.wantWeight=!en.wantWeight;
+                  if(!en.wantWeight) en.sets.forEach(s=>{ s.weight=''; });
+                  saveLive(); drawWM(); }},
+      {t:'Replace exercise', s:'Something else for the same target',
+       icon:'undo', run:()=>wmSwap()},
+      {t:'This hurt', s:'Keep it out of my sessions for 3 weeks',
+       icon:'thermo', run:()=>wmHurt()},
+      {t:'Add a note', s:en.note?'Note saved':'Form, how it felt',
+       icon:'edit', run:()=>wmNote()},
+      {t:'Skip this exercise', s:'Recorded as skipped, not failed',
+       icon:'x', run:()=>wmSkip()}
+    ].filter(Boolean);
+    cancelAuto();
+    openSheet(en.name,navRows('wmMoreRows',rows));
     $$('#wmMoreRows button').forEach(b=>b.onclick=()=>{
-      const i=+b.dataset.r; closeSheet();
-      setTimeout(()=>{ if(i===0) wmHow(); else if(i===1) wmWhy(); else if(i===2) wmSwap();
-                       else if(i===3) wmHurt(); else if(i===4) wmNote(); else wmSkip(); },200);
+      const act=rows[+b.dataset.r];
+      closeSheet();
+      setTimeout(()=>{ if(act&&act.run) act.run(); },200);
     });
   };
-  /* the reference material, off the set screen and one tap away */
+  /* the reference material, off the set screen and one tap away. The exact
+     figures live here now that the screen itself speaks plainly. */
   const wmHow=()=>{
     const ex=exOf(en.exerciseId)||{};
     openSheet(en.name,`
       ${en.cue?`<div class="note acc"><b>Cue:</b> ${esc(en.cue)}</div>`:''}
       ${ex.how?`<p class="lede">${esc(ex.how)}</p>`:''}
+      <div class="sec-t">The plan in full</div>
+      <div class="card tight">
+        <div class="kv"><span class="k">Sets</span><span class="v">${en.plannedSets}</span></div>
+        <div class="kv"><span class="k">Reps</span><span class="v">${esc(en.plannedReps||'—')}</span></div>
+        <div class="kv"><span class="k">Effort</span><span class="v">${esc(en.plannedRpe||'—')}</span></div>
+        <div class="kv"><span class="k">Rest</span><span class="v">${esc(en.plannedRest||'—')}</span></div>
+        ${en.tempo?`<div class="kv"><span class="k">Tempo</span><span class="v">${esc(en.tempo)}</span></div>`:''}
+      </div>
+      ${en.progNote?`<div class="note acc">${esc(en.progNote)}</div>`:''}
+      ${(en.target&&en.target.line)?`<div class="note">${esc(en.target.line)}</div>`:''}
       ${ex.prog?`<div class="sec-t">How it progresses</div>
         <p class="lede">${esc(ex.prog)}</p>`:''}
       ${en.subs?`<div class="sec-t">If it is not working today</div>
@@ -10162,18 +10862,20 @@ function drawExercise(en,i,total){
     en.note=(en.note?en.note+' · ':'')+'substituted during session';
     saveLive(); drawWM();
   });
-  const p=$('#wmPrev'); if(p)p.onclick=()=>{ W.step=Math.max(0,i-1); stopRest(); drawWM(); };
+  const hl=$('#wmHowLine'); if(hl) hl.onclick=()=>{ cancelAuto(); wmHow(); };
+  const p=$('#wmPrev'); if(p)p.onclick=()=>{ cancelAuto(); stopRest(); W.step=Math.max(0,i-1); drawWM(); };
   $('#wmNext').onclick=nextStep;
 }
 /* A number you change with your thumb. `n` is the set index, or -1 for a
    control that applies to the whole exercise. The field stays typeable. */
-function stepper(n,k,val,placeholder){
+function stepper(n,k,val,placeholder,step,label){
   return `<div class="stp">
     <button type="button" data-d="-1" aria-label="Decrease">&minus;</button>
     <input class="wmIn" type="text" inputmode="decimal" enterkeyhint="done"
-           data-s="${n}" data-k="${k}" value="${esc(val==null?'':String(val))}"
+           data-s="${n}" data-k="${k}"${step?` data-step="${step}"`:''}
+           value="${esc(val==null?'':String(val))}"
            placeholder="${esc(placeholder==null?'':String(placeholder))}"
-           aria-label="${k==='weight'?'Kilograms':k==='reps'?'Reps':'Effort'}">
+           aria-label="${esc(label|| (k==='weight'?'Kilograms':k==='reps'?'Reps':'Effort'))}">
     <button type="button" data-d="1" aria-label="Increase">+</button>
   </div>`;
 }
@@ -10191,7 +10893,7 @@ function stepSize(k,cur){
   if(dbMax && cur>=Math.min(20, dbMax*0.5)) return 2;
   return cur>=20 ? 2.5 : 1;
 }
-function nextStep(){ stopRest(); W.step++; drawWM(); $('#wmBody').scrollTop=0; }
+function nextStep(){ cancelAuto(); stopRest(); clearHold(); W.step++; drawWM(); $('#wmBody').scrollTop=0; }
 function parseRest(s){
   if(!s)return null;
   const m=String(s).match(/(\d+)\s*(s|min|m)?/i);
@@ -10256,32 +10958,107 @@ function drawFinish(){
     DB.sessions.push(JSON.parse(JSON.stringify(W)));
     DB.sessions.sort((a,b)=>a.date<b.date?-1:1);
     Store.pref('live',null);
-    save(true); toast('Session saved','ok');
+    save(true); SOUND.done(); toast('Session saved','ok');
     exitWM(true);
   };
 }
 function saveLive(){ try{ Store.pref('live',JSON.stringify(W)); }catch(e){} }
 
+
+/* ---- the hold timer ----
+   Same deadline-driven shape as the rest timer, and for the same reason: iOS
+   suspends intervals when the screen locks, so a decrementing counter drifts
+   and a target timestamp does not. When the hold completes it LOGS THE SET
+   ITSELF and lets the rest timer start, which is what makes a timed set one
+   tap rather than three. */
+let holdTimer=null, holdEnd=0, holdDone=false, holdTick=-1;
+let HOLD={ex:-1, set:-1, secs:0, name:''};
+function holdRemaining(){ return Math.max(0,(holdEnd-Date.now())/1000); }
+function holdActive(){ return holdEnd>0 && holdRemaining()>0; }
+function startHold(sec,n,name){
+  stopRest();
+  holdEnd=Date.now()+sec*1000; holdDone=false; holdTick=-1;
+  HOLD={ex:W?W.step:-1, set:n, secs:sec, name:name||''};
+  audioCtx();
+  clearInterval(holdTimer); holdTimer=setInterval(paintHold,200);
+  drawWM();
+}
+function clearHold(){
+  clearInterval(holdTimer); holdTimer=null;
+  holdEnd=0; holdTick=-1; HOLD={ex:-1,set:-1,secs:0,name:''};
+}
+/* stopped early: record what was actually held, not what was asked for */
+function stopHold(){
+  if(!holdActive()){ clearHold(); return drawWM(); }
+  const held=Math.max(1, Math.round(HOLD.secs-holdRemaining()));
+  const n=HOLD.set, ex=HOLD.ex;
+  clearHold();
+  if(W && W.entries[ex] && W.entries[ex].sets[n]){
+    W.entries[ex].sets[n].reps=String(held);
+    W.entries[ex].sets[n].touched=true;
+    saveLive();
+  }
+  toast('Held '+held+'s — log it or change it');
+  drawWM();
+}
+function paintHold(){
+  const r=holdRemaining();
+  const t=$('#holdT'); if(t) t.textContent=mmss(r);
+  const s=Math.ceil(r);
+  if(s!==holdTick){ holdTick=s; if(s>0&&s<=3) SOUND.tick(); }
+  if(r<=0 && !holdDone){
+    holdDone=true; haptic(); SOUND.rest();
+    notify('Hold complete', HOLD.name? HOLD.name+' — set logged' : 'Set logged');
+    const secs=HOLD.secs, n=HOLD.set, ex=HOLD.ex;
+    clearHold();
+    if(W && W.entries[ex] && W.entries[ex].sets[n]){
+      W.entries[ex].sets[n].reps=String(secs);
+      W.entries[ex].sets[n].touched=true;
+    }
+    /* let the ordinary log path do the work: carry-forward, the rest timer
+       and the automatic move to the next exercise all live there */
+    const b=$('#wmBody [data-log="'+n+'"]');
+    if(b) b.click(); else { saveLive(); drawWM(); }
+  }
+}
+
 /* ---- rest timer ----
    Driven by a target timestamp, not by decrementing a counter. iOS Safari
    throttles or suspends timers when you lock the screen or switch apps, so a
-   counting-down variable would drift badly; a deadline stays correct. */
-let restEnd=0, restDone=false;
+   counting-down variable would drift badly; a deadline stays correct.
+
+   It has no element of its own any more. The countdown is drawn inside the
+   card for the set that started it, which is where somebody looking for it
+   expects it to be; REST records which set that is. */
+let restEnd=0, restDone=false, restTick=-1, REST={ex:-1,set:-1,of:0,name:''};
 function restRemaining(){ return Math.max(0,(restEnd-Date.now())/1000); }
+function restActive(){ return restEnd>0 && restRemaining()>0; }
 function paintRest(){
   const r=restRemaining();
   const t=$('#restT'); if(t) t.textContent=mmss(r);
-  if(r<=0&&!restDone){ restDone=true; haptic(); toast('Rest complete — next set'); stopRest(); }
+  /* count the last three seconds out loud, once each, however often the
+     250ms interval happens to fire */
+  const s=Math.ceil(r);
+  if(s!==restTick){ restTick=s; if(s>0&&s<=3) SOUND.tick(); }
+  if(r<=0 && !restDone){
+    restDone=true; haptic(); SOUND.rest();
+    /* the whole reason alerts exist: the phone is in a pocket or face down */
+    notify('Rest is over', REST.name? 'Next set · '+REST.name : 'Time for your next set');
+    toast('Rest done — next set');
+    stopRest();
+    if(W && $('#wmode').classList.contains('on')) drawWM();
+  }
 }
 function startRest(sec,name,n,of){
-  restEnd=Date.now()+sec*1000; restDone=false;
-  $('#rest').classList.add('on');
-  $('#restL').innerHTML=`Rest after set ${n} of ${of}<br><span style="color:var(--text-2)">${esc(name)}</span>`;
-  paintRest(); clearInterval(restTimer); restTimer=setInterval(paintRest,250);
+  restEnd=Date.now()+sec*1000; restDone=false; restTick=-1;
+  REST={ex:W?W.step:-1, set:(n||1)-1, of:of||0, name:name||''};
+  clearInterval(restTimer); restTimer=setInterval(paintRest,250);
 }
-function stopRest(){ clearInterval(restTimer); restTimer=null; restEnd=0; $('#rest').classList.remove('on'); }
-$('#restSkip').onclick=stopRest;
-$('#restAdd').onclick=()=>{ if(!restEnd)return; restEnd+=30000; restDone=false; paintRest(); };
+function stopRest(){
+  clearInterval(restTimer); restTimer=null;
+  restEnd=0; restTick=-1; REST={ex:-1,set:-1,of:0,name:''};
+}
+function restAdd30(){ if(!restEnd) return; restEnd+=30000; restDone=false; paintRest(); }
 
 /* =========================================================================
    EXPORT / IMPORT
@@ -10547,16 +11324,14 @@ async function boot(){
   if(!tabs().some(t=>t.id===TAB)) TAB='today';
   renderNav(); render(); updateBanner();
 
-  // recover an interrupted workout
+  /* An interrupted workout. It used to throw a modal over the screen 600ms
+     after launch, before the user had read anything. Today's notice slot
+     offers it instead, so all that is left here is clearing a session that
+     belongs to a day that has already ended. */
   try{
     const lv=Store.pref('live');
     const live=lv?JSON.parse(lv):null;
-    if(live&&live.date===todayISO()&&!live.done&&live.entries&&live.entries.some(e=>e.sets.some(s=>s.done))){
-      setTimeout(()=>confirmSheet('Resume workout?',
-        `You left <b>${esc(live.workoutName)}</b> partway through with sets already logged. Pick it back up?`,
-        'Resume',()=>{ W=live; W.startedAt=Date.now()-((live.endedAt||Date.now())-live.startedAt);
-          $('#wmode').classList.add('on'); document.body.style.overflow='hidden'; drawWM(); }),600);
-    } else if(live){ Store.pref('live',null); }
+    if(live && (live.done || live.date!==todayISO())) Store.pref('live',null);
   }catch(e){}
 
   if(!DB.profile.onboarded) setTimeout(()=>startSetup(),350);
