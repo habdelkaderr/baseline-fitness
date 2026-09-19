@@ -923,6 +923,24 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
   .ring-l{font-size:9.5px}
 }
 
+/* ---------- The week strip, and moving through it ---------- */
+.wk-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:7px 8px;border-bottom:1px solid var(--border-soft)}
+.wk-l{flex:1;text-align:center;font-size:12px;font-weight:800;
+  letter-spacing:.2px;color:var(--text-2);min-width:0;overflow-wrap:anywhere}
+.wk-b{width:44px;height:36px;flex:0 0 44px;display:flex;align-items:center;
+  justify-content:center;border:0;background:none;color:var(--text-2);
+  border-radius:9px;cursor:pointer;font-family:inherit}
+.wk-b svg{width:17px;height:17px}
+.wk-b:active{background:var(--surface-2)}
+.wk-b.ghost{pointer-events:none}
+.wk-d{padding:11px 2px;text-align:center;background:none;border:0;
+  font-family:inherit;color:inherit;cursor:pointer;min-height:44px;
+  display:block;width:100%}
+.wk-d:active{background:var(--surface-2)}
+.wk-d.future{opacity:.42;cursor:default}
+.day-act.one{grid-template-columns:1fr}
+
 /* ---------- The day, drawn as a spine ----------
    These are events at points in a day, with lengths. A row per effort with a
    badge on the left and two timestamps on the right is a feed; a spine with a
@@ -7350,8 +7368,10 @@ function renderNav(){
 }
 function go(tab){
   /* tapping a primary destination always lands on that destination, never
-     three pages deep inside where you were last time */
+     three pages deep inside where you were last time - or, for Today, three
+     weeks back because of something you were looking at last time */
   resetStack();
+  WEEKOFF=0;
   TAB=tab; DB.ui.tab=tab; save();
   renderNav(); render();
   window.scrollTo(0,0);
@@ -7905,14 +7925,33 @@ function feelRow(lab,val,cls,inverse){
       <span class="num" style="font-weight:800;color:${val==null?'var(--text-3)':good?'var(--green)':'var(--text)'}">${val==null?'—':val+'/10'}</span></div>
     <div class="bar ${cls}"><i style="width:${pct}%"></i></div></div>`;
 }
+/* Which week the strip is showing. 0 is the current one; negative is the
+   past. Never positive - there is nothing to log in a week that has not
+   happened. Reset when you leave Today so it does not greet you weeks back. */
+let WEEKOFF=0;
+
 function weekStrip(d){
-  const start=weekStartOf(d);
+  const today=todayISO();
+  const start=addDays(weekStartOf(d), WEEKOFF*7);
+  const end=addDays(start,6);
+  const label = WEEKOFF===0 ? 'This week'
+    : WEEKOFF===-1 ? 'Last week'
+    : fmtDate(start)+' — '+fmtDate(end);
   const TAGS={lower:'Legs',upper:'Upper',power:'Power',core:'Core',run:'Run',bike:'Bike',mobility:'Mob',prep:'Prep',strength:'Str'};
   /* one cycle context for all seven days, not one per day */
   const mcc = mcOn()? mcCtx() : null;
-  let h='<div class="card flush"><div style="display:grid;grid-template-columns:repeat(7,1fr)">';
+  let h='<div class="card flush">'
+    +`<div class="wk-nav">
+        <button class="wk-b" id="wkPrev" aria-label="Previous week">${svg('left')}</button>
+        <span class="wk-l">${esc(label)}</span>
+        ${WEEKOFF<0
+          ? `<button class="wk-b" id="wkNext" aria-label="Next week">${svg('chev')}</button>`
+          : `<span class="wk-b ghost" aria-hidden="true"></span>`}
+      </div>`
+    +'<div style="display:grid;grid-template-columns:repeat(7,1fr)">';
   for(let i=0;i<7;i++){
-    const day=addDays(start,i), isT=day===d;
+    const day=addDays(start,i), isT=day===today;
+    const future=day>today;
     const dow=dowOf(day);
     const sess=DB.sessions.find(s=>s.date===day&&s.done);
     const acts=DB.activities.filter(a=>a.date===day);
@@ -7923,7 +7962,9 @@ function weekStrip(d){
     if(ten) tag=(ACT_TYPES[(acts.find(a=>isMainSportAct(a.type))||{}).type]||{}).short||'Sport';
     else if(sess) tag=TAGS[sess.category||catOfWorkout(DB.workouts.find(w=>w.id===sess.workoutId))]||'Train';
     else if(acts.length) tag=(ACT_TYPES[acts[0].type]||ACT_TYPES.other).short;
-    h+=`<div style="padding:11px 2px;text-align:center;border-right:${i<6?'1px solid var(--border-soft)':'none'};${isT?'background:var(--accent-wash)':''}">
+    h+=`<${future?'div':'button'} class="wk-d${future?' future':''}"
+         ${future?'':`data-day="${day}" aria-label="${esc(fmtDate(day))}, open this day"`}
+         style="border-right:${i<6?'1px solid var(--border-soft)':'none'};${isT?'background:var(--accent-wash)':''}">
       <div style="font-size:9.5px;font-weight:800;color:${isT?'var(--accent)':'var(--text-3)'};letter-spacing:.5px">${DOW_NAME[dow].toUpperCase()}</div>
       <div style="font-size:14px;font-weight:750;margin:3px 0 6px;color:${isT?'var(--text)':'var(--text-2)'}">${new Date(day+'T12:00:00').getDate()}</div>
       <div style="width:7px;height:7px;border-radius:50%;background:${col};margin:0 auto"></div>
@@ -7942,12 +7983,33 @@ function weekStrip(d){
                  :'background:var(--surface-2);color:var(--text-3)'}"
           >${cd}</span></div>`;
       })():''}
-    </div>`;
+    </${future?'div':'button'}>`;
   }
   return h+'</div><div style="padding:9px 14px;border-top:1px solid var(--border-soft);font-size:11px;color:var(--text-3);line-height:1.45">'
-    +'Nothing here is pre-scheduled. Each day is decided that morning from your readiness and what you have actually done.'
+    +(WEEKOFF===0
+       ? 'Nothing here is pre-scheduled. Each day is decided that morning from your readiness and what you have actually done.'
+       : 'Tap a day to see it, or to add something you did and forgot to log.')
     +(mcc?' The small number is your cycle day; a filled one is a day you logged bleeding.':'')
     +'</div></div>';
+}
+
+/* One day, on its own screen: what is on it, and the way to add to it. */
+function dayPage(date){
+  return function(c){
+    appbar(fmtDate(date), date===todayISO()?'Today':DOW_FULL[dowOf(date)]);
+    c.innerHTML=activitiesCard(date);
+    wireActivitiesCard(date);
+    bindInputs(c);
+  };
+}
+function wireWeekStrip(d){
+  const p=$('#wkPrev');
+  if(p) p.onclick=()=>{ haptic(); WEEKOFF--; render(); };
+  const n=$('#wkNext');
+  if(n) n.onclick=()=>{ haptic(); WEEKOFF=Math.min(0,WEEKOFF+1); render(); };
+  $$('#view .wk-d[data-day]').forEach(b=>b.onclick=()=>{
+    haptic(); pushPage({build:dayPage(b.dataset.day)});
+  });
 }
 
 function todayNoCheckin(d){
@@ -8044,6 +8106,7 @@ function wireToday(d){
   on('btnSwap',()=>changePlan(d));
   on('btnPrep',()=>previewWorkout('w_prep','full'));
   wireRings(d);
+  wireWeekStrip(d);
   wireActivitiesCard(d);
   wireActivityRows();
   /* the tile that says you trained is the way to what you actually did */
@@ -9315,9 +9378,11 @@ function activitiesCard(d){
     ${items.length
       ? `<div class="daylist">${items.map(i=>actRowHTML(i,longest)).join('')}</div>`
       : `<div class="day-empty">Nothing logged yet. The day fills in as you go.</div>`}
-    <div class="day-act">
+    <div class="day-act${date===todayISO()?'':' one'}">
       <button class="btn ghost" id="acAdd">${svg('plus')} Add activity</button>
-      <button class="btn ghost" id="acStart">${svg('timer')} Start activity</button>
+      ${date===todayISO()
+        ? `<button class="btn ghost" id="acStart">${svg('timer')} Start activity</button>`
+        : ''}
     </div>
   </div>`;
 }
