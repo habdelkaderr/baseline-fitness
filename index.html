@@ -850,7 +850,53 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
   font-weight:650;line-height:1.35}
 .wrest .btn{margin-bottom:0}
 
-/* ---------- Rings: a score is a proportion, so it is drawn as one ----------
+/* a recommendation tile that is also a way in */
+.rec.tap{display:block;width:100%;text-align:left;font-family:inherit;
+  cursor:pointer;border:1px solid var(--border-soft)}
+.rec.tap:active{background:var(--surface-2)}
+.rec-go{display:flex;align-items:center;gap:5px;margin-top:11px;
+  font-size:11.5px;font-weight:800;color:var(--accent);
+  letter-spacing:.2px}
+.rec-go svg{width:13px;height:13px;stroke-width:2.8}
+
+/* ---------- Scores: open arcs, and a hierarchy ----------
+   Three quarters of a circle with the gap at the bottom - the shape of the
+   app's own mark. Readiness leads at full width because it is the number this
+   app is built around; strain and sleep are its context and sit below. */
+.scores{margin-bottom:var(--sp-2)}
+.score{display:flex;align-items:center;gap:13px;width:100%;
+  padding:13px 15px;border-radius:var(--r-lg);background:var(--surface);
+  border:1px solid var(--border-soft);cursor:pointer;font-family:inherit;
+  color:var(--text);text-align:left;min-height:56px}
+.score:active{background:var(--surface-2)}
+.score.lead{margin-bottom:8px;padding:15px}
+.score-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.score-pair .score{padding:11px 12px;gap:10px}
+.score-x{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.score-l{font-size:12px;font-weight:700;color:var(--text-3);letter-spacing:0}
+.score.lead .score-l{font-size:12.5px}
+.score-w{font-size:19px;font-weight:850;letter-spacing:-.5px;line-height:1.15}
+.score-s{font-size:11px;font-weight:600;color:var(--text-3);overflow-wrap:anywhere}
+
+.arc{flex:0 0 auto;display:block;line-height:0}
+.arc-s{width:56px;height:56px;display:block;
+  /* the gap sits at the bottom, centred */
+  transform:rotate(135deg)}
+.arc.lead .arc-s{width:82px;height:82px}
+.arc-bg{fill:none;stroke:var(--surface-3);stroke-width:6;stroke-linecap:round}
+.arc-fg{fill:none;stroke-width:6;stroke-linecap:round;
+  transition:stroke-dashoffset .5s ease}
+.arc-t{font-size:17px;font-weight:850;letter-spacing:-.6px;font-family:inherit;
+  transform:rotate(-135deg);transform-origin:32px 32px}
+.arc.lead .arc-t{font-size:19px}
+@media (max-width:340px){
+  .arc-s{width:46px;height:46px}
+  .arc.lead .arc-s{width:68px;height:68px}
+  .score-w{font-size:17px}
+  .score-pair .score{padding:10px}
+}
+
+/* ---------- Rings: superseded by .scores above, kept for the shape ----------
    Three across at every width. The stroke is rotated to start at twelve
    o'clock; the value sits inside as SVG text so it scales with the ring
    instead of needing its own positioning rules. */
@@ -877,25 +923,67 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
   .ring-l{font-size:9.5px}
 }
 
-/* ---------- The day's activities ---------- */
+/* ---------- The day, drawn as a spine ----------
+   These are events at points in a day, with lengths. A row per effort with a
+   badge on the left and two timestamps on the right is a feed; a spine with a
+   node per effort and a bar proportional to how long it ran is a day. */
 .card.acts{padding-bottom:14px}
-.actrow{display:flex;align-items:center;gap:11px;width:100%;
-  padding:9px 0;background:none;border:0;border-bottom:1px solid var(--border-soft);
-  font-family:inherit;color:var(--text);text-align:left;cursor:pointer;min-height:48px}
-.actrow:active{background:var(--surface-2)}
-.ac-s{flex:0 0 46px;height:34px;border-radius:9px;display:flex;
-  align-items:center;justify-content:center;font-size:13px;font-weight:850;
-  font-variant-numeric:tabular-nums;background:var(--surface-3);color:var(--text-2)}
-.ac-s.g{background:var(--green-wash);color:var(--green)}
-.ac-s.c{background:var(--cyan-wash);color:var(--cyan)}
-.ac-s.o{background:var(--orange-wash);color:var(--orange)}
-.ac-s.r{background:var(--red-wash);color:var(--red)}
-.ac-x{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
-.ac-t{font-size:14px;font-weight:700;overflow-wrap:anywhere}
-.ac-m{font-size:11.5px;color:var(--text-3);font-weight:600}
-.ac-w{flex:0 0 auto;font-size:11px;color:var(--text-3);font-weight:650;
-  text-align:right;line-height:1.5;font-variant-numeric:tabular-nums}
-.card.acts .btn-row{margin-top:12px}
+.day-strain{display:flex;align-items:baseline;gap:4px;
+  font-size:16px;font-weight:850;letter-spacing:-.4px;
+  font-variant-numeric:tabular-nums;color:var(--text-2)}
+.day-strain em{font-style:normal;font-size:10px;font-weight:750;
+  letter-spacing:.3px;color:var(--text-3)}
+.day-strain.g{color:var(--green)} .day-strain.c{color:var(--cyan)}
+.day-strain.o{color:var(--orange)} .day-strain.r{color:var(--red)}
+
+.daylist{margin:2px 0 4px}
+.dayrow{display:flex;align-items:stretch;gap:10px;width:100%;
+  padding:0;background:none;border:0;font-family:inherit;color:var(--text);
+  text-align:left;cursor:pointer;min-height:52px}
+.dayrow:active .dr-x{background:var(--surface-2)}
+.dr-t{flex:0 0 40px;padding-top:12px;font-size:11px;font-weight:750;
+  color:var(--text-3);font-variant-numeric:tabular-nums;letter-spacing:-.2px}
+
+/* the spine: a line the full height of the row, with the node on it */
+.dr-dot{flex:0 0 12px;position:relative;display:flex;justify-content:center}
+.dr-dot::before{content:'';position:absolute;top:0;bottom:0;width:2px;
+  background:var(--border-soft);border-radius:2px}
+.dayrow:first-child .dr-dot::before{top:14px}
+.dayrow:last-child .dr-dot::before{bottom:calc(100% - 22px)}
+.dr-dot i{position:relative;width:10px;height:10px;border-radius:50%;
+  margin-top:12px;background:var(--text-3);
+  box-shadow:0 0 0 3px var(--bg-elev)}
+.dr-dot i.g{background:var(--green)} .dr-dot i.c{background:var(--cyan)}
+.dr-dot i.o{background:var(--orange)} .dr-dot i.r{background:var(--red)}
+
+.dr-x{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;
+  padding:9px 10px 11px;border-radius:10px}
+.dr-n{font-size:14px;font-weight:750;overflow-wrap:anywhere;
+  display:flex;align-items:baseline;gap:7px}
+.dr-n em{font-style:normal;font-size:9.5px;font-weight:800;letter-spacing:.4px;
+  text-transform:uppercase;color:var(--text-3);flex:0 0 auto}
+/* how long it ran, against the longest thing done that day */
+.dr-bar{display:block;height:4px;border-radius:99px;background:var(--surface-3);
+  overflow:hidden}
+.dr-bar i{display:block;height:100%;border-radius:99px;background:var(--text-3)}
+.dr-bar i.g{background:var(--green)} .dr-bar i.c{background:var(--cyan)}
+.dr-bar i.o{background:var(--orange)} .dr-bar i.r{background:var(--red)}
+.dr-m{font-size:11.5px;font-weight:600;color:var(--text-3);overflow-wrap:anywhere}
+.dr-s{flex:0 0 auto;padding-top:11px;font-size:15px;font-weight:850;
+  letter-spacing:-.4px;font-variant-numeric:tabular-nums;color:var(--text-2)}
+.dr-s.g{color:var(--green)} .dr-s.c{color:var(--cyan)}
+.dr-s.o{color:var(--orange)} .dr-s.r{color:var(--red)}
+
+.day-empty{font-size:12.5px;color:var(--text-3);font-weight:600;
+  padding:4px 0 14px;line-height:1.5}
+.day-act{display:grid;grid-template-columns:1fr 1fr;gap:9px;
+  padding-top:12px;border-top:1px solid var(--border-soft)}
+.day-act .btn{margin-bottom:0}
+@media (max-width:340px){
+  .dr-t{flex:0 0 34px;font-size:10px}
+  .day-act{grid-template-columns:1fr}
+}
+
 
 /* ---------- The activity picker ---------- */
 .pa-q{margin-bottom:14px}
@@ -7105,9 +7193,12 @@ function bindInputs(root){
 function tabs(){ return [
   {id:'today',   label:'Today',    icon:'today'},
   {id:'workouts',label:'Train',    icon:'dumbbell'},
-  /* 'flame' rather than a racquet: this tab holds every activity, not one sport */
-  {id:'tennis',  label:'Activity', icon:'flame'},
-  {id:'progress',label:'Progress', icon:'chart'}
+  {id:'progress',label:'Progress', icon:'chart'},
+  /* Settings was a gear in the top-right corner - the only destination
+     reachable by a different gesture from every other one, in the hardest
+     place on a large phone to reach with a thumb. Last in the bar puts it
+     bottom right, where a settings tab belongs. */
+  {id:'settings',label:'Settings', icon:'gear'}
 ];}
 let TAB='today';
 
@@ -7174,22 +7265,23 @@ function render(){
     const pg=STACK[STACK.length-1];
     v.innerHTML=''; pg.build(v); bindInputs(v); return;
   }
-  ({today:viewToday, workouts:viewWorkouts, tennis:viewTennis,
-    progress:viewProgress}[TAB]||viewToday)(v);
+  ({today:viewToday, workouts:viewWorkouts,
+    progress:viewProgress, settings:viewSettings}[TAB]||viewToday)(v);
   bindInputs(v);
 }
-/* The one app bar. On a primary destination it carries the settings gear; on
-   a pushed page it carries a back button instead, and the gear steps aside so
-   there is never more than one way out of a screen. */
+/* The one app bar. On a pushed page it carries a back button; on a primary
+   destination it carries whatever that screen asks for and nothing else.
+
+   It used to carry a settings gear, which was a second way into a screen the
+   tab bar now offers directly - and put it in the corner of the phone that is
+   hardest to reach. */
 function appbar(title,sub,actions){
   const onPage=STACK.length>0;
   $('#appbar').innerHTML=
     (onPage?`<button class="icon-btn ab-back" id="abBack" aria-label="Back">${svg('left')}</button>`:'')+
     `<div class="ab-txt"><div class="ttl">${title}</div>${sub?`<div class="sub">${sub}</div>`:''}</div>`+
-    `<div class="appbar-actions">${actions||''}${onPage?''
-      :`<button class="icon-btn" id="abGear" aria-label="Settings">${svg('gear')}</button>`}</div>`;
+    `<div class="appbar-actions">${actions||''}</div>`;
   const bk=$('#abBack'); if(bk) bk.onclick=()=>{ haptic(); popPage(); };
-  const gr=$('#abGear'); if(gr) gr.onclick=()=>{ haptic(); openSettings(); };
 }
 
 /* =========================================================================
@@ -7492,11 +7584,14 @@ function viewToday(v){
   ${noticeHTML(d)}
 
   ${done?`
-  <div class="rec">
+  <button class="rec tap" id="btnDone" data-sid="${esc(done.id)}"
+          aria-label="${esc(done.workoutName||'Session complete')}, see what you did">
     <div class="rec-l">Done today</div>
     <div class="rec-t">${esc(done.workoutName||'Session complete')}</div>
-    <div class="rec-m">${done.durationMin||0} min${done.setsDone?' · '+done.setsDone+' sets':''}</div>
-  </div>
+    <div class="rec-m">${done.durationMin||0} min${done.setsDone?' · '+done.setsDone+' sets':''}${
+      done.volume?' · '+rnd(done.volume,0)+' volume':''}</div>
+    <div class="rec-go">See what you did ${svg('chev')}</div>
+  </button>
   `
   :`
   <div class="rec">
@@ -7533,7 +7628,8 @@ function viewToday(v){
   <div class="sec-t">This week</div>
   ${weekStrip(d)}
 
-  ${activitiesCard(d)}`;
+  ${activitiesCard(d)}
+  ${activityRowsHTML()}`;
 
   wireToday(d);
 }
@@ -7546,26 +7642,35 @@ function viewToday(v){
    to remember. `pct` null means there is nothing to draw - an em-dash, not a
    ring at zero, because those are different statements.
    ====================================================================== */
+/* Three quarters of a circle with the gap at the bottom: the shape of the
+   app's own mark, which it already draws in the nav and on the icon and had
+   never used for anything that carried a number. */
 const RING_R=26, RING_C=2*Math.PI*RING_R;
+const RING_SWEEP=0.75, RING_ARC=RING_C*RING_SWEEP;
 function ringHTML(o){
   const has=o.pct!=null && !isNaN(o.pct);
   const p=has? clamp(o.pct,0,100) : 0;
-  const off=(RING_C*(1-p/100)).toFixed(1);
-  return `<span class="ring">
-    <svg viewBox="0 0 64 64" class="ring-s" aria-hidden="true">
-      <circle class="ring-bg" cx="32" cy="32" r="${RING_R}"></circle>
-      ${has?`<circle class="ring-fg" cx="32" cy="32" r="${RING_R}"
-        style="stroke:${o.color||'var(--accent)'}"
-        stroke-dasharray="${RING_C.toFixed(1)}" stroke-dashoffset="${off}"></circle>`:''}
-      <text class="ring-t" x="32" y="32" text-anchor="middle" dominant-baseline="central"
-            style="fill:${has?(o.color||'var(--accent)'):'var(--text-3)'}">${esc(o.value)}</text>
+  const off=(RING_ARC*(1-p/100)).toFixed(1);
+  const col=has? (o.color||'var(--accent)') : 'var(--text-3)';
+  return `<span class="arc${o.lead?' lead':''}">
+    <svg viewBox="0 0 64 64" class="arc-s" aria-hidden="true">
+      <circle class="arc-bg" cx="32" cy="32" r="${RING_R}"
+        stroke-dasharray="${RING_ARC.toFixed(1)} ${RING_C.toFixed(1)}"></circle>
+      ${has?`<circle class="arc-fg" cx="32" cy="32" r="${RING_R}"
+        style="stroke:${col}"
+        stroke-dasharray="${RING_ARC.toFixed(1)} ${RING_C.toFixed(1)}"
+        stroke-dashoffset="${off}"></circle>`:''}
+      <text class="arc-t" x="32" y="32" text-anchor="middle" dominant-baseline="central"
+            style="fill:${col}">${esc(o.value)}</text>
     </svg>
-    <span class="ring-l">${esc(o.label)}</span>
   </span>`;
 }
 
-/* The three numbers that describe a day, as three rings. Each is a button to
-   the screen that explains it. */
+/* The three numbers that describe a day - but not as three equals. Readiness
+   is what this app is built around, so it leads at full width with its band
+   in words; strain and sleep are the context for it and sit below at half
+   size. A row of three identical circles would say all three weigh the same,
+   which in this app they do not. */
 function ringRow(d){
   const ci=DB.checkins[d];
   const rd=ci? readiness(d,ci) : null;
@@ -7576,22 +7681,33 @@ function ringRow(d){
   const need=(ci && ci.sleepNeed) ? ci.sleepNeed : 480;
   const slept=(ci && ci.sleepMin!=null) ? ci.sleepMin : null;
 
-  return `<div class="rings">
-    <button class="ringb" id="rdRow" aria-label="Readiness ${rd?rd.score:'unknown'} of 100${
+  return `<div class="scores">
+    <button class="score lead" id="rdRow" aria-label="Readiness ${rd?rd.score:'unknown'} of 100${
       B?', '+esc(B.label):''}. View details">
-      ${ringHTML({pct: rd? rd.score : null, value: rd? rd.score : '—',
-                  label:'Readiness', color: B? B.color : null})}
+      ${ringHTML({lead:true, pct: rd? rd.score : null, value: rd? rd.score : '—',
+                  color: B? B.color : null})}
+      <span class="score-x">
+        <span class="score-l">Readiness</span>
+        <span class="score-w" style="${B?'color:'+B.color:''}">${rd? esc(B.label) : 'Not checked in'}</span>
+        <span class="score-s">${rd? 'out of 100' : 'Check in to get today’s number'}</span>
+      </span>
+      <i class="rw-c">${svg('chev')}</i>
     </button>
-    <button class="ringb" id="ringStrain" aria-label="Strain today ${rnd(load,1)} of 21. View the day">
-      ${ringHTML({pct: load? Math.min(100, load/21*100) : null,
-                  value: load? rnd(load,1) : '—',
-                  label:'Strain', color:'var(--cyan)'})}
-    </button>
-    <button class="ringb" id="ringSleep" aria-label="${slept!=null?'Slept '+fmtMin(slept):'Sleep not recorded'}">
-      ${ringHTML({pct: slept!=null? Math.min(100, slept/need*100) : null,
-                  value: slept!=null? (Math.round(slept/60*10)/10)+'h' : '—',
-                  label:'Sleep', color:'var(--violet)'})}
-    </button>
+    <div class="score-pair">
+      <button class="score" id="ringStrain" aria-label="Strain today ${rnd(load,1)} of 21. See the day">
+        ${ringHTML({pct: load? Math.min(100, load/21*100) : null,
+                    value: load? rnd(load,1) : '—', color:'var(--cyan)'})}
+        <span class="score-x"><span class="score-l">Strain</span>
+          <span class="score-s">of 21 today</span></span>
+      </button>
+      <button class="score" id="ringSleep" aria-label="${slept!=null?'Slept '+fmtMin(slept):'Sleep not recorded'}">
+        ${ringHTML({pct: slept!=null? Math.min(100, slept/need*100) : null,
+                    value: slept!=null? (Math.round(slept/60*10)/10)+'h' : '—',
+                    color:'var(--violet)'})}
+        <span class="score-x"><span class="score-l">Sleep</span>
+          <span class="score-s">${slept!=null? 'of '+Math.round(need/60)+'h needed' : 'not recorded'}</span></span>
+      </button>
+    </div>
   </div>`;
 }
 function wireRings(d){
@@ -7601,7 +7717,7 @@ function wireRings(d){
   const s=$('#ringStrain');
   if(s) s.onclick=()=>{ const c=$('#actsCard'); if(c) c.scrollIntoView({behavior:'smooth',block:'center'}); };
   const z=$('#ringSleep');
-  if(z) z.onclick=()=>openCheckin(d);
+  if(z) z.onclick=()=>openCheckinView(d);
 }
 
 
@@ -7745,7 +7861,8 @@ function todayNoCheckin(d){
   ${noticeHTML(d)}
   <div class="sec-t">This week</div>
   ${weekStrip(d)}
-  ${activitiesCard(d)}`;
+  ${activitiesCard(d)}
+  ${activityRowsHTML()}`;
 }
 
 function setupPrompt(){
@@ -7818,13 +7935,16 @@ function wireToday(d){
   const mr=$('#mcRow button'); if(mr) mr.onclick=()=>openCycle();
   wireNotice(d);
   on('btnCheck',()=>openCheckin(d));
-  on('btnEditCi',()=>openCheckin(d));
+  on('btnEditCi',()=>openCheckinView(d));
   on('btnStart',()=>{ const p=todayPlan(d); startWorkout(p.workoutId,p.variant,d,p); });
   on('btnPreview',()=>{ const p=todayPlan(d); previewWorkout(p.workoutId,p.variant,p); });
   on('btnSwap',()=>changePlan(d));
   on('btnPrep',()=>previewWorkout('w_prep','full'));
   wireRings(d);
   wireActivitiesCard(d);
+  wireActivityRows();
+  /* the tile that says you trained is the way to what you actually did */
+  const dn=$('#btnDone'); if(dn) dn.onclick=()=>sessionDetail(dn.dataset.sid);
   on('btnAddWhoop',()=>{ if(usesDevice()){ HTAB='import'; openMetrics(); } else startSetup(true); });
   on('setupGo',()=>startSetup());
   on('setupDismiss',()=>{
@@ -7927,6 +8047,48 @@ function sleepSlider(mins,fallback){
     </div>
     <div class="scale"><span>${fmtMin(SLEEP_MIN)}</span><span>${fmtMin(SLEEP_MAX)}</span></div>
   </div>`;
+}
+
+/* What you answered, before anything can be changed by a stray thumb.
+   The profile screen in Settings learned this the same way: a screen opened
+   to READ should not put a dozen sliders under your fingers. Edit is a choice
+   you make, and the editable form behind it is unchanged. */
+function openCheckinView(d){
+  const ci=DB.checkins[d];
+  if(!ci) return openCheckin(d);
+  const cy=cycleByDate(d);
+  const rd=readiness(d,ci), B=BAND[rd.band];
+  const row=(k,v)=> v==null||v===''? '' :
+    `<div class="kv"><span class="k">${esc(k)}</span><span class="v">${esc(String(v))}</span></div>`;
+  const lvl=v=> v==null? null : v+' / 10';
+
+  openSheet('Check-in · '+fmtDate(d),`
+    <div class="rec" style="text-align:center;margin-bottom:var(--sp-3)">
+      <div class="rec-l">Readiness</div>
+      <div class="rec-t" style="color:${B.color}">${rd.score}</div>
+      <div class="rec-m">${esc(B.label)}</div>
+    </div>
+    ${(ci.recovery!=null||ci.hrv!=null||ci.rhr!=null)?`
+    <div class="sec-t">${cy?'From your '+esc(sourceOf().name)+' data':'What you entered'}</div>
+    <div class="card tight">
+      ${row('Recovery', ci.recovery!=null? ci.recovery+'%':null)}
+      ${row('HRV', ci.hrv!=null? ci.hrv+' ms':null)}
+      ${row('Resting HR', ci.rhr!=null? ci.rhr+' bpm':null)}
+      ${row('Yesterday’s strain', ci.prevStrain!=null? ci.prevStrain:null)}
+    </div>`:''}
+    <div class="sec-t">How you slept and felt</div>
+    <div class="card tight">
+      ${row('Time asleep', ci.sleepMin!=null? fmtMin(ci.sleepMin):null)}
+      ${row('Energy', lvl(ci.energy))}
+      ${row('Soreness', lvl(ci.soreness))}
+      ${row('Stress', lvl(ci.stress))}
+      ${row('Motivation', lvl(ci.motivation))}
+      ${row('Pain', ci.pain)}
+      ${row('Time to train', ci.availTime? ci.availTime+' min':null)}
+    </div>
+    ${ci.notes?`<div class="note">${esc(ci.notes)}</div>`:''}`,
+    `<button class="btn primary big block" id="ciEdit">${svg('edit')} Edit this check-in</button>`);
+  $('#ciEdit').onclick=()=>openCheckin(d);
 }
 
 function openCheckin(d){
@@ -8655,15 +8817,23 @@ function sessionDetail(sid){
 }
 
 /* =========================================================================
-   VIEW: ACTIVITY  (log anything · your-sport detail · timeline · history)
+   ACTIVITY  (timeline · history · totals · your sport)
+   ------------------------------------------------------------------------
+   This was a tab of its own until the day's activities became a card on
+   Today. A whole primary destination holding that same card plus three links
+   was the tab bar paying rent, so the links moved under the card and the tab
+   went. These are the pages they lead to.
    ====================================================================== */
 let ATAB='timeline', AFILTER='';
-function viewTennis(v){
-  appbar('Activity');
+
+/* The group that sits under the day's activities on Today: everything about
+   what you have actually done, in one place rather than two. */
+function activityRows(){
   const n=(DB.activities||[]).length;
-  /* Logging is the point of this screen, so it is the one primary action and
-     the recent list is the content. Everything else is a row. */
-  const rows=[
+  const sessions=(DB.sessions||[]).filter(s=>s.done).length;
+  return [
+    {t:'Recent days', icon:'today', s:'The last ten days, day by day',
+     go:()=>openPane('Recent days', null, paneTimeline)},
     {t:'All activity', icon:'book',
      s: n? `${n} logged` : 'Nothing logged yet',
      go:()=>openPane('All activity', null, paneActHistory)},
@@ -8671,16 +8841,12 @@ function viewTennis(v){
      go:()=>openPane('Totals','Volume by week and type', paneTotals)},
     hasSportChosen() ? {t:SPORT_LABEL(), icon:'flame', s:'Your sport in detail',
      go:()=>openPane(SPORT_LABEL(), null, paneTennis)} : null
-  ];
-  v.innerHTML=
-    `${activitiesCard(todayISO())}
-     <div class="sec-t">Recent</div><div id="aBody"></div>
-     <div class="sec-t">More</div>${navRows('aRows',rows)}`;
-  wireActivitiesCard(todayISO());
-  paneTimeline($('#aBody'));
-  wireRows('aRows',rows);
-  bindInputs(v);
+  ].filter(Boolean);
 }
+function activityRowsHTML(){
+  return `<div class="sec-t">Your activity</div>`+navRows('aRows', activityRows());
+}
+function wireActivityRows(){ wireRows('aRows', activityRows()); }
 
 /* ---------------------------------------------------------- TIMELINE */
 function paneTimeline(c){
@@ -9010,31 +9176,43 @@ function pickActivity(onPick, title){
    different branches of the Today screen and two more on the Activity tab,
    all doing one of two things.
    ====================================================================== */
-function actRowHTML(i){
+/* One effort on the day's spine. `longest` is the longest thing done that
+   day, so the bar says how this one compares rather than repeating a number
+   that is already written next to it. */
+function actRowHTML(i, longest){
   const isS = i.kind==='session';
   const name = isS ? (i.name||'Session') : (ACT_TYPES[i.type]||ACT_TYPES.other).name;
   const from = i.time || '';
   const to   = i.endTime || (from && i.min ? timePlus(from, i.min) : '');
   const L    = i.load!=null ? rnd(i.load,1) : null;
-  return `<button class="actrow" data-${isS?'sid':'aid'}="${esc(i.id)}"
-      aria-label="${esc(name)}${L!=null?', strain '+L:''}">
-    <span class="ac-s ${L!=null?loadBand(L).cls:''}">${L==null?'—':L}</span>
-    <span class="ac-x"><span class="ac-t">${esc(name)}</span>
-      <span class="ac-m">${i.min?fmtMin(i.min):''}${isS?' · session':''}</span></span>
-    <span class="ac-w">${from?esc(from):''}${to?'<br>'+esc(to):''}</span>
+  const pct  = (longest && i.min) ? Math.max(6, Math.round(i.min/longest*100)) : 0;
+  const band = L!=null ? loadBand(L).cls : '';
+  return `<button class="dayrow" data-${isS?'sid':'aid'}="${esc(i.id)}"
+      aria-label="${esc(name)}${i.min?', '+fmtMin(i.min):''}${from?', from '+from:''}${
+        L!=null?', strain '+L:''}">
+    <span class="dr-t">${from?esc(from):'—'}</span>
+    <span class="dr-dot"><i class="${band}"></i></span>
+    <span class="dr-x">
+      <span class="dr-n">${esc(name)}${isS?'<em>session</em>':''}</span>
+      ${pct?`<span class="dr-bar"><i class="${band}" style="width:${pct}%"></i></span>`:''}
+      <span class="dr-m">${i.min?esc(fmtMin(i.min)):''}${to?' · until '+esc(to):''}</span>
+    </span>
+    <span class="dr-s ${band}">${L==null?'—':L}</span>
   </button>`;
 }
 function activitiesCard(d){
   const date=d||todayISO();
   const dd=dayDemand(date);
   const items=dd.items||[];
+  const longest=items.reduce((m,i)=>Math.max(m, i.min||0), 0);
   return `<div class="card acts" id="actsCard">
     <div class="card-h"><div class="card-t">${date===todayISO()?"Today's activities":'Activities'}</div>
-      ${dd.load?`<span class="tag ${loadBand(dd.load).cls}">${rnd(dd.load,1)} strain</span>`:''}</div>
+      ${dd.load?`<span class="day-strain ${loadBand(dd.load).cls}">${rnd(dd.load,1)}
+        <em>strain</em></span>`:''}</div>
     ${items.length
-      ? items.map(actRowHTML).join('')
-      : `<div class="hint" style="margin:0 0 12px">Nothing logged yet.</div>`}
-    <div class="btn-row" style="margin-bottom:0">
+      ? `<div class="daylist">${items.map(i=>actRowHTML(i,longest)).join('')}</div>`
+      : `<div class="day-empty">Nothing logged yet. The day fills in as you go.</div>`}
+    <div class="day-act">
       <button class="btn ghost" id="acAdd">${svg('plus')} Add activity</button>
       <button class="btn ghost" id="acStart">${svg('timer')} Start activity</button>
     </div>
@@ -9045,10 +9223,10 @@ function wireActivitiesCard(d){
   const add=$('#acAdd');   if(add)   add.onclick=()=>addActivityFlow(date);
   const st =$('#acStart'); if(st)    st.onclick=()=>startActivityFlow();
   $$('#actsCard [data-aid]').forEach(b=>b.onclick=()=>activitySheet(b.dataset.aid));
-  $$('#actsCard [data-sid]').forEach(b=>b.onclick=()=>{
-    const s=(DB.sessions||[]).find(x=>x.id===b.dataset.sid);
-    if(s && typeof sessionDetail==='function'){ resetStack(); sessionDetail(s); }
-  });
+  /* sessionDetail takes an ID and looks the session up itself. Passing the
+     object made it search for a session whose id was an object, find nothing,
+     and return - so the row did nothing at all, quietly. */
+  $$('#actsCard [data-sid]').forEach(b=>b.onclick=()=>sessionDetail(b.dataset.sid));
 }
 /* the two things those buttons do, in one place each */
 function addActivityFlow(d){
@@ -10215,7 +10393,10 @@ function setPane(id){
 }
 /* Settings and Metrics are reached, not navigated to. Keeping them as page
    builders means the whole of both screens works unchanged. */
-function openSettings(){ pushPage({build:viewSettings}); }
+/* A destination, not a page pushed on top of wherever you were. go() resets
+   the stack, so this always lands on the Settings index rather than inside
+   whichever pane was open last time. */
+function openSettings(){ go('settings'); }
 function openMetrics(){ pushPage({build:viewWhoop}); }
 
 /* The index. Each row pushes the group it names. */
