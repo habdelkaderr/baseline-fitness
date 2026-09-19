@@ -6673,6 +6673,12 @@ function mcPhase(date, ctx){
     out.phase='menstrual'; out.label='Menstrual';
     out.confidence='reported';
     out.note='You logged bleeding today.';
+    /* running longer than usual is a fact about the log, said plainly and
+       without a conclusion attached to it */
+    if(day>plen+2){
+      out.lateEnd=day-plen;
+      out.note+=' That is day '+day+', longer than your usual '+plen+'-day period.';
+    }
     return out;
   }
   if(day<=plen){
@@ -6686,8 +6692,18 @@ function mcPhase(date, ctx){
     out.note='Not enough cycle history yet to estimate a phase.';
     return out;
   }
-  if(day>len+10){
-    out.note='Day '+day+' is well past your usual length, so no phase is estimated.';
+  /* Past the usual length the arithmetic no longer knows where in the cycle
+     you are, so it stops claiming to. This is a statement about the ESTIMATE,
+     not about the person: no inference is drawn from a late cycle, and the
+     only consequence is that the cycle stops influencing readiness until a
+     new period is logged. */
+  if(day>len){
+    out.phase='late'; out.label='Past your usual length';
+    out.confidence='none';
+    out.late=day-len;
+    out.note='Day '+day+' is '+out.late+' day'+(out.late===1?'':'s')+' past your usual '
+      +len+'-day cycle. The phase estimate is paused until your next period is logged, '
+      +'and the cycle is not affecting your readiness score while it is.';
     return out;
   }
   const ov=len-14;                      // luteal length is the stable part
@@ -6706,6 +6722,115 @@ function mcPhase(date, ctx){
     out.note='Your cycle length has varied by '+S.sd+' days, so this is a rough estimate.';
   }
   return out;
+}
+
+
+/* =========================================================================
+   WHERE THE CYCLE IS RIGHT NOW
+   ------------------------------------------------------------------------
+   One answer for every screen that wants to say something about today, so
+   the row, the sheet and the cycle page cannot drift apart. Every field is
+   derived from what the user logged; none of it is assumed.
+   ====================================================================== */
+function mcExpected(date, ctx){
+  ctx = ctx || mcCtx();
+  const day=mcDay(date, ctx);
+  const S=ctx.stats, plen=ctx.plen;
+  const out={day:day, plen:plen, len:S.use, state:'none',
+             periodDayOf:null, endsAbout:null, nextAbout:null, overdue:0};
+  if(day==null) return out;
+
+  const log=mcLog(date);
+  const bleeding=!!(log&&log.bleeding);
+  const st=ctx.starts, last=st.length?st[st.length-1]:null;
+
+  if(last){
+    if(plen)   out.endsAbout=addDays(last, plen-1);
+    if(S.use)  out.nextAbout=addDays(last, S.use);
+  }
+
+  if(bleeding || day<=plen){
+    out.state = (bleeding && day>plen+2) ? 'periodLate' : 'period';
+    out.periodDayOf = plen;
+    if(out.state==='periodLate') out.overdue=day-plen;
+    return out;
+  }
+  if(S.use && day>S.use){
+    out.state='late';
+    out.overdue=day-S.use;
+    return out;
+  }
+  out.state='mid';
+  return out;
+}
+
+/* The one-line version, for the row on Today. */
+function mcStateLine(date, ctx){
+  const e=mcExpected(date, ctx);
+  if(e.day==null) return null;
+  if(e.state==='period')
+    return 'Period day '+e.day+(e.plen?' of about '+e.plen:'');
+  if(e.state==='periodLate')
+    return 'Period day '+e.day+' — '+e.overdue+' past your usual '+e.plen;
+  if(e.state==='late')
+    return e.overdue+' day'+(e.overdue===1?'':'s')+' past your usual '+e.len+'-day cycle';
+  return null;
+}
+
+/* Enabling tracking used to leave you with nothing to count from. Specialist
+   trackers ask three questions up front and can say something useful the same
+   day; this asks the same three, and every one of them can be skipped. */
+function mcSetupSheet(onDone){
+  const M=DB.mcycle||{};
+  let startD=(M.starts&&M.starts.length)?M.starts[M.starts.length-1]:'';
+  const draw=()=>{
+    updateSheet('Set up cycle tracking',`
+      <p class="lede">Three questions, all optional. They let Baseline say
+        something useful today instead of waiting a month — and you can change
+        or clear any of them later.</p>
+      <div class="field"><label>When did your last period start?</label>
+        <input class="inp" type="date" id="mcS0" value="${esc(startD)}" max="${todayISO()}">
+        <div class="hint">This is the only one that matters much: everything
+          else is counted from it. Leave it blank and tracking starts from the
+          first day you log.</div></div>
+      <div class="grid2">
+        <div class="field"><label>Usual period length</label>
+          <input class="inp num" type="number" inputmode="numeric" min="1" max="15"
+                 id="mcP0" value="${M.typicalPeriod||''}" placeholder="days"></div>
+        <div class="field"><label>Usual cycle length</label>
+          <input class="inp num" type="number" inputmode="numeric" min="15" max="90"
+                 id="mcL0" value="${M.typicalLen||''}" placeholder="days"></div>
+      </div>
+      <div class="hint">Left blank, both are worked out from what you log. Nothing
+        is assumed — there is no 28-day default anywhere in this app.</div>
+      <div class="note">This stays on your device with everything else. It is never
+        sent anywhere, and nothing here is used to infer anything about your health
+        beyond counting days.</div>`,
+      `<button class="btn primary big block" id="mcS0go">Start tracking</button>
+       <button class="btn ghost block" id="mcS0skip">Skip for now</button>`);
+
+    const fin=(useDates)=>{
+      DB.mcycle=DB.mcycle||{on:false,starts:[],typicalLen:null,typicalPeriod:null,askedAt:null};
+      DB.mcycle.on=true;
+      if(useDates){
+        const s=($('#mcS0')||{}).value||'';
+        if(s && s<=todayISO()){
+          DB.mcycle.starts=(DB.mcycle.starts||[]).filter(x=>x!==s).concat([s]).sort();
+        }
+        const pv=($('#mcP0')||{}).value;
+        const lv=($('#mcL0')||{}).value;
+        DB.mcycle.typicalPeriod = pv===''||pv==null? null : clamp(+pv,1,15);
+        DB.mcycle.typicalLen    = lv===''||lv==null? null : clamp(+lv,15,90);
+      }
+      DB.mcycle.askedAt=todayISO();
+      save(true); closeSheet();
+      setTimeout(()=>{ if(onDone) onDone(); render(); },220);
+    };
+    const g=$('#mcS0go');   if(g) g.onclick=()=>fin(true);
+    const k=$('#mcS0skip'); if(k) k.onclick=()=>fin(false);
+  };
+  openSheet('Set up cycle tracking','','');
+  draw();
 }
 
 /* A short human line for the UI. */
@@ -6831,7 +6956,10 @@ function mcAdjust(date, ctx){
   if(!mcOn()) return none;
   ctx = ctx || mcCtx();
   const p=mcPhase(date, ctx);
-  if(p.phase==='unknown') return none;
+  /* A whitelist, not a blacklist: 'unknown' and 'late' both mean the phase is
+     not known, and any future state that is not one of the four real phases
+     must default to no influence rather than to whatever slips through. */
+  if(MC_PHASES.indexOf(p.phase)<0) return none;
   const ev=mcEvidence(ctx);
   const e=ev.phases[p.phase];
   if(!e||!e.established) return none;
@@ -6888,12 +7016,13 @@ function mcWipe(){
 function mcRow(date){
   if(!mcOn()) return '';
   const s=mcSummary(date);
+  const st=mcStateLine(date);
   const logged=!!mcLog(date);
   return `<div class="rows" id="mcRow">
     <button data-r="0">
       <i class="rw-i">${svg('drop')}</i>
-      <span class="rw-x"><span class="rw-t">${esc(s.top)}</span>
-        <span class="rw-s">${esc(logged? s.sub : 'Log today')}</span></span>
+      <span class="rw-x"><span class="rw-t">${esc(st||s.top)}</span>
+        <span class="rw-s">${esc(logged? (st? s.top : s.sub) : 'Log today')}</span></span>
       <i class="rw-c">${svg('chev')}</i>
     </button></div>`;
 }
@@ -11280,7 +11409,9 @@ function settingsBody(v){
   const mcInit=()=>{ DB.mcycle=DB.mcycle||{on:false,starts:[],typicalLen:null,
                                            typicalPeriod:null,askedAt:null}; };
   const me=$('#sMcEnable');
-  if(me) me.onclick=()=>{ mcInit(); DB.mcycle.on=true; save(true); haptic(); render(); };
+  /* Enabling used to leave you with an empty count and "log today to start".
+     Ask the three questions every specialist tracker asks, all skippable. */
+  if(me) me.onclick=()=>{ mcInit(); haptic(); mcSetupSheet(); };
 
   const ml=$('#sMcLen'); if(ml) ml.onchange=()=>{
     DB.mcycle.typicalLen = ml.value===''?null:clamp(+ml.value,15,90); save(true); };
