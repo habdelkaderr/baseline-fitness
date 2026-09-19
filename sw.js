@@ -2,7 +2,7 @@
    No user data passes through here. WHOOP files are parsed in the page and
    training data lives in IndexedDB, neither of which the Cache API can see.
    Nothing is ever sent anywhere: there is no server to send it to. */
-const CACHE = 'baseline-v5';
+const CACHE = 'baseline-v6';
 const SHELL = [
   './',
   './index.html',
@@ -63,3 +63,19 @@ self.addEventListener('fetch', e => {
 });
 
 self.addEventListener('message', e => { if (e.data === 'skipWaiting') self.skipWaiting(); });
+
+/* Notifications the PAGE raised through this worker — a rest timer finishing
+   while the screen is off. There is deliberately no 'push' listener: there is
+   no push service, no subscription and no server, so nothing can arrive from
+   outside. All this does is bring the app back to the front when tapped. */
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then(list => {
+        for (const c of list) { if ('focus' in c) return c.focus(); }
+        if (self.clients.openWindow) return self.clients.openWindow('./');
+      })
+      .catch(() => {})
+  );
+});

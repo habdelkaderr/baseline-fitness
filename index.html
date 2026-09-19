@@ -1758,7 +1758,10 @@ const Store={
   },
   get mode(){ return this.idb?'IndexedDB':this.local?'localStorage (fallback)':'memory only'; },
   get durable(){ return this.idb||this.local; },
-  /* tiny non-sensitive preferences only */
+  /* Small preferences, in localStorage because they must be readable before
+     IndexedDB has opened: the theme, and the id of a workout left running.
+     A live workout is training data, so it is cleared by both delete paths
+     and is listed in DATA-PRIVACY.md rather than described as nothing. */
   pref(k,v){
     try{
       const o=JSON.parse(localStorage.getItem(PREF)||'{}');
@@ -1800,7 +1803,16 @@ const Store={
   },
   async clearAll(){
     if(this.idb) await IDB.wipe();
-    if(this.local){ try{ localStorage.removeItem(KEY); }catch(e){} }
+    this.purgeLegacy();
+    try{ localStorage.removeItem(PREF); }catch(e){}
+  },
+  /* The whole-DB JSON blob that `write` falls back to when IndexedDB is
+     unavailable. It contains imported health data, so anything that claims
+     to delete that data has to remove it too - whether or not this session
+     happens to be using it. Skipping that is how a deletion claim becomes
+     untrue on the one device where it mattered. */
+  purgeLegacy(){
+    try{ localStorage.removeItem(KEY); }catch(e){}
   },
   async estimate(){
     try{ if(navigator.storage&&navigator.storage.estimate) return await withTimeout(navigator.storage.estimate(),2000,null); }catch(e){}
@@ -4863,18 +4875,40 @@ const userTier = ()=> (DB&&DB.profile&&DB.profile.tier!=null) ? DB.profile.tier 
 /* Pick the best exercise the user can ACTUALLY perform. If the prescribed one
    needs kit they do not own, swap to the same movement pattern using kit they
    do. If they own more, offer the stronger option. Nothing is assumed. */
-function resolveExercise(exId){
+/* Which exercises are already placed in the session being built. The
+   resolver consults this so that three different movements the user cannot do
+   do not all collapse onto the same substitute - which is how one session
+   ended up prescribing the same movement three times.
+
+   It is a PREFERENCE. resolveExercise computes the unrestricted answer too,
+   so an exercise with no distinct alternative still resolves to something
+   rather than disappearing. */
+let RESOLVE_TAKEN=null;
+const notTaken = x => !RESOLVE_TAKEN || !RESOLVE_TAKEN.has(x.id);
+
+function resolveExercise(exId, taken){
+  /* first pass: avoid anything already in the session */
+  if(taken && taken.size){
+    RESOLVE_TAKEN=taken;
+    let first=null;
+    try{ first=resolveOne(exId); }finally{ RESOLVE_TAKEN=null; }
+    if(first && !taken.has(first.id)) return first;
+  }
+  /* second pass, or no session context: the answer as it always was */
+  return resolveOne(exId);
+}
+function resolveOne(exId){
   const e=exOf(exId); if(!e) return null;
   /* An exercise the user said hurt is skipped for the same reason a limitation
      is: there is no point prescribing the best variation of something that
      hurt them last week. Same pattern first, so the session keeps its shape. */
   if(isAvoided(e.id)){
     const sub=DB.exercises
-      .filter(x=>x.id!==e.id && x.pat===e.pat && canDo(x) && !isAvoided(x.id))
+      .filter(x=>x.id!==e.id && x.pat===e.pat && canDo(x) && !isAvoided(x.id) && notTaken(x))
       .sort((a,b)=>(b.tier||0)-(a.tier||0))[0];
     if(sub) return sub;
     const near=DB.exercises
-      .filter(x=>canDo(x) && !isAvoided(x.id) &&
+      .filter(x=>canDo(x) && !isAvoided(x.id) && notTaken(x) &&
                  (PAT_NEIGHBOURS[e.pat]||[]).indexOf(x.pat)>=0)[0];
     if(near) return near;
   }
@@ -4884,14 +4918,14 @@ function resolveExercise(exId){
   const lim=limitPatterns();
   const blocked=p=>lim.avoid.indexOf(p)>=0;
   if(blocked(e.pat)){
-    const swap=DB.exercises.filter(x=>canDo(x) && !blocked(x.pat) &&
+    const swap=DB.exercises.filter(x=>canDo(x) && !blocked(x.pat) && notTaken(x) &&
       (PAT_NEIGHBOURS[e.pat]||[]).indexOf(x.pat)>=0)
       .sort((a,b)=>(PAT_NEIGHBOURS[e.pat].indexOf(a.pat)-PAT_NEIGHBOURS[e.pat].indexOf(b.pat))
                    || ((a.tier||0)-(b.tier||0)))[0];
     if(swap) return swap;
     /* nothing neighbouring is safe either — fall through to mobility rather
        than prescribing the thing that hurts */
-    const safe=DB.exercises.filter(x=>canDo(x) && x.cat==='mobility' && !blocked(x.pat))[0];
+    const safe=DB.exercises.filter(x=>canDo(x) && x.cat==='mobility' && !blocked(x.pat) && notTaken(x))[0];
     if(safe) return safe;
   }
   if(canDo(e)){
@@ -4901,7 +4935,7 @@ function resolveExercise(exId){
   /* same movement pattern first, then same category, then anything that
      trains the same broad quality. There is always something you can do. */
   const alt=DB.exercises
-    .filter(x=>x.pat===e.pat && x.id!==e.id && canDo(x) && !blocked(x.pat))
+    .filter(x=>x.pat===e.pat && x.id!==e.id && canDo(x) && !blocked(x.pat) && notTaken(x))
     .sort((a,b)=>(b.tier||0)-(a.tier||0))[0];
   return alt||fallbackFor(e)||e;
 }
@@ -4936,13 +4970,17 @@ function bestForPattern(pat, current){
   /* an exercise the user said hurt is off the menu until its date passes */
   if(!pat||pat==='mob'||pat==='cardio') return null;
   const cands=DB.exercises.filter(x=>x.pat===pat && canDo(x) && !isAvoided(x.id)
+                                     && notTaken(x)
                                      && (x.tier||0)>(current.tier||0));
   if(!cands.length) return null;
   return cands.sort((a,b)=>(b.tier||0)-(a.tier||0))[0];
 }
 /* last resort: any exercise needing nothing at all, same category */
 function bodyweightFallback(e){
-  return DB.exercises.find(x=>x.cat===e.cat && (!x.needs||!x.needs.length) && x.id!==e.id)||null;
+  return DB.exercises.find(x=>x.cat===e.cat && (!x.needs||!x.needs.length)
+                              && x.id!==e.id && notTaken(x))
+      || DB.exercises.find(x=>x.cat===e.cat && (!x.needs||!x.needs.length) && x.id!==e.id)
+      || null;
 }
 
 /* a workout's warm-up: sport-specific when the workout is sport prep */
@@ -5200,6 +5238,54 @@ function sleepMinutes(v){
   if(n<=24)  return Math.round(n*60);   // decimal hours
   return Math.round(n);                 // already minutes
 }
+
+/* =========================================================================
+   WHAT IS ALLOWED THROUGH THE IMPORT DOOR
+   ------------------------------------------------------------------------
+   `accept=` on a file input is a hint to the picker. It is not validation:
+   a renamed file, a drag-and-drop, or a platform that ignores the attribute
+   all reach the reader regardless. These are the checks that actually run.
+
+   Nothing here trusts the filename for anything except a first sieve - the
+   importer has always detected the KIND of file from its headers, which is
+   the right way round.
+   ====================================================================== */
+const IMPORT_MAX_MB   = 25;                       // per file
+const IMPORT_MAX_BYTES= IMPORT_MAX_MB*1024*1024;
+const IMPORT_MAX_ROWS = 200000;                   // ~500 years of daily rows
+const IMPORT_OK_EXT   = ['.csv','.txt'];
+/* Browsers disagree about the type they report for a CSV, and some report
+   nothing at all, so an empty type is allowed through to the content check
+   rather than rejected on a guess. */
+const IMPORT_OK_TYPE  = ['text/csv','text/plain','application/csv',
+                         'application/vnd.ms-excel','text/comma-separated-values',''];
+
+function importFileCheck(f){
+  const name=String(f&&f.name||'');
+  const lower=name.toLowerCase();
+  /* A filename is data, not a path. It is never used to open, write or
+     resolve anything - only shown back, escaped - but a name carrying
+     separators is a sign of something odd and there is no reason to accept
+     one. */
+  if(/[\\/\\\\]|\.\./.test(name))
+    return 'That filename looks wrong. Rename the file and try again.';
+  if(!IMPORT_OK_EXT.some(x=>lower.endsWith(x)))
+    return 'Only .csv files can be imported. This one is '+
+           (lower.match(/\.[a-z0-9]+$/)? lower.match(/\.[a-z0-9]+$/)[0] : 'not a CSV')+'.';
+  if(f.type && IMPORT_OK_TYPE.indexOf(f.type)<0)
+    return 'That file says it is '+f.type+', not a CSV.';
+  if(!f.size) return 'That file is empty.';
+  if(f.size>IMPORT_MAX_BYTES)
+    return 'That file is '+Math.round(f.size/1024/1024)+' MB. The limit is '+
+           IMPORT_MAX_MB+' MB — a full export is normally well under it.';
+  return null;
+}
+/* Bytes that claim to be a CSV but are not text at all. A NUL in the first
+   few kilobytes means a binary file with a .csv name on it. */
+function importLooksBinary(text){
+  return text.slice(0,4096).indexOf('\u0000')>=0;
+}
+
 /* =========================================================================
    WHOOP IMPORT
    ====================================================================== */
@@ -5218,8 +5304,14 @@ function detectKind(head){
   return null;
 }
 function importWhoopFile(name,text){
+  if(importLooksBinary(text))
+    return {file:name,kind:null,added:0,dupes:0,
+            error:'That is not a text file, whatever it is named'};
   const rows=parseCSV(text);
   if(rows.length<2) return {file:name,kind:null,added:0,dupes:0,error:'File is empty or has no data rows'};
+  if(rows.length>IMPORT_MAX_ROWS)
+    return {file:name,kind:null,added:0,dupes:0,
+            error:'That file has '+rows.length+' rows, which is more than this importer will take'};
   const {head,data}=toObjects(rows);
   const kind=detectKind(head);
   if(!kind) return {file:name,kind:null,added:0,dupes:0,
@@ -6297,9 +6389,20 @@ function sessionBlocks(rec){
   const date=(rec&&rec.date)||todayISO();
   const bonus=blockBonus(ph,date);
   let given=0;
+  /* What is already in this session. Without it, three movements the user
+     cannot do all resolve to the same substitute, because each block is
+     resolved on its own and that substitute is the best answer to each
+     question asked separately. */
+  const taken=new Set();
   const push=b=>{
     const orig=exOf(b.ex);
-    const res=resolveExercise(b.ex);
+    const res=resolveExercise(b.ex, taken);
+    /* Still a duplicate means nothing distinct was available for this slot.
+       Six different movements beats seven with the same one three times, and
+       no authored workout repeats an exercise - every repeat that reaches
+       here is an artefact of substitution. */
+    if(res && taken.has(res.id)) return;
+    if(res) taken.add(res.id); else if(orig) taken.add(orig.id);
     const nb=Object.assign({},b);
     if(res&&orig&&res.id!==orig.id){
       nb.ex=res.id; nb.swappedFrom=orig.name;
@@ -8897,7 +9000,7 @@ function paneTimeline(c){
       ${dd.n?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:11px">
         <button class="btn xs ghost" data-dd="${d}">What this loaded</button></div>`:''}
     </div>`;}).join('');
-  $$('[data-aid]',c).forEach(r=>r.onclick=()=>activitySheet(r.dataset.aid));
+  $$('[data-aid]',c).forEach(r=>r.onclick=()=>activityView(r.dataset.aid));
   /* the demand vector, on request rather than on every row */
   $$('[data-dd]',c).forEach(b=>b.onclick=ev=>{
     ev.stopPropagation();
@@ -8969,10 +9072,10 @@ function paneTennis(c){
        </div>
        ${t.notes?`<div class="note" style="font-size:11.5px">${esc(t.notes)}</div>`:''}
      </div>`).join('')
-    :`<div class="empty"><div class="ei">\${svg('flame')}</div><h4>No \${esc(SLC)} logged yet</h4><p>Log a session and the engine will start protecting the day after it.</p></div>`}
+    :`<div class="empty"><div class="ei">${svg('flame')}</div><h4>No ${esc(SLC)} logged yet</h4><p>Log a session and the engine will start protecting the day after it.</p></div>`}
    ${wT.length?`<div class="note">Plus <b>${wT.length}</b> matching sessions imported from WHOOP.</div>`:''}`;
   $$('[data-w]',c).forEach(b=>b.onclick=()=>previewWorkout(b.dataset.w,'full'));
-  $$('[data-aid]',c).forEach(b=>b.onclick=()=>activitySheet(b.dataset.aid));
+  $$('[data-aid]',c).forEach(b=>b.onclick=()=>activityView(b.dataset.aid));
 }
 
 /* ---------------------------------------------------------- HISTORY pane */
@@ -9007,7 +9110,7 @@ function paneActHistory(c){
      </div>`;}).join('')
     :'<div class="empty"><div class="ei">'+svg('book')+'</div><h4>Nothing logged yet</h4><p>Use “Log an activity” above. Anything counts — a kickabout, a hike, a swim, a spontaneous run.</p></div>'}`;
   $$('[data-f]',c).forEach(b=>b.onclick=()=>{ AFILTER=b.dataset.f; paneActHistory(c); });
-  $$('[data-aid]',c).forEach(b=>b.onclick=()=>activitySheet(b.dataset.aid));
+  $$('[data-aid]',c).forEach(b=>b.onclick=()=>activityView(b.dataset.aid));
 }
 
 /* ---------------------------------------------------------- TOTALS pane */
@@ -9222,7 +9325,7 @@ function wireActivitiesCard(d){
   const date=d||todayISO();
   const add=$('#acAdd');   if(add)   add.onclick=()=>addActivityFlow(date);
   const st =$('#acStart'); if(st)    st.onclick=()=>startActivityFlow();
-  $$('#actsCard [data-aid]').forEach(b=>b.onclick=()=>activitySheet(b.dataset.aid));
+  $$('#actsCard [data-aid]').forEach(b=>b.onclick=()=>activityView(b.dataset.aid));
   /* sessionDetail takes an ID and looks the session up itself. Passing the
      object made it search for a session whose id was an object, find nothing,
      and return - so the row did nothing at all, quietly. */
@@ -9234,6 +9337,58 @@ function addActivityFlow(d){
 }
 function startActivityFlow(){
   pickActivity(k=>preStartSheet(k), 'Start activity');
+}
+
+/* =========================================================================
+   AN ACTIVITY YOU ALREADY LOGGED
+   ------------------------------------------------------------------------
+   Read first. Editing is a choice, and it is confirmed by the Save button on
+   the form behind it - the same contract the profile and the check-in use.
+   Opening a record to look at it should never be able to change it.
+   ====================================================================== */
+function activityView(id){
+  const a=(DB.activities||[]).find(x=>x.id===id);
+  if(!a) return;
+  const T=ACT_TYPES[a.type]||ACT_TYPES.other;
+  const to=a.endTime || (a.time&&a.min? timePlus(a.time,a.min) : '');
+  const strain=activityLoad(a);
+  const row=(k,v)=> (v==null||v==='')?'' :
+    `<div class="kv"><span class="k">${esc(k)}</span><span class="v">${esc(String(v))}</span></div>`;
+
+  openSheet(T.name,`
+    <div class="score lead" style="cursor:default;margin-bottom:var(--sp-3)">
+      ${ringHTML({lead:true, pct: strain? Math.min(100,strain/21*100):null,
+                  value: strain? rnd(strain,1) : '—', color:'var(--cyan)'})}
+      <span class="score-x">
+        <span class="score-l">Strain</span>
+        <span class="score-w">${esc(T.name)}</span>
+        <span class="score-s">${esc(fmtDate(a.date))}${a.time?' · '+esc(a.time):''}${to?'–'+esc(to):''}</span>
+      </span>
+    </div>
+    <div class="card tight">
+      ${row('How long', a.min? fmtMin(a.min):null)}
+      ${row('Started', a.time)}
+      ${row('Ended', to)}
+      ${row('How hard', a.intensity)}
+      ${row('Effort', a.rpe? a.rpe+' / 10':null)}
+      ${row('Strain', strain? rnd(strain,1)+' of 21':null)}
+      ${a.strain!=null?`<div class="kv"><span class="k">Strain figure</span>
+        <span class="v">${a.strainAuto===false?'Yours':'Estimated'}</span></div>`:''}
+      ${row('Distance', a.dist? a.dist+' km':null)}
+      ${row('Pace', a.pace? a.pace+' /km':null)}
+      ${row('Format', a.format)}
+      ${row('Session', a.subtype)}
+      ${row('Planned', a.planned===true?'Yes':a.planned===false?'No':null)}
+    </div>
+    ${a.notes?`<div class="note">${esc(a.notes)}</div>`:''}`,
+    `<button class="btn primary big block" id="avEdit">${svg('edit')} Edit this activity</button>
+     <button class="btn danger block" id="avDel">${svg('trash')} Delete activity</button>`);
+
+  $('#avEdit').onclick=()=>activitySheet(id);
+  $('#avDel').onclick=()=>confirmSheet('Delete activity?',
+    'It will be removed from your history and from all load calculations.','Delete',()=>{
+      DB.activities=(DB.activities||[]).filter(x=>x.id!==id);
+      save(true); toast('Deleted'); render(); },true);
 }
 
 function activitySheet(id,defDate,preset){
@@ -10205,12 +10360,48 @@ function journalCard(){
   </div>`;
 }
 
+/* =========================================================================
+   DELETING IMPORTED DATA
+   ------------------------------------------------------------------------
+   Everything derived from an import goes with it: the days, the workouts, the
+   journal rows, the record of the imports themselves, and the baselines that
+   were computed from them. The device stops being named as a source, so the
+   app does not go on claiming a wearable it no longer has data from.
+
+   Store.purgeLegacy() is the part that is easy to miss. Store.write() prefers
+   IndexedDB and only falls back to a whole-DB JSON blob in localStorage when
+   IndexedDB is unavailable. A device that hit that fallback once has health
+   data in that blob, and a delete that goes through the normal write path
+   never touches it - so the app would have told the user their data was gone
+   while a copy of it sat in localStorage.
+
+   What is NOT deleted: the user's own sessions, activities, check-ins,
+   settings and program. They did not come from the import and deleting them
+   is not what was asked for.
+   ====================================================================== */
+function importedCounts(){
+  const w=(DB&&DB.whoop)||{};
+  return {days:(w.cycles||[]).length, workouts:(w.workouts||[]).length,
+          journal:(w.journal||[]).length, imports:(w.imports||[]).length};
+}
+function deleteImportedData(){
+  const gone=importedCounts();
+  DB.whoop={cycles:[],workouts:[],journal:[],imports:[]};
+  DB.baselines=Object.assign({},SEED_BASE);
+  DB.profile.mode='manual';
+  DB.profile.source='none';
+  DB.profile.sourceFields=null;
+  saveWhoop();
+  Store.purgeLegacy();
+  return gone;
+}
+
 /* ------------------------------------------------------------ IMPORT */
 function paneImport(c){
   const im=DB.whoop.imports.slice().reverse();
   c.innerHTML=`
    <div class="card">
-     <div class="card-t accent" style="margin-bottom:10px">Import your ${esc(SRC_NAME())} export</div>
+     <div class="card-t accent" style="margin-bottom:10px">Import your ${esc(SRC_NAME())} data export</div>
      <p style="font-size:13.5px;line-height:1.6;color:var(--text-2)">${esc(sourceOf().how)}</p>
      ${sourceOf().id==='whoop'?`<div style="margin-top:12px">
        ${[['physiological_cycles.csv','Recovery, HRV, RHR, strain, sleep — the main file'],
@@ -10221,11 +10412,37 @@ function paneImport(c){
      </div>`:`<div class="note acc">
        Any daily CSV with a date column and columns it recognises: ${esc(srcFields().map(f=>fieldLabel(f).toLowerCase()).join(', '))}. Headers are matched loosely.
      </div>`}
-     <button class="btn primary big block" id="impGo">${svg('ul')} Choose CSV files</button>
-     <div class="hint" style="margin-top:9px">Read in your browser only. Re-importing is safe — duplicates are skipped.</div>
+     <div class="note acc" style="margin-top:14px">
+       Your imported fitness data is used to personalise Baseline's readiness and training recommendations. Only upload data you are authorised to provide. You can delete your imported data at any time.
+     </div>
+     <button class="tert" id="impHowT" aria-expanded="false" aria-controls="impHow">
+       How your data is used ${svg('down')}</button>
+     <div class="whybox" id="impHow" hidden>
+       <div class="kv"><span class="k">What is read</span><span class="v">The CSV files you choose</span></div>
+       <div class="kv"><span class="k">What is kept</span><span class="v">Daily figures only</span></div>
+       <div class="kv"><span class="k">Where it is processed</span><span class="v">In this browser</span></div>
+       <div class="kv"><span class="k">Where it is stored</span><span class="v">On this device</span></div>
+       <div class="kv"><span class="k">Sent anywhere</span><span class="v">No</span></div>
+       <ul class="why" style="border:none;padding:10px 0 0;margin:0">
+         <li class="pos"><span class="dot"></span><span>The file itself is <b>never stored</b>. It is read into memory,
+           the figures Baseline understands are taken out of it, and the text is discarded.</span></li>
+         <li class="pos"><span class="dot"></span><span>Only what the engine uses is kept: a date, and the recovery,
+           HRV, resting heart rate, sleep and strain figures for that date.
+           Free-text journal notes are <b>not</b> kept.</span></li>
+         <li class="pos"><span class="dot"></span><span>Nothing is uploaded. Baseline has no account, no server and no
+           analytics, and the page makes no network requests once it has loaded.</span></li>
+         <li class="pos"><span class="dot"></span><span>It is stored in this browser's own database on this device.
+           Clearing the site's data, or <b>Delete imported data</b> in Settings, removes it.</span></li>
+         <li class="warn"><span class="dot"></span><span>Anyone who can unlock this device can open the app. Baseline
+           has no passcode of its own.</span></li>
+       </ul>
+     </div>
+     <button class="btn primary big block" id="impGo" style="margin-top:12px">${svg('ul')} Choose CSV files</button>
+     <div class="hint" style="margin-top:9px">Read in your browser only. Re-importing is safe — duplicates are skipped.
+       Up to ${IMPORT_MAX_MB} MB per file.</div>
    </div>
    ${DB.whoop.cycles.length?`<div class="card">
-     <div class="card-h"><div class="card-t">Currently loaded</div></div>
+     <div class="card-h"><div class="card-t">Imported data on this device</div></div>
      <div class="kv"><span class="k">Cycles</span><span class="v">${DB.whoop.cycles.length} (${DB.whoop.cycles[0].date} → ${DB.whoop.cycles[DB.whoop.cycles.length-1].date})</span></div>
      <div class="kv"><span class="k">Workouts</span><span class="v">${DB.whoop.workouts.length}</span></div>
      <div class="kv"><span class="k">Journal rows</span><span class="v">${DB.whoop.journal.length}</span></div>
@@ -10247,14 +10464,29 @@ function paneImport(c){
      </ul>
    </div>`;
   $('#impGo').onclick=()=>$('#fileIn').click();
+  const ht=$('#impHowT'), hb=$('#impHow');
+  if(ht&&hb) ht.onclick=()=>{
+    const open=hb.hasAttribute('hidden');
+    if(open) hb.removeAttribute('hidden'); else hb.setAttribute('hidden','');
+    ht.classList.toggle('open',open);
+    ht.setAttribute('aria-expanded',open?'true':'false');
+    haptic();
+  };
 }
 $('#fileIn').addEventListener('change',async e=>{
   const files=Array.from(e.target.files||[]); if(!files.length)return;
   toast('Reading '+files.length+' file'+(files.length>1?'s':'')+'…');
   const results=[];
   for(const f of files){
+    /* the picker's accept= is a hint; this is the check */
+    const bad=importFileCheck(f);
+    if(bad){ results.push({file:f.name,error:bad,added:0,dupes:0,rows:0}); continue; }
     try{ const txt=await f.text(); results.push(importWhoopFile(f.name,txt)); }
-    catch(err){ results.push({file:f.name,error:'Could not read file',added:0,dupes:0}); }
+    catch(err){
+      /* deliberately not the thrown message: a browser's file error can
+         quote the path it failed on */
+      results.push({file:f.name,error:'Could not read that file',added:0,dupes:0,rows:0});
+    }
   }
   DB.whoop.imports.push({at:new Date().toISOString(),results});
   recomputeBaselines(); saveWhoop();
@@ -10262,6 +10494,8 @@ $('#fileIn').addEventListener('change',async e=>{
   const ok=results.filter(r=>!r.error), bad=results.filter(r=>r.error);
   const added=sum(ok.map(r=>r.added)), dup=sum(ok.map(r=>r.dupes));
   openSheet('Import complete',`
+    ${bad.length?`<div class="note warn"><b>${bad.length} file${bad.length>1?'s were':' was'} not imported.</b>
+       ${bad.map(r=>esc(r.file)+' — '+esc(r.error)).join('<br>')}</div>`:''}
     ${ok.map(r=>`<div class="card tight"><div style="font-weight:750;font-size:14px">${esc(r.file)}</div>
       <div class="kv"><span class="k">Detected as</span><span class="v">${esc(r.kind||'—')}</span></div>
       <div class="kv"><span class="k">Rows in file</span><span class="v">${r.rows}</span></div>
@@ -10835,14 +11069,31 @@ function settingsBody(v){
   $('#sSetup').onclick=()=>openSetup();
   $('#sImpWhoop').onclick=()=>{ if(usesDevice()){ HTAB='import'; openMetrics(); } else startSetup(true); };
   const dw=$('#sDelWhoop');
-  if(dw) dw.onclick=()=>confirmSheet('Remove imported data?',
-    `All <b>${DB.whoop.cycles.length}</b> imported days, workouts and journal entries will be deleted from this device. Your own sessions, activities, check-ins and settings are kept, and the app carries on using them.`,
-    'Remove imported data',()=>{
-      DB.whoop={cycles:[],workouts:[],journal:[],imports:[]};
-      DB.baselines=Object.assign({},SEED_BASE);
-      DB.profile.mode='manual';
-      saveWhoop(); toast('Imported data removed'); renderNav(); render();
-    },true);
+  if(dw) dw.onclick=()=>{
+    const n=importedCounts();
+    confirmSheet('Delete imported data?',
+      `<b>${n.days}</b> imported days, <b>${n.workouts}</b> imported workouts and
+       <b>${n.journal}</b> journal rows will be deleted from this device, along with
+       the baselines calculated from them and the record of when you imported.<br><br>
+       Your own sessions, activities, check-ins and settings are kept, and the app
+       carries on using them.`,
+      'Delete imported data',()=>{
+        const gone=deleteImportedData();
+        /* say what went, not what was going to go */
+        openSheet('Imported data deleted',`
+          <div class="card tight">
+            <div class="kv"><span class="k">Imported days</span><span class="v">${gone.days} deleted</span></div>
+            <div class="kv"><span class="k">Imported workouts</span><span class="v">${gone.workouts} deleted</span></div>
+            <div class="kv"><span class="k">Journal rows</span><span class="v">${gone.journal} deleted</span></div>
+            <div class="kv"><span class="k">Import history</span><span class="v">${gone.imports} deleted</span></div>
+            <div class="kv"><span class="k">Baselines from that data</span><span class="v">Reset</span></div>
+          </div>
+          <div class="note acc">Your own sessions, activities, check-ins and settings were
+            not touched. Readiness now comes from your daily check-ins alone.</div>`,
+          `<button class="btn primary big block" onclick="closeSheet()">Done</button>`);
+        renderNav(); render();
+      },true);
+  };
   const ew=$('#expCsvW'); if(ew) ew.onclick=exportWhoopCSV;
   const pill=(sel,cb)=>$$(sel+' button').forEach(b=>b.onclick=()=>{
     $$(sel+' button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); cb&&cb(b.dataset.v); });
@@ -12681,7 +12932,12 @@ function registerSW(){
 
 /* any unexpected throw inside boot must still leave a usable app */
 boot()
-  .catch(e=>{ console.error('boot failed',e); bootFallback((e&&e.message)||'error'); })
+  .catch(e=>{ /* The TYPE, not the object: an exception raised while parsing or storing
+     can quote what it was working on, and that would be health data in a
+     console. The message still reaches the on-screen fallback, which is the
+     person who needs it. */
+    console.error('Baseline: boot failed ('+((e&&e.name)||'Error')+')');
+    bootFallback((e&&e.message)||'error'); })
   .then(()=>{ try{ registerSW(); }catch(e){} });
 
 /* =========================================================================

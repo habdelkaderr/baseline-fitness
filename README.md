@@ -86,22 +86,73 @@ If you close it half way through, it reopens where you left off.
 
 ## Your data
 
-Everything you enter stays in **your own browser**, on the device you entered it
-on. This repository hosts the application code and nothing else.
+Everything you enter, and everything you import, stays in **your own browser**
+on the device you used. This repository hosts the application code and nothing
+else.
 
-- No accounts, no server, no database, no analytics, no trackers
-- Nothing is uploaded anywhere — there is no endpoint to upload to
-- Wearable exports are parsed inside the browser and never leave the device
+- No account, no server, no database, no analytics, no trackers
+- No third-party libraries at all — nothing is loaded from anywhere else
+- Nothing is uploaded, because there is no endpoint to upload to
 - Each browser on each device keeps a completely separate dataset
 - Anyone opening the same link gets an empty copy of the app, not your data
-- Moving data between devices is a manual backup file you export yourself
 
 You can check this in ten seconds: open the app in a private browsing window.
 You will get an empty app and the setup wizard.
 
-**Never commit a wearable export or a backup file to this repository.** Anything
+### What happens to a wearable export
+
+You export your own data from WHOOP, Garmin, Oura, Fitbit or similar and pick
+the CSV files yourself. Baseline is **not connected to any of those services**,
+uses no API, and never sees an account or a password.
+
+When you choose a file:
+
+1. It is checked first — `.csv` only, 25 MB limit, and it has to actually be
+   text. Anything else is refused with a reason.
+2. It is read into memory and parsed **in the browser**.
+3. The figures the engine uses are kept: date, recovery, HRV, resting heart
+   rate, sleep, strain, and your workouts.
+4. **The file itself is never stored.** The text is released when the import
+   finishes.
+5. **Free-text journal notes are never stored.** A WHOOP journal export
+   contains what you wrote about alcohol, illness and stress; Baseline reads
+   the question and the yes/no and skips the note.
+
+Imported figures live in your browser's IndexedDB. On a browser where
+IndexedDB is unavailable, Baseline falls back to local storage so your history
+is not silently lost — the same data, the same device, and both delete actions
+below clear it either way.
+
+### Deleting it
+
+**Settings → Data**
+
+- **Delete imported data** — removes imported days, workouts, journal rows and
+  import history, resets the baselines calculated from them, and tells you
+  exactly what was removed. Your own sessions, activities and check-ins stay.
+- **Erase all data** — removes everything on the device and returns the app to
+  a first run.
+
+Clearing the site's data in your browser does the same thing, because
+everything is in the browser.
+
+### What this does not protect against
+
+Baseline has no passcode of its own — anyone who can unlock your device and
+open the app can read your history. A backup you export is plain, unencrypted
+JSON.
+
+### Never commit an export
+
+A real wearable export is months of health data. `.gitignore` in this project
+excludes `Whoop Data/`, loose export CSVs and backup JSON, and `verify_web.py`
+fails the build if any of it reaches the shipped file. Anything actually
 committed is permanent and recoverable from git history, and Pages sites are
 public even when the repository is private.
+
+Full detail: **DATA-PRIVACY.md** (how it works) and **PRIVACY.md** (the
+policy). **STORE-READINESS.md** lists what still needs doing — including legal
+and trademark review — before this could go to an app store.
 
 ## Install it
 
