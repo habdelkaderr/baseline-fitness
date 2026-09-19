@@ -4333,6 +4333,40 @@ function fallbackCopy(txt,done){
 }
 
 /* =========================================================================
+   UNITS
+   Height and weight are STORED in metric, always, and converted only for
+   display and entry. Flipping the toggle never rewrites a stored number, so
+   switching back and forth loses nothing and the engine - which reads
+   heightCm and weightKg - never has to care which unit the user prefers.
+   ====================================================================== */
+const KG_PER_LB=0.45359237, CM_PER_IN=2.54;
+const isImperial = ()=> ((DB&&DB.profile&&DB.profile.units)||'metric')==='imperial';
+
+const kgToLb = kg => kg==null?null : Math.round(kg/KG_PER_LB*10)/10;
+const lbToKg = lb => lb==null?null : Math.round(lb*KG_PER_LB*10)/10;
+function cmToFtIn(cm){
+  if(cm==null) return null;
+  const totalIn=Math.round(cm/CM_PER_IN);
+  return {ft:Math.floor(totalIn/12), inch:totalIn%12};
+}
+function ftInToCm(ft,inch){
+  if((ft==null||ft==='') && (inch==null||inch==='')) return null;
+  return Math.round(((+ft||0)*12+(+inch||0))*CM_PER_IN);
+}
+/* what to show, in whichever unit is chosen */
+function showWeight(kg){
+  if(kg==null) return '—';
+  return isImperial() ? kgToLb(kg)+' lb' : kg+' kg';
+}
+function showHeight(cm){
+  if(cm==null) return '—';
+  if(!isImperial()) return cm+' cm';
+  const f=cmToFtIn(cm);
+  return f.ft+'′ '+f.inch+'″';
+}
+const unitName = u => (u||'metric')==='imperial' ? 'Imperial (lb, ft/in)' : 'Metric (kg, cm)';
+
+/* =========================================================================
    CSV PARSING  (RFC4180-tolerant)
    ====================================================================== */
 function parseCSV(text){
@@ -9155,6 +9189,126 @@ function openSettings(){ pushPage({build:viewSettings}); }
 function openMetrics(){ pushPage({build:viewWhoop}); }
 
 /* The index. Each row pushes the group it names. */
+/* =========================================================================
+   PROFILE CARD
+   Read-only until you ask to edit it. Every other field in Settings saves as
+   you touch it, which suits a toggle and does not suit a number you are half
+   way through typing.
+   ====================================================================== */
+let PROF_EDIT=false, PROF_DRAFT=null;
+
+function profileCard(){
+  const P=DB.profile;
+  const D=PROF_EDIT?PROF_DRAFT:P;
+  const imp=(D.units||'metric')==='imperial';
+  const hrNote = D.age
+    ? `<div class="note">Estimated max HR ≈ <b>${Math.round(208-0.7*D.age)} bpm</b>; Zone 2 roughly ${Math.round((208-0.7*D.age)*0.65)}–${Math.round((208-0.7*D.age)*0.75)} bpm. A formula estimate, not a measurement.</div>`
+    : '';
+
+  if(!PROF_EDIT){
+    return `<div class="card spane profile">
+      <div class="card-h"><div class="card-t accent">Profile</div>
+        <button class="btn xs ghost" id="profEdit">${svg('edit')} Edit</button></div>
+      <div class="kv"><span class="k">Name</span><span class="v">${esc(P.name||'—')}</span></div>
+      <div class="kv"><span class="k">Age</span><span class="v num">${P.age||'—'}</span></div>
+      <div class="kv"><span class="k">Height</span><span class="v num">${esc(showHeight(P.heightCm))}</span></div>
+      <div class="kv"><span class="k">Weight</span><span class="v num">${esc(showWeight(P.weightKg))}</span></div>
+      <div class="kv"><span class="k">Sex</span><span class="v">${esc(P.sex||'—')}</span></div>
+      <div class="kv"><span class="k">Units</span><span class="v">${esc(unitName(P.units))}</span></div>
+      ${hrNote}
+    </div>`;
+  }
+
+  const ft = imp ? cmToFtIn(D.heightCm) : null;
+  return `<div class="card spane profile" style="border-color:var(--accent-line)">
+    <div class="card-h"><div class="card-t accent">Editing profile</div></div>
+    <div class="field"><label>Name</label>
+      <input class="inp" id="sName" value="${esc(D.name||'')}" placeholder="Your name"></div>
+    <div class="grid2">
+      <div class="field"><label>Age</label>
+        <input class="inp num" type="number" inputmode="numeric" id="sAge" value="${D.age||''}"></div>
+      <div class="field"><label>Sex</label><select class="inp" id="sSex">
+        ${['','Male','Female','Prefer not to say'].map(x=>
+          `<option value="${esc(x)}" ${D.sex===x?'selected':''}>${x||'—'}</option>`).join('')}
+      </select></div>
+    </div>
+    ${imp?`
+    <div class="field"><label>Height</label>
+      <div class="grid2">
+        <input class="inp num" type="number" inputmode="numeric" id="sHtFt"
+               value="${ft?ft.ft:''}" placeholder="ft">
+        <input class="inp num" type="number" inputmode="numeric" id="sHtIn"
+               value="${ft?ft.inch:''}" placeholder="in">
+      </div></div>
+    <div class="field"><label>Weight (lb)</label>
+      <input class="inp num" type="number" inputmode="decimal" step="0.1" id="sWtLb"
+             value="${D.weightKg!=null?kgToLb(D.weightKg):''}"></div>`
+    :`
+    <div class="grid2">
+      <div class="field"><label>Height (cm)</label>
+        <input class="inp num" type="number" inputmode="numeric" id="sHt" value="${D.heightCm||''}"></div>
+      <div class="field"><label>Weight (kg)</label>
+        <input class="inp num" type="number" inputmode="decimal" step="0.1" id="sWt" value="${D.weightKg||''}"></div>
+    </div>`}
+    <div class="field"><label>Units</label>
+      <div class="seg acc" id="sUnits">
+        <button data-v="metric" class="${imp?'':'on'}">Metric (kg, cm)</button>
+        <button data-v="imperial" class="${imp?'on':''}">Imperial (lb, ft/in)</button>
+      </div>
+      <div class="hint">Your figures are kept the same and simply shown in the
+        unit you choose — switching back and forth changes nothing.</div></div>
+    ${hrNote}
+    <div class="btn-row">
+      <button class="btn ghost" id="profCancel" style="flex:1">Cancel</button>
+      <button class="btn primary" id="profSave" style="flex:2">Save changes</button>
+    </div>
+  </div>`;
+}
+
+/* read whatever is on screen into the draft, in metric */
+function profRead(){
+  if(!PROF_EDIT||!PROF_DRAFT) return;
+  const g=id=>{ const e=$('#'+id); return e?e.value:null; };
+  const n=id=>{ const x=g(id); return (x==null||x==='')?null:parseFloat(x); };
+  const nm=g('sName'); if(nm!=null) PROF_DRAFT.name=nm.trim();
+  const ag=n('sAge');  if($('#sAge')) PROF_DRAFT.age=ag;
+  const sx=g('sSex');  if(sx!=null) PROF_DRAFT.sex=sx||null;
+  if($('#sHtFt')||$('#sHtIn')) PROF_DRAFT.heightCm=ftInToCm(n('sHtFt'),n('sHtIn'));
+  else if($('#sHt'))           PROF_DRAFT.heightCm=n('sHt');
+  if($('#sWtLb'))              PROF_DRAFT.weightKg=lbToKg(n('sWtLb'));
+  else if($('#sWt'))           PROF_DRAFT.weightKg=n('sWt');
+}
+function profileWire(){
+  const e=$('#profEdit');
+  if(e) e.onclick=()=>{
+    const P=DB.profile;
+    PROF_DRAFT={name:P.name,age:P.age,heightCm:P.heightCm,weightKg:P.weightKg,
+                sex:P.sex,units:P.units||'metric'};
+    PROF_EDIT=true; haptic(); render();
+  };
+  const c=$('#profCancel');
+  if(c) c.onclick=()=>{ PROF_EDIT=false; PROF_DRAFT=null; render(); };
+  const s=$('#profSave');
+  if(s) s.onclick=()=>{
+    profRead();
+    const P=DB.profile;
+    P.name=(PROF_DRAFT.name||'').trim();
+    P.age=PROF_DRAFT.age; P.sex=PROF_DRAFT.sex;
+    P.heightCm=PROF_DRAFT.heightCm; P.weightKg=PROF_DRAFT.weightKg;
+    P.units=PROF_DRAFT.units||'metric';
+    PROF_EDIT=false; PROF_DRAFT=null;
+    save(true); toast('Profile saved','ok'); render();
+  };
+  /* switching units mid-edit keeps whatever has been typed and simply shows
+     it the other way round */
+  $$('#sUnits button').forEach(b=>b.onclick=()=>{
+    if(!PROF_EDIT) return;
+    profRead();
+    PROF_DRAFT.units=b.dataset.v;
+    haptic(); render();
+  });
+}
+
 function viewSettings(v){
   appbar('Settings');
   const rows=SET_PANES.map(g=>({
@@ -9198,22 +9352,7 @@ function settingsBody(v){
      
    </div>
 
-   <div class="card spane profile">
-     <div class="card-t accent" style="margin-bottom:12px">Profile</div>
-     <div class="field"><label>Name</label><input class="inp" id="sName" value="${esc(P.name)}" placeholder="Your name"></div>
-     <div class="grid2">
-       <div class="field"><label>Age</label><input class="inp num" type="number" inputmode="numeric" id="sAge" value="${P.age||''}"></div>
-       <div class="field"><label>Height (cm)</label><input class="inp num" type="number" inputmode="numeric" id="sHt" value="${P.heightCm||''}"></div>
-       <div class="field"><label>Weight (kg)</label><input class="inp num" type="number" inputmode="decimal" step="0.1" id="sWt" value="${P.weightKg||''}"></div>
-       <div class="field"><label>Sex</label><select class="inp" id="sSex">
-         ${['','Male','Female','Prefer not to say'].map(x=>`<option value="${esc(x)}" ${P.sex===x?'selected':''}>${x||'—'}</option>`).join('')}
-       </select></div>
-     </div>
-     ${P.age?`<div class="note">Estimated max HR ≈ <b>${Math.round(208-0.7*P.age)} bpm</b>; Zone 2 roughly ${Math.round((208-0.7*P.age)*0.65)}–${Math.round((208-0.7*P.age)*0.75)} bpm. A formula estimate, not a measurement.</div>`:''}
-     <div class="field"><label>Units</label>
-       <div class="seg acc" id="sUnits"><button data-v="metric" class="${P.units==='metric'?'on':''}">Metric (kg/km)</button>
-       <button data-v="imperial" class="${P.units==='imperial'?'on':''}">Imperial (lb/mi)</button></div></div>
-   </div>
+   ${profileCard()}
 
    <div class="card spane cycle">
      <div class="card-h"><div class="card-t accent">Cycle tracking</div>
@@ -9584,14 +9723,20 @@ function settingsBody(v){
     const v =(id,d)=>{ const e=$('#'+id); return e?e.value:d; };
     const ck=(id,d)=>{ const e=$('#'+id); return e?e.checked:d; };
     const num=(id)=>{ const e=$('#'+id); if(!e||e.value==='')return null; const n=parseFloat(e.value); return isNaN(n)?null:n; };
-    if(!$('#sName')) return;
+    /* Bail out when the settings body is not on screen, so a stray event
+       cannot write defaults over real data. This used to test for #sName,
+       which stopped existing when the profile became read-only - and silently
+       disabled saving for EVERY other control in Settings. Test for the
+       settings panes themselves, which is what it always meant. */
+    if(!document.querySelector('#view .spane')) return;
     /* changing training days re-derives the weekly targets; changing equipment
        only ever removes a target you can no longer do, so hand-tuned numbers
        are never quietly overwritten */
     let reDerive=false;
-    P.name=(v('sName','')||'').trim();
-    P.age=num('sAge'); P.heightCm=num('sHt'); P.weightKg=num('sWt');
-    P.sex=v('sSex','')||null;
+    /* The profile owns its own saving now - see profileCard(). Reading its
+       fields here would write '' over the name and null over age, height and
+       weight every time any OTHER settings input fired, because v() and num()
+       return their defaults when the element is not on screen. */
     /* gear is owned by the chip picker above, not by this form — reading a
        checkbox list that no longer exists used to wipe it on every keystroke */
     P.tier=tierOf(P.gear||[]);
@@ -9602,7 +9747,6 @@ function settingsBody(v){
     const dy=$('#sDays button.on');
     if(dy){ const nd=+dy.dataset.v; if(nd!==P.daysPerWeek){ P.daysPerWeek=nd; reDerive=true; } }
     const du=$('#sDur button.on'); if(du)P.sessionMin=+du.dataset.v;
-    const un=$('#sUnits button.on'); if(un)P.units=un.dataset.v;
     /* goals are derived from the selections, never hand-typed prose */
     P.goalPrimary=goalTextFor(P.sports);
     P.goalSecondary=(P.physiques||[]).map(id=>(PHYSIQUES.find(x=>x.id===id)||{}).desc).filter(Boolean).join(' ');
@@ -9628,6 +9772,7 @@ function settingsBody(v){
   });
   $('#sSched').onclick=()=>{ persist(); editSchedule(); };
   $('#expJson').onclick=exportJSON;
+  profileWire();
   const tb=$('#sTour'); if(tb) tb.onclick=()=>openTour();
   const ab=$('#sAway'); if(ab) ab.onclick=()=>openAway();
   $('#impJson').onclick=()=>$('#jsonIn').click();
