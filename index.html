@@ -9749,6 +9749,9 @@ function drawWarmup(){
     <div class="wm-ex">Warm-up</div>
     <div class="wm-sub">${esc(wu.name)} · about ${wu.dur} minutes</div>
     ${wk.desc?`<div class="note acc">${esc(wk.desc)}</div>`:''}
+    ${wu.items.some(it=>warmupHow(it.n))
+      ? '<div class="hint" style="margin:14px 2px 2px">Tap any movement to see how to do it.</div>'
+      : ''}
     <div style="margin-top:18px">
       ${wu.items.map((it,n)=>{
         const how=warmupHow(it.n);
