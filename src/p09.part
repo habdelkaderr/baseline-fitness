@@ -561,6 +561,10 @@ const SET_SECTIONS=[
   {id:'about',    t:null}
 ];
 let SETTAB='profile';
+/* Whether the gym's "something missing?" list is expanded. It lives out here
+   rather than in the profile because it is a view state, not a preference:
+   saving it would sync an open disclosure between devices. */
+let SETGEAR_OPEN=false;
 /* Shows one group and hides the rest. The segment bar it used to also
    update is gone; $$ on a missing selector is simply empty. */
 function setPane(id){
@@ -758,13 +762,8 @@ function settingsBody(v){
      <div class="card-h"><div class="card-t accent">Equipment</div>
        <span class="tag a">${countDoable(P.gear||[])} / ${DB.exercises.length} EXERCISES</span></div>
      <div class="hint" style="margin-bottom:12px">Bodyweight, a floor and a wall are assumed. Nothing else is.</div>
-     ${''/* replaced by the shared editor below */}${chipPicker({id:'gearPick', chosen:(P.gear||[]),
-        all:EQUIP_ITEMS.map(x=>({id:x.id,name:x.name,hint:x.hint})), allowEmpty:true})}
-     
-     ${(P.gear||[]).indexOf('db')>=0?`
-     <div class="field" style="margin-top:14px"><label>Heaviest dumbbell (kg, each)</label>
-       <input class="inp num" type="number" inputmode="decimal" step="0.5" id="sDbKg" value="${P.dbKg||''}" placeholder="—">
-       <div class="hint">Under 10 kg, progression comes from tempo and single-leg work.</div></div>`:''}
+     <div id="setsGear_root">${gearEditorHTML({id:'setsGear', gear:(P.gear||[]),
+        place:placeOf(P), open:!!SETGEAR_OPEN})}</div>
      <div class="field" style="margin-top:12px"><label>Anything else</label>
        <input class="inp" id="sEqNote" value="${esc(P.equipNote||'')}" placeholder="e.g. TRX, rowing machine"></div>
      <div style="margin-top:6px"><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
@@ -1152,16 +1151,23 @@ function settingsBody(v){
       `The ${esc(a.name.toLowerCase())} limitation will end today and those movements come back into your sessions. Nothing about your history changes.`,
       'Mark recovered',()=>{ l.until=addDays(todayISO(),-1); save(true); toast('Good news','ok'); render(); });
   });
-  /* Equipment: the same editor the setup wizard uses, so the two cannot
-     drift apart. The old chip picker below is still wired for any build that
-     still renders it.
-     Removing the last one is allowed — bodyweight only is a real setup. */
-  wirePicker('gearPick', (P.gear||[]),
-    EQUIP_ITEMS.map(x=>({id:x.id,name:x.name,hint:x.hint})),
-    next=>{ P.gear=next; P.tier=tierOf(next);
-            P.equipment=equipmentList(next,P.equipNote,P.dbKg);
-            pruneTargets(); save(true); render(); },
-    'Add equipment', true);
+  /* Equipment: literally the same editor the setup wizard uses, so the two
+     cannot drift apart. This comment used to claim as much while the code
+     underneath still ran the old flat chip picker, which meant the whole
+     gym/home question - and the weight fields that come with it - existed only
+     during onboarding. Anyone who had already finished setup had no way to
+     reach it, and an updated build looked identical to the old one.
+     Removing the last item is allowed — bodyweight only is a real setup. */
+  wireGearEditor({id:'setsGear', gear:(P.gear||[]), place:placeOf(P), open:!!SETGEAR_OPEN,
+    apply:o=>{
+      if(o.place!==undefined){ P.place=o.place; SETGEAR_OPEN=false; }
+      if(o.gear) P.gear=o.gear;
+      if(o.openList!==undefined) SETGEAR_OPEN=o.openList;
+      if(o.kg) setGearKg(o.kg.id, o.kg.v, P);
+      P.tier=tierOf(P.gear||[]);
+      P.equipment=equipmentList(P.gear||[],P.equipNote,P.dbKg);
+      pruneTargets(); save(true); render();
+    }});
   /* Sports: the first one leads. Goals: at least one. Both re-derive targets. */
   wirePicker('sportPick', (P.sports&&P.sports.length)?P.sports:[P.sport],
     SPORTS.map(x=>({id:x.id,name:x.name,hint:x.focus})),
@@ -1210,7 +1216,11 @@ function settingsBody(v){
     /* gear is owned by the chip picker above, not by this form — reading a
        checkbox list that no longer exists used to wipe it on every keystroke */
     P.tier=tierOf(P.gear||[]);
-    P.dbKg=num('sDbKg');
+    /* dbKg is NOT read here any more. The standalone "heaviest dumbbell" field
+       is gone - weights are entered inline beside the item they belong to, and
+       setGearKg() owns them. Reading a #sDbKg that no longer exists made num()
+       return its null default and wipe the weight on every other keystroke in
+       Settings, which is exactly the failure the comments above warn about. */
     P.equipNote=(v('sEqNote','')||'').trim();
     P.equipment=equipmentList(P.gear||[],P.equipNote,P.dbKg);
     P.preferBest=ck('sBest',true);

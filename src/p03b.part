@@ -77,6 +77,23 @@ function setGearKg(id, v, prof){
   if(id==='db') P.dbKg = P.gearKg[id]!=null ? P.gearKg[id] : null;
 }
 
+/* Where an existing profile trains, for the profiles saved before the question
+   existed. Asking them outright would be the honest thing if the answer were
+   free, but choosing an option REPLACES the gear list - gym ticks everything,
+   home clears it - so anyone who set their kit up by hand would lose it just by
+   opening Settings. Infer instead, and only ask when there is nothing to lose.
+
+     everything ticked  -> a gym, which is what "everything" means
+     something ticked   -> at home, the list they curated, still ticked
+     nothing ticked     -> null, so they get the question */
+function placeOf(P){
+  P=P||{};
+  if(P.place) return P.place;
+  const g=P.gear||[];
+  if(!g.length) return null;
+  return GYM_GEAR.every(id=>g.indexOf(id)>=0) ? 'gym' : 'home';
+}
+
 /* =========================================================================
    THE EQUIPMENT EDITOR
    One component, used by the setup wizard and by Settings, so the two cannot
