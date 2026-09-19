@@ -1173,6 +1173,27 @@ const hms      = s =>{ s=Math.max(0,Math.round(s));
   const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), x=s%60;
   return h? h+':'+String(m).padStart(2,'0')+':'+String(x).padStart(2,'0')
           : m+':'+String(x).padStart(2,'0'); };
+/* Minutes between two "HH:MM" strings, or null if either is missing. An end
+   before a start means it ran past midnight, which a late game genuinely
+   does, so it wraps rather than going negative. */
+function minsBetween(from,to){
+  const p=s=>{ const m=/^([0-9]{1,2}):([0-9]{2})$/.exec(String(s||'').trim());
+               if(!m) return null;
+               const h=+m[1], mi=+m[2];
+               return (h<24 && mi<60) ? h*60+mi : null; };
+  const a=p(from), b=p(to);
+  if(a==null||b==null) return null;
+  let d=b-a; if(d<0) d+=1440;
+  return d;
+}
+/* "HH:MM" that many minutes after another one */
+function timePlus(from,mins){
+  const m=/^([0-9]{1,2}):([0-9]{2})$/.exec(String(from||'').trim());
+  if(!m || mins==null) return '';
+  const t=(((+m[1])*60+(+m[2])+(+mins))%1440+1440)%1440;
+  return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');
+}
+
 /* minutes per kilometre as 5:42 */
 const paceStr  = p =>{ if(p==null||!isFinite(p)||p<=0) return '—';
   const m=Math.floor(p), s=Math.round((p-m)*60);
@@ -5254,8 +5275,12 @@ const LOAD_BANDS=[
 ];
 const loadBand = v => LOAD_BANDS.find(b=>v<=b.max)||LOAD_BANDS[LOAD_BANDS.length-1];
 
-/* Load Score for one logged activity */
+/* Load Score for one logged activity.
+   A figure the user entered - off a watch, or off a strap - is better data
+   than anything this formula can work out from a duration and a word, so it
+   wins outright. The estimate is what happens when there is not one. */
 function activityLoad(a){
+  if(a && a.strain!=null && !isNaN(+a.strain)) return clamp(+a.strain, 0, 21);
   const t=ACT_TYPES[a.type]||ACT_TYPES.other;
   const min=a.min||0, rpe=clamp(a.rpe||6,1,10);
   if(!min) return 0;
@@ -8525,8 +8550,8 @@ function viewTennis(v){
      go:()=>openPane(SPORT_LABEL(), null, paneTennis)} : null
   ];
   v.innerHTML=
-    `<button class="btn primary big block" id="aStart">${svg('play')} Start now</button>
-     <button class="btn ghost block" id="aAdd">${svg('plus')} Log something already done</button>
+    `<button class="btn primary big block" id="aStart">${svg('play')} Start activity</button>
+     <button class="btn ghost block" id="aAdd">${svg('plus')} Add a completed activity</button>
      <div class="sec-t">Recent</div><div id="aBody"></div>
      <div class="sec-t">More</div>${navRows('aRows',rows)}`;
   /* Playing tennis used to be something you could only tell the app about
@@ -8780,9 +8805,63 @@ function activitySheet(id,defDate){
      for the user is how you end up with a log full of tennis. */
   let type = ex? ex.type : null;
   let more = !!ex;           // editing opens with the details already visible
+
+  /* Something that already happened has a start and an end, so those are the
+     questions. An older record may only carry a duration and a start time, in
+     which case the end is worked out rather than invented - and if it has no
+     start time at all, both stay empty and the duration it already had is
+     kept on save rather than being thrown away. */
+  let FROM = ex? (ex.time||'') : '';
+  let TO   = ex? (ex.endTime || (ex.time&&ex.min? timePlus(ex.time,ex.min) : '')) : '';
+  /* a strain the user typed is theirs; until then it follows the other
+     answers, which is what makes the field answerable rather than a demand */
+  let STRAINSET = !!(ex && ex.strain!=null && ex.strainAuto===false);
+  /* The slider lives inside the collapsed details, so it EXISTS whether or
+     not anyone has looked at it: testing for the element is not testing for
+     an answer. An existing record counts as overridden only when its stored
+     effort disagrees with what its intensity would have implied. */
+  let RPESET = !!(ex && ex.rpe!=null &&
+                  (!ex.intensity || ex.rpe!==effortRpe(ex.intensity,null)));
+  let RPEVAL = (ex && ex.rpe!=null) ? ex.rpe : 6;
+
+  /* Every pill group except the type used to be rendered from the record and
+     read back out of the DOM, so a redraw - which is what opening "Add
+     details" does - discarded whatever had been chosen. Answers live here
+     instead, beside `type`, and survive being redrawn. */
+  const PICK = {
+    intensity: ex? (ex.intensity||null) : null,
+    format:    ex? (ex.format||null)    : null,
+    subtype:   ex? (ex.subtype||null)   : null,
+    planned:   ex? (ex.planned===true?'1':ex.planned===false?'0':null) : null
+  };
+
+  const curMin = ()=>{
+    const m=minsBetween(FROM,TO);
+    if(m!=null) return m;
+    return (ex && ex.min) ? ex.min : null;
+  };
+  const curInt = ()=> PICK.intensity;
+  const estimate = ()=>{
+    const m=curMin();
+    if(!type || !m) return null;
+    const r = RPESET ? RPEVAL : effortRpe(curInt(), null);
+    return activityLoad({type:type, min:m, rpe:r});
+  };
+
   const draw=()=>{
     const a = ex || {};
     const T = type? ACT_TYPES[type] : null;
+    const MIN = curMin();
+    const DURTXT = MIN!=null
+      ? fmtMin(MIN)+(minsBetween(FROM,TO)==null? ' — previously logged; set the times to keep it' : '')
+      : 'Set both times and the length works itself out.';
+    const STRAIN = STRAINSET ? (a.strain!=null? a.strain : null) : estimate();
+    const STRAINH = MIN==null
+      ? 'Worked out once there are times to work it out from.'
+      : STRAINSET
+        ? 'Your figure. Clear it to go back to the estimate.'
+        : 'Estimated from '+MIN+' minutes'+(curInt()? ' at '+String(curInt()).toLowerCase() : '')
+          +'. Replace it if your watch gave you a number.';
     /* the types worth showing first: whatever this user actually does */
     const mine = mainSportActs().concat(['running','cycling','strength','walking'])
       .filter((x,i,arr)=>ACT_TYPES[x] && arr.indexOf(x)===i);
@@ -8796,12 +8875,15 @@ function activitySheet(id,defDate){
        </div></div>
 
      ${type?`
-     <div class="field"><label>How long?</label>
-       <div class="pills" id="asQmin">${[20,30,45,60,90,120].map(m=>
-         `<button type="button" data-v="${m}" class="${(a.min||0)===m?'on':''}">${m} min</button>`).join('')}</div>
-       <input class="inp num" type="number" inputmode="numeric" id="asMin"
-              value="${a.min||''}" placeholder="or type the minutes"
-              style="margin-top:8px">
+     <div class="field"><label>When was it?</label>
+       <input class="inp" type="date" id="asDate" value="${esc(a.date||defDate||todayISO())}">
+       <div class="grid2" style="margin-top:9px">
+         <div><div class="sl">Started</div>
+           <input class="inp" type="time" id="asFrom" value="${esc(FROM)}"></div>
+         <div><div class="sl">Ended</div>
+           <input class="inp" type="time" id="asTo" value="${esc(TO)}"></div>
+       </div>
+       <div class="hint" id="asDur">${DURTXT}</div>
      </div>
 
      ${type==='other'?`
@@ -8813,22 +8895,25 @@ function activitySheet(id,defDate){
        <div class="hint">Suggestions appear as you type. Anything is fine.</div>
      </div>`:''}
 
-     <div class="field"><label>How hard?</label>
+     <div class="field"><label>How hard was it?</label>
        <div class="pills" id="asInt">
          ${['Easy','Moderate','Hard','Maximal'].map(f=>
-           `<button data-v="${f}" class="${a.intensity===f?'on':''}">${f}</button>`).join('')}</div>
+           `<button data-v="${f}" class="${PICK.intensity===f?'on':''}">${f}</button>`).join('')}</div>
+     </div>
+
+     <div class="field"><label>Strain</label>
+       <div class="fine">
+         <input class="inp num" type="number" inputmode="decimal" step="0.1"
+                min="0" max="21" id="asStrain" value="${STRAIN==null?'':STRAIN}">
+         <span class="hint" style="margin:0;white-space:nowrap">of 21</span>
+       </div>
+       <div class="hint" id="asStrainH">${STRAINH}</div>
      </div>
 
      <button class="tert" id="asMoreT" aria-expanded="${more?'true':'false'}">
        ${more?'Fewer details':'Add details'} ${svg('down')}</button>
 
      <div id="asMore" ${more?'':'hidden'}>
-       <div class="grid2">
-         <div class="field"><label>Date</label>
-           <input class="inp" type="date" id="asDate" value="${esc(a.date||defDate||todayISO())}"></div>
-         <div class="field"><label>Start time</label>
-           <input class="inp" type="time" id="asTime" value="${esc(a.time||'')}"></div>
-       </div>
        ${T&&T.dist?`<div class="grid2">
          <div class="field"><label>Distance (km)</label>
            <input class="inp num" type="number" inputmode="decimal" step="0.1" id="asDist"
@@ -8839,19 +8924,20 @@ function activitySheet(id,defDate){
        ${type==='other'?'':['tennis','padel','squash'].includes(type)?`
          <div class="field"><label>Format</label><div class="pills" id="asFormat">
            ${['Singles','Doubles','Hitting','Solo drills'].map(f=>
-             `<button data-v="${f}" class="${a.format===f?'on':''}">${f}</button>`).join('')}</div></div>
+             `<button data-v="${f}" class="${PICK.format===f?'on':''}">${f}</button>`).join('')}</div></div>
          <div class="field"><label>Session</label><div class="pills" id="asSubtype">
            ${['Match','Practice','Drills','Serve practice','Social'].map(f=>
-             `<button data-v="${f}" class="${a.subtype===f?'on':''}">${f}</button>`).join('')}</div></div>`
+             `<button data-v="${f}" class="${PICK.subtype===f?'on':''}">${f}</button>`).join('')}</div></div>`
        :`<div class="field"><label>Description</label>
           <input class="inp" id="asSubtype2" value="${esc(a.subtype||'')}"
                  placeholder="${type==='other'?'What was it?':'e.g. intervals, easy, match'}"></div>`}
        <div class="field"><label>Was this planned?</label>
          <div class="seg acc" id="asPlan">
-           <button data-v="1" class="${a.planned===true?'on':''}">Planned</button>
-           <button data-v="0" class="${a.planned===false?'on':''}">Unplanned</button>
+           <button data-v="1" class="${PICK.planned==='1'?'on':''}">Planned</button>
+           <button data-v="0" class="${PICK.planned==='0'?'on':''}">Unplanned</button>
          </div></div>
-       ${sliderHTML('asRpe','Perceived effort',a.rpe||6,'Very easy','Maximal')}
+       ${sliderHTML('asRpe','Perceived effort',
+           RPESET? RPEVAL : effortRpe(PICK.intensity,null),'Very easy','Maximal')}
        <div class="field"><label>Notes</label>
          <textarea class="inp" id="asNotes" placeholder="Anything worth remembering">${esc(a.notes||'')}</textarea></div>
        ${ex?`<button class="btn danger block" id="asDel">${svg('trash')} Delete activity</button>`:''}
@@ -8859,18 +8945,68 @@ function activitySheet(id,defDate){
      :`<div class="hint" style="margin-top:4px">Pick one to carry on.</div>`}
     `, type?`<button class="btn primary big block" id="asSave">${ex?'Save changes':'Save activity'}</button>`:'');
 
-    /* one pill group behaves like every other pill group */
-    const pills=(sel,cb)=>$$(sel+' button').forEach(b=>b.onclick=()=>{
+    /* one pill group behaves like every other pill group, and every one of
+       them writes its answer somewhere a redraw cannot lose it */
+    const pills=(sel,key,cb)=>$$(sel+' button').forEach(b=>b.onclick=()=>{
       $$(sel+' button').forEach(x=>x.classList.remove('on'));
-      b.classList.add('on'); haptic(); if(cb)cb(b); });
-    pills('#asFormat'); pills('#asSubtype'); pills('#asInt'); pills('#asPlan');
-    pills('#asQmin', b=>{ const m=$('#asMin'); if(m) m.value=b.dataset.v; });
-    /* typing a duration clears the pill, so the two never disagree */
-    const mi=$('#asMin');
-    if(mi) mi.addEventListener('input',()=>{
-      $$('#asQmin button').forEach(x=>
-        x.classList.toggle('on', x.dataset.v===String(+mi.value)));
+      b.classList.add('on'); haptic();
+      if(key) PICK[key]=b.dataset.v;
+      if(cb) cb(b);
     });
+    pills('#asFormat','format'); pills('#asSubtype','subtype');
+    pills('#asPlan','planned');
+    /* how hard it was changes what the strain estimate comes to */
+    pills('#asInt','intensity', ()=>refresh());
+
+    /* The two times are the length. Nothing else asks for it, so there is no
+       second control to disagree with. */
+    const bindTime=(id,set)=>{ const e=$('#'+id); if(!e) return;
+      e.addEventListener('input',()=>{ set(e.value); refresh(); });
+      e.addEventListener('change',()=>{ set(e.value); refresh(); }); };
+    bindTime('asFrom', v=>{ FROM=v; });
+    bindTime('asTo',   v=>{ TO=v; });
+
+    const rp=$('#asRpe');
+    if(rp) rp.addEventListener('input',()=>{ RPESET=true; RPEVAL=+rp.value; refresh(); });
+
+    const st=$('#asStrain');
+    if(st) st.addEventListener('input',()=>{
+      /* emptying it hands the number back to the estimate */
+      STRAINSET = st.value.trim()!=='';
+      refresh(true);
+    });
+    /* Patch the derived text in place. Re-rendering the sheet from inside a
+       time or number input's own handler destroys the element being typed
+       into, which on a date control closes the picker the instant it opens -
+       a bug this app has already had once. */
+    function refresh(strainOnly){
+      const m=curMin();
+      const d=$('#asDur');
+      if(d) d.textContent = m!=null
+        ? fmtMin(m)+(minsBetween(FROM,TO)==null? ' — previously logged; set the times to keep it' : '')
+        : 'Set both times and the length works itself out.';
+      const s=$('#asStrain'), h=$('#asStrainH');
+      if(s && !STRAINSET && !strainOnly){
+        const e=estimate();
+        s.value = e==null? '' : e;
+      }
+      if(h) h.textContent = m==null
+        ? 'Worked out once there are times to work it out from.'
+        : STRAINSET
+          ? 'Your figure. Clear it to go back to the estimate.'
+          : 'Estimated from '+m+' minutes'+(curInt()? ' at '+String(curInt()).toLowerCase() : '')
+            +'. Replace it if your watch gave you a number.';
+      /* keep the finer control in step with the coarser one, so opening the
+         details never shows an effort that contradicts the pill above it */
+      const rp2=$('#asRpe'), ro=$('#asRpe_o');
+      if(rp2 && !RPESET){
+        const v=effortRpe(curInt(), null);
+        RPEVAL=v;
+        rp2.value=String(v);
+        if(ro) ro.textContent=String(v);
+      }
+    }
+
     $$('#asType button').forEach(b=>b.onclick=()=>{ type=b.dataset.v; draw(); });
 
     const mt=$('#asMoreT'), mb=$('#asMore');
@@ -8882,26 +9018,34 @@ function activitySheet(id,defDate){
 
     const sv=$('#asSave');
     if(sv) sv.onclick=()=>{
-      const min=+($('#asMin')||{}).value||0;
-      if(!min){ toast('How long was it?','err'); return; }
-      const gv=sel=>{ const b=$(sel+' button.on'); return b?b.dataset.v:null; };
+      const min=curMin();
+      if(min==null||!min){ toast('When did it start and finish?','err'); return; }
+      const gv=key=>PICK[key];
       let dist=$('#asDist')?(+$('#asDist').value||null):null;
       let pace=$('#asPace')?$('#asPace').value.trim():null;
       if(dist&&!pace&&min){ const p=min/dist; pace=Math.floor(p)+':'+String(Math.round((p%1)*60)).padStart(2,'0'); }
-      const planned=gv('#asPlan');
+      const planned=gv('planned');
+      const inten=gv('intensity');
+      const stEl=$('#asStrain');
+      const stVal=(stEl && stEl.value.trim()!=='') ? clamp(+stEl.value,0,21) : null;
       const rec={
         id: ex? ex.id : 'a'+uid(),
         date: ($('#asDate')||{}).value||defDate||todayISO(),
-        time: ($('#asTime')||{}).value||null,
+        time: FROM||null, endTime: TO||null,
         type, min, dist, pace,
-        format: gv('#asFormat'),
-        subtype: gv('#asSubtype')
+        format: gv('format'),
+        subtype: gv('subtype')
                  || ($('#asName')?$('#asName').value.trim():'')
                  || ($('#asSubtype2')?$('#asSubtype2').value.trim():null),
-        /* unset stays unset: the app records what it was told, and
-           activityLoad() supplies its own neutral rpe when none was given */
-        intensity: gv('#asInt'),
-        rpe: $('#asRpe')? +$('#asRpe').value : null,
+        intensity: inten,
+        /* The pills never reached the load model: activityLoad reads `rpe`,
+           which only the slider inside "Add details" ever set, so answering
+           Maximal here and leaving the details closed produced the same
+           strain as answering Easy. The visible answer counts now. */
+        rpe: RPESET ? RPEVAL : (inten? effortRpe(inten,null) : null),
+        /* a figure the user stated outranks anything the formula can derive */
+        strain: stVal,
+        strainAuto: !STRAINSET,
         planned: planned==null? null : planned==='1',
         notes: ($('#asNotes')||{}).value.trim()||'',
         at: new Date().toISOString()
@@ -10694,7 +10838,7 @@ function drawWM(){
       <div style="font-size:12.5px;font-weight:750;letter-spacing:-.1px">${esc(W.workoutName)}</div>
       <div style="font-size:10.5px;color:var(--text-3);font-weight:650;margin-top:1px">
         ${W.kind==='activity'
-          ? esc(W.intensity||'In progress')
+          ? esc(W.intensity||'Running')
           : esc(VARIANT_NAME[W.variant]||'Full session')+' · '+(i<0?'warm-up':`exercise ${i+1}/${total}`)} · ${elapsed} min</div>
     </div>
     <div class="icon-btn" style="font-size:11px;font-weight:800;color:var(--accent)">${doneSets}/${allSets}</div>`;
@@ -11241,6 +11385,8 @@ function drawActivityFinish(){
   const laps=(en.run&&en.run.laps)?en.run.laps.length:0;
   const rpe=effortRpe(W.intensity,null);
   const strain=rnd(liveStrain(W.actType, mins, rpe),1);
+  /* the clock's own figure, until they replace it */
+  let STSET=false;
 
   $('#wmBody').innerHTML=`
     <div style="text-align:center;padding:14px 0 6px">
@@ -11270,6 +11416,17 @@ function drawActivityFinish(){
     <div class="field"><label>How hard was it?</label>
       <div class="pills" id="afInt">${['Easy','Moderate','Hard','Maximal'].map(f=>
         `<button data-v="${f}" class="${f===W.intensity?'on':''}">${f}</button>`).join('')}</div>
+      <div class="hint">Asked now rather than before you started, because now
+        you know.</div>
+    </div>
+    <div class="field"><label>Strain</label>
+      <div class="fine">
+        <input class="inp num" type="number" inputmode="decimal" step="0.1"
+               min="0" max="21" id="afStrain" value="${strain}">
+        <span class="hint" style="margin:0;white-space:nowrap">of 21</span>
+      </div>
+      <div class="hint" id="afStrainH">Counted from the clock. Replace it if
+        your watch gave you a number.</div>
     </div>
     <div id="afCmp"></div>
     <div class="field"><label>Notes</label>
@@ -11279,18 +11436,31 @@ function drawActivityFinish(){
   bindInputs($('#wmBody'));
 
   /* the comparison has to follow whatever they correct the numbers to */
+  const curStrain=()=>{
+    const e=$('#afStrain');
+    if(STSET && e && e.value.trim()!=='') return clamp(+e.value,0,21);
+    const m=Math.max(1,+($('#afMin')||{}).value||mins);
+    const iB=$('#afInt button.on');
+    return rnd(liveStrain(W.actType, m, effortRpe(iB?iB.dataset.v:W.intensity, null)),1);
+  };
   const paint=()=>{
     const m=Math.max(1,+($('#afMin')||{}).value||mins);
     const dEl=$('#afDist');
     const dist=dEl&&dEl.value!==''? (+dEl.value||null) : null;
-    const iB=$('#afInt button.on');
-    const inten=iB?iB.dataset.v:W.intensity;
-    const st=rnd(liveStrain(W.actType, m, effortRpe(inten,null)),1);
+    const st=curStrain();
+    const se=$('#afStrain');
+    if(se && !STSET && document.activeElement!==se) se.value=st;
+    const h=$('#afStrainH');
+    if(h) h.textContent = STSET
+      ? 'Your figure. Clear it to go back to what the clock counted.'
+      : 'Counted from the clock. Replace it if your watch gave you a number.';
     $('#afCmp').innerHTML=effortCompare({type:W.actType, date:W.date, excludeId:W.id,
       min:m, dist:dist, strain:st}) + weekContext(ACT_CAT(W.actType), m);
   };
   paint();
   ['afMin','afDist'].forEach(id=>{ const e=$('#'+id); if(e) e.addEventListener('input',paint); });
+  (function(){ const e=$('#afStrain'); if(e) e.addEventListener('input',()=>{
+    STSET = e.value.trim()!==''; paint(); }); })();
   $$('#afInt button').forEach(b=>b.onclick=()=>{
     $$('#afInt button').forEach(x=>x.classList.remove('on'));
     b.classList.add('on'); W.intensity=b.dataset.v; haptic(); paint(); });
@@ -11303,11 +11473,14 @@ function drawActivityFinish(){
     const inten=iB?iB.dataset.v:W.intensity;
     const rec={
       id:'a'+uid(), date:W.date, time:W.time||null,
+      endTime:new Date().toTimeString().slice(0,5),
       type:W.actType, min:m, dist:dist,
       pace: (dist&&m)? (()=>{ const p=m/dist;
         return Math.floor(p)+':'+String(Math.round((p%1)*60)).padStart(2,'0'); })() : null,
       format:null, subtype:null,
       intensity:inten, rpe:effortRpe(inten,null),
+      /* what the clock counted, or what the watch said instead */
+      strain:curStrain(), strainAuto:!STSET,
       planned:false,
       notes:($('#afNotes')||{}).value.trim()||'',
       /* what the clock actually saw, kept because it is the honest record of
@@ -11523,19 +11696,22 @@ function drawCardioStep(en,i,total){
 /* ---- starting something that is not in the plan ----
    Playing tennis could only ever be told to the app afterwards, from memory. */
 function startLiveActivity(type,intensity){
+  /* No intensity until they say so at the end: while the clock runs the
+     strain estimate uses the neutral middle of the scale, and the screen says
+     that it is an estimate rather than pretending to know. */
   const T=ACT_TYPES[type]||ACT_TYPES.other;
   const d=todayISO();
   const rd=DB.checkins[d]?readiness(d,DB.checkins[d]):null;
   W={
     id:'s'+uid(), date:d, kind:'activity', saveAs:'activity',
     actType:type, workoutName:T.name, variant:'full',
-    category:ACT_CAT(type), intensity:intensity||'Moderate',
+    category:ACT_CAT(type), intensity:intensity||null,
     startedAt:Date.now(), time:new Date().toTimeString().slice(0,5),
     band:rd?rd.band:null, readinessScore:rd?rd.score:null,
     step:0, addCore:false, recId:null, overridden:false,
     entries:[{
       exerciseId:null, name:T.name, plannedSets:1, plannedReps:'',
-      plannedRpe:'RPE '+effortRpe(intensity,null), plannedRest:'—', tempo:'',
+      plannedRpe:'', plannedRest:'—', tempo:'',
       note:'', blockNote:'', cue:'', subs:'', skipped:false, progNote:'',
       timed:null, cardio:{act:type, targetMin:null, free:true},
       run:{startedAt:Date.now(), endedAt:null, laps:[]},
@@ -11547,30 +11723,29 @@ function startLiveActivity(type,intensity){
   clearInterval(cardTimer); cardTimer=setInterval(cardTick,500);
   saveLive(); drawWM();
 }
-/* the two questions worth asking before a clock starts, and no more */
+/* The one question worth asking before a clock starts.
+   It used to also ask how hard you expected it to be, which is a prediction
+   nobody can make standing at the door with their shoes on. That question is
+   a memory at the end and a guess at the start, so it is asked at the end. */
 function startActivitySheet(){
-  let type=null, intensity='Moderate';
+  let type=null;
   const draw=()=>{
     const mine=mainSportActs().concat(['running','cycling','walking','strength'])
       .filter((x,i,a)=>ACT_TYPES[x] && a.indexOf(x)===i);
     const rest=Object.keys(ACT_TYPES).filter(k=>mine.indexOf(k)<0);
-    updateSheet('Start now',`
+    updateSheet('Start activity',`
       <div class="field"><label>What are you doing?</label>
         <div class="pills" id="stType">${mine.concat(rest).map(k=>
           `<button data-v="${k}" class="${k===type?'on':''}">${esc(ACT_TYPES[k].name)}</button>`).join('')}</div>
       </div>
-      ${type?`<div class="field"><label>How hard do you expect it to be?</label>
-        <div class="pills" id="stInt">${['Easy','Moderate','Hard','Maximal'].map(f=>
-          `<button data-v="${f}" class="${f===intensity?'on':''}">${f}</button>`).join('')}</div>
-        <div class="hint">Only used to estimate strain while the clock runs.
-          You can change it at the end.</div></div>`:''}`,
+      ${type?`<div class="hint">The clock and the strain both run from the
+        moment you press start. How hard it was is asked at the end.</div>`:''}`,
       type?`<button class="btn primary big block" id="stGo">${svg('play')} Start the clock</button>`:'');
     $$('#stType button').forEach(b=>b.onclick=()=>{ type=b.dataset.v; draw(); });
-    $$('#stInt button').forEach(b=>b.onclick=()=>{ intensity=b.dataset.v; draw(); });
     const g=$('#stGo');
-    if(g) g.onclick=()=>{ closeSheet(); setTimeout(()=>startLiveActivity(type,intensity),220); };
+    if(g) g.onclick=()=>{ closeSheet(); setTimeout(()=>startLiveActivity(type),220); };
   };
-  openSheet('Start now','','');
+  openSheet('Start activity','','');
   draw();
 }
 
