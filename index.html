@@ -923,6 +923,36 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
   .ring-l{font-size:9.5px}
 }
 
+/* ---------- Equipment: a row you tap, and a weight only when it means
+   something. The weight sits under the item it belongs to, appears when the
+   item is ticked and goes away when it is not, so nothing is on screen before
+   it can be answered. ---------- */
+.gwrap{margin-bottom:8px}
+.gr{display:flex;align-items:center;gap:12px;width:100%;
+  padding:13px 14px;border-radius:var(--r-md);background:var(--surface);
+  border:1px solid var(--border-soft);font-family:inherit;color:var(--text);
+  text-align:left;cursor:pointer;min-height:56px}
+.gr:active{background:var(--surface-2)}
+.gr.on{border-color:var(--accent);background:var(--accent-wash)}
+.gr-i{flex:0 0 22px;width:22px;height:22px;color:var(--text-3)}
+.gr.on .gr-i{color:var(--accent)}
+.gr-i svg{width:22px;height:22px;display:block}
+.gr-x{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.gr-t{font-size:14.5px;font-weight:700;overflow-wrap:anywhere}
+.gr-s{font-size:11.5px;color:var(--text-3);font-weight:600;line-height:1.4;
+  overflow-wrap:anywhere}
+.gr-c{flex:0 0 22px;width:22px;height:22px;color:var(--text-3)}
+.gr.on .gr-c{color:var(--accent)}
+.gr-c svg{width:22px;height:22px;display:block;stroke-width:2.6}
+.gr-w{display:flex;align-items:center;gap:9px;padding:9px 14px 2px 48px}
+.gr-wl{font-size:11.5px;font-weight:700;color:var(--text-3);flex:0 0 auto}
+.gr-w .stp{flex:0 0 130px}
+.gr-wu{font-size:11.5px;font-weight:700;color:var(--text-3)}
+@media (max-width:340px){
+  .gr-w{padding-left:14px}
+  .gr-w .stp{flex:1}
+}
+
 /* ---------- Settings: an index with a head on it ---------- */
 .set-head{padding:2px 2px 16px;border-bottom:1px solid var(--border-soft);
   margin-bottom:var(--sp-3)}
@@ -3276,6 +3306,9 @@ function freshDB(){
       age:null, sex:null, heightCm:null, weightKg:null,
       /* equipment tier: 0 minimal · 1 home · 2 full gym */
       tier:0, preferBest:true, gear:[], dbKg:null, equipNote:'',
+      /* where you train decides which way round the equipment question is
+         asked; null until you have been asked */
+      place:null, gearKg:{},
       /* goals — arrays, with the first entry leading */
       /* standing injuries: [{id, area, side, severity, until, note}] — these
          persist and expire, unlike the one-day pain flag in the check-in */
@@ -3349,18 +3382,157 @@ const TIERS=[
    only ever given exercises whose items you have ticked. Bodyweight and a
    floor are assumed; nothing else is.
    ====================================================================== */
+/* `home` decides whether an item appears in the at-home list; `gym` whether a
+   gym is assumed to have it. `kg` marks the three things worth a number: it is
+   what lets the app step a load in 2 kg instead of guessing.
+
+   No gym-machine ids were invented. "Leg press" and "lat pulldown" as separate
+   toggles would look thorough and do nothing, because no exercise in the
+   library asks for them - they are all gated by `cable`. The hints name the
+   real machines each category covers instead. */
 const EQUIP_ITEMS=[
-  {id:'db',    name:'Dumbbells',          hint:'Any pair, fixed or adjustable', tier:0, icon:'dumbbell'},
-  {id:'band',  name:'Resistance band',    hint:'One loop or tube band',         tier:0, icon:'eband'},
-  {id:'bench', name:'Bench, step or sturdy chair', hint:'Something stable to elevate a foot or lie on', tier:1, icon:'bench'},
-  {id:'bar',   name:'Pull-up bar',        hint:'Doorway or fixed',              tier:1, icon:'pullbar'},
-  {id:'kb',    name:'Kettlebell',         hint:'',                              tier:1, icon:'kettle'},
-  {id:'ball',  name:'Medicine ball',      hint:'Plus a wall you can throw at',  tier:1, icon:'medball'},
-  {id:'bb',    name:'Barbell and rack',   hint:'',                              tier:2, icon:'barbell'},
-  {id:'cable', name:'Cables or machines', hint:'Gym cable stack, leg press etc.',tier:2, icon:'cable'},
-  {id:'bike',  name:'Bicycle or stationary bike', hint:'',                      tier:0, icon:'bike'},
-  {id:'run',   name:'Somewhere to run',   hint:'Outdoors or a treadmill',       tier:0, icon:'run'}
+  {id:'db',    name:'Dumbbells',          hint:'Any pair, fixed or adjustable', tier:0, icon:'dumbbell',
+   home:true, gym:true, kg:'Heaviest pair'},
+  {id:'band',  name:'Resistance band',    hint:'One loop or tube band',         tier:0, icon:'eband',
+   home:true, gym:true},
+  {id:'bench', name:'Bench, step or sturdy chair', hint:'Something stable to elevate a foot or lie on', tier:1, icon:'bench',
+   home:true, gym:true},
+  {id:'bar',   name:'Pull-up bar',        hint:'Doorway frame, wall-mounted, or a rack',  tier:1, icon:'pullbar',
+   home:true, gym:true},
+  {id:'kb',    name:'Kettlebell',         hint:'One or a set',                  tier:1, icon:'kettle',
+   home:true, gym:true, kg:'Heaviest'},
+  {id:'ball',  name:'Medicine ball',      hint:'Plus a wall you can throw at',  tier:1, icon:'medball',
+   home:true, gym:true, kg:'Heaviest'},
+  {id:'bb',    name:'Barbell and rack',   hint:'Olympic bar, plates, squat rack or Smith machine', tier:2, icon:'barbell',
+   home:true, gym:true},
+  {id:'cable', name:'Cables and machines',
+   hint:'Cable stack, lat pulldown, seated row, leg press, leg curl — or a home multi-gym',
+   tier:2, icon:'cable', home:true, gym:true},
+  {id:'bike',  name:'Bicycle or stationary bike', hint:'Road bike, turbo, spin or air bike', tier:0, icon:'bike',
+   home:true, gym:true},
+  {id:'run',   name:'Somewhere to run',   hint:'Outdoors or a treadmill',       tier:0, icon:'run',
+   home:true, gym:true}
 ];
+/* What a gym is assumed to have until the user says otherwise. */
+const GYM_GEAR = EQUIP_ITEMS.filter(x=>x.gym).map(x=>x.id);
+const HOME_GEAR= EQUIP_ITEMS.filter(x=>x.home);
+/* the three items a weight means something for */
+const GEAR_KG  = EQUIP_ITEMS.filter(x=>x.kg).map(x=>x.id);
+
+/* One weight per weighted item, kept beside the gear list. `dbKg` stays in
+   step with the dumbbell figure because stepSize() and older saved profiles
+   both read it. */
+function gearKg(id){
+  const P=(DB&&DB.profile)||{};
+  const m=P.gearKg||{};
+  if(m[id]!=null) return m[id];
+  if(id==='db' && P.dbKg!=null) return P.dbKg;
+  return null;
+}
+function setGearKg(id, v, prof){
+  const P=prof||(DB&&DB.profile);
+  if(!P) return;
+  P.gearKg=P.gearKg||{};
+  if(v==null || v==='' || isNaN(+v)) delete P.gearKg[id];
+  else P.gearKg[id]=clamp(+v,1,300);
+  if(id==='db') P.dbKg = P.gearKg[id]!=null ? P.gearKg[id] : null;
+}
+
+/* =========================================================================
+   THE EQUIPMENT EDITOR
+   One component, used by the setup wizard and by Settings, so the two cannot
+   drift apart. `place` decides which way round the question is asked.
+   ====================================================================== */
+function gearEditorHTML(o){
+  const gear=o.gear||[];
+  const place=o.place||null;
+  const open=!!o.open;
+
+  if(!place) return `
+    <div class="rows" id="${o.id}_place">
+      <button data-p="home"><i class="rw-i">${svg('today')}</i>
+        <span class="rw-x"><span class="rw-t">At home</span>
+          <span class="rw-s">You pick what you have — nothing is assumed</span></span>
+        <i class="rw-c">${svg('chev')}</i></button>
+      <button data-p="gym"><i class="rw-i">${svg('barbell')}</i>
+        <span class="rw-x"><span class="rw-t">At a gym</span>
+          <span class="rw-s">Everything available — remove anything yours lacks</span></span>
+        <i class="rw-c">${svg('chev')}</i></button>
+    </div>`;
+
+  const row=it=>{
+    const on=gear.indexOf(it.id)>=0;
+    const kg=gearKg(it.id);
+    return `<div class="gwrap">
+      <button class="gr${on?' on':''}" data-g="${it.id}" aria-pressed="${on?'true':'false'}">
+        <i class="gr-i">${svg(it.icon)}</i>
+        <span class="gr-x"><span class="gr-t">${esc(it.name)}</span>
+          ${it.hint?`<span class="gr-s">${esc(it.hint)}</span>`:''}</span>
+        <i class="gr-c">${on?svg('check'):svg('plus')}</i>
+      </button>
+      ${(on && it.kg)?`<div class="gr-w">
+        <span class="gr-wl">${esc(it.kg)}</span>
+        ${stepper(-1,'gkg',kg==null?'':kg,'—',null,it.name+' weight in kilograms')
+            .replace('data-k="gkg"','data-k="gkg" data-gid="'+it.id+'"')}
+        <span class="gr-wu">kg</span>
+      </div>`:''}
+    </div>`;
+  };
+
+  if(place==='gym') return `
+    <div class="note acc"><b>Everything is available.</b> A commercial gym has
+      the lot, so Baseline assumes it rather than making you tick fifteen boxes.</div>
+    <button class="tert" id="${o.id}_more" aria-expanded="${open?'true':'false'}">
+      ${open?'Hide the list':'Something missing from your gym?'} ${svg('down')}</button>
+    ${open?`<div id="${o.id}_list">
+      <div class="hint" style="margin:2px 0 10px">Tap anything your gym does not have.</div>
+      ${EQUIP_ITEMS.filter(x=>x.gym).map(row).join('')}
+    </div>`:''}
+    <button class="tert" id="${o.id}_back">Train at home instead</button>`;
+
+  return `
+    <div class="hint" style="margin-bottom:10px">Tick what you actually have.
+      Bodyweight and a floor are assumed.</div>
+    ${HOME_GEAR.map(row).join('')}
+    <button class="tert" id="${o.id}_back">Train at a gym instead</button>`;
+}
+
+/* `apply` receives {gear, place} and is responsible for storing and redrawing. */
+function wireGearEditor(o){
+  const id=o.id, apply=o.apply;
+  $$('#'+id+'_place button').forEach(b=>b.onclick=()=>{
+    haptic();
+    const p=b.dataset.p;
+    apply({place:p, gear: p==='gym' ? GYM_GEAR.slice() : []});
+  });
+  const more=$('#'+id+'_more');
+  if(more) more.onclick=()=>{ haptic(); apply({openList:!o.open}); };
+  const back=$('#'+id+'_back');
+  if(back) back.onclick=()=>{ haptic(); apply({place:null, gear:[]}); };
+  $$('#'+id+'_root .gr, #'+id+'_list .gr, .gwrap .gr').forEach(b=>b.onclick=()=>{
+    haptic();
+    const g=(o.gear||[]).slice();
+    const i=g.indexOf(b.dataset.g);
+    if(i>=0) g.splice(i,1); else g.push(b.dataset.g);
+    apply({gear:g});
+  });
+  /* the weight steppers, which only exist for ticked weighted items */
+  $$('.gr-w .stp').forEach(wrap=>{
+    const inp=wrap.querySelector('input');
+    if(!inp) return;
+    const gid=inp.dataset.gid;
+    const write=v=>{ apply({kg:{id:gid, v:v}}); };
+    inp.addEventListener('input',()=>write(inp.value));
+    wrap.querySelectorAll('button').forEach(b=>b.onclick=ev=>{
+      ev.stopPropagation();
+      const cur=parseFloat(inp.value)||0;
+      let next=cur + (+b.dataset.d)*(gid==='db'?2:4);
+      if(next<0) next=0;
+      inp.value=String(next);
+      write(inp.value);
+    });
+  });
+}
 const ALWAYS_HAVE=['bw','floor','wall','towel'];   // assumed for everyone
 
 /* work out which items an exercise needs from its equipment description */
@@ -11066,7 +11238,7 @@ function settingsBody(v){
      <div class="card-h"><div class="card-t accent">Equipment</div>
        <span class="tag a">${countDoable(P.gear||[])} / ${DB.exercises.length} EXERCISES</span></div>
      <div class="hint" style="margin-bottom:12px">Bodyweight, a floor and a wall are assumed. Nothing else is.</div>
-     ${chipPicker({id:'gearPick', chosen:(P.gear||[]),
+     ${''/* replaced by the shared editor below */}${chipPicker({id:'gearPick', chosen:(P.gear||[]),
         all:EQUIP_ITEMS.map(x=>({id:x.id,name:x.name,hint:x.hint})), allowEmpty:true})}
      
      ${(P.gear||[]).indexOf('db')>=0?`
@@ -11460,7 +11632,9 @@ function settingsBody(v){
       `The ${esc(a.name.toLowerCase())} limitation will end today and those movements come back into your sessions. Nothing about your history changes.`,
       'Mark recovered',()=>{ l.until=addDays(todayISO(),-1); save(true); toast('Good news','ok'); render(); });
   });
-  /* Equipment: the blocks you chose, plus "+" for the rest of the list.
+  /* Equipment: the same editor the setup wizard uses, so the two cannot
+     drift apart. The old chip picker below is still wired for any build that
+     still renders it.
      Removing the last one is allowed — bodyweight only is a real setup. */
   wirePicker('gearPick', (P.gear||[]),
     EQUIP_ITEMS.map(x=>({id:x.id,name:x.name,hint:x.hint})),
@@ -13342,6 +13516,9 @@ function stepEmpty(id,d){
     case 'name':   return !(d.name||'').trim();
     case 'device': return !d.source;
     case 'body':   return d.age==null && d.heightCm==null && d.weightKg==null;
+    /* An empty gear list is a perfectly good answer at home, and a
+       meaningless one before "where do you train" has been asked at all. */
+    case 'gear':   return !d.place;
     default:       return false;
   }
 }
@@ -13421,18 +13598,18 @@ function drawSetup(){
 
   /* ---------------- 4 · equipment ---------------- */
   if(step.id==='gear'){
-    title='What equipment do you have?';
+    /* Where you train decides which way round to ask. A gym has everything
+       until told otherwise; at home nothing is assumed. */
+    title = d.place ? (d.place==='gym'?'Your gym':'What do you have at home?')
+                    : 'Where do you train?';
     body=head+`
-     <p class="lede">You are only ever shown exercises you can actually do.</p>
-     ${chipPicker({id:'setGearPick', allowEmpty:true, chosen:d.gear,
-        emptyText:'None — bodyweight only',
-        all:EQUIP_ITEMS.map(x=>({id:x.id,name:x.name,hint:x.hint||''}))})}
-     ${d.gear.indexOf('db')>=0?`
-     <div class="field" style="margin-top:16px"><label>Heaviest dumbbell (kg)</label>
-       <input class="inp num setF" data-k="dbKg" type="number" inputmode="decimal"
-              step="0.5" value="${d.dbKg||''}" placeholder="Optional"></div>`:''}
-     <div class="ruled" style="font-size:13px;color:var(--text-2);font-weight:600">
-       ${countDoable(d.gear)} of ${DB.exercises.length} exercises available</div>`;
+     <p class="lede">${d.place
+       ? 'You are only ever shown exercises you can actually do.'
+       : 'This decides how the next question is asked. You can change it at any time.'}</p>
+     <div id="setGear_root">${gearEditorHTML({id:'setGear', gear:d.gear,
+        place:d.place, open:!!SETUP.gearOpen})}</div>
+     ${d.place?`<div class="ruled" style="font-size:13px;color:var(--text-2);font-weight:600">
+       ${countDoable(d.gear)} of ${DB.exercises.length} exercises available</div>`:''}`;
   }
 
   /* ---------------- 5 · how much ---------------- */
@@ -13583,9 +13760,17 @@ function drawSetup(){
       haptic(); drawSetup();
     }, title, allowEmpty, true);   // the wizard redraws this sheet itself
   };
-  pick('setGearPick','gear',
-       EQUIP_ITEMS.map(x=>({id:x.id,name:x.name,hint:x.hint||''})),
-       'Add equipment', true);
+  wireGearEditor({id:'setGear', gear:SETUP.draft.gear, place:SETUP.draft.place,
+    open:!!SETUP.gearOpen,
+    apply:o=>{
+      const d=SETUP.draft;
+      if(o.place!==undefined){ d.place=o.place; SETUP.gearOpen=false; }
+      if(o.gear) d.gear=o.gear;
+      if(o.openList!==undefined) SETUP.gearOpen=o.openList;
+      if(o.kg) setGearKg(o.kg.id, o.kg.v, d);
+      d.tier=tierOf(d.gear||[]);
+      persistSetup(); drawSetup();
+    }});
   pick('setSportPick','sports',
        SETUP_SPORTS().map(x=>({id:x.id,name:x.name,hint:x.focus})),
        'Add a sport', true, true);
