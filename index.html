@@ -765,6 +765,13 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
   font-size:16px;font-weight:700;padding:0 4px;
 }
 .setrow input:focus{outline:none;border-color:var(--accent)}
+/* A primed value is a suggestion until it is confirmed, so it is shown muted.
+   Once the set is ticked it becomes a record and reads at full strength. */
+.setrow:not(.done) .stp input{color:var(--text-3)}
+.setrow.done .stp input{color:var(--text)}
+.setrow[data-row]{cursor:pointer}
+.setrow[data-row]:active{background:var(--surface-2)}
+.setrow.done[data-row]:active{background:var(--accent-wash)}
 .setrow .sl{font-size:9px;color:var(--text-3);text-align:center;font-weight:750;letter-spacing:.5px;text-transform:uppercase;margin-bottom:3px}
 .sfield{flex:1;min-width:0}
 .tick{
@@ -9522,9 +9529,31 @@ function startWorkout(wid,variant,date,rec){
         skipped:false,
         sets:Array.from({length:n},()=>({reps:'',weight:'',rpe:'',done:false})) };})
   };
+  /* Fill every set in with what you did last time BEFORE the screen is
+     drawn. Shown muted until confirmed, so nothing is recorded that the user
+     has not ticked - but the common case, repeating last week, is one tap. */
+  W.entries.forEach(primeSets);
   $('#wmode').classList.add('on');
   document.body.style.overflow='hidden';
   drawWM();
+}
+
+/* The most likely value for each set, in order of authority:
+     1. what you did in that same set position last time
+     2. what you did in the last set of that session (for extra sets)
+     3. the planned reps, and no weight
+   Never written to `done`; these are suggestions until the user taps. */
+function primeSets(en){
+  const prev=lastPerformance(en.exerciseId, null, W?W.id:null);
+  const planReps=String(en.plannedReps||'').replace(/[^0-9]/g,' ').trim().split(/\s+/)[0]||'';
+  en.sets.forEach((s,n)=>{
+    if(s.done) return;                      // a resumed session keeps its log
+    if(s.reps==='' || s.weight===''){
+      const src = prev ? (prev.sets[Math.min(n, prev.sets.length-1)]||null) : null;
+      if(s.reps==='')   s.reps   = (src&&src.reps!=null&&src.reps!=='') ? String(src.reps) : planReps;
+      if(s.weight==='') s.weight = (src&&src.weight!=null&&src.weight!=='') ? String(src.weight) : '';
+    }
+  });
 }
 function exitWM(discard){
   const fin=()=>{ $('#wmode').classList.remove('on'); document.body.style.overflow=''; stopRest(); W=null; render(); };
@@ -9537,6 +9566,10 @@ const VARIANT_NAME={full:'Full session', reduced:'Reduced volume', recovery:'Rec
 
 function drawWM(){
   if(!W)return;
+  /* Re-rendering the body threw the user back to the top of the exercise on
+     every single tick, which on a four-set list meant scrolling down again
+     after each set. */
+  const _body=$('#wmBody'), _keep=_body?_body.scrollTop:0;
   const total=W.entries.length;
   const i=W.step;
   const doneSets=sum(W.entries.map(e=>e.sets.filter(s=>s.done).length));
@@ -9557,6 +9590,7 @@ function drawWM(){
   if(i<0) return drawWarmup();
   if(i>=total) return drawFinish();
   drawExercise(W.entries[i],i,total);
+  if(_body && _keep) _body.scrollTop=_keep;
 }
 function drawWarmup(){
   const wk=DB.workouts.find(x=>x.id===W.workoutId);
@@ -9594,8 +9628,19 @@ function drawExercise(en,i,total){
         ${p&&p.up===true?`<div class="lp up">${svg('up')} ${p.pct}% more volume so far</div>`:''}
         ${p&&p.up===false?`<div class="lp down">${svg('down2')} ${Math.abs(p.pct)}% below last time — fine on a low-readiness day</div>`:''}
       </div>`;})()}
-    ${en.cue?`<div class="note acc"><b>Cue:</b> ${esc(en.cue)}</div>`:''}
     ${en.blockNote?`<div class="note warn">${esc(en.blockNote)}</div>`:''}
+    ${(()=>{
+      /* Say where the numbers came from. A pre-filled value the user cannot
+         account for is worse than an empty one; a pre-filled value they can
+         see the provenance of is what makes one-tap logging honest. */
+      const anyDone=en.sets.some(s=>s.done);
+      const primed=en.sets.some(s=>s.weight!=='||s.reps!==');
+      if(anyDone||!primed) return '';
+      const pv=lastPerformance(en.exerciseId,null,W.id);
+      return `<div class="hint" style="margin:10px 2px 0">${pv
+        ? 'Filled in from last time — tap a set to confirm, or change it first.'
+        : 'Filled in from the plan — tap a set to confirm, or change it first.'}</div>`;
+    })()}
     <div class="setlist">
       <div class="setrow" style="background:none;border:0;padding:0 12px 4px;margin-bottom:2px">
         <div class="sn" style="background:none"></div>
@@ -9604,7 +9649,9 @@ function drawExercise(en,i,total){
         <div style="flex:0 0 44px"></div>
       </div>
       ${en.sets.map((s,n)=>`
-        <div class="setrow ${s.done?'done':''} ${!s.done&&en.sets.slice(0,n).every(x=>x.done)?'cur':''}">
+        <div class="setrow ${s.done?'done':''} ${!s.done&&en.sets.slice(0,n).every(x=>x.done)?'cur':''}"
+             data-row="${n}" role="button" tabindex="0"
+             aria-label="Set ${n+1}${s.done?', done':', tap to complete'}">
           <div class="sn">${n+1}</div>
           <div class="si">
             <div class="sfield">${stepper(n,'reps',s.reps,
@@ -9621,6 +9668,8 @@ function drawExercise(en,i,total){
                   aria-label="${s.done?'Undo set':'Complete set'} ${n+1}">${svg('check')}</button>
         </div>`).join('')}
     </div>
+    ${en.sets.every(s=>s.done)?'':`
+    <button class="btn ghost block" id="wmAll">${svg('check')} Log the rest as shown</button>`}
     <div class="btn-row">
       <button class="btn sm ghost" id="wmAddSet">${svg('plus')} Set</button>
       <button class="btn sm ghost" id="wmUndo">${svg('undo')} Undo</button>
@@ -9633,11 +9682,7 @@ function drawExercise(en,i,total){
       <div style="flex:0 0 128px">${stepper(-1,'rpe',
         (en.sets.filter(s=>s.done&&s.rpe)[0]||{}).rpe||'', '')}</div>
     </div>`:''}
-    ${en.note?`<div class="note"><b>Your note:</b> ${esc(en.note)}</div>`:''}
-    ${e&&e.prog?`<div style="margin-top:16px"><div class="card-t" style="margin-bottom:6px">Progression rule</div>
-      <p style="font-size:12.5px;line-height:1.55;color:var(--text-3)">${esc(e.prog)}</p></div>`:''}
-    ${en.subs?`<div style="margin-top:11px"><div class="card-t" style="margin-bottom:6px">If this is not working today</div>
-      <p style="font-size:12.5px;line-height:1.55;color:var(--text-3)">${esc(en.subs)}</p></div>`:''}`;
+    ${en.note?`<div class="note"><b>Your note:</b> ${esc(en.note)}</div>`:''}`;
 
   const allDone=en.sets.every(s=>s.done);
   $('#wmFoot').innerHTML=`<div class="btn-row">
@@ -9656,10 +9701,15 @@ function drawExercise(en,i,total){
     saveLive();
   };
   $$('.wmIn').forEach(inp=>inp.addEventListener('input',()=>{
+    const n=+inp.dataset.s;
+    if(n>=0 && en.sets[n]) en.sets[n].touched=true;   // stop carry-forward
     putVal(inp.dataset.s, inp.dataset.k, inp.value);
   }));
-  $$('.stp button').forEach(b=>b.onclick=()=>{
+  $$('.stp button').forEach(b=>b.onclick=ev=>{
+    ev.stopPropagation();
     const wrap=b.parentElement, inp=wrap.querySelector('input');
+    const sn=+inp.dataset.s;
+    if(sn>=0 && en.sets[sn]) en.sets[sn].touched=true;
     const k=inp.dataset.k, dir=+b.dataset.d;
     const cur = inp.value!=='' ? parseFloat(inp.value)
               : (inp.placeholder!=='' ? parseFloat(inp.placeholder) : NaN);
@@ -9674,18 +9724,43 @@ function drawExercise(en,i,total){
     putVal(inp.dataset.s, k, inp.value);
     haptic();
   });
-  $$('[data-t]').forEach(b=>b.onclick=()=>{
-    const n=+b.dataset.t, s=en.sets[n];
+  /* completing a set: the whole row is the target, not just the tick */
+  const complete=(n)=>{
+    const s=en.sets[n];
     s.done=!s.done;
     if(s.done){
       if(!s.reps){ const ph=String(en.plannedReps).replace(/[^0-9–\-]/g,'').split(/[–\-]/)[0]; s.reps=ph||''; }
       if(!s.rpe){ const m=String(en.plannedRpe||'').match(/(\d+)/); if(m)s.rpe=m[1]; }
+      /* Whatever you just confirmed is the best guess for the sets after it.
+         Only untouched ones, so an already-logged set is never rewritten. */
+      for(let k=n+1;k<en.sets.length;k++){
+        const nx=en.sets[k];
+        if(nx.done || nx.touched) continue;
+        nx.reps=s.reps; nx.weight=s.weight;
+      }
       haptic();
       const rest=parseRest(en.plannedRest);
       if(DB.settings.restTimerOn&&rest&&!(n===en.sets.length-1&&i===total-1)) startRest(rest,en.name,n+1,en.sets.length);
     }
     saveLive(); drawWM();
+  };
+  $$('[data-t]').forEach(b=>b.onclick=ev=>{ ev.stopPropagation(); complete(+b.dataset.t); });
+  /* tapping the row itself, anywhere that is not a stepper control */
+  $$('#wmBody .setrow[data-row]').forEach(r=>r.onclick=ev=>{
+    if(ev.target.closest('.stp')) return;
+    complete(+r.dataset.row);
   });
+  /* one tap for an exercise that went exactly as shown */
+  const la=$('#wmAll');
+  if(la) la.onclick=()=>{
+    en.sets.forEach((s,n)=>{
+      if(s.done) return;
+      s.done=true;
+      if(!s.reps){ const ph=String(en.plannedReps).replace(/[^0-9–\-]/g,'').split(/[–\-]/)[0]; s.reps=ph||''; }
+      if(!s.rpe){ const m=String(en.plannedRpe||'').match(/(\d+)/); if(m)s.rpe=m[1]; }
+    });
+    haptic(); stopRest(); saveLive(); drawWM();
+  };
   $('#wmAddSet').onclick=()=>{ en.sets.push({reps:'',weight:'',rpe:'',done:false}); en.plannedSets=en.sets.length; saveLive(); drawWM(); };
   $('#wmUndo').onclick=()=>{
     for(let n=en.sets.length-1;n>=0;n--) if(en.sets[n].done){ en.sets[n].done=false; stopRest(); saveLive(); drawWM(); return; }
@@ -9694,6 +9769,7 @@ function drawExercise(en,i,total){
   /* the three things you do between exercises, not during a set */
   $('#wmMore').onclick=()=>{
     openSheet(en.name,navRows('wmMoreRows',[
+      {t:'How to do it', s:en.cue? en.cue.slice(0,44)+'…' : 'Cue, progression and alternatives', icon:'book'},
       {t:'Why this exercise?', s:'What it covers and why it was picked', icon:'info'},
       {t:'Replace exercise',   s:'Something else for the same target', icon:'undo'},
       {t:'This hurt',          s:'Keep it out of my sessions for 3 weeks', icon:'thermo'},
@@ -9702,9 +9778,21 @@ function drawExercise(en,i,total){
     ]));
     $$('#wmMoreRows button').forEach(b=>b.onclick=()=>{
       const i=+b.dataset.r; closeSheet();
-      setTimeout(()=>{ if(i===0) wmWhy(); else if(i===1) wmSwap();
-                       else if(i===2) wmHurt(); else if(i===3) wmNote(); else wmSkip(); },200);
+      setTimeout(()=>{ if(i===0) wmHow(); else if(i===1) wmWhy(); else if(i===2) wmSwap();
+                       else if(i===3) wmHurt(); else if(i===4) wmNote(); else wmSkip(); },200);
     });
+  };
+  /* the reference material, off the set screen and one tap away */
+  const wmHow=()=>{
+    const ex=exOf(en.exerciseId)||{};
+    openSheet(en.name,`
+      ${en.cue?`<div class="note acc"><b>Cue:</b> ${esc(en.cue)}</div>`:''}
+      ${ex.how?`<p class="lede">${esc(ex.how)}</p>`:''}
+      ${ex.prog?`<div class="sec-t">How it progresses</div>
+        <p class="lede">${esc(ex.prog)}</p>`:''}
+      ${en.subs?`<div class="sec-t">If it is not working today</div>
+        <p class="lede">${esc(en.subs)}</p>`:''}`,
+      `<button class="btn primary big block" onclick="closeSheet()">Got it</button>`);
   };
   /* G · the resolver already knew all of this and never said it */
   const wmWhy=()=>{
