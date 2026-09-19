@@ -923,6 +923,17 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
   .ring-l{font-size:9.5px}
 }
 
+/* ---------- Settings: an index with a head on it ---------- */
+.set-head{padding:2px 2px 16px;border-bottom:1px solid var(--border-soft);
+  margin-bottom:var(--sp-3)}
+.set-who{font-size:23px;font-weight:850;letter-spacing:-.7px;line-height:1.15;
+  overflow-wrap:anywhere}
+.set-sub{font-size:12.5px;font-weight:650;color:var(--text-3);margin-top:5px}
+.set-store{display:flex;align-items:center;gap:7px;margin-top:11px;
+  font-size:11.5px;font-weight:700;color:var(--text-3)}
+.set-store svg{width:14px;height:14px;flex:0 0 14px;stroke-width:2.8;
+  color:var(--accent)}
+
 /* ---------- The week strip, and moving through it ---------- */
 .wk-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;
   padding:7px 8px;border-bottom:1px solid var(--border-soft)}
@@ -939,6 +950,16 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
   display:block;width:100%}
 .wk-d:active{background:var(--surface-2)}
 .wk-d.future{opacity:.42;cursor:default}
+/* The selected day is marked by the CELL, not by repainting its contents.
+   A wildcard colour rule cannot know what is inside it: the previous version
+   forced the cycle-day pill white on its own light background, 1.11:1. */
+.wk-d.sel{background:var(--accent-wash);box-shadow:inset 0 -3px 0 var(--accent)}
+
+/* the card is showing a day that is not today */
+.card.acts.other{border-color:var(--accent-line)}
+.day-back{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  font-size:11.5px;font-weight:650;color:var(--text-3);margin:-2px 0 10px}
+.day-back .tert{margin:0}
 .day-act.one{grid-template-columns:1fr}
 
 /* ---------- The day, drawn as a spine ----------
@@ -7371,7 +7392,7 @@ function go(tab){
      three pages deep inside where you were last time - or, for Today, three
      weeks back because of something you were looking at last time */
   resetStack();
-  WEEKOFF=0;
+  WEEKOFF=0; SELDAY=null;
   TAB=tab; DB.ui.tab=tab; save();
   renderNav(); render();
   window.scrollTo(0,0);
@@ -7751,7 +7772,7 @@ function viewToday(v){
   <div class="sec-t">This week</div>
   ${weekStrip(d)}
 
-  ${activitiesCard(d)}
+  ${activitiesCard(selDay())}
   ${activityRowsHTML()}`;
 
   wireToday(d);
@@ -7929,9 +7950,15 @@ function feelRow(lab,val,cls,inverse){
    past. Never positive - there is nothing to log in a week that has not
    happened. Reset when you leave Today so it does not greet you weeks back. */
 let WEEKOFF=0;
+/* Which day the Today screen is talking about. null means today, which is
+   what it means every time you arrive. Selecting a day in the calendar is
+   what makes "Add activity" mean that day rather than this one. */
+let SELDAY=null;
+const selDay = ()=> SELDAY || todayISO();
 
 function weekStrip(d){
   const today=todayISO();
+  const sel=selDay();
   const start=addDays(weekStartOf(d), WEEKOFF*7);
   const end=addDays(start,6);
   const label = WEEKOFF===0 ? 'This week'
@@ -7952,6 +7979,7 @@ function weekStrip(d){
   for(let i=0;i<7;i++){
     const day=addDays(start,i), isT=day===today;
     const future=day>today;
+    const isSel=day===sel;
     const dow=dowOf(day);
     const sess=DB.sessions.find(s=>s.date===day&&s.done);
     const acts=DB.activities.filter(a=>a.date===day);
@@ -7962,14 +7990,24 @@ function weekStrip(d){
     if(ten) tag=(ACT_TYPES[(acts.find(a=>isMainSportAct(a.type))||{}).type]||{}).short||'Sport';
     else if(sess) tag=TAGS[sess.category||catOfWorkout(DB.workouts.find(w=>w.id===sess.workoutId))]||'Train';
     else if(acts.length) tag=(ACT_TYPES[acts[0].type]||ACT_TYPES.other).short;
-    h+=`<${future?'div':'button'} class="wk-d${future?' future':''}"
-         ${future?'':`data-day="${day}" aria-label="${esc(fmtDate(day))}, open this day"`}
-         style="border-right:${i<6?'1px solid var(--border-soft)':'none'};${isT?'background:var(--accent-wash)':''}">
+    h+=`<${future?'div':'button'} class="wk-d${future?' future':''}${isSel?' sel':''}"
+         ${future?'':`data-day="${day}" aria-current="${isSel?'date':'false'}"
+           aria-label="${esc(fmtDate(day))}${isSel?', selected':', show this day'}"`}
+         style="border-right:${i<6?'1px solid var(--border-soft)':'none'}">
       <div style="font-size:9.5px;font-weight:800;color:${isT?'var(--accent)':'var(--text-3)'};letter-spacing:.5px">${DOW_NAME[dow].toUpperCase()}</div>
-      <div style="font-size:14px;font-weight:750;margin:3px 0 6px;color:${isT?'var(--text)':'var(--text-2)'}">${new Date(day+'T12:00:00').getDate()}</div>
+      <div style="font-size:14px;font-weight:750;margin:3px 0 6px;color:${isSel||isT?'var(--text)':'var(--text-2)'}">${new Date(day+'T12:00:00').getDate()}</div>
       <div style="width:7px;height:7px;border-radius:50%;background:${col};margin:0 auto"></div>
       <div style="font-size:9.5px;color:var(--text-3);margin-top:5px;font-weight:700;line-height:1.2;min-height:20px">${esc(tag)}</div>
-      ${cy&&cy.recovery!=null?`<div style="font-size:10px;font-weight:800;margin-top:2px;color:${cy.recovery>=67?'var(--green)':cy.recovery>=34?'var(--yellow)':'var(--red)'}">${cy.recovery}</div>`:'<div style="height:13px"></div>'}
+      ${(()=>{
+        /* Readiness, not the wearable's raw recovery. The ring at the top of
+           this same screen shows readiness; two different numbers answering
+           "how ready am I" on one screen is the app disagreeing with itself. */
+        const ci=DB.checkins[day];
+        if(!ci) return '<div style="height:13px"></div>';
+        const rd=readiness(day,ci), bb=BAND[rd.band];
+        return `<div style="font-size:10.5px;font-weight:850;margin-top:2px;
+          color:${bb.color}" title="Readiness ${rd.score}">${rd.score}</div>`;
+      })()}
       ${mcc?(()=>{
         /* cycle day for the week people actually look at. A logged bleeding
            day is filled; everything else is just the number, quietly. */
@@ -7993,22 +8031,19 @@ function weekStrip(d){
     +'</div></div>';
 }
 
-/* One day, on its own screen: what is on it, and the way to add to it. */
-function dayPage(date){
-  return function(c){
-    appbar(fmtDate(date), date===todayISO()?'Today':DOW_FULL[dowOf(date)]);
-    c.innerHTML=activitiesCard(date);
-    wireActivitiesCard(date);
-    bindInputs(c);
-  };
-}
 function wireWeekStrip(d){
   const p=$('#wkPrev');
   if(p) p.onclick=()=>{ haptic(); WEEKOFF--; render(); };
   const n=$('#wkNext');
   if(n) n.onclick=()=>{ haptic(); WEEKOFF=Math.min(0,WEEKOFF+1); render(); };
+  /* Selecting a day is what makes the card below it - and therefore Add
+     activity - mean that day. Tapping the selected day again goes back to
+     today, so there is always a way out without hunting for the date. */
   $$('#view .wk-d[data-day]').forEach(b=>b.onclick=()=>{
-    haptic(); pushPage({build:dayPage(b.dataset.day)});
+    haptic();
+    const day=b.dataset.day;
+    SELDAY = (day===selDay() || day===todayISO()) ? null : day;
+    render();
   });
 }
 
@@ -8026,7 +8061,7 @@ function todayNoCheckin(d){
   ${noticeHTML(d)}
   <div class="sec-t">This week</div>
   ${weekStrip(d)}
-  ${activitiesCard(d)}
+  ${activitiesCard(selDay())}
   ${activityRowsHTML()}`;
 }
 
@@ -8107,7 +8142,7 @@ function wireToday(d){
   on('btnPrep',()=>previewWorkout('w_prep','full'));
   wireRings(d);
   wireWeekStrip(d);
-  wireActivitiesCard(d);
+  wireActivitiesCard(selDay());
   wireActivityRows();
   /* the tile that says you trained is the way to what you actually did */
   const dn=$('#btnDone'); if(dn) dn.onclick=()=>sessionDetail(dn.dataset.sid);
@@ -9371,10 +9406,15 @@ function activitiesCard(d){
   const dd=dayDemand(date);
   const items=dd.items||[];
   const longest=items.reduce((m,i)=>Math.max(m, i.min||0), 0);
-  return `<div class="card acts" id="actsCard">
-    <div class="card-h"><div class="card-t">${date===todayISO()?"Today's activities":'Activities'}</div>
+  const isToday=date===todayISO();
+  return `<div class="card acts${isToday?'':' other'}" id="actsCard">
+    <div class="card-h"><div class="card-t">${isToday
+      ? "Today's activities"
+      : esc(DOW_FULL[dowOf(date)])+', '+esc(fmtDate(date))}</div>
       ${dd.load?`<span class="day-strain ${loadBand(dd.load).cls}">${rnd(dd.load,1)}
         <em>strain</em></span>`:''}</div>
+    ${isToday?'':`<div class="day-back">You are looking at another day.
+      <button class="tert" id="acToday">Back to today</button></div>`}
     ${items.length
       ? `<div class="daylist">${items.map(i=>actRowHTML(i,longest)).join('')}</div>`
       : `<div class="day-empty">Nothing logged yet. The day fills in as you go.</div>`}
@@ -9390,6 +9430,7 @@ function wireActivitiesCard(d){
   const date=d||todayISO();
   const add=$('#acAdd');   if(add)   add.onclick=()=>addActivityFlow(date);
   const st =$('#acStart'); if(st)    st.onclick=()=>startActivityFlow();
+  const bk =$('#acToday'); if(bk)    bk.onclick=()=>{ SELDAY=null; WEEKOFF=0; render(); };
   $$('#actsCard [data-aid]').forEach(b=>b.onclick=()=>activityView(b.dataset.aid));
   /* sessionDetail takes an ID and looks the session up itself. Passing the
      object made it search for a session whose id was an object, find nothing,
@@ -10671,14 +10712,32 @@ function openSetup(auto){
    ====================================================================== */
 /* Six groups, each a pushed page. The order is the order of likelihood that
    somebody is looking for it, not the order the code happens to be in. */
+/* `sec` groups the index into headings. The order here is still the order the
+   groups appear in, so anything addressing a group by position sees no
+   change - and nothing should be addressing them by position anyway. */
 const SET_PANES=[
-  {id:'profile',   name:'Profile',    icon:'today',   s:'Name, age, height, weight'},
-  {id:'training',  name:'Training',   icon:'dumbbell',s:'Equipment, sport, goals, schedule, injuries'},
-  {id:'wearables', name:'Wearables',  icon:'watch',   s:'Your device and what it provides'},
-  {id:'data',      name:'Data',       icon:'dl',      s:'Backup, restore, erase'},
-  {id:'appearance',name:'Appearance', icon:'moon',    s:'Light, dark or follow the system'},
-  {id:'cycle',     name:'Cycle',      icon:'drop',    s:'Optional menstrual cycle tracking'},
-  {id:'about',     name:'About',      icon:'info',    s:'Version, diagnostics, install, privacy'}
+  {id:'profile',   name:'Profile',    icon:'today',   sec:'you',
+   s:'Name, age, height, weight'},
+  {id:'appearance',name:'Appearance', icon:'moon',    sec:'you',
+   s:'Light, dark or follow the system'},
+  {id:'training',  name:'Training',   icon:'dumbbell',sec:'training',
+   s:'Equipment, sport, goals, schedule, injuries'},
+  {id:'alerts',    name:'Sound & alerts', icon:'timer', sec:'training',
+   s:'Rest timer, tones, and being told when it ends'},
+  {id:'cycle',     name:'Cycle',      icon:'drop',    sec:'training',
+   s:'Optional menstrual cycle tracking'},
+  {id:'wearables', name:'Wearables',  icon:'watch',   sec:'data',
+   s:'Your device and what it provides'},
+  {id:'data',      name:'Data',       icon:'dl',      sec:'data',
+   s:'Backup, restore, erase'},
+  {id:'about',     name:'About',      icon:'info',    sec:'about',
+   s:'Version, diagnostics, install, privacy'}
+];
+const SET_SECTIONS=[
+  {id:'you',      t:'You'},
+  {id:'training', t:'Training'},
+  {id:'data',     t:'Your data'},
+  {id:'about',    t:null}
 ];
 let SETTAB='profile';
 /* Shows one group and hides the rest. The segment bar it used to also
@@ -10826,14 +10885,46 @@ function viewSettings(v){
     go:()=>pushPage({build:c=>{ SETTAB=g.id; settingsBody(c); }})
   }));
   /* the build, where somebody looking for "what version am I on" looks */
-  v.innerHTML=navRows('setRows',rows)
+  /* Who this copy belongs to, and where its data actually lives: the two
+     questions a settings screen is most often opened to answer. */
+  const who=(DB.profile.name||'').trim();
+  const c=Store.counts();
+  const head=`<div class="set-head">
+    <div class="set-who">${who?esc(who):'Baseline'}</div>
+    <div class="set-sub">${
+      [c.sessions+' session'+(c.sessions===1?'':'s'),
+       c.activities+' activit'+(c.activities===1?'y':'ies'),
+       c.cycles? c.cycles+' imported day'+(c.cycles===1?'':'s') : null
+      ].filter(Boolean).join(' · ')}</div>
+    <div class="set-store">${svg(Store.durable?'check':'x')}
+      <span>${Store.durable
+        ? 'Stored on this device · '+esc(Store.mode)
+        : 'Not storing — this browser is blocking storage'}</span></div>
+  </div>`;
+
+  /* One list became one list per heading, because "Profile" and "Wearables"
+     are not the same kind of thing and eight identical rows said they were. */
+  const body='<div id="setRows">'+SET_SECTIONS.map(sec=>{
+    const mine=rows.filter(r=>(SET_PANES.find(g=>g.name===r.t)||{}).sec===sec.id);
+    if(!mine.length) return '';
+    return (sec.t?`<div class="sec-t">${esc(sec.t)}</div>`:'')
+         + navRows('setRows_'+sec.id, mine);
+  }).join('')+'</div>';
+
+  v.innerHTML=head+body
     + `<div style="text-align:center;padding:18px 0 4px;color:var(--text-3);
          font-size:11.5px;line-height:1.6">
          Baseline · version ${esc(APP_BUILD)}<br>
          <span style="opacity:.75">Storage format v${SCHEMA_VERSION} ·
            ${esc(Store.mode||'local')}</span>
        </div>`;
-  wireRows('setRows',rows);
+  /* #setRows is the id everything else - and every test - uses to mean "the
+     settings index". It is now several lists, so one wrapper carries the id
+     and the sections live inside it. */
+  SET_SECTIONS.forEach(sec=>{
+    const mine=rows.filter(r=>(SET_PANES.find(g=>g.name===r.t)||{}).sec===sec.id);
+    if(mine.length) wireRows('setRows_'+sec.id, mine);
+  });
   bindInputs(v);
 }
 
@@ -11016,20 +11107,36 @@ function settingsBody(v){
        <input type="checkbox" id="sAuto" ${S.autoAdjust?'checked':''} style="width:22px;height:22px;accent-color:var(--accent)">
        Let readiness reduce session volume</label>
        <div class="hint">Off: the chosen session always comes at full volume.</div></div>
-     <div style="margin-top:12px"><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
+   </div>
+
+   <div class="card spane alerts">
+     <div class="card-t accent" style="margin-bottom:12px">While you train</div>
+     <div><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
        <input type="checkbox" id="sRest" ${S.restTimerOn?'checked':''} style="width:22px;height:22px;accent-color:var(--accent)">
-       Rest timer in workout mode</label></div>
-     <div style="margin-top:12px"><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
+       Rest timer between sets</label>
+       <div class="hint">Counts down in the card for the set you just finished.</div></div>
+     <div style="margin-top:14px"><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
        <input type="checkbox" id="sSound" ${S.sound!==false?'checked':''} style="width:22px;height:22px;accent-color:var(--accent)">
-       Sound for timers and logged sets</label>
-       <div class="hint">Short tones the app makes itself. Nothing is downloaded and it works offline.</div></div>
-     <div style="margin-top:12px"><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
+       Sound</label>
+       <div class="hint">Three ticks as a rest runs out, a chime when it ends, a click
+         when a set goes in. The app makes the tones itself — nothing is downloaded
+         and they work offline.</div></div>
+   </div>
+
+   <div class="card spane alerts">
+     <div class="card-t accent" style="margin-bottom:12px">When the screen is off</div>
+     <div><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
        <input type="checkbox" id="sNotify" ${S.notify?'checked':''} ${notifyState()==='unsupported'?'disabled':''} style="width:22px;height:22px;accent-color:var(--accent)">
        Alert me when a rest timer finishes</label>
        <div class="hint" id="sNotifyH">${
          notifyState()==='unsupported' ? 'This browser cannot show alerts.'
-         : notifyState()==='denied' ? 'Your browser has blocked alerts for this app. Turn them back on in its site settings.'
-         : 'Lets you put the phone down mid-session. This is a local alert raised by your own device for a timer your own device is running — not a push notification. There is no server, no subscription and nothing about you leaves the phone.'}</div></div>
+         : notifyState()==='denied' ? 'Your browser has blocked alerts for this app. Turn them back on in its site settings, then try again.'
+         : 'Lets you put the phone down mid-session. Your browser will ask permission the first time.'}</div></div>
+     <div class="note acc" style="margin-top:12px">
+       This is a <b>local</b> alert: your own device raising a notification for a
+       timer your own device is running. It is not a push notification — there is
+       no server, no subscription, and nothing about you leaves the phone.
+     </div>
    </div>
 
    <div class="card spane about" style="${Store.durable?'':'border-color:var(--red-line)'}">
