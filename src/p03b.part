@@ -1851,6 +1851,44 @@ function bodyweightFallback(e){
 }
 
 /* a workout's warm-up: sport-specific when the workout is sport prep */
+/* A warm-up must not rehearse the session it is warming up for.
+
+   WARMUPS.core and the w_core block were authored separately and both contain
+   Bird Dog and Dead Bug, so the session listed the same movement twice - once
+   as preparation, once as the work - and the screen read "Then 4 exercises,
+   starting with Bird Dog" directly under a warm-up that had just listed Bird
+   Dog. Hand-editing the two lists apart would fix today and drift again the
+   next time a block changed, so the overlap is removed where the two meet:
+   anything in the main list is dropped from the warm-up, which is the phase
+   that can afford to lose it.
+
+   `mainNames` comes from the session's actual entries, so a substitution or a
+   replacement is reflected automatically. */
+/* The warm-up for an ACTIVITY, which is a different thing from a workout's:
+   it leads into the activity itself rather than into a first main exercise.
+
+   Only offered where a real profile exists for that activity. sportProf()
+   falls back to SPORT_PROFILES.general, so asking it directly would hand a
+   swimmer a set of racquet drills — and a generic warm-up nobody asked for is
+   worse than none. Walking, yoga and "other" correctly get nothing. */
+function activityWarmup(type){
+  if(!type || !SPORT_PROFILES[type]) return null;
+  const wu=sportWarmup(type);
+  return (wu && wu.items && wu.items.length>1) ? wu : null;
+}
+function warmupMinus(wu, mainNames){
+  if(!wu || !mainNames || !mainNames.length) return wu;
+  const norm=s=>String(s||'').toLowerCase().replace(/[^a-z]/g,'');
+  const taken={};
+  mainNames.forEach(n=>{ taken[norm(n)]=1; });
+  const items=(wu.items||[]).filter(it=>!taken[norm(it.n)]);
+  if(items.length===(wu.items||[]).length) return wu;
+  /* Never leave the phase empty: a warm-up whose every movement is also the
+     workout is a warm-up that was mis-assigned, and the generic one is a
+     better answer than no preparation at all. */
+  if(!items.length) return WARMUPS.easy;
+  return Object.assign({}, wu, {items});
+}
 function warmupFor(w){
   if(!w) return WARMUPS.easy;
   /* 'sport' (and the legacy 'tennis' key from older saved workouts) means

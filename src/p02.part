@@ -221,7 +221,10 @@ const SCHEMA_VERSION=2;             // bump to transform stored records
 /* A readable build stamp. Without one, a tester reporting "it's broken" cannot
    tell you whether they are on today's build or a cached copy from last week,
    which is most of the diagnosis. Bump this on every deploy. */
-const APP_BUILD='2026-09-20';
+/* A date, plus a letter when more than one build ships in a day. Without the
+   letter there was no way to tell a second same-day deploy from the cached
+   copy of the first, which is exactly the question "did my upload work?". */
+const APP_BUILD='2026-09-20b';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */

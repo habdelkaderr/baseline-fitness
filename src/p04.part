@@ -872,14 +872,78 @@ function weekProgress(date){
   return p;
 }
 
+/* =========================================================================
+   DATA COVERAGE — WHAT BASELINE HAS ACTUALLY OBSERVED
+   ------------------------------------------------------------------------
+   Missing data is not negative evidence. "No core session is recorded" and
+   "you have not trained your core" are different statements, and only the
+   first is ever true of a profile Baseline has known for two days. Everything
+   that describes an absence has to ask this module how long it was watching
+   before it is allowed to describe anything.
+
+   Two windows, because they support different claims:
+
+     self      what Baseline itself was in a position to see. It starts when
+               this database was created, or earlier if something older was
+               logged or restored into it. ONLY this window can support a claim
+               about a body system, because nothing else in the data knows what
+               a core session is.
+
+     imported  what an export covers. It legitimately extends reasoning about
+               load, sleep, recovery and baselines - all of which already read
+               DB.whoop directly - but a WHOOP row never says whether the trunk
+               was trained, so it never widens `self`.
+   ====================================================================== */
+const COV_LIMITED=4;        // under this, say nothing about frequency at all
+const COV_ESTABLISHED=21;   // three weeks: enough to speak plainly about habit
+function dataCoverage(date){
+  date=date||todayISO();
+  const day=v=>String(v||'').slice(0,10);
+  const lo=(cur,d)=>(d && (!cur||d<cur)) ? d : cur;
+  let self=null, imp=null;
+  if(DB.meta&&DB.meta.created) self=lo(self, day(DB.meta.created));
+  (DB.sessions||[]).forEach(s=>{ if(s.done) self=lo(self, s.date); });
+  (DB.activities||[]).forEach(a=>{ self=lo(self, a.date); });
+  Object.keys(DB.checkins||{}).forEach(d=>{ self=lo(self, d); });
+  const W=DB.whoop||{};
+  (W.cycles||[]).forEach(c=>{ imp=lo(imp, c.date); });
+  (W.workouts||[]).forEach(w=>{ imp=lo(imp, w.date); });
+  const span=s=>s ? Math.max(0, daysBetween(s, date)) : 0;
+  const selfDays=span(self);
+  const start=(self&&imp) ? (self<imp?self:imp) : (self||imp);
+  return {
+    selfStart:self, selfDays,
+    importStart:imp, importDays:span(imp), hasImport:!!imp,
+    start, days:span(start),
+    level: selfDays>=COV_ESTABLISHED ? 'established'
+         : selfDays>=COV_LIMITED     ? 'limited'
+         : 'learning'
+  };
+}
+
 /* ---------- how long since each system was last loaded ---------- */
 /* "for 5 days" / "in over two weeks" / "yet" - whichever the data supports.
    `n` is the systemHistory sentinel, `span` is how many days of history exist. */
 function sinceSpan(n, span){
   if(n!==99) return 'for '+n+' days';
   if(!span) return 'yet';
-  if(span<14) return 'in the '+span+' day'+(span===1?'':'s')+' you have logged';
+  if(span<14) return 'in the '+span+' day'+(span===1?'':'s')+' Baseline has been tracking';
   return 'in over two weeks';
+}
+/* A complete sentence for an absence, or null when there is nothing honest to
+   say about one.
+
+   Returning null is deliberate, and it is safe: the caller still SCORES the
+   system as due. "Never observed" and "not trained recently" lead to the same
+   decision - train it - even though only one of them may be described. The bug
+   this replaces was the opposite trade: three hard-coded sentences ("Core has
+   not been trained in several days.") that a profile two days old would state
+   as fact, because nothing checked how long Baseline had been watching. */
+function absenceNote(label, n, span){
+  if(n!==99) return `No ${label} for ${n} days.`;
+  if(span<COV_LIMITED) return null;
+  if(span<14) return `No ${label} logged in the ${span} days Baseline has been tracking.`;
+  return `No ${label} in over two weeks.`;
 }
 
 function systemHistory(date){
@@ -894,26 +958,14 @@ function systemHistory(date){
      Record how much history actually exists so the prose can tell them apart.
      Scoring is unaffected: for deciding what to train, never and not-for-a-
      fortnight should both mean "due". */
-  h.spanDays=(function(){
-    /* TRAINING history only - sessions and activities, which is exactly what
-       dayItems() builds the load history from.
-
-       Check-ins and imported WHOOP cycles used to count here too, and that was
-       wrong in a way that produced a confident falsehood. A WHOOP export
-       carries a physiological record for every day since you bought the strap,
-       so importing one set spanDays to months; but a recovery score says
-       nothing about whether your legs were loaded, and no WHOOP row ever
-       reaches dayDemand(). The app would then tell a three-day-old profile its
-       legs had been idle "in over two weeks" - asserting a fortnight of
-       training history it had never seen. The qualifier has to measure the
-       same evidence as the claim it qualifies. */
-    let first=null;
-    const see=d=>{ if(d && (!first||d<first)) first=d; };
-    (DB.sessions||[]).forEach(s=>{ if(s.done) see(s.date); });
-    (DB.activities||[]).forEach(a=>see(a.date));
-    if(!first) return 0;
-    return Math.max(0, daysBetween(first, date));
-  })();
+  /* How long Baseline has been in a position to notice, which is what every
+     absence claim below is really qualified by. Deliberately the `self`
+     window: an imported WHOOP export carries a physiological row for every day
+     since the strap was bought, but no WHOOP row says whether the trunk or the
+     legs were trained, and none of them reaches dayDemand(). Counting them
+     here is what let a three-day-old profile be told its legs had been idle
+     "in over two weeks". */
+  h.spanDays=dataCoverage(date).selfDays;
   const load={lower3:0,upper3:0,expl3:0,impact3:0,lower7:0,upper7:0,expl7:0,run7:0,sport7:0,
               load3:0,load7:0,shoulder3:0};
   const UPPER_SPORT={swimming:1,climbing:1,rowing:1,martial:1,volleyball:1,strength:1};
@@ -1006,6 +1058,7 @@ function recommend(date, ci, rd){
   ci = ci || DB.checkins[date] || {};
   rd = rd || readiness(date, ci);
   const H=systemHistory(date), P=weekProgress(date), T=DB.targets, ph=currentPhase();
+  const cov=dataCoverage(date);
   const band=rd.band, rank=BAND_RANK[band];
   const sore=ci.soreness!=null?ci.soreness:3;
   const time=ci.availTime||sessMin();
@@ -1027,9 +1080,13 @@ function recommend(date, ci, rd){
                    : (top.name||'your session')) : null};
   })();
   /* `sportToday` is the modern field; `tennisToday` is read only so old
-     check-ins saved before the rename still behave the same way. */
+     check-ins saved before the rename still behave the same way.
+     `sportDone` is the one that matters for tense: a match that has already
+     been played is history, not a plan, and the two were conflated. */
   const flagSport  = ci.sportToday===true || ci.tennisToday===true;
-  const loggedSport= DB.activities.some(a=>a.date===date&&isMainSportAct(a.type));
+  const sportDone  = DB.activities.some(a=>a.date===date&&isMainSportAct(a.type));
+  const loggedSport= sportDone;
+  const sportAhead = flagSport && !sportDone;   // said they would; have not yet
   const SPN = SPORT_LABEL();
   const yTop=yd.items.slice().sort((a,b)=>(b.load||0)-(a.load||0))[0];
   const yName=yTop ? (yTop.kind==='activity' ? (ACT_TYPES[yTop.type]||ACT_TYPES.other).name.toLowerCase() : 'your strength session') : null;
@@ -1077,7 +1134,8 @@ function recommend(date, ci, rd){
     if(c.sys==='lower'){
       if(H.since.lower===1) add(-46,`Your legs were loaded yesterday (${esc(yName||'activity')}, lower-body demand ${yd.lower}).`,'neg');
       else if(H.since.lower===2) add(-12,'Legs were loaded two days ago — recovering but not fully fresh.','warn');
-      else if(H.since.lower>=3) add(+22,`No real lower-body load ${sinceSpan(H.since.lower,H.spanDays)} — legs are ready.`,'pos');
+      else if(H.since.lower>=3){ const t=absenceNote('real lower-body load',H.since.lower,H.spanDays);
+        add(+22, t?t+' Legs are ready.':null,'pos'); }
       if(H.load.lower3>=18) add(-24,`Lower-body demand over 3 days is ${H.load.lower3} — high.`,'neg');
       if(sore>=7) blocked=`leg soreness ${sore}/10`;
       else if(sore>=5) add(-18,`Leg soreness ${sore}/10.`,'warn');
@@ -1091,7 +1149,10 @@ function recommend(date, ci, rd){
       if(H.load.impact3>=14) add(-20,`Accumulated impact over 3 days is ${H.load.impact3} from running and court work.`,'warn');
       if(H.since.expl<=1) add(-50,'Explosive work in the last 24 hours.','neg');
       else if(H.since.expl===2) add(-18,'Explosive work two days ago.','warn');
-      else if(H.since.expl>=4&&H.since.lower>=3) add(+20,'Legs are fresh and there has been no explosive work for days.','pos');
+      else if(H.since.expl>=4&&H.since.lower>=3){ const t=absenceNote('explosive work',H.since.expl,H.spanDays);
+        /* "legs are fresh" is itself an absence claim, so it stands or falls
+           with the one that can be evidenced */
+        add(+20, t?'Legs are fresh. '+t:null,'pos'); }
       if(H.load.expl3>=14) add(-30,`Explosive demand over 3 days is ${H.load.expl3} — plyometrics on top of that is where soft-tissue injuries happen.`,'neg');
       if(sore>=5) blocked=`soreness ${sore}/10 — jump quality and landing control would be compromised`;
       if(H.since.sport<=1) add(-22,SPN+' in the last 24 hours already loaded jumping, cutting and landing.','warn');
@@ -1101,7 +1162,7 @@ function recommend(date, ci, rd){
     if(c.sys==='upper'){
       if(H.since.upper<=1) add(-42,'Upper body was trained yesterday.','neg');
       else if(H.since.upper===2) add(-8,null);
-      else if(H.since.upper>=3) add(+18,`No upper-body work ${sinceSpan(H.since.upper,H.spanDays)}.`,'pos');
+      else if(H.since.upper>=3) add(+18, absenceNote('upper-body work',H.since.upper,H.spanDays),'pos');
       if(H.load.upper3>=12) add(-20,`Upper-body demand over 3 days is ${H.load.upper3}.`,'neg');
       /* the key asymmetry, and the finding from your own data: legs being
          loaded does NOT block upper work — lifting cost you nothing on
@@ -1114,7 +1175,7 @@ function recommend(date, ci, rd){
     }
     if(c.sys==='core'){
       if(H.since.core<=1) add(-34,'Core was trained yesterday.','neg');
-      else if(H.since.core>=3) add(+16,'Core has not been trained in several days.','pos');
+      else if(H.since.core>=3) add(+16, absenceNote('core work',H.since.core,H.spanDays),'pos');
       if(sore>=7) add(-10,null);
     }
     if(c.sys==='run'){
@@ -1139,26 +1200,40 @@ function recommend(date, ci, rd){
       if(H.load.impact3>=16) add(+22,`Impact load is high (${H.load.impact3}) — the bike gives you aerobic work with none of the pounding.`,'pos');
       if(sore>=6) add(+14,`Soreness ${sore}/10 — cycling is the low-cost aerobic option.`,'pos');
       if(H.since.sport<=1) add(+8,'Good active-recovery choice the day after '+SPN.toLowerCase()+'.','pos');
-      if(rank>=3 && H.since.lower>=3) add(-20,'You are green with fresh legs — a bike ride under-uses the day.','info');
+      /* Today counts, and freshness is an absence claim. A bike ride does not
+         "under-use" a day that already contains a match, and legs cannot be
+         called fresh on a window Baseline never watched. */
+      if(rank>=3 && H.since.lower>=3 && TD.load<7)
+        add(-20, absenceNote('real lower-body load',H.since.lower,H.spanDays)
+              ? 'You are green with fresh legs — a bike ride under-uses the day.' : null,'info');
     }
     if(c.sys==='mobility'){
       if(H.since.mobility<=1) add(-20,'Mobility done yesterday.','neg');
-      else if(H.since.mobility>=4) add(+10,'No dedicated mobility work in several days.','pos');
+      else if(H.since.mobility>=4) add(+10, absenceNote('dedicated mobility work',H.since.mobility,H.spanDays),'pos');
       if(H.load.load3>=30) add(+16,`Three-day load of ${H.load.load3} — a genuine down day protects the next hard one.`,'pos');
     }
     if(c.sys==='rest'){
-      if(H.since.anyHard>=3 && band!=='red') add(-24,'Nothing hard in recent days — a full rest day is not what you need.','info');
+      /* Same again: "nothing hard recently" was argued against a rest day on a
+         date that already held a hard session, because the history window
+         starts at yesterday. When today is already loaded the penalty goes as
+         well as the sentence — rest has genuinely earned its place. */
+      if(H.since.anyHard>=3 && band!=='red' && TD.load<10)
+        add(-24, absenceNote('hard training',H.since.anyHard,H.spanDays)
+              ? 'Nothing hard in recent days — a full rest day is not what you need.' : null,'info');
       if(rd.streak>=2) add(+24,'Consecutive poor-recovery days.','warn');
       if(H.load.load7>=70) add(+14,`Weekly load of ${H.load.load7} is high.`,'warn');
     }
 
     /* ---- 4. your sport today (logged, or flagged on an older check-in) ---- */
-    if(flagSport||loggedSport){
+    if(flagSport||sportDone){
       const lc=SPN.toLowerCase();
-      if(c.sys==='lower') blocked=`you are doing ${lc} today — heavy legs before or after it is the pattern that costs you most`;
-      if(c.sys==='expl') blocked=`you are doing ${lc} today — it already supplies explosive load`;
-      if(c.sys==='run') blocked=`you are doing ${lc} today`;
-      if(c.sys==='upper') add(+18,`${SPN} today — upper body is the one strength session that does not compete with it.`,'pos');
+      /* Tense follows the evidence. "You are doing tennis today" read as a
+         forecast long after the match had been logged and finished. */
+      const when = sportDone ? `you played ${lc} today` : `you are doing ${lc} today`;
+      if(c.sys==='lower') blocked=`${when} — heavy legs on either side of it is the pattern that costs you most`;
+      if(c.sys==='expl') blocked=`${when} — it already supplies explosive load`;
+      if(c.sys==='run') blocked=when;
+      if(c.sys==='upper') add(+18,`${SPN} ${sportDone?'is done for today':'today'} — upper body is the one strength session that does not compete with it.`,'pos');
       if(c.sys==='core') add(+14,`Core work sits comfortably alongside a ${lc} day.`,'pos');
       if(c.sys==='mobility') add(+10,null);
       if(c.sys==='bike') add(-16,null);
@@ -1204,7 +1279,16 @@ function recommend(date, ci, rd){
       } else {
         const gap=(target-done)/target;
         const behind=done < target*pace - 0.35;
-        add(Math.round(gap*16), behind?`You are behind on ${(targetMeta()[key]||[key])[0].toLowerCase()} this week (${done} of ${target}).`:null,'info');
+        /* "Behind" is a claim about the whole elapsed week, so it needs the
+           whole elapsed week observed. Installed on Saturday, Baseline saw one
+           day of it and has no idea what happened on the other five - and used
+           to announce "0 of 4, you are behind" regardless. Under-covered, the
+           score still nudges the untrained system up (an unmet target is a
+           reasonable default either way); only the sentence is withheld. */
+        const weekSeen = cov.selfDays >= P.elapsed;
+        const nm=(targetMeta()[key]||[key])[0].toLowerCase();
+        add(Math.round(gap*16),
+            (behind && weekSeen) ? `${done} of ${target} ${nm} so far this week.` : null,'info');
         if(behind) add(6,null);
       }
     }
@@ -1273,9 +1357,15 @@ function recommend(date, ci, rd){
     else trimNotes.push({t:`This needs about ${est} min and you have ${time}. Work down the list in order and stop when time runs out — exercises are ordered by priority.`,k:'info'}); }
   if(wk) est=(wk.est[variant]||wk.est.full)+(addCore?12:0);
 
-  /* ---- pre-sport prep when you are playing today ---- */
+  /* ---- pre-sport prep, only while there is still a match to prepare FOR ----
+     This read (flagSport||loggedSport), so logging the match was one of the
+     two things that turned the prep row ON. Play tennis at 11am, log it, and
+     Today went on offering "Pre-tennis activation — 12 min before you play"
+     for the rest of the evening. Preparation is for something that has not
+     happened yet; once it has, the load it produced is what matters, and that
+     is already read by section 4b above. */
   let prep=null;
-  if((flagSport||loggedSport)) prep='w_prep';
+  if(sportAhead) prep='w_prep';
 
   /* ---- intensity label ---- */
   const intensity = win.c.sys==='rest' ? 'None'
@@ -1304,9 +1394,9 @@ function recommend(date, ci, rd){
       ? `your legs have already taken real load today (${esc(TD.top||'what you logged')})`
     : H.since.lower===99 ? (H.spanDays>=14
       ? 'your legs have not taken real load in over two weeks'
-      : H.spanDays>0
-        ? `your legs have not taken real load in the ${H.spanDays} day${H.spanDays===1?'':'s'} you have logged`
-        : 'you have not logged a session or activity yet')
+      : H.spanDays>=COV_LIMITED
+        ? `no real leg load has been logged in the ${H.spanDays} days Baseline has been tracking`
+        : 'Baseline does not have enough history yet to judge how fresh your legs are')
     : H.since.lower===1 ? 'your legs were loaded yesterday'
     : `your legs were last loaded ${H.since.lower} days ago`;
   const verdict = win.c.sys==='rest' ? 'Today the useful thing is nothing at all.'
@@ -1319,14 +1409,38 @@ function recommend(date, ci, rd){
 
   win.notes.filter(n=>Math.abs(n.v)>=8).slice(0,5).forEach(n=>{ if(n.t) why.push({t:n.t,k:n.k}); });
   trimNotes.forEach(n=>why.push(n));
-  if(addCore) why.push({t:`Core added — it is a primary goal, it has been ${H.since.core===99?(H.spanDays>=14?'a while':'nothing yet'):H.since.core+' days'} since the last session, and it stacks cleanly on this one.`,k:'pos'});
+  if(addCore){
+    const gap = H.since.core!==99 ? `it has been ${H.since.core} days since the last one`
+      : H.spanDays>=14 ? 'none has been logged in over two weeks'
+      : H.spanDays>=COV_LIMITED ? `none has been logged in the ${H.spanDays} days Baseline has been tracking`
+      : null;
+    why.push({t:`Core added — it is a primary goal${gap?', '+gap:''}, and it stacks cleanly on this one.`,k:'pos'});
+  }
+  /* One honest line about how much Baseline actually knows, rather than a
+     confident claim per system. Shown once, and only while it is true. */
+  if(cov.level==='learning'){
+    why.push({t:cov.selfDays<=0
+      ? 'This is Baseline’s first day with you, so today’s call comes from what you reported this morning rather than from any pattern.'
+      : `Baseline has been tracking for ${cov.selfDays} day${cov.selfDays===1?'':'s'} — not yet enough to judge your usual training frequency, so today leans on what you reported this morning.`,
+      k:'info'});
+  }
   /* What was rejected, and why. This is the thing no other training app
      does, so it is returned separately rather than appended to the reasons
      list, where it read as one more bullet. Up to three, strongest first. */
   const ruledOut=[];
-  scored.filter(x=>x!==win).forEach(x=>{
+  const others=scored.filter(x=>x!==win);
+  /* Hard blocks lead. They score -999 and so sort to the bottom, which meant
+     taking this list in score order filled "Not today" with the runners-up and
+     never mentioned what was actually ruled out: after a tennis match, the
+     three shown were Upper, Bike and Rest, while "Lower Body Strength — you
+     played tennis today" was pushed off the end. A block is the most
+     informative exclusion there is. */
+  others.filter(x=>x.blocked).forEach(x=>{
     if(ruledOut.length>=3) return;
-    if(x.blocked){ ruledOut.push({label:x.c.label, why:x.blocked, hard:true}); return; }
+    ruledOut.push({label:x.c.label, why:x.blocked, hard:true});
+  });
+  others.filter(x=>!x.blocked).forEach(x=>{
+    if(ruledOut.length>=3) return;
     const neg=x.notes.filter(n=>n.v<=-14&&n.t)[0];
     if(neg) ruledOut.push({label:x.c.label, why:neg.t, hard:false});
   });
@@ -1334,7 +1448,8 @@ function recommend(date, ci, rd){
   return {
     id:win.c.id, label:win.c.label, goalNote:win.c.goal,
     workoutId:win.wid, variant, addCore, est, intensity, prep,
-    isSport:flagSport||loggedSport, sportName:SPN, readiness:rd, why, ruledOut,
+    isSport:flagSport||sportDone, sportDone, sportAhead, coverage:cov,
+    sportName:SPN, readiness:rd, why, ruledOut,
     scored, week:P, history:H, phase:ph, notes:why
   };
 }

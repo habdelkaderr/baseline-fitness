@@ -706,7 +706,7 @@ function viewToday(v){
           arrow - heading "This week" above a strip reading "Last week".
           Which week it is showing is the strip's job to say, and it says it
           in one place. */}
-  <div class="sec-t">Your week</div>
+  <div class="sec-t">Training this week</div>
   ${weekStrip(d)}
 
   ${activitiesCard(selDay())}
@@ -1063,7 +1063,7 @@ function todayNoCheckin(d){
           arrow - heading "This week" above a strip reading "Last week".
           Which week it is showing is the strip's job to say, and it says it
           in one place. */}
-  <div class="sec-t">Your week</div>
+  <div class="sec-t">Training this week</div>
   ${weekStrip(d)}
   ${activitiesCard(selDay())}
   ${activityRowsHTML()}`;

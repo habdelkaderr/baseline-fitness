@@ -245,12 +245,15 @@ function drawWM(){
 }
 function drawWarmup(){
   const wk=DB.workouts.find(x=>x.id===W.workoutId);
-  const wu=warmupFor(wk);
+  /* the warm-up minus anything that IS the workout — see warmupMinus() */
+  const wu=warmupMinus(warmupFor(wk), W.entries.map(e=>e.name));
   const first=W.entries[0];
   $('#wmBody').innerHTML=`
     <div class="wm-ex">Warm-up</div>
     <div class="wm-sub">${esc(wu.name)} · about ${wu.dur} minutes</div>
-    <div class="wm-plain">Then ${W.entries.length} exercise${W.entries.length===1?'':'s'}, starting with ${esc(first?first.name:'training')}.</div>
+    ${first?`<div class="upnext"><span class="un-l">Up next</span>
+      <span class="un-n">${esc(first.name)}</span>
+      <span class="un-s">${W.entries.length} exercise${W.entries.length===1?'':'s'} in this session</span></div>`:''}
     ${wk.desc?`<div class="note acc">${esc(wk.desc)}</div>`:''}
     ${wu.items.some(it=>warmupHow(it.n))
       ? '<div class="hint" style="margin:14px 2px 2px">Tap any movement to see how to do it.</div>'
@@ -273,8 +276,12 @@ function drawWarmup(){
     <div class="note">Do not skip this. It makes the first working set as good as the last.</div>`;
   /* the same footer as every exercise that follows, so this reads as step 0
      of one flow rather than a separate screen with its own vocabulary */
+  /* "Start 1 · Bird Dog" exposed the entry index and named an exercise that had
+     just been listed as a warm-up movement, which read as a repeat. The button
+     says what pressing it does. */
   $('#wmFoot').innerHTML=
-    `<button class="btn primary big block" id="wmGo">Start 1 · ${esc(first?first.name:'training')}</button>`;
+    `<button class="btn primary big block" id="wmGo">Start workout</button>
+     <button class="tert block" id="wmSkipWu">Skip the warm-up</button>`;
   /* Collapsed by default: somebody who knows what a leg swing is should not
      have to scroll past 53 paragraphs to start training. */
   $$('#wmBody [data-wu]').forEach(r=>{
@@ -289,7 +296,12 @@ function drawWarmup(){
     r.onclick=open;
     r.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); open(); } };
   });
-  $('#wmGo').onclick=()=>{ W.step=0; drawWM(); window.scrollTo(0,0); $('#wmBody').scrollTop=0; };
+  /* Both land on the first MAIN exercise: the difference is what the user did
+     off-screen, not what the app does next. Kept as two buttons because
+     "Start workout" under a warm-up list is ambiguous on its own. */
+  const toMain=()=>{ W.step=0; drawWM(); window.scrollTo(0,0); $('#wmBody').scrollTop=0; };
+  $('#wmGo').onclick=toMain;
+  const sk=$('#wmSkipWu'); if(sk) sk.onclick=toMain;
 }
 
 function drawExercise(en,i,total){
@@ -887,7 +899,39 @@ function drawActivityFinish(){
     try{ Store.pref('live',null); }catch(e){}
     save(true); SOUND.done(); toast('Saved','ok');
     exitWM(true);
+    setTimeout(()=>activityLoggedSheet(rec),260);
   };
+}
+
+/* What the activity you just logged did to the rest of the day.
+   The session named here is recalculated from the saved state - it is the same
+   recommend() call Today will make a moment later, not a value carried over
+   from before the activity existed. That is the point: the confirmation and
+   the home screen cannot disagree, because there is only one answer. */
+function activityLoggedSheet(rec){
+  if(!rec) return;
+  const T=ACT_TYPES[rec.type]||ACT_TYPES.other;
+  const d=rec.date;
+  const next=recommend(d, DB.checkins[d]);
+  const done=DB.sessions.find(s=>s.date===d&&s.done);
+  openSheet('Logged',`
+    <div class="prestart">
+      <i class="ps-i">${svg(ACT_ICON(rec.type))}</i>
+      <div class="ps-n">${esc(T.name)} logged</div>
+      <div class="hint" style="margin-top:4px">${fmtMin(rec.min)}${
+        rec.strain!=null?' · '+rnd(rec.strain,1)+' strain':''}</div>
+    </div>
+    <div class="ruled">
+      <div class="rl-t">Your plan has been updated</div>
+      ${done
+        ? `<div class="hint">You have already trained today as well, so nothing further is suggested.</div>`
+        : `<div class="upnext"><span class="un-l">Next</span>
+            <span class="un-n">${esc(next.label)}</span>
+            <span class="un-s">${next.est?'~'+next.est+' min · ':''}${esc(next.intensity)}</span></div>`}
+    </div>`,
+    `<button class="btn primary big block" id="alGo">See today</button>`);
+  const g=$('#alGo');
+  if(g) g.onclick=()=>{ closeSheet(); TAB='today'; resetStack(); render(); };
 }
 
 /* ---- the session clock ----
@@ -1137,6 +1181,7 @@ function startLiveActivity(type,intensity,strainTarget){
 function preStartSheet(type){
   const T=ACT_TYPES[type]||ACT_TYPES.other;
   const prev=lastEffort({type:type, date:todayISO()});
+  const WU=activityWarmup(type);
   let target=null;
 
   const draw=()=>{
@@ -1167,7 +1212,9 @@ function preStartSheet(type){
         </div></div>`:''}
       <div class="hint">The clock and the strain both run from the moment you
         start. How hard it was is asked at the end.</div>`,
-      `<button class="btn primary big block" id="psGo">${svg('play')} Start activity</button>`);
+      WU ? `<button class="btn primary big block" id="psWu">${svg('play')} Start with warm-up</button>
+            <button class="tert block" id="psGo">Start right away</button>`
+         : `<button class="btn primary big block" id="psGo">${svg('play')} Start activity</button>`);
 
     const on=$('#psOn');
     if(on) on.onchange=()=>{
@@ -1179,12 +1226,44 @@ function preStartSheet(type){
     const ch=$('#psChange');
     if(ch) ch.onclick=()=>{ closeSheet(); setTimeout(()=>startActivityFlow(),200); };
     const go=$('#psGo');
-    if(go) go.onclick=()=>{
-      const t=target;
-      closeSheet();
-      setTimeout(()=>startLiveActivity(type,null,t),220);
-    };
+    if(go) go.onclick=begin;
+    const wb=$('#psWu');
+    if(wb) wb.onclick=drawWu;
   };
+
+  /* The clock starts HERE and nowhere earlier. That is the whole reason the
+     warm-up is a separate screen rather than a first phase of the activity:
+     ten minutes of hip circles must not land in the activity's duration or be
+     scored as part of its strain. */
+  const begin=()=>{
+    const t=target;
+    closeSheet();
+    setTimeout(()=>startLiveActivity(type,null,t),220);
+  };
+
+  /* Activity warm-up. "Up next" is the ACTIVITY, where a workout warm-up's
+     "Up next" is its first main exercise — the same idea pointed at what
+     actually follows in each case. */
+  const drawWu=()=>{
+    updateSheet(WU.name,`
+      <div class="wm-sub" style="margin-top:0">About ${WU.dur} minutes, before you start</div>
+      <div class="upnext"><span class="un-l">Up next</span>
+        <span class="un-n">${esc(T.name)}</span>
+        <span class="un-s">The clock starts when you begin it, not now</span></div>
+      <div class="setlist">
+        ${WU.items.map((it,n)=>`<div class="setrow wu" style="align-items:flex-start">
+          <div class="sn">${n+1}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14.5px;font-weight:650">${esc(it.n)}</div>
+            <div style="font-size:12px;color:var(--text-3);margin-top:2px">${esc(it.d)}</div>
+          </div></div>`).join('')}
+      </div>`,
+      `<button class="btn primary big block" id="psStart">${svg('play')} Start ${esc(T.name)}</button>
+       <button class="tert block" id="psBack">Back</button>`);
+    const s=$('#psStart'); if(s) s.onclick=begin;
+    const b=$('#psBack');  if(b) b.onclick=draw;
+  };
+
   openSheet(T.name,'','');
   draw();
 }
