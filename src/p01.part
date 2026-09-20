@@ -822,19 +822,9 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .wnow.fin .wnow-t{color:var(--text)}
 .wnow.fin p{font-size:13.5px;color:var(--text-2);line-height:1.55;margin:0 0 12px}
 
-/* what you have already logged: one strip of chips, tap to undo */
-.wdone{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:var(--sp-2)}
-.wdone .wd-l{font-size:9.5px;font-weight:800;letter-spacing:.5px;
-  text-transform:uppercase;color:var(--text-3)}
-.wdone .wd-h{font-size:11px;font-weight:600;color:var(--text-3)}
-.wdone button{
-  display:inline-flex;align-items:center;gap:6px;min-height:36px;
-  padding:6px 12px;border-radius:999px;font-family:inherit;cursor:pointer;
-  background:var(--accent-wash);border:1px solid var(--accent-line);color:var(--text);
-  font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;
-}
-.wdone button i{font-style:normal;font-weight:850;color:var(--accent)}
-.wdone button:active{background:var(--surface-3)}
+/* The strip of logged-set chips that used to sit under the card is gone: you
+   do not need to read back your own database while training, and undo belongs
+   in More with the other exceptions. Its styles went with it. */
 
 /* ---------- Rest, inside the set that started it ----------
    It used to be a bar fixed to the bottom of the screen, far enough from the
@@ -1160,6 +1150,34 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 /* the plan, said in words rather than in coach notation */
 .wm-plain{font-size:12.5px;color:var(--text-2);font-weight:600;
   margin-top:7px;line-height:1.5}
+
+/* ---------- The active set: one state of one exercise screen ----------
+   Not a card per set, and no list of what has already been logged. During a
+   workout the phone is glanced at with sweaty hands from a metre away, so the
+   screen carries the exercise, the set it is on, and one button. */
+.wset{margin:16px 0 14px;text-align:center}
+.wset .ws-l{font-size:11.5px;font-weight:750;letter-spacing:.6px;
+  text-transform:uppercase;color:var(--text-3)}
+.wset .ws-v{display:block;width:100%;margin-top:6px;padding:4px 0;background:none;
+  border:0;font-family:inherit;color:var(--text);cursor:pointer;
+  font-size:44px;font-weight:850;letter-spacing:-1.6px;line-height:1.05}
+.wset .ws-v:active{opacity:.6}
+.wset .ws-kg{font-size:22px;font-weight:800;color:var(--text-3);letter-spacing:-.6px}
+/* the number to beat. One muted line, because it is a reference and not a
+   control - but it stays, because standing in front of the bar is exactly when
+   you want it. */
+.wset .ws-last{font-size:12px;font-weight:600;color:var(--text-3);margin-top:7px}
+/* Rest: a number big enough to read across a room, and one way out. */
+.wrestx{margin:18px 0 14px;text-align:center}
+.wrestx .wrx-n{font-size:52px;font-weight:850;letter-spacing:-2px;line-height:1;
+  color:var(--accent)}
+.wrestx .wrx-b{height:5px;border-radius:3px;background:var(--surface-3);
+  margin:13px auto 0;max-width:260px;overflow:hidden}
+.wrestx .wrx-b i{display:block;height:100%;background:var(--accent);
+  transition:width .25s linear}
+.wrestx .wrx-t{font-size:19px;font-weight:800;margin-top:13px;letter-spacing:-.4px}
+.wrestx .wrx-s{font-size:13px;font-weight:600;color:var(--text-3);margin-top:4px}
+.wrestx .wm-row{max-width:260px;margin:12px auto 0}
 
 /* The sleep header. `.arc` is a fixed-width block, so text-align on its parent
    never moved it: the ring sat hard left with the rest of the tile empty.
