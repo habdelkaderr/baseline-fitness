@@ -701,7 +701,12 @@ function viewToday(v){
       <i class="rw-c">${svg('chev')}</i></button>
   </div>`:''}
 
-  <div class="sec-t">This week</div>
+  ${''/* Not "This week": the strip navigates backwards, so the heading
+          contradicted its own nav label the moment you pressed the left
+          arrow - heading "This week" above a strip reading "Last week".
+          Which week it is showing is the strip's job to say, and it says it
+          in one place. */}
+  <div class="sec-t">Your week</div>
   ${weekStrip(d)}
 
   ${activitiesCard(selDay())}
@@ -792,8 +797,70 @@ function wireRings(d){
      differently-shaped one - and silently, because onclick just overwrites. */
   const s=$('#ringStrain');
   if(s) s.onclick=()=>{ const c=$('#actsCard'); if(c) c.scrollIntoView({behavior:'smooth',block:'center'}); };
+  /* The sleep ring used to reopen the whole check-in, which answered a
+     question nobody was asking. What you want from a sleep ring is the target
+     and what tonight is worth. Editing is still one tap further in. */
   const z=$('#ringSleep');
-  if(z) z.onclick=()=>openCheckinView(d);
+  if(z) z.onclick=()=>pushPage({build:pageSleep(d)});
+}
+
+/* ------------------------------------------------------------------- SLEEP
+   The target, last night against it, and what tonight would be worth. */
+function pageSleep(d){
+  return function(c){
+    appbar('Sleep', fmtDate(d));
+    const sp=sleepPlan(d);
+    const ci=DB.checkins[d]||null;
+    const pctOf=m=>Math.min(100, Math.round(m/sp.need*100));
+    const cls = sp.shortfall==null ? '' : sp.shortfall<=0 ? 'g' : sp.shortfall<=60 ? 'g'
+              : sp.shortfall<=120 ? 'y' : 'r';
+    c.innerHTML=`
+    <div class="rec" style="text-align:center">
+      ${ringHTML({lead:true, pct: sp.slept!=null? pctOf(sp.slept) : null,
+                  value: sp.slept!=null? (Math.round(sp.slept/60*10)/10)+'h' : '—',
+                  color:'var(--violet)'})}
+      <div class="rec-m" style="margin-top:10px;font-weight:750">${
+        sp.slept==null ? 'No sleep recorded for this night'
+        : sp.shortfall<=0 ? 'You met your sleep need'
+        : `${Math.round(sp.shortfall)} min under your need`}</div>
+      <div class="hint" style="margin-top:6px">Your need is <b>${fmtMin(sp.need)}</b>${
+        sp.generic ? ' — a generic 8h target until your own figure is known' : ''}</div>
+    </div>
+
+    <div class="sec-t">Tonight</div>
+    ${sp.better ? `<div class="card">
+      <div class="card-t accent">Sleep ${fmtMin(sp.better.mins)} or more</div>
+      <div class="hint" style="margin-top:6px">That moves the sleep part of readiness up
+        ${sp.better.gain!=null?`by about <b>${sp.better.gain} point${sp.better.gain===1?'':'s'}</b>`:'to its next step'}
+        from where last night landed.${sp.maxGain>0?` Reaching the full ${fmtMin(sp.need)} is worth
+        about ${sp.maxGain} point${sp.maxGain===1?'':'s'}.`:''}</div>
+    </div>`
+    : sp.slept!=null ? `<div class="note acc"><b>Nothing to gain here.</b> Last night already
+        met your need, so the sleep part of readiness is as high as it goes. Anything
+        left on the table today is coming from elsewhere.</div>`
+    : `<div class="note"><b>Aim for ${fmtMin(sp.need)}.</b> Once you record a night,
+        this shows what the next one is worth.</div>`}
+
+    <div class="sec-t">What each night is worth</div>
+    <div class="card">
+      ${sp.tiers.map(t=>`<div class="kv"><span class="k">${esc(t.label)}</span>
+        <span class="v num">${fmtMin(t.mins)}${t.pts!=null?` <small>· ~${t.pts} pts</small>`:''}</span></div>`).join('')}
+    </div>
+    <div class="hint">Sleep is ${sp.weight} of ${sp.totalWeight? Math.round(sp.totalWeight) : 'about 100'}
+      weight in today's readiness, so these are the points sleep alone can contribute. HRV,
+      resting heart rate and yesterday's strain move on their own.</div>
+
+    ${ci && ci.sleepMin!=null ? `<div class="sec-t">This night</div>
+    <div class="stats">
+      ${statTile('Asleep',fmtMin(ci.sleepMin),'',cls)}
+      ${statTile('Need',fmtMin(sp.need),'',sp.generic?'':'c',sp.generic?'generic':'yours')}
+      ${statTile('Shortfall',sp.shortfall>0?Math.round(sp.shortfall)+'m':'none','',
+         sp.shortfall<=0?'g':sp.shortfall<=60?'g':sp.shortfall<=120?'y':'r')}
+    </div>`:''}
+
+    <button class="btn ghost block" id="slEdit">${ci?'Edit check-in':'Check in'}</button>`;
+    const e=$('#slEdit'); if(e) e.onclick=()=>openCheckin(d);
+  };
 }
 
 
@@ -991,7 +1058,12 @@ function todayNoCheckin(d){
   ${cy?`<div class="hint" style="margin-top:11px;text-align:center">Your ${esc(SRC_NAME())} numbers for today are already there — they will be filled in for you.</div>`:''}
 
   ${noticeHTML(d)}
-  <div class="sec-t">This week</div>
+  ${''/* Not "This week": the strip navigates backwards, so the heading
+          contradicted its own nav label the moment you pressed the left
+          arrow - heading "This week" above a strip reading "Last week".
+          Which week it is showing is the strip's job to say, and it says it
+          in one place. */}
+  <div class="sec-t">Your week</div>
   ${weekStrip(d)}
   ${activitiesCard(selDay())}
   ${activityRowsHTML()}`;

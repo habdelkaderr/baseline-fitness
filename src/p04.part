@@ -738,6 +738,71 @@ function readiness(date, ci){
             return {phase:mcPhase(date,c), adjust:mcAdjust(date,c), feel:mcFeelOf(date)}; })() : null};
 }
 
+/* =========================================================================
+   WHAT SLEEP IS WORTH
+   The sleep term above scores a shortfall against your own sleep need. Read
+   forwards it explains last night; read BACKWARDS it answers the question
+   people actually have, which is "how long do I need tonight?".
+
+   Everything here inverts the one curve in readiness() rather than restating
+   it, so the two cannot disagree. SLEEP_W must stay equal to the weight
+   readiness() passes for the 'sleep' part.
+
+   It deliberately does not promise a readiness score. Sleep is 18 of about
+   100 weight and the modifiers below it - HRV, resting HR, yesterday's strain
+   - move independently, so the honest claim is the size of the sleep term's
+   own contribution and nothing more.
+   ====================================================================== */
+const SLEEP_W=18;
+function sleepScoreFor(mins, need){
+  const sf=need-mins;
+  if(sf<=0) return 95;
+  if(sf<=60) return 85-(sf/60)*10;
+  if(sf<=120) return 75-((sf-60)/60)*30;
+  return Math.max(10,45-(sf-120)/6);
+}
+/* The least sleep that reaches a given sleep sub-score. The forward curve
+   jumps from 85 to 95 the moment the shortfall clears zero, so anything above
+   85 means "hit the target" rather than some duration in between. */
+function sleepMinsForScore(s, need){
+  let sf;
+  if(s>85) sf=0;
+  else if(s>=75) sf=(85-s)/10*60;
+  else if(s>=45) sf=60+(75-s)/30*60;
+  else sf=120+(45-s)*6;
+  return Math.max(0, Math.round(need-sf));
+}
+function sleepPlan(date){
+  const ci=DB.checkins[date]||null, B=DB.baselines;
+  const need=(ci&&ci.sleepNeed)||B.sleepNeed||480;
+  const generic=!(ci&&ci.sleepNeed)&&!!B.sleepNeedGeneric;
+  const slept=(ci&&ci.sleepMin!=null)?ci.sleepMin:null;
+  const rd=ci?readiness(date,ci):null;
+  /* points of readiness per point of sleep sub-score, given which signals
+     actually reported today. With no check-in there is no denominator, so the
+     page shows durations and no point values rather than inventing one. */
+  const wt=rd?rd.weight:0;
+  const perPt=wt>0 ? SLEEP_W/wt : null;
+  const cur=slept!=null ? sleepScoreFor(slept,need) : null;
+  const tiers=[{s:95,label:'At or above your need'},
+               {s:85,label:'Up to 1h short'},
+               {s:75,label:'1h short'},
+               {s:45,label:'2h short'}]
+    .map(t=>({s:t.s, label:t.label, mins:sleepMinsForScore(t.s,need),
+              pts: perPt!=null ? Math.round(t.s*perPt) : null}));
+  /* the next rung up from where last night landed */
+  let better=null;
+  if(cur!=null && cur<95){
+    const tgt = cur<45 ? 45 : cur<75 ? 75 : 95;
+    better={mins:sleepMinsForScore(tgt,need),
+            gain: perPt!=null ? Math.max(1, Math.round((tgt-cur)*perPt)) : null};
+  }
+  return {need, generic, slept, shortfall: slept!=null ? need-slept : null,
+          score: cur!=null ? rnd(cur,0) : null, perPt, weight:SLEEP_W, totalWeight:wt,
+          maxGain: (cur!=null&&perPt!=null) ? Math.round((95-cur)*perPt) : null,
+          tiers, better};
+}
+
 const BAND = {
   green :{label:'GREEN', name:'High readiness',   color:'var(--green)',  v:'FULL',     txt:'Train the full planned session at the prescribed effort.'},
   yellow:{label:'YELLOW',name:'Moderate readiness',color:'var(--yellow)',v:'REDUCED',  txt:'Keep the movements, cut the volume and cap the effort.'},
@@ -812,7 +877,7 @@ function weekProgress(date){
    `n` is the systemHistory sentinel, `span` is how many days of history exist. */
 function sinceSpan(n, span){
   if(n!==99) return 'for '+n+' days';
-  if(!span) return 'yet — this is your first day of logging';
+  if(!span) return 'yet';
   if(span<14) return 'in the '+span+' day'+(span===1?'':'s')+' you have logged';
   return 'in over two weeks';
 }
@@ -830,12 +895,22 @@ function systemHistory(date){
      Scoring is unaffected: for deciding what to train, never and not-for-a-
      fortnight should both mean "due". */
   h.spanDays=(function(){
+    /* TRAINING history only - sessions and activities, which is exactly what
+       dayItems() builds the load history from.
+
+       Check-ins and imported WHOOP cycles used to count here too, and that was
+       wrong in a way that produced a confident falsehood. A WHOOP export
+       carries a physiological record for every day since you bought the strap,
+       so importing one set spanDays to months; but a recovery score says
+       nothing about whether your legs were loaded, and no WHOOP row ever
+       reaches dayDemand(). The app would then tell a three-day-old profile its
+       legs had been idle "in over two weeks" - asserting a fortnight of
+       training history it had never seen. The qualifier has to measure the
+       same evidence as the claim it qualifies. */
     let first=null;
     const see=d=>{ if(d && (!first||d<first)) first=d; };
     (DB.sessions||[]).forEach(s=>{ if(s.done) see(s.date); });
     (DB.activities||[]).forEach(a=>see(a.date));
-    Object.keys(DB.checkins||{}).forEach(see);
-    ((DB.whoop&&DB.whoop.cycles)||[]).forEach(c=>see(c.date));
     if(!first) return 0;
     return Math.max(0, daysBetween(first, date));
   })();
@@ -935,6 +1010,22 @@ function recommend(date, ci, rd){
   const sore=ci.soreness!=null?ci.soreness:3;
   const time=ci.availTime||sessMin();
   const yd=dayDemand(addDays(date,-1));
+  /* WHAT IS ALREADY LOGGED TODAY, before this recommendation is acted on.
+     systemHistory() deliberately starts at yesterday, so until now the engine
+     could not see the morning: log a two-hour match at 11am and it would still
+     prescribe a full leg session for the evening, and still explain that your
+     legs were fresh. The only thing it noticed was the MAIN sport, and only as
+     a yes/no flag - a twenty-minute hit and a three-set match counted the same,
+     and a hard session in a sport that is not yours counted for nothing. */
+  const TD=(function(){
+    const dd=dayDemand(date);
+    const top=dd.items.slice().sort((a,b)=>(b.load||0)-(a.load||0))[0];
+    return {load:dd.load, lower:dd.lower, upper:dd.upper, expl:dd.expl, impact:dd.impact,
+            n:dd.n,
+            top: top ? (top.kind==='activity'
+                   ? (ACT_TYPES[top.type]||ACT_TYPES.other).name.toLowerCase()
+                   : (top.name||'your session')) : null};
+  })();
   /* `sportToday` is the modern field; `tennisToday` is read only so old
      check-ins saved before the rename still behave the same way. */
   const flagSport  = ci.sportToday===true || ci.tennisToday===true;
@@ -1073,6 +1164,35 @@ function recommend(date, ci, rd){
       if(c.sys==='bike') add(-16,null);
     }
 
+    /* ---- 4b. what you have already done today ----
+       Load-proportional, and blind to whether it happens to be your sport: a
+       basketball game loads legs whether or not basketball is what you train
+       for. Thresholds match the ones systemHistory() uses to decide a past day
+       counted (lower 6, expl 5), so "loaded today" means the same thing as
+       "loaded yesterday" rather than something new. */
+    if(TD.load>0){
+      const what=TD.top||'what you logged today';
+      if(c.sys==='lower' && TD.lower>=6)
+        add(-42,`You have already put ${TD.lower} of lower-body demand through today (${esc(what)}).`,'neg');
+      if(c.sys==='expl' && (TD.lower>=6||TD.expl>=5))
+        add(-46,`Your legs have already worked today (${esc(what)}) — plyometrics need fresh ones.`,'neg');
+      if(c.sys==='upper' && TD.upper>=6)
+        add(-34,`Your upper body has already taken ${TD.upper} of demand today (${esc(what)}).`,'neg');
+      if((c.sys==='run'||c.sys==='bike') && (TD.impact>=6||TD.lower>=6))
+        add(-30,`Your legs have already taken load today (${esc(what)}).`,'neg');
+      if(c.sys==='core' && TD.load>=7 && TD.load<14)
+        add(+10,`Core sits comfortably on top of ${esc(what)}.`,'pos');
+      /* the whole day, regardless of which system */
+      if(TD.load>=14){
+        if(['lower','upper','expl','run'].indexOf(c.sys)>=0)
+          add(-34,`Today already carries a load of ${TD.load} from ${esc(what)} — a second hard piece on top of that is where a week starts costing you.`,'neg');
+        if(c.sys==='mobility') add(+24,`${TD.load} of load is already in today from ${esc(what)} — mobility adds quality without adding fatigue.`,'pos');
+        if(c.id==='rest') add(+22,`You have already trained today (${esc(what)}, load ${TD.load}). Calling it done is a legitimate answer.`,'pos');
+      } else if(TD.load>=7 && ['lower','upper','expl','run'].indexOf(c.sys)>=0){
+        add(-16,`Today already carries a load of ${TD.load} from ${esc(what)}.`,'warn');
+      }
+    }
+
     /* ---- 5. weekly targets — guidelines, with diminishing returns ---- */
     const tgtMap={lower:'lower',upper:'upper',expl:'power',core:'core',run:'run',bike:'bike',mobility:'mobility'};
     const key=tgtMap[c.sys];
@@ -1109,6 +1229,11 @@ function recommend(date, ci, rd){
   if(win.c.sys==='mobility'||win.c.sys==='rest') variant='full';
   if(win.c.sys==='expl'&&band==='green'&&rd.score<80) variant='full';
   if(yd.load>=14 && variant==='full' && ['lower','expl','upper'].indexOf(win.c.sys)>=0) variant='reduced';
+  /* What is already in today counts at least as much as what was in yesterday.
+     Yesterday's load has had a night's sleep against it; this morning's has
+     not. */
+  if(TD.load>=10 && variant==='full' && ['lower','expl','upper','run','bike'].indexOf(win.c.sys)>=0) variant='reduced';
+  if(TD.load>=16 && variant==='reduced' && win.c.sys!=='mobility' && win.c.sys!=='rest') variant='recovery';
 
   /* ---- what you said about the last few sessions ----
      One step, and only when the last three rated sessions agree. Harder is
@@ -1172,9 +1297,16 @@ function recommend(date, ci, rd){
   if(ci.hrv!=null&&rd.hrvZ!=null) bits.push(`HRV <b>${ci.hrv} ms</b> (${rd.hrvZ>0?'+':''}${rd.hrvZ} SD)`);
   if(ci.soreness!=null) bits.push(`soreness <b>${ci.soreness}/10</b>`);
   if(ci.energy!=null) bits.push(`energy <b>${ci.energy}/10</b>`);
-  const legLine = H.since.lower===99 ? (H.spanDays>=14
+  /* Today outranks the history: saying your legs are fresh after you logged a
+     match this morning is the kind of wrongness that costs trust in everything
+     else on the screen. */
+  const legLine = TD.lower>=6
+      ? `your legs have already taken real load today (${esc(TD.top||'what you logged')})`
+    : H.since.lower===99 ? (H.spanDays>=14
       ? 'your legs have not taken real load in over two weeks'
-      : 'your legs have not taken real load since you started logging')
+      : H.spanDays>0
+        ? `your legs have not taken real load in the ${H.spanDays} day${H.spanDays===1?'':'s'} you have logged`
+        : 'you have not logged a session or activity yet')
     : H.since.lower===1 ? 'your legs were loaded yesterday'
     : `your legs were last loaded ${H.since.lower} days ago`;
   const verdict = win.c.sys==='rest' ? 'Today the useful thing is nothing at all.'
