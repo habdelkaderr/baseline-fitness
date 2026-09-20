@@ -1161,10 +1161,56 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .wm-plain{font-size:12.5px;color:var(--text-2);font-weight:600;
   margin-top:7px;line-height:1.5}
 
-/* What this phase leads to. On a workout warm-up that is the first MAIN
-   exercise; before an activity it is the activity itself. Deliberately one
-   quiet block rather than a list: the point is that the warm-up is not the
-   workout, which one name makes clearer than four. */
+/* The sleep header. `.arc` is a fixed-width block, so text-align on its parent
+   never moved it: the ring sat hard left with the rest of the tile empty.
+   Pairing it with the figures fills that space instead of centring a lone ring
+   above a paragraph that repeated what the ring already showed. */
+.sleeph{display:flex;align-items:center;gap:18px}
+.sleeph .sh-x{flex:1;min-width:0}
+.sleeph .sh-l{font-size:10.5px;font-weight:800;letter-spacing:1px;
+  text-transform:uppercase;color:var(--text-3)}
+.sleeph .sh-v{font-size:30px;font-weight:850;letter-spacing:-1px;line-height:1.1;margin-top:5px}
+.sleeph .sh-s{font-size:13px;font-weight:650;color:var(--text-2);margin-top:5px}
+/* the one number tonight is worth, beside what it buys */
+.sh-goal{display:flex;align-items:center;gap:15px}
+.sh-goal .sh-gv{font-size:26px;font-weight:850;letter-spacing:-.8px;color:var(--violet);
+  flex:0 0 auto}
+.sh-goal .sh-gx{flex:1;min-width:0}
+.sh-goal .sh-gt{font-size:15px;font-weight:800;letter-spacing:-.2px}
+.sh-goal .sh-gs{font-size:12px;font-weight:600;color:var(--text-3);margin-top:2px}
+@media (max-width:340px){ .sleeph{gap:13px} .sleeph .sh-v{font-size:26px} }
+
+/* NOW, then NEXT — never the other way round.
+   The warm-up screen used to give its biggest exercise name to "Up next",
+   which named the first MAIN exercise: the most prominent thing on the screen
+   was the one movement the user was NOT about to do. These two styles exist to
+   keep that hierarchy impossible to get wrong — .nowcard is the current action
+   and always outweighs .peek, which is a glimpse. */
+.wm-ph{font-size:11px;font-weight:750;letter-spacing:.5px;text-transform:uppercase;
+  color:var(--text-3)}
+.nowcard{margin-top:12px;padding:16px 16px 15px;border-radius:16px;
+  background:var(--surface-2);border:1px solid var(--border)}
+.nowcard .now-l{display:block;font-size:10.5px;font-weight:750;letter-spacing:.4px;
+  text-transform:uppercase;color:var(--text-3);margin-bottom:5px}
+.nowcard .now-n{display:block;font-size:26px;font-weight:850;letter-spacing:-.7px;
+  line-height:1.15}
+.nowcard.big .now-n{font-size:30px}
+.nowcard .now-d{display:block;font-size:15px;font-weight:700;color:var(--accent);margin-top:6px}
+.nowcard .now-h{display:block;font-size:12.5px;color:var(--text-2);font-weight:600;
+  margin-top:9px;line-height:1.5}
+
+/* The glimpse. Deliberately one line, smaller than the body text above it. */
+.peek{margin-top:11px;padding:9px 13px;border-radius:11px;border:1px dashed var(--border-soft);
+  display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.peek .pk-l{font-size:10px;font-weight:750;letter-spacing:.4px;text-transform:uppercase;
+  color:var(--text-3)}
+.peek .pk-n{font-size:13.5px;font-weight:700}
+.peek .pk-d{font-size:12px;color:var(--text-3);font-weight:600}
+.wm-row{display:flex;gap:10px;margin-top:8px}
+.wm-row .tert{flex:1}
+
+/* Still used where the next thing IS the point of the screen: the sheet shown
+   after an activity is logged, whose whole job is to name what replaced it. */
 .upnext{margin-top:13px;padding:11px 13px;border-radius:12px;
   background:var(--surface-2);border:1px solid var(--border-soft)}
 .upnext .un-l{display:block;font-size:10.5px;font-weight:750;letter-spacing:.4px;
@@ -1413,6 +1459,15 @@ const dowOf    = iso => new Date(iso+'T12:00:00').getDay();          // 0=Sun
 const DOW_NAME = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const DOW_FULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const fmtDate  = iso =>{ const d=new Date(iso+'T12:00:00'); return DOW_NAME[d.getDay()]+' '+d.getDate()+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]; };
+/* "14–20 Sep", or "28 Sep – 4 Oct" across a month edge. Short enough for the
+   week strip, and explicit about which week is on screen. */
+const weekRangeLabel = (from,to)=>{
+  const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const a=new Date(from+'T12:00:00'), b=new Date(to+'T12:00:00');
+  return a.getMonth()===b.getMonth()
+    ? a.getDate()+'–'+b.getDate()+' '+MON[b.getMonth()]
+    : a.getDate()+' '+MON[a.getMonth()]+' – '+b.getDate()+' '+MON[b.getMonth()];
+};
 const fmtMin   = m =>{ if(m==null||isNaN(m))return '—'; const h=Math.floor(m/60), r=Math.round(m%60); return h? h+'h '+String(r).padStart(2,'0')+'m' : r+'m'; };
 const mmss     = s =>{ s=Math.max(0,Math.round(s)); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };
 /* A session clock. mmss is fine for a rest timer but a two-hour bike ride
@@ -1612,7 +1667,7 @@ const SCHEMA_VERSION=2;             // bump to transform stored records
 /* A date, plus a letter when more than one build ships in a day. Without the
    letter there was no way to tell a second same-day deploy from the cached
    copy of the first, which is exactly the question "did my upload work?". */
-const APP_BUILD='2026-09-20b';
+const APP_BUILD='2026-09-20d';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */
@@ -6234,12 +6289,18 @@ function sleepPlan(date){
   const wt=rd?rd.weight:0;
   const perPt=wt>0 ? SLEEP_W/wt : null;
   const cur=slept!=null ? sleepScoreFor(slept,need) : null;
-  const tiers=[{s:95,label:'At or above your need'},
-               {s:85,label:'Up to 1h short'},
-               {s:75,label:'1h short'},
-               {s:45,label:'2h short'}]
-    .map(t=>({s:t.s, label:t.label, mins:sleepMinsForScore(t.s,need),
-              pts: perPt!=null ? Math.round(t.s*perPt) : null}));
+  /* Defined by how far short the night falls, not by sub-score. Picking scores
+     produced two rows reading the same duration - 95 and 85 both invert to the
+     full need, because the curve steps at a shortfall of zero rather than
+     sloping through it. Minutes are also what the reader is choosing between. */
+  const tiers=[0,30,60,120].map(short=>({
+    short,
+    mins:Math.max(0,need-short),
+    pts: perPt!=null ? Math.round(sleepScoreFor(need-short,need)*perPt) : null,
+    label: short===0 ? 'Your full need'
+         : short<60  ? short+' min less'
+         : (short/60)+' hour'+(short===60?'':'s')+' less'
+  }));
   /* the next rung up from where last night landed */
   let better=null;
   if(cur!=null && cur<95){
@@ -8392,7 +8453,11 @@ function viewToday(v){
           arrow - heading "This week" above a strip reading "Last week".
           Which week it is showing is the strip's job to say, and it says it
           in one place. */}
-  <div class="sec-t">Training this week</div>
+  ${''/* Just "Training". The section heading must not name a period at all:
+          the strip navigates, so any period in the heading is wrong as soon as
+          the user presses the arrow. Which week is on screen is the strip's
+          job, and it says so in one place. */}
+  <div class="sec-t">Training</div>
   ${weekStrip(d)}
 
   ${activitiesCard(selDay())}
@@ -8498,51 +8563,44 @@ function pageSleep(d){
     const sp=sleepPlan(d);
     const ci=DB.checkins[d]||null;
     const pctOf=m=>Math.min(100, Math.round(m/sp.need*100));
-    const cls = sp.shortfall==null ? '' : sp.shortfall<=0 ? 'g' : sp.shortfall<=60 ? 'g'
-              : sp.shortfall<=120 ? 'y' : 'r';
+    /* One line under the figure, not three. The ring, the duration and the gap
+       are the whole story; everything else was restating them in prose. */
+    const sub = sp.slept==null ? `Target ${fmtMin(sp.need)}`
+      : sp.shortfall<=0 ? `Target ${fmtMin(sp.need)} · met`
+      : `${Math.round(sp.shortfall)} min under ${fmtMin(sp.need)}`;
     c.innerHTML=`
-    <div class="rec" style="text-align:center">
+    <div class="rec sleeph">
       ${ringHTML({lead:true, pct: sp.slept!=null? pctOf(sp.slept) : null,
                   value: sp.slept!=null? (Math.round(sp.slept/60*10)/10)+'h' : '—',
                   color:'var(--violet)'})}
-      <div class="rec-m" style="margin-top:10px;font-weight:750">${
-        sp.slept==null ? 'No sleep recorded for this night'
-        : sp.shortfall<=0 ? 'You met your sleep need'
-        : `${Math.round(sp.shortfall)} min under your need`}</div>
-      <div class="hint" style="margin-top:6px">Your need is <b>${fmtMin(sp.need)}</b>${
-        sp.generic ? ' — a generic 8h target until your own figure is known' : ''}</div>
+      <div class="sh-x">
+        <div class="sh-l">Last night</div>
+        <div class="sh-v">${sp.slept!=null? fmtMin(sp.slept) : 'Not recorded'}</div>
+        <div class="sh-s">${esc(sub)}</div>
+      </div>
     </div>
+    ${sp.generic?'<div class="hint" style="margin-top:-6px">Generic 8h target until your own is known.</div>':''}
 
     <div class="sec-t">Tonight</div>
-    ${sp.better ? `<div class="card">
-      <div class="card-t accent">Sleep ${fmtMin(sp.better.mins)} or more</div>
-      <div class="hint" style="margin-top:6px">That moves the sleep part of readiness up
-        ${sp.better.gain!=null?`by about <b>${sp.better.gain} point${sp.better.gain===1?'':'s'}</b>`:'to its next step'}
-        from where last night landed.${sp.maxGain>0?` Reaching the full ${fmtMin(sp.need)} is worth
-        about ${sp.maxGain} point${sp.maxGain===1?'':'s'}.`:''}</div>
+    ${sp.better ? `<div class="card sh-goal">
+      <div class="sh-gv">${fmtMin(sp.better.mins)}</div>
+      <div class="sh-gx">
+        <div class="sh-gt">${sp.better.gain!=null
+          ? '+'+sp.better.gain+' point'+(sp.better.gain===1?'':'s')
+          : 'The next step up'}</div>
+        <div class="sh-gs">of readiness, against last night</div>
+      </div>
     </div>`
-    : sp.slept!=null ? `<div class="note acc"><b>Nothing to gain here.</b> Last night already
-        met your need, so the sleep part of readiness is as high as it goes. Anything
-        left on the table today is coming from elsewhere.</div>`
-    : `<div class="note"><b>Aim for ${fmtMin(sp.need)}.</b> Once you record a night,
-        this shows what the next one is worth.</div>`}
+    : sp.slept!=null ? `<div class="note acc">You met your need. Sleep has nothing more to give today.</div>`
+    : `<div class="note">Aim for ${fmtMin(sp.need)}.</div>`}
 
-    <div class="sec-t">What each night is worth</div>
+    <div class="sec-t">What a night is worth</div>
     <div class="card">
       ${sp.tiers.map(t=>`<div class="kv"><span class="k">${esc(t.label)}</span>
-        <span class="v num">${fmtMin(t.mins)}${t.pts!=null?` <small>· ~${t.pts} pts</small>`:''}</span></div>`).join('')}
+        <span class="v num">${fmtMin(t.mins)}${t.pts!=null?` <small>${t.pts} pts</small>`:''}</span></div>`).join('')}
     </div>
-    <div class="hint">Sleep is ${sp.weight} of ${sp.totalWeight? Math.round(sp.totalWeight) : 'about 100'}
-      weight in today's readiness, so these are the points sleep alone can contribute. HRV,
-      resting heart rate and yesterday's strain move on their own.</div>
-
-    ${ci && ci.sleepMin!=null ? `<div class="sec-t">This night</div>
-    <div class="stats">
-      ${statTile('Asleep',fmtMin(ci.sleepMin),'',cls)}
-      ${statTile('Need',fmtMin(sp.need),'',sp.generic?'':'c',sp.generic?'generic':'yours')}
-      ${statTile('Shortfall',sp.shortfall>0?Math.round(sp.shortfall)+'m':'none','',
-         sp.shortfall<=0?'g':sp.shortfall<=60?'g':sp.shortfall<=120?'y':'r')}
-    </div>`:''}
+    <div class="hint">Sleep is ${sp.weight} of ~${sp.totalWeight? Math.round(sp.totalWeight) : 100} readiness
+      points. HRV, resting heart rate and yesterday's strain make up the rest.</div>
 
     <button class="btn ghost block" id="slEdit">${ci?'Edit check-in':'Check in'}</button>`;
     const e=$('#slEdit'); if(e) e.onclick=()=>openCheckin(d);
@@ -8646,9 +8704,10 @@ function weekStrip(d){
   const sel=selDay();
   const start=addDays(weekStartOf(d), WEEKOFF*7);
   const end=addDays(start,6);
-  const label = WEEKOFF===0 ? 'This week'
-    : WEEKOFF===-1 ? 'Last week'
-    : fmtDate(start)+' — '+fmtDate(end);
+  /* An explicit period. "Last week" was friendly but still relative, and two
+     steps back fell through to a pair of full dates that wrapped. A range is
+     unambiguous at any offset and fits the strip. */
+  const label = WEEKOFF===0 ? 'This week' : weekRangeLabel(start,end);
   const TAGS={lower:'Legs',upper:'Upper',power:'Power',core:'Core',run:'Run',bike:'Bike',mobility:'Mob',prep:'Prep',strength:'Str'};
   /* one cycle context for all seven days, not one per day */
   const mcc = mcOn()? mcCtx() : null;
@@ -8749,7 +8808,11 @@ function todayNoCheckin(d){
           arrow - heading "This week" above a strip reading "Last week".
           Which week it is showing is the strip's job to say, and it says it
           in one place. */}
-  <div class="sec-t">Training this week</div>
+  ${''/* Just "Training". The section heading must not name a period at all:
+          the strip navigates, so any period in the heading is wrong as soon as
+          the user presses the arrow. Which week is on screen is the strip's
+          job, and it says so in one place. */}
+  <div class="sec-t">Training</div>
   ${weekStrip(d)}
   ${activitiesCard(selDay())}
   ${activityRowsHTML()}`;
@@ -12196,7 +12259,21 @@ function startWorkout(wid,variant,date,rec){
     addCore:!!(rec&&rec.addCore), recId:rec?rec.id:null, overridden:!!(rec&&rec.overridden),
     startedAt:Date.now(), time:new Date().toTimeString().slice(0,5),
     band:rd?rd.band:null, readinessScore:rd?rd.score:null,
-    step:-1,   // -1 = warm-up screen
+    /* ---- PHASES ----
+       Three separate pieces of state, deliberately not one index:
+         warmup[]  the warm-up movements, already filtered against the main
+                   list so neither phase can contain the other's work
+         wuStep    which warm-up movement is CURRENT
+         step      which MAIN exercise is current
+       They share no array and no counter, so advancing one cannot move the
+       other. `phase` says which the screen is reading. The old model encoded
+       the warm-up as step===-1, which worked but could only ever describe a
+       warm-up as a single undifferentiated screen. */
+    phase:'preview', wuStep:0, step:0,
+    warmup:(function(){
+      const wu=warmupMinus(warmupFor(wk), blocks.map(b=>(exOf(b.ex)||{}).name).filter(Boolean));
+      return {name:wu.name, dur:wu.dur, items:wu.items.slice()};
+    })(),
     entries: blocks.map(b=>{ const e=exOf(b.ex)||{name:'(missing)',sets:3,reps:'10'};
       const n=b.sets||e.sets||3;
       return { exerciseId:b.ex, name:e.name, plannedSets:n,
@@ -12389,8 +12466,59 @@ function restWords(rest){
 /* "REDUCED" told a first-time user nothing. */
 const VARIANT_NAME={full:'Full session', reduced:'Reduced volume', recovery:'Recovery session'};
 
+/* Old sessions were paused before phases existed, and a resumed one must not
+   land on a screen that no longer means what it did. step===-1 was the warm-up.
+   Also collapses the phases a given session cannot have: an activity has no
+   warm-up inside workout mode, and neither does a workout whose warm-up filtered
+   down to nothing. */
+function wmNormalise(){
+  if(!W) return;
+  if(!W.warmup || !Array.isArray(W.warmup.items)) W.warmup={name:'',dur:0,items:[]};
+  if(W.wuStep==null) W.wuStep=0;
+  if(W.phase==null){ W.phase=(W.step<0?'preview':'main'); if(W.step<0) W.step=0; }
+  if(W.step<0) W.step=0;
+  if(W.kind==='activity') W.phase='main';
+  if((W.phase==='preview'||W.phase==='warmup') && !W.warmup.items.length) W.phase='main';
+  W.wuStep=clamp(W.wuStep,0,Math.max(0,W.warmup.items.length-1));
+}
+/* CURRENT, IMMEDIATE NEXT and NEXT PHASE are three different questions, and
+   conflating the first two is what put "Up next: Bird Dog" above the movement
+   the user was actually meant to start with. Only CURRENT and IMMEDIATE NEXT
+   are shown; NEXT PHASE is simply what IMMEDIATE NEXT becomes at a boundary. */
+function wmCurrent(){
+  if(!W) return null;
+  if(W.phase==='preview'||W.phase==='warmup'){
+    const it=W.warmup.items[W.phase==='preview'?0:W.wuStep];
+    return it ? {kind:'warmup', name:it.n, detail:it.d||'', how:warmupHow(it.n)} : null;
+  }
+  const en=W.entries[W.step];
+  return en ? {kind:'main', name:en.name, detail:en.plannedReps||'', how:''} : null;
+}
+function wmUpNext(){
+  if(!W) return null;
+  if(W.phase==='preview'||W.phase==='warmup'){
+    const i=(W.phase==='preview'?0:W.wuStep)+1;
+    if(i<W.warmup.items.length){
+      const it=W.warmup.items[i];
+      return {kind:'warmup', name:it.n, detail:it.d||''};
+    }
+    /* the phase boundary: the warm-up runs out, the work begins */
+    const en=W.entries[0];
+    return en ? {kind:'main', name:en.name, detail:en.plannedReps||''} : null;
+  }
+  const en=W.entries[W.step+1];
+  return en ? {kind:'main', name:en.name, detail:en.plannedReps||''} : null;
+}
+function peekHTML(n){
+  if(!n) return '';
+  return `<div class="peek"><span class="pk-l">Up next</span>
+    <span class="pk-n">${esc(n.name)}</span>
+    ${n.detail?`<span class="pk-d">${esc(n.detail)}</span>`:''}</div>`;
+}
+
 function drawWM(){
   if(!W)return;
+  wmNormalise();
   /* Re-rendering the body threw the user back to the top of the exercise on
      every single tick, which on a four-set list meant scrolling down again
      after each set. */
@@ -12409,76 +12537,92 @@ function drawWM(){
       <div style="font-size:10.5px;color:var(--text-3);font-weight:650;margin-top:1px">
         ${W.kind==='activity'
           ? esc(W.intensity||'Running')
-          : esc(VARIANT_NAME[W.variant]||'Full session')+' · '+(i<0?'warm-up':`exercise ${i+1}/${total}`)} · ${elapsed} min</div>
+          : esc(VARIANT_NAME[W.variant]||'Full session')+' · '+(
+              W.phase==='preview' ? 'warm-up'
+            : W.phase==='warmup'  ? `warm-up ${W.wuStep+1}/${W.warmup.items.length}`
+            : `exercise ${i+1}/${total}`)} · ${elapsed} min</div>
     </div>
     <div class="icon-btn" style="font-size:11px;font-weight:800;color:var(--accent)">${doneSets}/${allSets}</div>`;
   $('#wmX').onclick=()=>exitWM();
 
-  if(i<0 && W.kind==='activity'){ W.step=0; return drawWM(); }
-  if(i<0) return drawWarmup();
+  if(W.phase==='preview') return drawWarmupPreview();
+  if(W.phase==='warmup')  return drawWarmupStep();
   if(i>=total) return W.saveAs==='activity' ? drawActivityFinish() : drawFinish();
   drawExercise(W.entries[i],i,total);
   if(_body && _keep) _body.scrollTop=_keep;
 }
-function drawWarmup(){
+/* ---- the jump that lands on the first MAIN exercise, from anywhere ---- */
+function wmToMain(){
+  W.phase='main'; W.step=0;
+  drawWM(); window.scrollTo(0,0);
+  const b=$('#wmBody'); if(b) b.scrollTop=0;
+}
+
+/* PREVIEW — the user has not started yet and is deciding to.
+   It used to list all the warm-up movements under a large "Up next" card
+   naming the first MAIN exercise, so the biggest exercise name on a screen
+   full of warm-up movements was the one the user was NOT about to do. The
+   thing to start with leads now; the glimpse is a glimpse. */
+function drawWarmupPreview(){
   const wk=DB.workouts.find(x=>x.id===W.workoutId);
-  /* the warm-up minus anything that IS the workout — see warmupMinus() */
-  const wu=warmupMinus(warmupFor(wk), W.entries.map(e=>e.name));
-  const first=W.entries[0];
+  const cur=wmCurrent(), nxt=wmUpNext();
+  const items=W.warmup.items;
   $('#wmBody').innerHTML=`
-    <div class="wm-ex">Warm-up</div>
-    <div class="wm-sub">${esc(wu.name)} · about ${wu.dur} minutes</div>
-    ${first?`<div class="upnext"><span class="un-l">Up next</span>
-      <span class="un-n">${esc(first.name)}</span>
-      <span class="un-s">${W.entries.length} exercise${W.entries.length===1?'':'s'} in this session</span></div>`:''}
-    ${wk.desc?`<div class="note acc">${esc(wk.desc)}</div>`:''}
-    ${wu.items.some(it=>warmupHow(it.n))
-      ? '<div class="hint" style="margin:14px 2px 2px">Tap any movement to see how to do it.</div>'
-      : ''}
-    <div class="setlist">
-      ${wu.items.map((it,n)=>{
-        const how=warmupHow(it.n);
-        return `<div class="setrow wu${how?' has-how':''}" style="align-items:flex-start"
-                     ${how?`data-wu="${n}" role="button" tabindex="0"
-                     aria-expanded="false" aria-label="${esc(it.n)}, tap for how to do it"`:''}>
-          <div class="sn">${n+1}</div>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:14.5px;font-weight:650">${esc(it.n)}</div>
-            <div style="font-size:12px;color:var(--text-3);margin-top:2px">${esc(it.d)}</div>
-            ${how?`<div class="wu-how" id="wuHow${n}" hidden>${esc(how)}</div>`:''}
-          </div>
-          ${how?`<i class="wu-x">${svg('down')}</i>`:''}
-        </div>`;}).join('')}
-    </div>
-    <div class="note">Do not skip this. It makes the first working set as good as the last.</div>`;
-  /* the same footer as every exercise that follows, so this reads as step 0
-     of one flow rather than a separate screen with its own vocabulary */
-  /* "Start 1 · Bird Dog" exposed the entry index and named an exercise that had
-     just been listed as a warm-up movement, which read as a repeat. The button
-     says what pressing it does. */
+    <div class="wm-ph">Warm-up</div>
+    <div class="wm-sub" style="margin-top:4px">${esc(W.warmup.name||'')} · about ${W.warmup.dur||5} minutes</div>
+    ${cur?`<div class="nowcard">
+      <div class="now-l">Start with</div>
+      <div class="now-n">${esc(cur.name)}</div>
+      ${cur.detail?`<div class="now-d">${esc(cur.detail)}</div>`:''}
+      ${cur.how?`<div class="now-h">${esc(cur.how)}</div>`:''}
+    </div>`:''}
+    ${peekHTML(nxt)}
+    ${wk&&wk.desc?`<div class="note acc">${esc(wk.desc)}</div>`:''}
+    <div class="hint" style="margin-top:12px">${items.length} movement${items.length===1?'':'s'},
+      then ${W.entries.length} exercise${W.entries.length===1?'':'s'}.</div>`;
+  /* The recommended action is to warm up, so it is the primary button and
+     skipping is plainly secondary — available, not equal. */
   $('#wmFoot').innerHTML=
-    `<button class="btn primary big block" id="wmGo">Start workout</button>
+    `<button class="btn primary big block" id="wmGo">Start warm-up</button>
      <button class="tert block" id="wmSkipWu">Skip the warm-up</button>`;
-  /* Collapsed by default: somebody who knows what a leg swing is should not
-     have to scroll past 53 paragraphs to start training. */
-  $$('#wmBody [data-wu]').forEach(r=>{
-    const open=()=>{
-      const el=$('#wuHow'+r.dataset.wu); if(!el) return;
-      const now=el.hasAttribute('hidden');
-      if(now) el.removeAttribute('hidden'); else el.setAttribute('hidden','');
-      r.classList.toggle('open',now);
-      r.setAttribute('aria-expanded',now?'true':'false');
-      haptic();
-    };
-    r.onclick=open;
-    r.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); open(); } };
-  });
-  /* Both land on the first MAIN exercise: the difference is what the user did
-     off-screen, not what the app does next. Kept as two buttons because
-     "Start workout" under a warm-up list is ambiguous on its own. */
-  const toMain=()=>{ W.step=0; drawWM(); window.scrollTo(0,0); $('#wmBody').scrollTop=0; };
-  $('#wmGo').onclick=toMain;
-  const sk=$('#wmSkipWu'); if(sk) sk.onclick=toMain;
+  $('#wmGo').onclick=()=>{
+    W.phase='warmup'; W.wuStep=0;
+    drawWM(); window.scrollTo(0,0);
+    const b=$('#wmBody'); if(b) b.scrollTop=0;
+  };
+  const sk=$('#wmSkipWu'); if(sk) sk.onclick=wmToMain;
+}
+
+/* WARM-UP — one movement at a time, the same shape the main runner uses, so
+   the whole session reads as one flow rather than a list then a runner. */
+function drawWarmupStep(){
+  const cur=wmCurrent(), nxt=wmUpNext();
+  const n=W.wuStep, total=W.warmup.items.length;
+  const last=n+1>=total;
+  if(!cur) return wmToMain();
+  $('#wmBody').innerHTML=`
+    <div class="wm-ph">Warm-up · ${n+1} of ${total}</div>
+    <div class="nowcard big">
+      <div class="now-n">${esc(cur.name)}</div>
+      ${cur.detail?`<div class="now-d">${esc(cur.detail)}</div>`:''}
+      ${cur.how?`<div class="now-h">${esc(cur.how)}</div>`:''}
+    </div>
+    ${peekHTML(nxt)}`;
+  $('#wmFoot').innerHTML=
+    `<button class="btn primary big block" id="wuNext">${last?'Start workout':'Done — next movement'}</button>
+     <div class="wm-row">
+       ${n>0?`<button class="tert" id="wuBack">Back</button>`:''}
+       <button class="tert" id="wmSkipWu">${last?'Skip to the workout':'Skip the rest'}</button>
+     </div>`;
+  $('#wuNext').onclick=()=>{
+    haptic();
+    if(last) return wmToMain();
+    W.wuStep=n+1; drawWM();
+    const b=$('#wmBody'); if(b) b.scrollTop=0;
+  };
+  const bk=$('#wuBack');
+  if(bk) bk.onclick=()=>{ haptic(); W.wuStep=Math.max(0,n-1); drawWM(); };
+  const sk=$('#wmSkipWu'); if(sk) sk.onclick=wmToMain;
 }
 
 function drawExercise(en,i,total){
@@ -13422,11 +13566,20 @@ function preStartSheet(type){
      "Up next" is its first main exercise — the same idea pointed at what
      actually follows in each case. */
   const drawWu=()=>{
+    /* Same hierarchy as a workout warm-up: what to start with leads, the next
+       movement is a glimpse, and the activity itself is the phase after that.
+       The full routine stays below for anyone who wants to read it. */
+    const first=WU.items[0], second=WU.items[1];
     updateSheet(WU.name,`
       <div class="wm-sub" style="margin-top:0">About ${WU.dur} minutes, before you start</div>
-      <div class="upnext"><span class="un-l">Up next</span>
-        <span class="un-n">${esc(T.name)}</span>
-        <span class="un-s">The clock starts when you begin it, not now</span></div>
+      ${first?`<div class="nowcard">
+        <div class="now-l">Start with</div>
+        <div class="now-n">${esc(first.n)}</div>
+        ${first.d?`<div class="now-d">${esc(first.d)}</div>`:''}
+      </div>`:''}
+      ${peekHTML(second ? {name:second.n, detail:second.d}
+                        : {name:T.name, detail:'the activity itself'})}
+      <div class="hint" style="margin-top:11px">Then ${esc(T.name)}. The clock starts when you begin it, not now.</div>
       <div class="setlist">
         ${WU.items.map((it,n)=>`<div class="setrow wu" style="align-items:flex-start">
           <div class="sn">${n+1}</div>
