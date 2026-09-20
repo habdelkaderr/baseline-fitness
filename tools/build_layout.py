@@ -716,7 +716,7 @@ function SETUP_AT(id){
 
 // the warm-up screen, with a movement expanded. It lives in #wmode, not in a
 // sheet - auditing it as a sheet inspected an empty closed panel.
-startWorkout('w_lowerA','full',T); W.phase='preview'; W.step=0; drawWM();
+startWorkout('w_lowerA','full',T); W.phase='warmup'; W.wuStep=0; W.step=0; drawWM();
 (function(){
   var r=document.querySelector('#wmBody [data-wu]'); if(r) r.click();
   var wm=document.getElementById('wmode'), issues=[];
