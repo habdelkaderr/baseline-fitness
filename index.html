@@ -716,6 +716,19 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .wm-prog i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);transition:width .3s}
 .wm-b{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
   padding:18px var(--gut-r) 20px var(--gut-l);max-width:680px;margin:0 auto;width:100%}
+/* A live set, hold or rest is three bands, and the middle one takes the slack.
+   Without this the four blocks of a set screen stack into the top third of a
+   phone and leave the rest of it blank, which reads as an unfinished screen
+   rather than a calm one. */
+.wm-b.live{display:flex;flex-direction:column;gap:8px}
+.wm-b.live .wm-top{flex:0 0 auto}
+.wm-b.live .wm-mid{flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;
+  min-height:0}
+.wm-b.live .wm-bot{flex:0 0 auto}
+.wm-b.live .wm-bot .btn{margin-bottom:0}
+.wm-b.live .wm-bot .peek{margin-top:12px}
+/* short phones: the middle band gives way rather than pushing the action off */
+@media (max-height:700px){ .wm-b.live{gap:4px} .wm-b.live .nowcard{padding:12px 14px} }
 .wm-f{
   padding:12px var(--gut-r) calc(14px + var(--sa-b)) var(--gut-l);
   border-top:1px solid var(--border-soft);background:var(--bg-elev);flex:0 0 auto;
@@ -1150,6 +1163,16 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 /* the plan, said in words rather than in coach notation */
 .wm-plain{font-size:12.5px;color:var(--text-2);font-weight:600;
   margin-top:7px;line-height:1.5}
+
+/* ---------- The overview: the one dense screen, on purpose ----------
+   Everything after it shows a single thing at a time, so this is where the
+   whole session is allowed to be read at once. */
+.ov-h{font-size:11px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;
+  color:var(--text-3)}
+.ov-s{font-size:13px;font-weight:650;color:var(--text-2);margin:4px 0 10px}
+.ov-n{font-size:14.5px;font-weight:700;letter-spacing:-.1px}
+.ov-m{font-size:12.5px;color:var(--accent);font-weight:700;margin-top:2px;
+  font-variant-numeric:tabular-nums}
 
 /* ---------- The active set: one state of one exercise screen ----------
    Not a card per set, and no list of what has already been logged. During a
@@ -1685,7 +1708,7 @@ const SCHEMA_VERSION=2;             // bump to transform stored records
 /* A date, plus a letter when more than one build ships in a day. Without the
    letter there was no way to tell a second same-day deploy from the cached
    copy of the first, which is exactly the question "did my upload work?". */
-const APP_BUILD='2026-09-20e';
+const APP_BUILD='2026-09-20f';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */
@@ -8196,11 +8219,19 @@ function noticeRow(date){
      decision has already been made. */
   const pw=pausedWorkout();
   if(pw){
-    const k=sum(pw.entries.map(e=>e.sets.filter(s=>s.done).length));
-    return {id:'paused', icon:'play',
-      t:pw.pausedAt?'Workout paused':'Workout still open',
-      s:pw.workoutName+' · '+(k? k+' set'+(k===1?'':'s')+' logged' : 'nothing logged yet'),
-      go:()=>resumeWorkout()};
+    /* ...unless it IS today's session, in which case the recommendation card
+       below carries it and this row is a second door to the same room. Two
+       entries to one workout, one of them headed "Workout still open", read as
+       two different things to do. */
+    const plan=todayPlan(d);
+    const sameSession = plan && plan.workoutId===pw.workoutId;
+    if(!sameSession){
+      const k=sum(pw.entries.map(e=>e.sets.filter(s=>s.done).length));
+      return {id:'paused', icon:'play',
+        t:'Session in progress',
+        s:pw.workoutName+' · '+(k? k+' set'+(k===1?'':'s')+' logged' : 'nothing logged yet'),
+        go:()=>resumeWorkout()};
+    }
   }
 
   /* 1 · away: the most important thing to say, because it explains why the
@@ -8441,9 +8472,16 @@ function viewToday(v){
     <div class="rec-m">${pl.est?`~${pl.est} min`:''}${pl.est&&pl.intensity?' · ':''}${esc(pl.intensity||'')}</div>
     ${pl.overridden?'<div class="rec-m" style="color:var(--violet)">Your choice</div>':''}
     ${hasLimits(d)?`<div class="rec-m" style="color:var(--orange)">Working around ${esc(limitsText(d))}</div>`:''}
+    ${(()=>{ const lv=pausedWorkout();
+       if(!lv || lv.workoutId!==pl.workoutId) return '';
+       const k=sum(lv.entries.map(e=>e.sets.filter(s=>s.done).length));
+       return `<div class="rec-m" style="color:var(--accent)">Started · ${
+         k? k+' set'+(k===1?'':'s')+' logged' : 'nothing logged yet'}</div>`; })()}
   </div>
 
-  ${wk?`<button class="btn primary big block" id="btnStart">${svg('play')} Start session</button>`
+  ${wk?`<button class="btn primary big block" id="btnStart">${svg('play')} ${
+        (()=>{ const lv=pausedWorkout();
+               return (lv && lv.workoutId===pl.workoutId) ? 'Resume session' : 'Start session'; })()}</button>`
       :`<div class="hint" style="margin-top:13px;text-align:center">Rest is the recommendation today, not the absence of one.</div>`}
 
   <button class="tert" id="whyT" aria-expanded="false" aria-controls="whyB">Why this? ${svg('down')}</button>
@@ -8911,7 +8949,13 @@ function wireToday(d){
   wireNotice(d);
   on('btnCheck',()=>openCheckin(d));
   on('btnEditCi',()=>openCheckinView(d));
-  on('btnStart',()=>{ const p=todayPlan(d); startWorkout(p.workoutId,p.variant,d,p); });
+  on('btnStart',()=>{
+    const p=todayPlan(d), lv=pausedWorkout();
+    /* Resuming and starting are the same button, because from the user's side
+       they are the same intention: get on with today's session. */
+    if(lv && lv.workoutId===p.workoutId) return resumeWorkout();
+    startWorkout(p.workoutId,p.variant,d,p);
+  });
   on('btnPreview',()=>{ const p=todayPlan(d); previewWorkout(p.workoutId,p.variant,p); });
   on('btnSwap',()=>changePlan(d));
   on('btnPrep',()=>previewWorkout('w_prep','full'));
@@ -12291,6 +12335,10 @@ function startWorkout(wid,variant,date,rec){
        other. `phase` says which the screen is reading. The old model encoded
        the warm-up as step===-1, which worked but could only ever describe a
        warm-up as a single undifferentiated screen. */
+    /* The overview: the whole session laid out before it starts, warm-up and
+       work, with the prescription on every line and the how-to a tap away.
+       Distinct from the runner, which shows one thing at a time - this is the
+       table of contents, and it is the last screen where reading beats doing. */
     phase:'preview', wuStep:0, step:0,
     warmup:(function(){
       const wu=warmupMinus(warmupFor(wk), blocks.map(b=>(exOf(b.ex)||{}).name).filter(Boolean));
@@ -12502,7 +12550,9 @@ function wmNormalise(){
   if(W.phase==null){ W.phase=(W.step<0?'preview':'main'); if(W.step<0) W.step=0; }
   if(W.step<0) W.step=0;
   if(W.kind==='activity') W.phase='main';
-  if((W.phase==='preview'||W.phase==='warmup') && !W.warmup.items.length) W.phase='main';
+  /* an overview is still worth showing when there is no warm-up to list; only
+     the warm-up RUNNER has nothing to run */
+  if(W.phase==='warmup' && !W.warmup.items.length) W.phase='main';
   W.wuStep=clamp(W.wuStep,0,Math.max(0,W.warmup.items.length-1));
 }
 /* CURRENT, IMMEDIATE NEXT and NEXT PHASE are three different questions, and
@@ -12511,8 +12561,8 @@ function wmNormalise(){
    are shown; NEXT PHASE is simply what IMMEDIATE NEXT becomes at a boundary. */
 function wmCurrent(){
   if(!W) return null;
-  if(W.phase==='preview'||W.phase==='warmup'){
-    const it=W.warmup.items[W.phase==='preview'?0:W.wuStep];
+  if(W.phase==='warmup'){
+    const it=W.warmup.items[W.wuStep];
     return it ? {kind:'warmup', name:it.n, detail:it.d||'', how:warmupHow(it.n)} : null;
   }
   const en=W.entries[W.step];
@@ -12520,8 +12570,8 @@ function wmCurrent(){
 }
 function wmUpNext(){
   if(!W) return null;
-  if(W.phase==='preview'||W.phase==='warmup'){
-    const i=(W.phase==='preview'?0:W.wuStep)+1;
+  if(W.phase==='warmup'){
+    const i=W.wuStep+1;
     if(i<W.warmup.items.length){
       const it=W.warmup.items[i];
       return {kind:'warmup', name:it.n, detail:it.d||''};
@@ -12547,6 +12597,9 @@ function drawWM(){
      every single tick, which on a four-set list meant scrolling down again
      after each set. */
   const _body=$('#wmBody'), _keep=_body?_body.scrollTop:0;
+  /* the three-band layout belongs to live screens only; the finish screen and
+     the cardio clock lay themselves out */
+  if(_body) _body.classList.remove('live');
   const total=W.entries.length;
   const i=W.step;
   const doneSets=sum(W.entries.map(e=>e.sets.filter(s=>s.done).length));
@@ -12562,14 +12615,14 @@ function drawWM(){
         ${W.kind==='activity'
           ? esc(W.intensity||'Running')
           : esc(VARIANT_NAME[W.variant]||'Full session')+' · '+(
-              W.phase==='preview' ? 'warm-up'
+              W.phase==='preview' ? 'overview'
             : W.phase==='warmup'  ? `warm-up ${W.wuStep+1}/${W.warmup.items.length}`
             : `exercise ${i+1}/${total}`)} · ${elapsed} min</div>
     </div>
     <div class="icon-btn" style="font-size:11px;font-weight:800;color:var(--accent)">${doneSets}/${allSets}</div>`;
   $('#wmX').onclick=()=>exitWM();
 
-  if(W.phase==='preview') return drawWarmupPreview();
+  if(W.phase==='preview') return drawOverview();
   if(W.phase==='warmup')  return drawWarmupStep();
   if(i>=total) return W.saveAs==='activity' ? drawActivityFinish() : drawFinish();
   drawExercise(W.entries[i],i,total);
@@ -12645,61 +12698,106 @@ function wmToMain(){
   const b=$('#wmBody'); if(b) b.scrollTop=0;
 }
 
-/* PREVIEW — the user has not started yet and is deciding to.
-   It used to list all the warm-up movements under a large "Up next" card
-   naming the first MAIN exercise, so the biggest exercise name on a screen
-   full of warm-up movements was the one the user was NOT about to do. The
-   thing to start with leads now; the glimpse is a glimpse. */
-function drawWarmupPreview(){
+/* OVERVIEW — the whole session before it starts.
+   Warm-up and work in one list, the prescription on every line, and the how-to
+   behind a tap so the page stays readable. Two actions: warm up, or go
+   straight to the work. This is deliberately the ONLY dense screen in the
+   session; everything after it shows one thing at a time. */
+function drawOverview(){
   const wk=DB.workouts.find(x=>x.id===W.workoutId);
-  const cur=wmCurrent(), nxt=wmUpNext();
-  const items=W.warmup.items;
+  const wu=W.warmup, hasWu=wu.items.length>0;
+  const row=(key,n,name,meta,how)=>`
+    <div class="setrow wu${how?' has-how':''}" style="align-items:flex-start"
+         ${how?`data-ov="${key}" role="button" tabindex="0" aria-expanded="false"
+         aria-label="${esc(name)}, tap for how to do it"`:''}>
+      <div class="sn">${n}</div>
+      <div style="flex:1;min-width:0">
+        <div class="ov-n">${esc(name)}</div>
+        ${meta?`<div class="ov-m">${esc(meta)}</div>`:''}
+        ${how?`<div class="wu-how" id="ovHow${key}" hidden>${esc(how)}</div>`:''}
+      </div>
+      ${how?`<i class="wu-x">${svg('down')}</i>`:''}
+    </div>`;
+  const exRow=(en,n)=>{
+    const ex=exOf(en.exerciseId)||{};
+    const meta = en.cardio ? (en.plannedReps||'')
+      : en.timed ? en.sets.length+' × '+secsLabel(en.timed)
+      : en.sets.length+' × '+(en.plannedReps||'');
+    const how=[ex.how||briefHow(ex), en.cue?('Cue: '+en.cue):''].filter(Boolean).join('\n\n');
+    return row('e'+n, n+1, en.name, meta, how);
+  };
   $('#wmBody').innerHTML=`
-    <div class="wm-ph">Warm-up</div>
-    <div class="wm-sub" style="margin-top:4px">${esc(W.warmup.name||'')} · about ${W.warmup.dur||5} minutes</div>
-    ${cur?`<div class="nowcard">
-      <div class="now-l">Start with</div>
-      <div class="now-n">${esc(cur.name)}</div>
-      ${cur.detail?`<div class="now-d">${esc(cur.detail)}</div>`:''}
-      ${cur.how?`<div class="now-h">${esc(cur.how)}</div>`:''}
-    </div>`:''}
-    ${peekHTML(nxt)}
-    ${wk&&wk.desc?`<div class="note acc">${esc(wk.desc)}</div>`:''}
-    <div class="hint" style="margin-top:12px">${items.length} movement${items.length===1?'':'s'},
-      then ${W.entries.length} exercise${W.entries.length===1?'':'s'}.</div>`;
-  /* The recommended action is to warm up, so it is the primary button and
-     skipping is plainly secondary — available, not equal. */
-  $('#wmFoot').innerHTML=
-    `<button class="btn primary big block" id="wmGo">Start warm-up</button>
-     <button class="tert block" id="wmSkipWu">Skip the warm-up</button>`;
-  $('#wmGo').onclick=()=>{
+    ${hasWu?`
+    <div class="ov-h">Warm-up</div>
+    <div class="ov-s">${esc(wu.name||'')} · about ${wu.dur||5} minutes</div>
+    <div class="setlist">${wu.items.map((it,n)=>
+      row('w'+n, n+1, it.n, it.d||'', warmupHow(it.n))).join('')}</div>`:''}
+
+    <div class="ov-h"${hasWu?' style="margin-top:20px"':''}>The workout</div>
+    <div class="ov-s">${esc(wk?wk.name:'')} · ${W.entries.length} exercise${W.entries.length===1?'':'s'}${
+      W.est?' · about '+W.est+' min':''}</div>
+    <div class="setlist">${W.entries.map(exRow).join('')}</div>
+    ${wk&&wk.desc?`<div class="note acc" style="margin-top:14px">${esc(wk.desc)}</div>`:''}
+    <div class="hint" style="margin-top:10px">Tap any line to see how to do it.</div>`;
+  $('#wmFoot').innerHTML= hasWu
+    ? `<button class="btn primary big block" id="wmGo">Start warm-up</button>
+       <button class="tert block" id="wmSkipWu">Skip the warm-up</button>`
+    : `<button class="btn primary big block" id="wmSkipWu">Start workout</button>`;
+  /* Collapsed by default: somebody who knows what a dead bug is should not
+     scroll past twelve paragraphs to reach the button. */
+  $$('#wmBody [data-ov]').forEach(r=>{
+    const open=()=>{
+      const el=$('#ovHow'+r.dataset.ov); if(!el) return;
+      const now=el.hasAttribute('hidden');
+      if(now) el.removeAttribute('hidden'); else el.setAttribute('hidden','');
+      r.classList.toggle('open',now);
+      r.setAttribute('aria-expanded',now?'true':'false');
+      haptic();
+    };
+    r.onclick=open;
+    r.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); open(); } };
+  });
+  const go=$('#wmGo');
+  if(go) go.onclick=()=>{
     W.phase='warmup'; W.wuStep=0;
-    drawWM(); window.scrollTo(0,0);
-    const b=$('#wmBody'); if(b) b.scrollTop=0;
+    drawWM(); const b=$('#wmBody'); if(b) b.scrollTop=0;
   };
   const sk=$('#wmSkipWu'); if(sk) sk.onclick=wmToMain;
 }
 
 /* WARM-UP — one movement at a time, the same shape the main runner uses, so
-   the whole session reads as one flow rather than a list then a runner. */
+   the whole session reads as one flow rather than a list then a runner.
+   Three bands, top to bottom: what phase, what to do, what follows. The middle
+   one takes the slack, so a short movement name does not leave the bottom two
+   thirds of the screen empty. */
 function drawWarmupStep(){
   const cur=wmCurrent(), nxt=wmUpNext();
   const n=W.wuStep, total=W.warmup.items.length;
   const last=n+1>=total;
   if(!cur) return wmToMain();
-  $('#wmBody').innerHTML=`
-    <div class="wm-ph">Warm-up · ${n+1} of ${total}</div>
-    <div class="nowcard big">
-      <div class="now-n">${esc(cur.name)}</div>
-      ${cur.detail?`<div class="now-d">${esc(cur.detail)}</div>`:''}
-      ${cur.how?`<div class="now-h">${esc(cur.how)}</div>`:''}
+  const body=$('#wmBody');
+  body.classList.add('live');
+  /* The glimpse is only shown where it is the truth: on the LAST movement,
+     where the next thing really is the workout. In the middle of a warm-up the
+     next thing is the next movement, which the flow shows a second later. */
+  body.innerHTML=`
+    <div class="wm-top">
+      <div class="wm-ph">Warm-up · ${n+1} of ${total}</div>
+      <div class="wm-sub" style="margin-top:4px">${esc(W.warmup.name||'')}</div>
     </div>
-    ${peekHTML(nxt)}`;
+    <div class="wm-mid">
+      <div class="nowcard big">
+        <div class="now-n">${esc(cur.name)}</div>
+        ${cur.detail?`<div class="now-d">${esc(cur.detail)}</div>`:''}
+        ${cur.how?`<div class="now-h">${esc(cur.how)}</div>`:''}
+      </div>
+    </div>
+    <div class="wm-bot">${last? peekHTML(nxt) : ''}</div>`;
   $('#wmFoot').innerHTML=
     `<button class="btn primary big block" id="wuNext">${last?'Start workout':'Done — next movement'}</button>
      <div class="wm-row">
        ${n>0?`<button class="tert" id="wuBack">Back</button>`:''}
-       <button class="tert" id="wmSkipWu">${last?'Skip to the workout':'Skip the rest'}</button>
+       <button class="tert" id="wmSkipWu">${last?'Skip to the workout':'Skip the warm-up'}</button>
      </div>`;
   $('#wuNext').onclick=()=>{
     haptic();
@@ -12747,11 +12845,17 @@ function drawExercise(en,i,total){
   const bigVal = tm ? (en.sets[curSet].reps||tm.hi)+'s'
                     : (en.sets[curSet].reps||planReps||'—')+sideTxt;
 
-  /* The glimpse. One line, never a card, never the whole workout. */
+  /* The glimpse, shown ONLY where it is the truth.
+     Resting between set 1 and set 2, the next thing is set 2 - which the rest
+     card already says. Naming the next EXERCISE there pointed past the set the
+     user is about to do, which is the one thing they need in mind. So: on the
+     last set of an exercise, and during the rest that follows it. */
   const nextName = i<total-1 ? W.entries[i+1].name : null;
-  const peek = nextName
-    ? `<div class="peek"><span class="pk-l">Up next</span><span class="pk-n">${esc(nextName)}</span></div>`
-    : `<div class="peek"><span class="pk-l">Last exercise</span><span class="pk-d">almost done</span></div>`;
+  const showPeek = restActive() ? allDone : (cur===nSets-1);
+  const peek = !showPeek ? ''
+    : nextName
+      ? `<div class="peek"><span class="pk-l">Up next</span><span class="pk-n">${esc(nextName)}</span></div>`
+      : `<div class="peek"><span class="pk-l">Last exercise</span><span class="pk-d">almost done</span></div>`;
 
   /* REST — one number, one secondary escape. It runs itself. */
   const restCard = restActive() ? `<div class="wrestx">
@@ -12797,16 +12901,22 @@ function drawExercise(en,i,total){
           on? svg('x')+' Stop' : svg('play')+' Start the hold'}</button>`;})()
     : `<button class="btn primary big block wlog" data-log="${cur}">Log set</button>`;
 
-  $('#wmBody').innerHTML=`
-    <div class="wm-ex">${esc(en.name)}</div>
-    <div class="wm-sub">${nSets} × ${tm? esc(secsLabel(tm)) : esc(en.plannedReps)}</div>
-    ${(()=>{ const h=briefHow(e);
-       return h?`<button class="wm-how" id="wmHowLine">${esc(h)} <i>More</i></button>`:''; })()}
-    ${en.blockNote?`<div class="note warn">${esc(en.blockNote)}</div>`:''}
-    ${restCard}
-    ${setCard}
-    ${primary}
-    ${peek}`;
+  /* Three bands. The middle one takes the slack, so the screen fills the phone
+     instead of stacking everything into the top third and leaving the rest
+     blank - which is what a plain flow of blocks does when there are only four
+     of them. */
+  const body=$('#wmBody');
+  body.classList.add('live');
+  body.innerHTML=`
+    <div class="wm-top">
+      <div class="wm-ex">${esc(en.name)}</div>
+      <div class="wm-sub">${nSets} × ${tm? esc(secsLabel(tm)) : esc(en.plannedReps)}</div>
+      ${(()=>{ const h=briefHow(e);
+         return h?`<button class="wm-how" id="wmHowLine">${esc(h)} <i>More</i></button>`:''; })()}
+      ${en.blockNote?`<div class="note warn">${esc(en.blockNote)}</div>`:''}
+    </div>
+    <div class="wm-mid">${restCard}${setCard}</div>
+    <div class="wm-bot">${primary}${peek}</div>`;
 
   /* Two controls, both secondary, neither part of the training loop. */
   $('#wmFoot').innerHTML=`<div class="wm-row">
