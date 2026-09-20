@@ -1161,10 +1161,56 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .wm-plain{font-size:12.5px;color:var(--text-2);font-weight:600;
   margin-top:7px;line-height:1.5}
 
-/* What this phase leads to. On a workout warm-up that is the first MAIN
-   exercise; before an activity it is the activity itself. Deliberately one
-   quiet block rather than a list: the point is that the warm-up is not the
-   workout, which one name makes clearer than four. */
+/* The sleep header. `.arc` is a fixed-width block, so text-align on its parent
+   never moved it: the ring sat hard left with the rest of the tile empty.
+   Pairing it with the figures fills that space instead of centring a lone ring
+   above a paragraph that repeated what the ring already showed. */
+.sleeph{display:flex;align-items:center;gap:18px}
+.sleeph .sh-x{flex:1;min-width:0}
+.sleeph .sh-l{font-size:10.5px;font-weight:800;letter-spacing:1px;
+  text-transform:uppercase;color:var(--text-3)}
+.sleeph .sh-v{font-size:30px;font-weight:850;letter-spacing:-1px;line-height:1.1;margin-top:5px}
+.sleeph .sh-s{font-size:13px;font-weight:650;color:var(--text-2);margin-top:5px}
+/* the one number tonight is worth, beside what it buys */
+.sh-goal{display:flex;align-items:center;gap:15px}
+.sh-goal .sh-gv{font-size:26px;font-weight:850;letter-spacing:-.8px;color:var(--violet);
+  flex:0 0 auto}
+.sh-goal .sh-gx{flex:1;min-width:0}
+.sh-goal .sh-gt{font-size:15px;font-weight:800;letter-spacing:-.2px}
+.sh-goal .sh-gs{font-size:12px;font-weight:600;color:var(--text-3);margin-top:2px}
+@media (max-width:340px){ .sleeph{gap:13px} .sleeph .sh-v{font-size:26px} }
+
+/* NOW, then NEXT — never the other way round.
+   The warm-up screen used to give its biggest exercise name to "Up next",
+   which named the first MAIN exercise: the most prominent thing on the screen
+   was the one movement the user was NOT about to do. These two styles exist to
+   keep that hierarchy impossible to get wrong — .nowcard is the current action
+   and always outweighs .peek, which is a glimpse. */
+.wm-ph{font-size:11px;font-weight:750;letter-spacing:.5px;text-transform:uppercase;
+  color:var(--text-3)}
+.nowcard{margin-top:12px;padding:16px 16px 15px;border-radius:16px;
+  background:var(--surface-2);border:1px solid var(--border)}
+.nowcard .now-l{display:block;font-size:10.5px;font-weight:750;letter-spacing:.4px;
+  text-transform:uppercase;color:var(--text-3);margin-bottom:5px}
+.nowcard .now-n{display:block;font-size:26px;font-weight:850;letter-spacing:-.7px;
+  line-height:1.15}
+.nowcard.big .now-n{font-size:30px}
+.nowcard .now-d{display:block;font-size:15px;font-weight:700;color:var(--accent);margin-top:6px}
+.nowcard .now-h{display:block;font-size:12.5px;color:var(--text-2);font-weight:600;
+  margin-top:9px;line-height:1.5}
+
+/* The glimpse. Deliberately one line, smaller than the body text above it. */
+.peek{margin-top:11px;padding:9px 13px;border-radius:11px;border:1px dashed var(--border-soft);
+  display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.peek .pk-l{font-size:10px;font-weight:750;letter-spacing:.4px;text-transform:uppercase;
+  color:var(--text-3)}
+.peek .pk-n{font-size:13.5px;font-weight:700}
+.peek .pk-d{font-size:12px;color:var(--text-3);font-weight:600}
+.wm-row{display:flex;gap:10px;margin-top:8px}
+.wm-row .tert{flex:1}
+
+/* Still used where the next thing IS the point of the screen: the sheet shown
+   after an activity is logged, whose whole job is to name what replaced it. */
 .upnext{margin-top:13px;padding:11px 13px;border-radius:12px;
   background:var(--surface-2);border:1px solid var(--border-soft)}
 .upnext .un-l{display:block;font-size:10.5px;font-weight:750;letter-spacing:.4px;

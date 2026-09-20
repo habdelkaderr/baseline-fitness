@@ -706,7 +706,11 @@ function viewToday(v){
           arrow - heading "This week" above a strip reading "Last week".
           Which week it is showing is the strip's job to say, and it says it
           in one place. */}
-  <div class="sec-t">Training this week</div>
+  ${''/* Just "Training". The section heading must not name a period at all:
+          the strip navigates, so any period in the heading is wrong as soon as
+          the user presses the arrow. Which week is on screen is the strip's
+          job, and it says so in one place. */}
+  <div class="sec-t">Training</div>
   ${weekStrip(d)}
 
   ${activitiesCard(selDay())}
@@ -812,51 +816,44 @@ function pageSleep(d){
     const sp=sleepPlan(d);
     const ci=DB.checkins[d]||null;
     const pctOf=m=>Math.min(100, Math.round(m/sp.need*100));
-    const cls = sp.shortfall==null ? '' : sp.shortfall<=0 ? 'g' : sp.shortfall<=60 ? 'g'
-              : sp.shortfall<=120 ? 'y' : 'r';
+    /* One line under the figure, not three. The ring, the duration and the gap
+       are the whole story; everything else was restating them in prose. */
+    const sub = sp.slept==null ? `Target ${fmtMin(sp.need)}`
+      : sp.shortfall<=0 ? `Target ${fmtMin(sp.need)} · met`
+      : `${Math.round(sp.shortfall)} min under ${fmtMin(sp.need)}`;
     c.innerHTML=`
-    <div class="rec" style="text-align:center">
+    <div class="rec sleeph">
       ${ringHTML({lead:true, pct: sp.slept!=null? pctOf(sp.slept) : null,
                   value: sp.slept!=null? (Math.round(sp.slept/60*10)/10)+'h' : '—',
                   color:'var(--violet)'})}
-      <div class="rec-m" style="margin-top:10px;font-weight:750">${
-        sp.slept==null ? 'No sleep recorded for this night'
-        : sp.shortfall<=0 ? 'You met your sleep need'
-        : `${Math.round(sp.shortfall)} min under your need`}</div>
-      <div class="hint" style="margin-top:6px">Your need is <b>${fmtMin(sp.need)}</b>${
-        sp.generic ? ' — a generic 8h target until your own figure is known' : ''}</div>
+      <div class="sh-x">
+        <div class="sh-l">Last night</div>
+        <div class="sh-v">${sp.slept!=null? fmtMin(sp.slept) : 'Not recorded'}</div>
+        <div class="sh-s">${esc(sub)}</div>
+      </div>
     </div>
+    ${sp.generic?'<div class="hint" style="margin-top:-6px">Generic 8h target until your own is known.</div>':''}
 
     <div class="sec-t">Tonight</div>
-    ${sp.better ? `<div class="card">
-      <div class="card-t accent">Sleep ${fmtMin(sp.better.mins)} or more</div>
-      <div class="hint" style="margin-top:6px">That moves the sleep part of readiness up
-        ${sp.better.gain!=null?`by about <b>${sp.better.gain} point${sp.better.gain===1?'':'s'}</b>`:'to its next step'}
-        from where last night landed.${sp.maxGain>0?` Reaching the full ${fmtMin(sp.need)} is worth
-        about ${sp.maxGain} point${sp.maxGain===1?'':'s'}.`:''}</div>
+    ${sp.better ? `<div class="card sh-goal">
+      <div class="sh-gv">${fmtMin(sp.better.mins)}</div>
+      <div class="sh-gx">
+        <div class="sh-gt">${sp.better.gain!=null
+          ? '+'+sp.better.gain+' point'+(sp.better.gain===1?'':'s')
+          : 'The next step up'}</div>
+        <div class="sh-gs">of readiness, against last night</div>
+      </div>
     </div>`
-    : sp.slept!=null ? `<div class="note acc"><b>Nothing to gain here.</b> Last night already
-        met your need, so the sleep part of readiness is as high as it goes. Anything
-        left on the table today is coming from elsewhere.</div>`
-    : `<div class="note"><b>Aim for ${fmtMin(sp.need)}.</b> Once you record a night,
-        this shows what the next one is worth.</div>`}
+    : sp.slept!=null ? `<div class="note acc">You met your need. Sleep has nothing more to give today.</div>`
+    : `<div class="note">Aim for ${fmtMin(sp.need)}.</div>`}
 
-    <div class="sec-t">What each night is worth</div>
+    <div class="sec-t">What a night is worth</div>
     <div class="card">
       ${sp.tiers.map(t=>`<div class="kv"><span class="k">${esc(t.label)}</span>
-        <span class="v num">${fmtMin(t.mins)}${t.pts!=null?` <small>· ~${t.pts} pts</small>`:''}</span></div>`).join('')}
+        <span class="v num">${fmtMin(t.mins)}${t.pts!=null?` <small>${t.pts} pts</small>`:''}</span></div>`).join('')}
     </div>
-    <div class="hint">Sleep is ${sp.weight} of ${sp.totalWeight? Math.round(sp.totalWeight) : 'about 100'}
-      weight in today's readiness, so these are the points sleep alone can contribute. HRV,
-      resting heart rate and yesterday's strain move on their own.</div>
-
-    ${ci && ci.sleepMin!=null ? `<div class="sec-t">This night</div>
-    <div class="stats">
-      ${statTile('Asleep',fmtMin(ci.sleepMin),'',cls)}
-      ${statTile('Need',fmtMin(sp.need),'',sp.generic?'':'c',sp.generic?'generic':'yours')}
-      ${statTile('Shortfall',sp.shortfall>0?Math.round(sp.shortfall)+'m':'none','',
-         sp.shortfall<=0?'g':sp.shortfall<=60?'g':sp.shortfall<=120?'y':'r')}
-    </div>`:''}
+    <div class="hint">Sleep is ${sp.weight} of ~${sp.totalWeight? Math.round(sp.totalWeight) : 100} readiness
+      points. HRV, resting heart rate and yesterday's strain make up the rest.</div>
 
     <button class="btn ghost block" id="slEdit">${ci?'Edit check-in':'Check in'}</button>`;
     const e=$('#slEdit'); if(e) e.onclick=()=>openCheckin(d);
@@ -960,9 +957,10 @@ function weekStrip(d){
   const sel=selDay();
   const start=addDays(weekStartOf(d), WEEKOFF*7);
   const end=addDays(start,6);
-  const label = WEEKOFF===0 ? 'This week'
-    : WEEKOFF===-1 ? 'Last week'
-    : fmtDate(start)+' — '+fmtDate(end);
+  /* An explicit period. "Last week" was friendly but still relative, and two
+     steps back fell through to a pair of full dates that wrapped. A range is
+     unambiguous at any offset and fits the strip. */
+  const label = WEEKOFF===0 ? 'This week' : weekRangeLabel(start,end);
   const TAGS={lower:'Legs',upper:'Upper',power:'Power',core:'Core',run:'Run',bike:'Bike',mobility:'Mob',prep:'Prep',strength:'Str'};
   /* one cycle context for all seven days, not one per day */
   const mcc = mcOn()? mcCtx() : null;
@@ -1063,7 +1061,11 @@ function todayNoCheckin(d){
           arrow - heading "This week" above a strip reading "Last week".
           Which week it is showing is the strip's job to say, and it says it
           in one place. */}
-  <div class="sec-t">Training this week</div>
+  ${''/* Just "Training". The section heading must not name a period at all:
+          the strip navigates, so any period in the heading is wrong as soon as
+          the user presses the arrow. Which week is on screen is the strip's
+          job, and it says so in one place. */}
+  <div class="sec-t">Training</div>
   ${weekStrip(d)}
   ${activitiesCard(selDay())}
   ${activityRowsHTML()}`;

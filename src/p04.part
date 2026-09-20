@@ -784,12 +784,18 @@ function sleepPlan(date){
   const wt=rd?rd.weight:0;
   const perPt=wt>0 ? SLEEP_W/wt : null;
   const cur=slept!=null ? sleepScoreFor(slept,need) : null;
-  const tiers=[{s:95,label:'At or above your need'},
-               {s:85,label:'Up to 1h short'},
-               {s:75,label:'1h short'},
-               {s:45,label:'2h short'}]
-    .map(t=>({s:t.s, label:t.label, mins:sleepMinsForScore(t.s,need),
-              pts: perPt!=null ? Math.round(t.s*perPt) : null}));
+  /* Defined by how far short the night falls, not by sub-score. Picking scores
+     produced two rows reading the same duration - 95 and 85 both invert to the
+     full need, because the curve steps at a shortfall of zero rather than
+     sloping through it. Minutes are also what the reader is choosing between. */
+  const tiers=[0,30,60,120].map(short=>({
+    short,
+    mins:Math.max(0,need-short),
+    pts: perPt!=null ? Math.round(sleepScoreFor(need-short,need)*perPt) : null,
+    label: short===0 ? 'Your full need'
+         : short<60  ? short+' min less'
+         : (short/60)+' hour'+(short===60?'':'s')+' less'
+  }));
   /* the next rung up from where last night landed */
   let better=null;
   if(cur!=null && cur<95){

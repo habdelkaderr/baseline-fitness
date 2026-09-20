@@ -25,6 +25,15 @@ const dowOf    = iso => new Date(iso+'T12:00:00').getDay();          // 0=Sun
 const DOW_NAME = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const DOW_FULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const fmtDate  = iso =>{ const d=new Date(iso+'T12:00:00'); return DOW_NAME[d.getDay()]+' '+d.getDate()+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]; };
+/* "14–20 Sep", or "28 Sep – 4 Oct" across a month edge. Short enough for the
+   week strip, and explicit about which week is on screen. */
+const weekRangeLabel = (from,to)=>{
+  const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const a=new Date(from+'T12:00:00'), b=new Date(to+'T12:00:00');
+  return a.getMonth()===b.getMonth()
+    ? a.getDate()+'–'+b.getDate()+' '+MON[b.getMonth()]
+    : a.getDate()+' '+MON[a.getMonth()]+' – '+b.getDate()+' '+MON[b.getMonth()];
+};
 const fmtMin   = m =>{ if(m==null||isNaN(m))return '—'; const h=Math.floor(m/60), r=Math.round(m%60); return h? h+'h '+String(r).padStart(2,'0')+'m' : r+'m'; };
 const mmss     = s =>{ s=Math.max(0,Math.round(s)); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };
 /* A session clock. mmss is fine for a rest timer but a two-hour bike ride
@@ -224,7 +233,7 @@ const SCHEMA_VERSION=2;             // bump to transform stored records
 /* A date, plus a letter when more than one build ships in a day. Without the
    letter there was no way to tell a second same-day deploy from the cached
    copy of the first, which is exactly the question "did my upload work?". */
-const APP_BUILD='2026-09-20b';
+const APP_BUILD='2026-09-20d';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */

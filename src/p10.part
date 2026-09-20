@@ -19,7 +19,21 @@ function startWorkout(wid,variant,date,rec){
     addCore:!!(rec&&rec.addCore), recId:rec?rec.id:null, overridden:!!(rec&&rec.overridden),
     startedAt:Date.now(), time:new Date().toTimeString().slice(0,5),
     band:rd?rd.band:null, readinessScore:rd?rd.score:null,
-    step:-1,   // -1 = warm-up screen
+    /* ---- PHASES ----
+       Three separate pieces of state, deliberately not one index:
+         warmup[]  the warm-up movements, already filtered against the main
+                   list so neither phase can contain the other's work
+         wuStep    which warm-up movement is CURRENT
+         step      which MAIN exercise is current
+       They share no array and no counter, so advancing one cannot move the
+       other. `phase` says which the screen is reading. The old model encoded
+       the warm-up as step===-1, which worked but could only ever describe a
+       warm-up as a single undifferentiated screen. */
+    phase:'preview', wuStep:0, step:0,
+    warmup:(function(){
+      const wu=warmupMinus(warmupFor(wk), blocks.map(b=>(exOf(b.ex)||{}).name).filter(Boolean));
+      return {name:wu.name, dur:wu.dur, items:wu.items.slice()};
+    })(),
     entries: blocks.map(b=>{ const e=exOf(b.ex)||{name:'(missing)',sets:3,reps:'10'};
       const n=b.sets||e.sets||3;
       return { exerciseId:b.ex, name:e.name, plannedSets:n,
@@ -212,8 +226,59 @@ function restWords(rest){
 /* "REDUCED" told a first-time user nothing. */
 const VARIANT_NAME={full:'Full session', reduced:'Reduced volume', recovery:'Recovery session'};
 
+/* Old sessions were paused before phases existed, and a resumed one must not
+   land on a screen that no longer means what it did. step===-1 was the warm-up.
+   Also collapses the phases a given session cannot have: an activity has no
+   warm-up inside workout mode, and neither does a workout whose warm-up filtered
+   down to nothing. */
+function wmNormalise(){
+  if(!W) return;
+  if(!W.warmup || !Array.isArray(W.warmup.items)) W.warmup={name:'',dur:0,items:[]};
+  if(W.wuStep==null) W.wuStep=0;
+  if(W.phase==null){ W.phase=(W.step<0?'preview':'main'); if(W.step<0) W.step=0; }
+  if(W.step<0) W.step=0;
+  if(W.kind==='activity') W.phase='main';
+  if((W.phase==='preview'||W.phase==='warmup') && !W.warmup.items.length) W.phase='main';
+  W.wuStep=clamp(W.wuStep,0,Math.max(0,W.warmup.items.length-1));
+}
+/* CURRENT, IMMEDIATE NEXT and NEXT PHASE are three different questions, and
+   conflating the first two is what put "Up next: Bird Dog" above the movement
+   the user was actually meant to start with. Only CURRENT and IMMEDIATE NEXT
+   are shown; NEXT PHASE is simply what IMMEDIATE NEXT becomes at a boundary. */
+function wmCurrent(){
+  if(!W) return null;
+  if(W.phase==='preview'||W.phase==='warmup'){
+    const it=W.warmup.items[W.phase==='preview'?0:W.wuStep];
+    return it ? {kind:'warmup', name:it.n, detail:it.d||'', how:warmupHow(it.n)} : null;
+  }
+  const en=W.entries[W.step];
+  return en ? {kind:'main', name:en.name, detail:en.plannedReps||'', how:''} : null;
+}
+function wmUpNext(){
+  if(!W) return null;
+  if(W.phase==='preview'||W.phase==='warmup'){
+    const i=(W.phase==='preview'?0:W.wuStep)+1;
+    if(i<W.warmup.items.length){
+      const it=W.warmup.items[i];
+      return {kind:'warmup', name:it.n, detail:it.d||''};
+    }
+    /* the phase boundary: the warm-up runs out, the work begins */
+    const en=W.entries[0];
+    return en ? {kind:'main', name:en.name, detail:en.plannedReps||''} : null;
+  }
+  const en=W.entries[W.step+1];
+  return en ? {kind:'main', name:en.name, detail:en.plannedReps||''} : null;
+}
+function peekHTML(n){
+  if(!n) return '';
+  return `<div class="peek"><span class="pk-l">Up next</span>
+    <span class="pk-n">${esc(n.name)}</span>
+    ${n.detail?`<span class="pk-d">${esc(n.detail)}</span>`:''}</div>`;
+}
+
 function drawWM(){
   if(!W)return;
+  wmNormalise();
   /* Re-rendering the body threw the user back to the top of the exercise on
      every single tick, which on a four-set list meant scrolling down again
      after each set. */
@@ -232,76 +297,92 @@ function drawWM(){
       <div style="font-size:10.5px;color:var(--text-3);font-weight:650;margin-top:1px">
         ${W.kind==='activity'
           ? esc(W.intensity||'Running')
-          : esc(VARIANT_NAME[W.variant]||'Full session')+' · '+(i<0?'warm-up':`exercise ${i+1}/${total}`)} · ${elapsed} min</div>
+          : esc(VARIANT_NAME[W.variant]||'Full session')+' · '+(
+              W.phase==='preview' ? 'warm-up'
+            : W.phase==='warmup'  ? `warm-up ${W.wuStep+1}/${W.warmup.items.length}`
+            : `exercise ${i+1}/${total}`)} · ${elapsed} min</div>
     </div>
     <div class="icon-btn" style="font-size:11px;font-weight:800;color:var(--accent)">${doneSets}/${allSets}</div>`;
   $('#wmX').onclick=()=>exitWM();
 
-  if(i<0 && W.kind==='activity'){ W.step=0; return drawWM(); }
-  if(i<0) return drawWarmup();
+  if(W.phase==='preview') return drawWarmupPreview();
+  if(W.phase==='warmup')  return drawWarmupStep();
   if(i>=total) return W.saveAs==='activity' ? drawActivityFinish() : drawFinish();
   drawExercise(W.entries[i],i,total);
   if(_body && _keep) _body.scrollTop=_keep;
 }
-function drawWarmup(){
+/* ---- the jump that lands on the first MAIN exercise, from anywhere ---- */
+function wmToMain(){
+  W.phase='main'; W.step=0;
+  drawWM(); window.scrollTo(0,0);
+  const b=$('#wmBody'); if(b) b.scrollTop=0;
+}
+
+/* PREVIEW — the user has not started yet and is deciding to.
+   It used to list all the warm-up movements under a large "Up next" card
+   naming the first MAIN exercise, so the biggest exercise name on a screen
+   full of warm-up movements was the one the user was NOT about to do. The
+   thing to start with leads now; the glimpse is a glimpse. */
+function drawWarmupPreview(){
   const wk=DB.workouts.find(x=>x.id===W.workoutId);
-  /* the warm-up minus anything that IS the workout — see warmupMinus() */
-  const wu=warmupMinus(warmupFor(wk), W.entries.map(e=>e.name));
-  const first=W.entries[0];
+  const cur=wmCurrent(), nxt=wmUpNext();
+  const items=W.warmup.items;
   $('#wmBody').innerHTML=`
-    <div class="wm-ex">Warm-up</div>
-    <div class="wm-sub">${esc(wu.name)} · about ${wu.dur} minutes</div>
-    ${first?`<div class="upnext"><span class="un-l">Up next</span>
-      <span class="un-n">${esc(first.name)}</span>
-      <span class="un-s">${W.entries.length} exercise${W.entries.length===1?'':'s'} in this session</span></div>`:''}
-    ${wk.desc?`<div class="note acc">${esc(wk.desc)}</div>`:''}
-    ${wu.items.some(it=>warmupHow(it.n))
-      ? '<div class="hint" style="margin:14px 2px 2px">Tap any movement to see how to do it.</div>'
-      : ''}
-    <div class="setlist">
-      ${wu.items.map((it,n)=>{
-        const how=warmupHow(it.n);
-        return `<div class="setrow wu${how?' has-how':''}" style="align-items:flex-start"
-                     ${how?`data-wu="${n}" role="button" tabindex="0"
-                     aria-expanded="false" aria-label="${esc(it.n)}, tap for how to do it"`:''}>
-          <div class="sn">${n+1}</div>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:14.5px;font-weight:650">${esc(it.n)}</div>
-            <div style="font-size:12px;color:var(--text-3);margin-top:2px">${esc(it.d)}</div>
-            ${how?`<div class="wu-how" id="wuHow${n}" hidden>${esc(how)}</div>`:''}
-          </div>
-          ${how?`<i class="wu-x">${svg('down')}</i>`:''}
-        </div>`;}).join('')}
-    </div>
-    <div class="note">Do not skip this. It makes the first working set as good as the last.</div>`;
-  /* the same footer as every exercise that follows, so this reads as step 0
-     of one flow rather than a separate screen with its own vocabulary */
-  /* "Start 1 · Bird Dog" exposed the entry index and named an exercise that had
-     just been listed as a warm-up movement, which read as a repeat. The button
-     says what pressing it does. */
+    <div class="wm-ph">Warm-up</div>
+    <div class="wm-sub" style="margin-top:4px">${esc(W.warmup.name||'')} · about ${W.warmup.dur||5} minutes</div>
+    ${cur?`<div class="nowcard">
+      <div class="now-l">Start with</div>
+      <div class="now-n">${esc(cur.name)}</div>
+      ${cur.detail?`<div class="now-d">${esc(cur.detail)}</div>`:''}
+      ${cur.how?`<div class="now-h">${esc(cur.how)}</div>`:''}
+    </div>`:''}
+    ${peekHTML(nxt)}
+    ${wk&&wk.desc?`<div class="note acc">${esc(wk.desc)}</div>`:''}
+    <div class="hint" style="margin-top:12px">${items.length} movement${items.length===1?'':'s'},
+      then ${W.entries.length} exercise${W.entries.length===1?'':'s'}.</div>`;
+  /* The recommended action is to warm up, so it is the primary button and
+     skipping is plainly secondary — available, not equal. */
   $('#wmFoot').innerHTML=
-    `<button class="btn primary big block" id="wmGo">Start workout</button>
+    `<button class="btn primary big block" id="wmGo">Start warm-up</button>
      <button class="tert block" id="wmSkipWu">Skip the warm-up</button>`;
-  /* Collapsed by default: somebody who knows what a leg swing is should not
-     have to scroll past 53 paragraphs to start training. */
-  $$('#wmBody [data-wu]').forEach(r=>{
-    const open=()=>{
-      const el=$('#wuHow'+r.dataset.wu); if(!el) return;
-      const now=el.hasAttribute('hidden');
-      if(now) el.removeAttribute('hidden'); else el.setAttribute('hidden','');
-      r.classList.toggle('open',now);
-      r.setAttribute('aria-expanded',now?'true':'false');
-      haptic();
-    };
-    r.onclick=open;
-    r.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); open(); } };
-  });
-  /* Both land on the first MAIN exercise: the difference is what the user did
-     off-screen, not what the app does next. Kept as two buttons because
-     "Start workout" under a warm-up list is ambiguous on its own. */
-  const toMain=()=>{ W.step=0; drawWM(); window.scrollTo(0,0); $('#wmBody').scrollTop=0; };
-  $('#wmGo').onclick=toMain;
-  const sk=$('#wmSkipWu'); if(sk) sk.onclick=toMain;
+  $('#wmGo').onclick=()=>{
+    W.phase='warmup'; W.wuStep=0;
+    drawWM(); window.scrollTo(0,0);
+    const b=$('#wmBody'); if(b) b.scrollTop=0;
+  };
+  const sk=$('#wmSkipWu'); if(sk) sk.onclick=wmToMain;
+}
+
+/* WARM-UP — one movement at a time, the same shape the main runner uses, so
+   the whole session reads as one flow rather than a list then a runner. */
+function drawWarmupStep(){
+  const cur=wmCurrent(), nxt=wmUpNext();
+  const n=W.wuStep, total=W.warmup.items.length;
+  const last=n+1>=total;
+  if(!cur) return wmToMain();
+  $('#wmBody').innerHTML=`
+    <div class="wm-ph">Warm-up · ${n+1} of ${total}</div>
+    <div class="nowcard big">
+      <div class="now-n">${esc(cur.name)}</div>
+      ${cur.detail?`<div class="now-d">${esc(cur.detail)}</div>`:''}
+      ${cur.how?`<div class="now-h">${esc(cur.how)}</div>`:''}
+    </div>
+    ${peekHTML(nxt)}`;
+  $('#wmFoot').innerHTML=
+    `<button class="btn primary big block" id="wuNext">${last?'Start workout':'Done — next movement'}</button>
+     <div class="wm-row">
+       ${n>0?`<button class="tert" id="wuBack">Back</button>`:''}
+       <button class="tert" id="wmSkipWu">${last?'Skip to the workout':'Skip the rest'}</button>
+     </div>`;
+  $('#wuNext').onclick=()=>{
+    haptic();
+    if(last) return wmToMain();
+    W.wuStep=n+1; drawWM();
+    const b=$('#wmBody'); if(b) b.scrollTop=0;
+  };
+  const bk=$('#wuBack');
+  if(bk) bk.onclick=()=>{ haptic(); W.wuStep=Math.max(0,n-1); drawWM(); };
+  const sk=$('#wmSkipWu'); if(sk) sk.onclick=wmToMain;
 }
 
 function drawExercise(en,i,total){
@@ -1245,11 +1326,20 @@ function preStartSheet(type){
      "Up next" is its first main exercise — the same idea pointed at what
      actually follows in each case. */
   const drawWu=()=>{
+    /* Same hierarchy as a workout warm-up: what to start with leads, the next
+       movement is a glimpse, and the activity itself is the phase after that.
+       The full routine stays below for anyone who wants to read it. */
+    const first=WU.items[0], second=WU.items[1];
     updateSheet(WU.name,`
       <div class="wm-sub" style="margin-top:0">About ${WU.dur} minutes, before you start</div>
-      <div class="upnext"><span class="un-l">Up next</span>
-        <span class="un-n">${esc(T.name)}</span>
-        <span class="un-s">The clock starts when you begin it, not now</span></div>
+      ${first?`<div class="nowcard">
+        <div class="now-l">Start with</div>
+        <div class="now-n">${esc(first.n)}</div>
+        ${first.d?`<div class="now-d">${esc(first.d)}</div>`:''}
+      </div>`:''}
+      ${peekHTML(second ? {name:second.n, detail:second.d}
+                        : {name:T.name, detail:'the activity itself'})}
+      <div class="hint" style="margin-top:11px">Then ${esc(T.name)}. The clock starts when you begin it, not now.</div>
       <div class="setlist">
         ${WU.items.map((it,n)=>`<div class="setrow wu" style="align-items:flex-start">
           <div class="sn">${n+1}</div>
