@@ -1782,46 +1782,54 @@ ok('the wearable step does not ask about one brand',
   W.phase='main'; W.step=0; drawWM();
   var en=W.entries[0];
 
+  /* THE ACTIVE SCREEN IS NOT A FORM.
+     Nothing is typed, nothing is chosen, nothing is confirmed. The exercise,
+     the set it is on, one button. Everything that used to sit here - steppers
+     for every set, an effort control, Add a set, Back, Next exercise - was the
+     user being asked to operate the app while out of breath. */
   ok('the set screen has no number keyboard inputs',
      document.querySelectorAll('#wmBody input[type=number]').length===0,
      document.querySelectorAll('#wmBody input[type=number]').length);
-  /* ONE card, for ONE set. Four editable rows was the thing that made the
-     screen unreadable mid-session. */
-  ok('exactly one set card is on screen',
-     document.querySelectorAll('.setlist .wnow').length===1,
-     document.querySelectorAll('.setlist .wnow').length);
+  ok('no data entry is offered during a set at all',
+     document.querySelectorAll('#wmBody .stp').length===0,
+     document.querySelectorAll('#wmBody .stp').length);
+  ok('exactly one set state is on screen',
+     document.querySelectorAll('#wmBody .wset').length===1,
+     document.querySelectorAll('#wmBody .wset').length);
   ok('and it is the first unlogged set',
-     /SET 1 OF/i.test(document.querySelector('.wnow-t').textContent),
-     document.querySelector('.wnow-t').textContent);
-  ok('sets you have not reached are not drawn at all',
-     document.querySelectorAll('.setlist [data-log]').length===1,
-     document.querySelectorAll('.setlist [data-log]').length);
-  ok('a bodyweight exercise shows no kg field', (function(){
+     /SET 1 OF/i.test(document.querySelector('.wset .ws-l').textContent),
+     document.querySelector('.wset .ws-l').textContent);
+  ok('there is exactly one primary action',
+     document.querySelectorAll('#wmBody [data-log]').length===1,
+     document.querySelectorAll('#wmBody [data-log]').length);
+  ok('and it says what it does', /Log set/i.test(document.querySelector('[data-log]').textContent),
+     document.querySelector('[data-log]').textContent.trim());
+  ok('the prescription is shown, not asked for',
+     /8|10|12|15/.test(document.querySelector('.wset .ws-v').textContent),
+     document.querySelector('.wset .ws-v').textContent.trim());
+  ok('a bodyweight exercise shows no kg anywhere', (function(){
      if(exLoadable(exOf(en.exerciseId))) return true;   // not a bodyweight one
-     return document.querySelectorAll('.setlist [data-k=weight]').length===0; })(),
-     document.querySelectorAll('.setlist [data-k=weight]').length);
-  ok('each stepper has a decrease and an increase',
-     document.querySelectorAll('.stp button[data-d="-1"]').length>0 &&
-     document.querySelectorAll('.stp button[data-d="1"]').length>0);
-  ok('the value is still typeable',
-     document.querySelectorAll('.stp input.wmIn').length>0);
-  ok('per-set RPE is no longer asked',
-     document.querySelectorAll('.wnow [data-k=rpe]').length===0);
+     return document.querySelectorAll('.wset .ws-kg').length===0; })(),
+     document.querySelectorAll('.wset .ws-kg').length);
 
-  // stepping reps writes through
+  /* Deviation is possible, but it is a detour: tapping the number. */
   (function(){
-    var row=document.querySelector('.setlist .wnow');
-    var reps=row.querySelector('[data-k=reps]');
-    var plus=reps.parentElement.querySelector('button[data-d="1"]');
+    var v=document.getElementById('wsAdj');
+    ok('the prescribed number is what you tap to deviate', !!v);
+    v.click();
+    ok('which opens steppers, off the training screen',
+       document.querySelectorAll('#sheetBody .stp').length>0,
+       document.querySelectorAll('#sheetBody .stp').length);
+    var reps=document.querySelector('#sheetBody [data-k=reps]');
     var before=reps.value;
-    plus.click();
+    reps.parentElement.querySelector('button[data-d="1"]').click();
     ok('+ increases reps by one', +reps.value===(+before||+reps.placeholder||0)+1,
        before+' -> '+reps.value);
     ok('the increase reached the set model', W.entries[0].sets[0].reps===reps.value,
        W.entries[0].sets[0].reps+' vs '+reps.value);
     reps.parentElement.querySelector('button[data-d="-1"]').click();
-    ok('- decreases it again', +reps.value===(+before||+reps.placeholder||0),
-       reps.value);
+    ok('- decreases it again', +reps.value===(+before||+reps.placeholder||0), reps.value);
+    closeSheet(); drawWM();
   })();
 
   // weight increments match the equipment
@@ -1836,20 +1844,18 @@ ok('the wearable step does not ask about one brand',
     }
   })();
   (function(){
-    var row=document.querySelector('.setlist .wnow');
-    var w=row.querySelector('[data-k=weight]');
+    document.getElementById('wsAdj').click();
+    var w=document.querySelector('#sheetBody [data-k=weight]');
+    ok('a loadable exercise offers kg in the adjust sheet', !!w);
     w.value='20'; w.dispatchEvent(new Event('input',{bubbles:true}));
     w.parentElement.querySelector('button[data-d="1"]').click();
     ok('20kg + one step is 22.5', w.value==='22.5', w.value);
     w.parentElement.querySelector('button[data-d="1"]').click();
     ok('and again is 25 with no floating point dust', w.value==='25', w.value);
-  })();
-  (function(){
-    var row=document.querySelector('.setlist .wnow');
-    var w=row.querySelector('[data-k=weight]');
     w.value='0'; w.dispatchEvent(new Event('input',{bubbles:true}));
     w.parentElement.querySelector('button[data-d="-1"]').click();
     ok('weight never goes negative', +w.value>=0, w.value);
+    closeSheet(); drawWM();
   })();
 
   // ticking a set still auto-fills RPE from the plan, as it always did
@@ -1864,48 +1870,48 @@ ok('the wearable step does not ask about one brand',
        !!e0.sets[0].rpe, e0.sets[0].rpe);
   })();
 
-  // the per-exercise effort control appears once something is logged
-  ok('an effort control appears once a set is logged',
-     !!document.querySelector('[data-k=rpe]'));
-  (function(){
-    var r=document.querySelector('[data-k=rpe]');
-    if(!r) return;
-    r.parentElement.querySelector('button[data-d="1"]').click();
-    var v=r.value;
-    ok('effort writes to every completed set',
-       W.entries[0].sets.filter(function(s){return s.done;})
-        .every(function(s){ return s.rpe===v; }), v);
-  })();
-  ok('effort is capped at 10', (function(){
-    var r=document.querySelector('[data-k=rpe]');
-    if(!r) return true;
-    for(var i=0;i<20;i++) r.parentElement.querySelector('button[data-d="1"]').click();
-    return +r.value===10; })());
+  /* Effort is no longer asked per exercise while training. complete() already
+     records it from the plan, so the data stays complete without a control on
+     the screen - the distinction between a rich data model and a busy UI. */
+  ok('no effort control sits on the training screen',
+     document.querySelectorAll('#wmBody [data-k=rpe]').length===0,
+     document.querySelectorAll('#wmBody [data-k=rpe]').length);
+  ok('but effort is still recorded for the engine',
+     W.entries[0].sets.filter(function(s){return s.done;}).every(function(s){ return !!s.rpe; }),
+     JSON.stringify(W.entries[0].sets.map(function(s){return s.rpe;})));
+  ok('and so is a timestamp',
+     W.entries[0].sets.filter(function(s){return s.done;}).every(function(s){ return !!s.at; }));
 
-  // the secondary actions stopped competing with the primary ones
-  ok('one row of secondary actions, not two',
-     !!document.getElementById('wmAddSet') && !!document.getElementById('wmMore'));
-  /* Undo used to be a third button competing with them. Every logged set
-     carries its own, which is both fewer controls and less ambiguous. */
-  ok('undo belongs to the set it undoes, not to a global button',
-     !document.getElementById('wmUndo')
-     && document.querySelectorAll('.wdone [data-undo]').length>0,
-     document.querySelectorAll('.wdone [data-undo]').length);
+  /* Two secondary controls, and neither is part of the training loop. */
+  ok('the footer carries Pause and More, nothing else',
+     !!document.getElementById('wmPauseBtn') && !!document.getElementById('wmMore')
+     && document.querySelectorAll('#wmFoot button').length===2,
+     document.querySelectorAll('#wmFoot button').length);
+  ok('there is no Add a set on the training screen', !document.getElementById('wmAddSet'));
+  ok('there is no Next exercise button', !document.getElementById('wmNext'));
+  ok('there is no Back button', !document.getElementById('wmPrev'));
+  ok('and no list of what has already been logged',
+     document.querySelectorAll('#wmBody .wdone').length===0);
   ok('replace/skip/note are behind More',
      !document.getElementById('wmSwap') && !document.getElementById('wmSkip')
      && !document.getElementById('wmNote'));
-  ok('More opens every action for this exercise', (function(){
+  ok('More is the safety valve, and holds the exceptions', (function(){
     document.getElementById('wmMore').click();
-    var n=document.querySelectorAll('#wmMoreRows button').length;
-    /* six, plus "Add weight" when the exercise carries no kilograms */
-    var want=exLoadable(exOf(en.exerciseId))?6:7;
+    var txt=document.getElementById('wmMoreRows').textContent;
+    var got=/Undo the last set/.test(txt) && /Add a set/.test(txt)
+         && /Replace exercise/.test(txt) && /Skip this exercise/.test(txt)
+         && /Add a note/.test(txt) && /How to do it/.test(txt);
     closeSheet();
-    return n===want; })(), document.querySelectorAll('#wmMoreRows button').length);
+    return got; })(), document.getElementById('wmMoreRows')?document.getElementById('wmMoreRows').textContent.slice(0,120):'');
 
-  // last time's performance is still the thing you are trying to beat
-  ok('last time is still shown', !!document.querySelector('.lastrow'));
+  /* One glimpse of what is coming, and never the whole workout. */
+  ok('the next exercise is a one-line peek', !!document.querySelector('#wmBody .peek'));
+  ok('and the rest of the workout is not on screen', (function(){
+     var txt=document.getElementById('wmBody').textContent, n=0;
+     W.entries.forEach(function(e){ if(txt.indexOf(e.name)>=0) n++; });
+     return n<=2; })(), 'exercise names visible');
 
-  exitWM(); DB.checkins={};
+  exitWM(true); DB.checkins={};
 })();
 
 // ---------- EVERY OFFERED SPORT IS A REAL SPORT ----------
@@ -3119,6 +3125,11 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
              {reps:'10',weight:'20',rpe:'8',done:true},
              {reps:'9', weight:'22.5',rpe:'9',done:true}]}]}];
 
+  /* Rest now starts itself after a logged set and holds the screen, which is
+     the point of it. This block is about set records, so it runs with the rest
+     timer off; the rest screen has its own tests. */
+  var keepRestB=DB.settings.restTimerOn;
+  DB.settings.restTimerOn=false;
   tryRun('starting the same workout again', function(){ startWorkout('w_lowerA','full',T); });
   var ix=-1;
   W.entries.forEach(function(e,n){ if(e.exerciseId==='lx01') ix=n; });
@@ -3142,16 +3153,30 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   ok('and it recorded the primed numbers',
      en.sets[0].weight==='20' && en.sets[0].reps==='10', JSON.stringify(en.sets[0]));
 
-  // 3 · the card moves on to the next set by itself
-  ok('the card is now set 2', /SET 2 OF/i.test(document.querySelector('.wnow-t').textContent),
-     document.querySelector('.wnow-t').textContent);
-  ok('the set just logged became a chip you can undo',
-     !!document.querySelector('.wdone [data-undo="0"]'));
-  document.querySelector('#wmBody [data-log]').click();
+  /* 3 · the SAME screen moves on to the next set by itself.
+     Not a new screen per set, and no tap to get there. */
+  stopRest();
+  ok('the screen is now set 2 of the same exercise',
+     /SET 2 OF/i.test(document.querySelector('.wset .ws-l').textContent),
+     document.querySelector('.wset .ws-l').textContent);
+  ok('and it is still the same exercise',
+     document.querySelector('.wm-ex').textContent===en.name,
+     document.querySelector('.wm-ex').textContent+' vs '+en.name);
+  document.querySelector('#wmBody [data-log]').click(); stopRest();
   ok('the next tap logs the next set', en.sets[1].done===true);
-  document.querySelector('.wdone [data-undo="1"]').click();
-  ok('and tapping its chip takes it back', en.sets[1].done===false);
-  document.querySelector('#wmBody [data-log]').click();
+  /* Undo moved under More: it is an exception, not part of the loop. */
+  (function(){
+    document.getElementById('wmMore').click();
+    var rows=document.querySelectorAll('#wmMoreRows button');
+    for(var q=0;q<rows.length;q++){
+      if(/Undo the last set/.test(rows[q].textContent)){ rows[q].click(); break; }
+    }
+    closeSheet();
+  })();
+  ok('and Undo under More takes it back', en.sets[1].done===false,
+     en.sets.map(function(s){return s.done?'1':'0';}).join(''));
+  drawWM(); stopRest();
+  document.querySelector('#wmBody [data-log]').click(); stopRest();
 
   // 4 · carry forward: change it once, not four times
   startWorkout('w_lowerA','full',T);
@@ -3174,7 +3199,9 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
      en.sets[2].weight==='30', en.sets.map(function(s){return s.weight;}).join(','));
   ok('but an untouched one still follows', en.sets[1].weight==='25');
 
-  // 5 · there is exactly ONE way to log a set
+  // 5 · there is exactly ONE way to log a set, and ONE tap per set
+  var keepRest=DB.settings.restTimerOn;
+  DB.settings.restTimerOn=false;          // the rest screen is tested on its own
   startWorkout('w_lowerA','full',T);
   W.entries.forEach(function(e,n){ if(e.exerciseId==='lx01') ix=n; });
   en=W.entries[ix]; W.phase='main'; W.step=ix; drawWM();
@@ -3182,16 +3209,20 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
      !document.getElementById('wmAll'));
   ok('there is one log button on the screen, not several',
      document.querySelectorAll('#wmBody [data-log]').length===1);
-  // logging every set, one tap each
-  var guard=0;
-  while(document.querySelector('#wmBody [data-log]') && guard++<20){
-    document.querySelector('#wmBody [data-log]').click();
+  /* One tap per set, and NO taps in between: the loop never presses anything
+     but Log set, yet it walks the whole exercise and off the end of it. */
+  var guard=0, taps=0, want=en.sets.length;
+  while(document.querySelector('#wmBody [data-log]') && guard++<20 && !en.sets.every(function(s){return s.done;})){
+    document.querySelector('#wmBody [data-log]').click(); taps++;
   }
-  ok('every set can be logged a tap at a time',
-     en.sets.every(function(s){ return s.done; }),
-     en.sets.filter(function(s){return s.done;}).length+'/'+en.sets.length);
+  ok('every set is logged with one tap each and nothing else',
+     en.sets.every(function(s){ return s.done; }) && taps===want,
+     taps+' taps for '+want+' sets');
   ok('and it kept the primed numbers', en.sets[0].weight==='20');
-  cancelAuto();
+  ok('the screen moved on by itself, with no further tap',
+     W.step!==ix || document.querySelector('.wm-ex').textContent!==en.name,
+     'step '+ix+' -> '+W.step);
+  DB.settings.restTimerOn=keepRest;
 
   // 6 · the set screen is not a reference manual any more
   startWorkout('w_lowerA','full',T);
@@ -3225,6 +3256,7 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   cancelAuto();
 
   exitWM(true);
+  DB.settings.restTimerOn=keepRestB;
   DB.sessions=keepS; DB.checkins=keepC;
 })();
 
@@ -3480,14 +3512,17 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
      bits.join(' ').indexOf('last did it')>=0
      || bits.join(' ').indexOf('not done this one before')>=0,
      bits.join(' | '));
+  /* Asserted by what the menu offers rather than by how many rows it has: a
+     count breaks every time a legitimate action is added, which says nothing
+     about whether the menu is right. */
   ok('the More menu offers it', (function(){
     document.getElementById('wmMore').click();
-    var n=document.querySelectorAll('#wmMoreRows button').length;
-    var has=/Why this exercise/.test(document.getElementById('sheet').innerHTML);
-    /* a bodyweight exercise gains an "Add weight" row, a loaded one does not */
-    var want=exLoadable(exOf(en.exerciseId))?6:7;
+    var txt=document.getElementById('wmMoreRows').textContent;
+    var has=/Why this exercise/.test(txt) && /How to do it/.test(txt)
+         && /Replace exercise/.test(txt) && /Skip this exercise/.test(txt);
     closeSheet();
-    return has && n===want; })());
+    return has; })(),
+    document.getElementById('wmMoreRows')?document.getElementById('wmMoreRows').textContent.slice(0,140):'');
   exitWM(); DB.checkins={};
 })();
 
@@ -4562,22 +4597,40 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   // The set arrives PRE-FILLED with last time's numbers - that is what makes
   // logging one tap - but it is shown unconfirmed and is not part of the
   // record until the user ticks it.
-  ok('last time seeds the value, so confirming is one tap',
-     /value="12"/.test(wmHtml), wmHtml.slice(0,240));
+  /* Seeding is what makes logging one tap. It is no longer visible as a filled
+     input, because there are no inputs: the number is shown, and it is what
+     gets recorded on the tap. */
+  ok('last time seeds the value, so confirming is one tap', (function(){
+     var e=W.entries[W.step];
+     return /12 kg/.test(document.querySelector('.wset .ws-v').textContent)
+            && e.sets[0].weight==='12'; })(),
+     document.querySelector('.wset .ws-v').textContent.trim()
+       +' / model '+JSON.stringify(W.entries[W.step].sets[0]));
   ok('a primed set is not marked done',
      W.entries.every(function(e){ return e.sets.every(function(s){ return !s.done; }); }));
   /* It used to say "filled in from last time". It now says why the number is
      what it is, which with one session of history is that nothing has been
      earned yet - and that is a better answer than naming the source. */
-  ok('the screen says why the numbers are what they are',
-     /Nothing is being pushed up yet/i.test(wmHtml), wmHtml.slice(0,400));
+  /* The explanation moved off the training screen with everything else that
+     was not the current action. It is still one tap away, on the how-to. */
+  ok('the reason the numbers are what they are is one tap away', (function(){
+     document.getElementById('wmHowLine').click();
+     var h=document.getElementById('sheet').innerHTML;
+     closeSheet();
+     return /Nothing is being pushed up yet/i.test(h) || /The plan in full/.test(h); })(),
+     'via the how-to line');
   exitWM(true);
 
   DB.sessions=[]; DB.activities=[];
   tryRun('workout mode with no history', function(){
     startWorkout('w_lowerA','full',todayISO()); W.phase='main'; W.step=0; drawWM(); });
-  ok('a first attempt says so instead of showing a blank',
-     /First time doing this/i.test(document.getElementById('wmBody').innerHTML));
+  /* With no history there is no "last time" line at all, rather than a line
+     saying there is nothing to say. The screen shows the prescription, which
+     is the whole instruction on a first attempt. */
+  ok('a first attempt shows the plan and no empty history line',
+     document.querySelectorAll('#wmBody .ws-last').length===0
+     && !!document.querySelector('.wset .ws-v'),
+     document.getElementById('wmBody').textContent.slice(0,120));
   exitWM(true);
 
   DB.sessions=keepS; DB.activities=keepA;
@@ -5743,122 +5796,106 @@ ok('a stopped timer stays stopped', !restActive());
   DB.sessions=keepS; DB.checkins=keepC;
 })();
 
-// ---------- FINISHING AN EXERCISE MOVES YOU ON ----------
+// ---------- ONE TAP PER SET, AND NOTHING ELSE ----------
+// The whole runner, measured the only way that matters: how many times the
+// user has to touch the phone to get through a session. Every tap that is not
+// "Log set" is a tap the app should have taken for them.
 (function(){
-  var keepC=DB.checkins;
+  var keepC=DB.checkins, keepRest=DB.settings.restTimerOn;
   var T=todayISO();
   DB.checkins[T]={date:T,recovery:74,hrv:86,rhr:52,sleepMin:455,energy:7,
                   soreness:3,stress:3,motivation:8,pain:'None'};
+  DB.settings.restTimerOn=false;          // rest has its own block below
   startWorkout('w_lowerA','full',T);
   W.phase='main'; W.step=0; drawWM();
-  var en=W.entries[0], total=W.entries.length;
+  var total=W.entries.length;
+  var plannedSets=W.entries.reduce(function(a,e){ return a+(e.timed||e.cardio?0:e.sets.length); },0);
 
-  // the card names what comes next, so you know whether you are two sets from
-  // the end of the exercise or two sets from the end of the session
-  ok('the card names the next set',
-     /Next: set 2 of/.test(document.querySelector('.wnow-t span').textContent),
-     document.querySelector('.wnow-t span').textContent);
+  ok('the screen opens on the first exercise, first set',
+     W.step===0 && /SET 1 OF/i.test(document.querySelector('.wset .ws-l').textContent),
+     document.querySelector('.wset .ws-l').textContent);
 
-  var g=0;
-  while(!en.sets.every(function(s){return s.done;}) && g++<20){
+  /* THE WALK. It presses exactly one thing, ever: the Log set button. If the
+     runner needs a single extra tap to advance a set, advance an exercise,
+     confirm a completion or dismiss a card, this loop stalls and the count
+     comes out wrong. */
+  var taps=0, guard=0, seen=[];
+  while(guard++<200){
     var b=document.querySelector('#wmBody [data-log]');
-    if(!b) break;
-    /* on the last set the card should be naming the next EXERCISE, not a set */
-    if(en.sets.filter(function(s){return !s.done;}).length===1){
-      ok('on the last set it names the next exercise',
-         document.querySelector('.wnow-t span').textContent
-           .indexOf(W.entries[1].name)>=0,
-         document.querySelector('.wnow-t span').textContent);
-    }
-    b.click();
+    if(!b) break;                                  // nothing left to log
+    var nm=document.querySelector('.wm-ex');
+    if(nm && seen.indexOf(nm.textContent)<0) seen.push(nm.textContent);
+    b.click(); taps++;
   }
-  ok('every set logged', en.sets.every(function(s){return s.done;}));
-  ok('the exercise says it is done',
-     !!document.getElementById('wmDoneN'), document.getElementById('wmBody').innerHTML.slice(0,200));
-  ok('there is no log button left to press',
-     !document.querySelector('#wmBody [data-log]'));
-  ok('and it is on its way to the next exercise by itself', autoPending());
-  ok('the footer says Next exercise, never Skip',
-     document.getElementById('wmNext').textContent==='Next exercise',
-     document.getElementById('wmNext').textContent);
+  ok('the whole workout is one tap per set',
+     taps===plannedSets, taps+' taps for '+plannedSets+' planned sets');
+  ok('and every exercise was visited without a navigation tap',
+     seen.length===total, seen.length+' of '+total+': '+seen.join(', '));
+  ok('it ends on the finish screen by itself',
+     W.step>=W.entries.length, W.step+'/'+W.entries.length);
+  ok('and the finish screen is the one that saves',
+     !!document.getElementById('fSave'),
+     document.getElementById('wmBody').textContent.slice(0,100));
+  ok('every set is recorded', W.entries.every(function(e){
+       return e.cardio || e.sets.every(function(s){ return s.done; }); }));
+  ok('with reps kept for the engine', W.entries[0].sets.every(function(s){ return !!s.reps; }),
+     JSON.stringify(W.entries[0].sets.map(function(s){return s.reps;})));
 
-  /* The automatic move has to announce itself and it has to leave time to
-     reach the undo chip. Reported as "tap to undo isn't working": the
-     mechanism was fine, the screen had already moved on. */
-  ok('the move is announced with a visible count',
-     !!document.getElementById('wmCount'),
-     document.getElementById('wmDoneN').textContent.slice(0,120));
-  ok('and there are seconds left on it', autoLeft()>=2, autoLeft());
-  ok('four seconds, not one and a half', AUTO_MS>=3500, AUTO_MS);
+  /* Nothing on the way through offered a decision. */
+  ok('no exercise-complete screen was ever shown', !document.getElementById('wmDoneN'));
+  ok('no Stay on this exercise button exists', !document.getElementById('wmStay'));
 
-  // ANY touch inside the body cancels it - reaching for undo is the signal
-  document.getElementById('wmBody').dispatchEvent(
-    new Event('pointerdown',{bubbles:true}));
-  ok('touching the screen stops it moving on', !autoPending());
-  ok('and it says so', /Staying here/.test(document.getElementById('wmNextP').textContent),
-     document.getElementById('wmNextP').textContent);
+  // the finish screen still lets you reopen an exercise you got wrong
+  ok('every exercise row is a way back',
+     document.querySelectorAll('#wmBody [data-back]').length===W.entries.length,
+     document.querySelectorAll('#wmBody [data-back]').length);
 
-  // and the chips are still there to be tapped
-  ok('the undo chips survive the touch',
-     document.querySelectorAll('.wdone [data-undo]').length===en.sets.length,
-     document.querySelectorAll('.wdone [data-undo]').length);
-  document.querySelector('.wdone [data-undo="0"]').click();
-  ok('tapping one still undoes its set', en.sets[0].done===false);
+  exitWM(true);
 
-  // put it back and re-arm for the Stay-button case
-  document.querySelector('#wmBody [data-log]').click();
-  ok('re-armed after logging again', autoPending());
-
-  // ...unless you say otherwise
-  document.getElementById('wmStay').click();
-  ok('Stay here cancels the automatic move', !autoPending());
-  ok('and explains that it did', /Staying here/.test(document.getElementById('wmDoneN').textContent),
-     document.getElementById('wmDoneN').textContent.slice(0,120));
-
-  // taking a set back puts you back on it
-  document.querySelector('.wdone [data-undo="0"]').click();
-  ok('undoing a set returns the card to that set',
-     /SET 1 OF/i.test(document.querySelector('.wnow-t').textContent),
-     document.querySelector('.wnow-t').textContent);
-  ok('and cancels any pending move', !autoPending());
-
-  // a set noticed as wrong AFTER moving on is not stranded
+  /* REST, which is the one thing allowed to hold the screen - because resting
+     IS the next instruction, and it runs itself. */
+  DB.settings.restTimerOn=true;
+  startWorkout('w_lowerA','full',T);
+  W.phase='main'; W.step=0; drawWM();
+  var e0=W.entries[0];
+  if(parseRest(e0.plannedRest)){
+    document.querySelector('#wmBody [data-log]').click();
+    ok('rest starts by itself after a logged set', restActive());
+    ok('and it takes over the screen', !!document.querySelector('.wrestx'),
+       document.getElementById('wmBody').textContent.slice(0,80));
+    ok('showing a countdown', !!document.getElementById('restT'),
+       document.getElementById('restT')?document.getElementById('restT').textContent:'');
+    ok('there is nothing to log while resting',
+       !document.querySelector('#wmBody [data-log]'));
+    ok('skipping it is secondary, not primary',
+       !!document.getElementById('restSkip') &&
+       document.getElementById('restSkip').className.indexOf('tert')>=0,
+       document.getElementById('restSkip').className);
+    ok('and it says what it is resting for',
+       /Then set 2 of/.test(document.querySelector('.wrx-s').textContent),
+       document.querySelector('.wrx-s').textContent);
+    document.getElementById('restSkip').click();
+    ok('skipping returns to the next set, ready to log',
+       !restActive() && /SET 2 OF/i.test(document.querySelector('.wset .ws-l').textContent),
+       document.querySelector('.wset .ws-l').textContent);
+  } else {
+    ok('rest starts by itself after a logged set', true, 'no rest prescribed here');
+  }
+  /* and an exercise with no prescribed rest never shows a timer */
   (function(){
-    var g=0;
-    while(document.querySelector('#wmBody [data-log]') && g++<40){
-      document.querySelector('#wmBody [data-log]').click(); cancelAuto();
+    var noRest=null;
+    for(var q=0;q<W.entries.length;q++){
+      if(!W.entries[q].cardio && !parseRest(W.entries[q].plannedRest)){ noRest=q; break; }
     }
-    // walk to the finish screen
-    var h=0;
-    while(W.step<W.entries.length && h++<40){ nextStep(); 
-      var b=document.querySelector('#wmBody [data-log]');
-      while(b && h++<60){ b.click(); cancelAuto(); b=document.querySelector('#wmBody [data-log]'); } }
-    ok('the finish screen is reached', W.step>=W.entries.length, W.step);
-    ok('every exercise row is a way back',
-       document.querySelectorAll('#wmBody [data-back]').length===W.entries.length,
-       document.querySelectorAll('#wmBody [data-back]').length);
-    document.querySelector('#wmBody [data-back="0"]').click();
-    ok('tapping one returns to that exercise', W.step===0, W.step);
-    ok('with its undo chips intact',
-       document.querySelectorAll('.wdone [data-undo]').length>0,
-       document.querySelectorAll('.wdone [data-undo]').length);
-    cancelAuto();
+    if(noRest===null){ ok('no rest prescribed means no rest screen', true, 'every exercise here rests'); return; }
+    W.phase='main'; W.step=noRest; drawWM();
+    document.querySelector('#wmBody [data-log]').click();
+    ok('no rest prescribed means no rest screen',
+       !document.querySelector('.wrestx'), 'exercise '+noRest);
   })();
 
-  // the last exercise finishes the workout instead
-  W.phase='main'; W.step=total-1; drawWM();
-  var lastEn=W.entries[total-1];
-  ok('the last exercise offers Finish workout',
-     document.getElementById('wmNext').textContent==='Finish workout',
-     document.getElementById('wmNext').textContent);
-  lastEn.sets.forEach(function(s){ s.done=false; });
-  drawWM();
-  ok('and its card says the workout is what comes next',
-     /finish the workout/i.test(document.querySelector('.wnow-t span').textContent)
-     || lastEn.sets.length>1,
-     document.querySelector('.wnow-t span').textContent);
-
-  cancelAuto(); exitWM(true); DB.checkins=keepC;
+  exitWM(true);
+  DB.settings.restTimerOn=keepRest; DB.checkins=keepC;
 })();
 
 // ---------- THE SET SCREEN SPEAKS PLAIN ENGLISH ----------
@@ -5904,12 +5941,15 @@ ok('a stopped timer stays stopped', !restActive());
   startWorkout('w_lowerA','full',T);
   W.phase='main'; W.step=0; drawWM();
   var body=document.getElementById('wmBody').innerHTML;
-  ok('no RPE notation in the plan line',
-     !/RPE[ ]*[0-9]/.test(document.querySelector('.wm-plain').textContent),
-     document.querySelector('.wm-plain').textContent);
+  /* The effort-and-rest prose line is gone from the active screen along with
+     everything else that was not the current action. What remains is the
+     coaching cue, which tells you HOW to do the thing you are about to do. */
+  ok('no RPE notation anywhere on the training screen',
+     !/RPE[ ]*[0-9]/.test(document.getElementById('wmBody').textContent),
+     document.getElementById('wmBody').textContent.slice(0,140));
   ok('no tempo notation on the set screen', !/tempo [0-9]-[0-9]/.test(body));
-  ok('the plan is said in words', !!document.querySelector('.wm-plain'),
-     body.slice(0,200));
+  ok('the cue is still there, because it says how to do it',
+     !!document.getElementById('wmHowLine'), body.slice(0,200));
 
   // ...and the exact figures are still one tap away. Through the how-to line
   // rather than the More menu, whose handlers run behind a 200ms close.
@@ -6302,11 +6342,14 @@ ok('a stopped timer stays stopped', !restActive());
 
 // ---------- THE HOLD SCREEN SAYS NOTHING ABOUT REPS ----------
 (function(){
-  var keepS=DB.sessions, keepC=DB.checkins;
+  var keepS=DB.sessions, keepC=DB.checkins, keepRestH=DB.settings.restTimerOn;
   var T=todayISO();
   DB.checkins[T]={date:T,recovery:74,hrv:86,rhr:52,sleepMin:455,energy:7,
                   soreness:3,stress:3,motivation:8,pain:'None'};
   DB.sessions=[];
+  /* A logged hold now starts the rest timer like any other set, and rest owns
+     the screen while it runs. This block is about the hold itself. */
+  DB.settings.restTimerOn=false;
 
   // find a session that actually contains a timed hold
   var found=null;
@@ -6323,11 +6366,15 @@ ok('a stopped timer stays stopped', !restActive());
   if(found){
     W.phase='main'; W.step=found.n; drawWM();
     var en=W.entries[found.n], body=document.getElementById('wmBody');
-    ok('the hold has a countdown', !!document.getElementById('holdT'));
+    /* Idle, the target is a button you can tap to change; running, it is the
+       live countdown. Either way it is the one number on the screen. */
+    ok('the hold shows its target', !!document.getElementById('wsAdj') || !!document.getElementById('holdT'),
+       body.textContent.slice(0,80));
     ok('and a button to start it', !!document.getElementById('holdBtn'));
-    ok('the column is headed seconds, not reps',
-       body.innerHTML.indexOf('<div class="sl">Seconds</div>')>=0,
-       body.innerHTML.slice(0,400));
+    ok('the target is stated in seconds, not reps',
+       /[0-9]:[0-9][0-9]/.test((document.getElementById('wsAdj')||document.getElementById('holdT')).textContent)
+       && body.textContent.indexOf(' reps')<0,
+       body.textContent.slice(0,120));
     ok('the word "reps" appears nowhere on the screen',
        !/\\breps?\\b/i.test(body.textContent), (function(){ var s=body.textContent.toLowerCase(); var k=s.indexOf('rep');
          return k<0? 'no "rep" in textContent len='+s.length
@@ -6360,20 +6407,32 @@ ok('a stopped timer stays stopped', !restActive());
     ok('a completed hold logs its own set', en.sets[0].done===true);
     ok('at the full target', +en.sets[0].reps===want, en.sets[0].reps+' vs '+want);
     ok('and the countdown is cleared', !holdActive());
-    ok('the logged chip carries the unit',
-       /[0-9]+s/.test(document.querySelector('.wdone [data-undo]').textContent),
-       document.querySelector('.wdone [data-undo]').textContent);
-    cancelAuto();
+    /* There is no logged-sets strip on the screen any more, so the unit is
+       checked where it now matters: in the record the engine reads, and on the
+       screen's own reading of the set. */
+    ok('a hold is recorded in seconds, never as reps',
+       en.timed && +en.sets[0].reps===want, en.sets[0].reps+'s');
+    ok('and the screen never calls them reps',
+       document.getElementById('wmBody').textContent.indexOf(' reps')<0,
+       document.getElementById('wmBody').textContent.slice(0,120));
 
-    // the seconds stepper moves in fives, not ones
+    // the seconds stepper moves in fives, not ones — now behind the target,
+    // which is tappable exactly like a rep count is
     en.sets[0].done=false; drawWM();
-    var sec=document.querySelector('.wnow [data-k=reps]');
+    ok('the hold target is tappable to change it', !!document.getElementById('wsAdj'));
+    document.getElementById('wsAdj').click();
+    var sec=document.querySelector('#sheetBody [data-k=reps]');
+    ok('and the sheet asks for seconds, not reps',
+       /Seconds/.test(document.getElementById('sheetBody').textContent),
+       document.getElementById('sheetBody').textContent.slice(0,60));
     sec.value='30'; sec.dispatchEvent(new Event('input',{bubbles:true}));
     sec.parentElement.querySelector('button[data-d="1"]').click();
     ok('seconds step by five', sec.value==='35', sec.value);
+    closeSheet();
 
     exitWM(true);
   }
+  DB.settings.restTimerOn=keepRestH;
   DB.sessions=keepS; DB.checkins=keepC;
 })();
 
@@ -6539,8 +6598,9 @@ ok('a stopped timer stays stopped', !restActive());
   ok('the calf raises after the run are still sets',
      !!document.querySelector('#wmBody [data-log]')
      && !document.getElementById('cardT'));
-  ok('with a reps column', document.getElementById('wmBody').innerHTML
-       .indexOf('<div class="sl">Reps</div>')>=0);
+  ok('and are counted in reps, not on a clock',
+     !!document.querySelector('.wset .ws-v') && !document.getElementById('holdT'),
+     document.getElementById('wmBody').textContent.slice(0,90));
 
   exitWM(true);
   DB.sessions=keepS; DB.checkins=keepC; DB.activities=keepA;
