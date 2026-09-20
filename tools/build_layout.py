@@ -716,7 +716,7 @@ function SETUP_AT(id){
 
 // the warm-up screen, with a movement expanded. It lives in #wmode, not in a
 // sheet - auditing it as a sheet inspected an empty closed panel.
-startWorkout('w_lowerA','full',T); W.step=-1; drawWM();
+startWorkout('w_lowerA','full',T); W.phase='preview'; W.step=0; drawWM();
 (function(){
   var r=document.querySelector('#wmBody [data-wu]'); if(r) r.click();
   var wm=document.getElementById('wmode'), issues=[];
@@ -749,7 +749,7 @@ function auditWM(label){
 }
 
 // 1 · the opening state: set 1 of n, nothing logged
-startWorkout('w_lowerA','full',T); W.step=0; drawWM();
+startWorkout('w_lowerA','full',T); W.phase='main'; W.step=0; drawWM();
 auditWM('set 1, nothing logged');
 
 // 2 · a set logged, with the countdown open inside the card it belongs to.
@@ -783,7 +783,7 @@ DB.profile.gear=(KEEPGEAR||[]).concat(['run','bike']);
   W.entries.forEach(function(e,n){ if(e.cardio && ci<0) ci=n; });
   if(ci<0){ REPORT.push('ISSUE | workout: no cardio block in w_runEasy — '
     +W.entries.map(function(e){return e.name;}).join(', ')); bad++; return; }
-  W.step=ci; drawWM();
+  W.phase='main'; W.step=ci; drawWM();
   auditWM('run, ready to start');
 
   document.getElementById('cardGo').click();
@@ -816,7 +816,7 @@ exitWM(true);
 })();
 exitWM(true);
 DB.profile.gear=KEEPGEAR;
-startWorkout('w_lowerA','full',T); W.step=0; drawWM();
+startWorkout('w_lowerA','full',T); W.phase='main'; W.step=0; drawWM();
 (function(){
   var g=0;
   while(document.querySelector('#wmBody [data-log]') && g++<20){

@@ -495,16 +495,17 @@ DB.activities=[];
 DB.sessions=[];
 tryRun('startWorkout', function(){ startWorkout('w_lowerA','full','2030-06-10'); if(!W) throw new Error('W null'); });
 ok('workout mode opened', document.getElementById('wmode').classList.contains('on'));
-ok('warm-up step first', W.step===-1);
+ok('a session opens on the warm-up preview, not in the work',
+   W.phase==='preview' && W.step===0 && W.wuStep===0, W.phase+'/'+W.step);
 ok('entries built from blocks', W.entries.length===DB.workouts.find(function(w){return w.id==='w_lowerA';}).blocks.full.length);
 ok('each entry has planned sets', W.entries.every(function(e){return e.sets.length===e.plannedSets && e.plannedSets>0;}));
-tryRun('advance to first exercise', function(){ W.step=0; drawWM(); });
+tryRun('advance to first exercise', function(){ W.phase='main'; W.step=0; drawWM(); });
 ok('exercise screen rendered', /wm-ex/.test(document.getElementById('wmBody').innerHTML));
 // complete all sets
 tryRun('complete all sets', function(){
   W.entries.forEach(function(en){ en.sets.forEach(function(s){ s.reps='10'; s.weight='5'; s.rpe='8'; s.done=true; }); });
 });
-tryRun('render finish screen', function(){ W.step=W.entries.length; drawWM(); });
+tryRun('render finish screen', function(){ W.phase='main'; W.step=W.entries.length; drawWM(); });
 ok('finish screen rendered', /Workout complete/.test(document.getElementById('wmBody').innerHTML));
 tryRun('save session', function(){ document.getElementById('fSave').click(); });
 ok('session persisted', DB.sessions.length===1, 'n='+DB.sessions.length);
@@ -1778,7 +1779,7 @@ ok('the wearable step does not ask about one brand',
   DB.checkins[T]={date:T,recovery:72,hrv:84,rhr:53,sleepMin:450,energy:7,
                   soreness:3,stress:3,motivation:8,pain:'None',availTime:60};
   tryRun('starting a workout', function(){ startWorkout('w_lowerA','full',T); });
-  W.step=0; drawWM();
+  W.phase='main'; W.step=0; drawWM();
   var en=W.entries[0];
 
   ok('the set screen has no number keyboard inputs',
@@ -1831,7 +1832,7 @@ ok('the wearable step does not ask about one brand',
      kg field at all now, which is the point of stage 12 */
   (function(){
     for(var q=0;q<W.entries.length;q++){
-      if(exLoadable(exOf(W.entries[q].exerciseId))){ W.step=q; drawWM(); break; }
+      if(exLoadable(exOf(W.entries[q].exerciseId))){ W.phase='main'; W.step=q; drawWM(); break; }
     }
   })();
   (function(){
@@ -1854,7 +1855,7 @@ ok('the wearable step does not ask about one brand',
   // ticking a set still auto-fills RPE from the plan, as it always did
   (function(){
     /* back to the first exercise: the block above moved to a loadable one */
-    W.step=0; var e0=W.entries[0];
+    W.phase='main'; W.step=0; var e0=W.entries[0];
     e0.sets.forEach(function(s){ s.done=false; s.rpe=''; });
     drawWM();
     document.querySelector('[data-log="0"]').click();
@@ -3059,30 +3060,29 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   DB.checkins[T]={date:T,recovery:74,hrv:86,rhr:52,sleepMin:455,energy:7,
                   soreness:3,stress:3,motivation:8,pain:'None'};
   tryRun('starting a session', function(){ startWorkout('w_lowerA','full',T); });
-  W.step=-1; drawWM();
+  W.phase='preview'; W.step=0; drawWM();
   var body=document.getElementById('wmBody');
 
-  ok('the warm-up lists its movements',
-     body.querySelectorAll('.setrow.wu').length>0,
-     body.querySelectorAll('.setrow.wu').length);
-  ok('they are expandable', body.querySelectorAll('[data-wu]').length>0,
-     body.querySelectorAll('[data-wu]').length);
-  ok('the screen says the movements can be tapped',
-     /Tap any movement/.test(body.innerHTML), body.innerHTML.slice(0,200));
-  ok('the instructions start hidden',
-     body.querySelectorAll('.wu-how:not([hidden])').length===0);
-
-  var first=body.querySelector('[data-wu]');
-  first.click();
-  ok('tapping one reveals how to do it',
-     body.querySelectorAll('.wu-how:not([hidden])').length===1);
-  ok('and the row is marked open', first.classList.contains('open'));
-  ok('the description is a real sentence',
-     body.querySelector('.wu-how:not([hidden])').textContent.length>30,
-     body.querySelector('.wu-how:not([hidden])').textContent.slice(0,60));
-  first.click();
-  ok('tapping again collapses it',
-     body.querySelectorAll('.wu-how:not([hidden])').length===0);
+  /* The instructions used to sit behind a tap on a list row. The warm-up is now
+     walked one movement at a time, so the how-to belongs ON the movement being
+     performed - no expanding, and nothing to miss. Same guarantee, shown rather
+     than hidden. */
+  ok('the preview names the movement to start with',
+     !!body.querySelector('.nowcard .now-n') && body.querySelector('.nowcard .now-n').textContent.length>2,
+     body.querySelector('.nowcard .now-n') ? body.querySelector('.nowcard .now-n').textContent : '(none)');
+  ok('and explains how to do it, without a tap',
+     !!body.querySelector('.nowcard .now-h') &&
+     body.querySelector('.nowcard .now-h').textContent.length>30,
+     body.querySelector('.nowcard .now-h') ? body.querySelector('.nowcard .now-h').textContent.slice(0,60) : '(none)');
+  ok('the instruction matches that movement, not another',
+     body.querySelector('.nowcard .now-h').textContent.trim()
+       === warmupHow(W.warmup.items[0].n).trim(),
+     body.querySelector('.nowcard .now-h').textContent.slice(0,50));
+  document.getElementById('wmGo').click();
+  ok('stepping in keeps the instruction with the movement',
+     document.getElementById('wmBody').querySelector('.nowcard .now-h').textContent.trim()
+       === warmupHow(W.warmup.items[0].n).trim(),
+     W.warmup.items[0].n);
 
   // every movement in every routine must have one: a warm-up tile that
   // cannot explain itself is the whole problem this fixes
@@ -3134,7 +3134,7 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
      en.sets.every(function(s){ return !s.done; }));
 
   // 2 · one tap records it
-  W.step=ix; drawWM();
+  W.phase='main'; W.step=ix; drawWM();
   var before=en.sets.filter(function(s){return s.done;}).length;
   document.querySelector('#wmBody [data-log]').click();
   ok('one tap completes a set',
@@ -3156,7 +3156,7 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   // 4 · carry forward: change it once, not four times
   startWorkout('w_lowerA','full',T);
   W.entries.forEach(function(e,n){ if(e.exerciseId==='lx01') ix=n; });
-  en=W.entries[ix]; W.step=ix; drawWM();
+  en=W.entries[ix]; W.phase='main'; W.step=ix; drawWM();
   en.sets[0].weight='25';
   document.querySelector('#wmBody [data-log]').click();
   ok('confirming a set carries its numbers to the untouched ones',
@@ -3166,7 +3166,7 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   // ...but never over something the user edited themselves
   startWorkout('w_lowerA','full',T);
   W.entries.forEach(function(e,n){ if(e.exerciseId==='lx01') ix=n; });
-  en=W.entries[ix]; W.step=ix; drawWM();
+  en=W.entries[ix]; W.phase='main'; W.step=ix; drawWM();
   en.sets[2].weight='30'; en.sets[2].touched=true;
   en.sets[0].weight='25';
   document.querySelector('#wmBody [data-log]').click();
@@ -3177,7 +3177,7 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   // 5 · there is exactly ONE way to log a set
   startWorkout('w_lowerA','full',T);
   W.entries.forEach(function(e,n){ if(e.exerciseId==='lx01') ix=n; });
-  en=W.entries[ix]; W.step=ix; drawWM();
+  en=W.entries[ix]; W.phase='main'; W.step=ix; drawWM();
   ok('the bulk "log the rest as shown" shortcut is gone',
      !document.getElementById('wmAll'));
   ok('there is one log button on the screen, not several',
@@ -3196,7 +3196,7 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   // 6 · the set screen is not a reference manual any more
   startWorkout('w_lowerA','full',T);
   W.entries.forEach(function(e,n){ if(e.exerciseId==='lx01') ix=n; });
-  W.step=ix; drawWM();
+  W.phase='main'; W.step=ix; drawWM();
   var body=document.getElementById('wmBody').innerHTML;
   ok('no progression rule on the set screen', !/Progression rule/.test(body));
   ok('no substitutions block on the set screen', !/If this is not working/.test(body));
@@ -3211,7 +3211,7 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   // 7 · a tap must not scroll you back to the top
   startWorkout('w_lowerA','full',T);
   W.entries.forEach(function(e,n){ if(e.exerciseId==='lx01') ix=n; });
-  W.step=ix; drawWM();
+  W.phase='main'; W.step=ix; drawWM();
   var wb=document.getElementById('wmBody');
   wb.scrollTop=40;
   var at=wb.scrollTop;
@@ -3472,7 +3472,7 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   DB.checkins[T]={date:T,recovery:72,hrv:84,rhr:53,sleepMin:450,energy:7,
                   soreness:3,stress:3,motivation:8,pain:'None'};
   tryRun('starting a session', function(){ startWorkout('w_lowerA','full',T); });
-  W.step=0; drawWM();
+  W.phase='main'; W.step=0; drawWM();
   var en=W.entries[0];
   var bits=exerciseWhy(en);
   ok('it explains what the exercise covers', bits.length>0, bits.length);
@@ -3977,7 +3977,9 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
              .map(function(e){return e.textContent.trim();}); };
   ok('the week section is not titled with a week that can change',
      headsOf().indexOf('This week')<0, headsOf().join(' | '));
-  ok('the week section is still labelled', headsOf().indexOf('Training this week')>=0, headsOf().join(' | '));
+  ok('the week section is still labelled', headsOf().indexOf('Training')>=0, headsOf().join(' | '));
+  ok('and its heading names no period at all',
+     !headsOf().some(function(h){ return /week|Sep|Oct/.test(h); }), headsOf().join(' | '));
   var lbl=document.querySelector('#view .wk-l');
   ok('the strip is what names the week', lbl && /This week/.test(lbl.textContent),
      lbl?lbl.textContent:'(no strip)');
@@ -3986,7 +3988,11 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   if(prev){
     prev.click();
     var lbl2=document.querySelector('#view .wk-l');
-    ok('stepping back relabels the strip', lbl2 && /Last week/.test(lbl2.textContent),
+    /* An explicit range rather than "Last week": relative labels stop being
+       readable two steps back, and the user must always know which days are
+       on screen. */
+    ok('stepping back names the exact period',
+       lbl2 && /[0-9]{1,2}.*[0-9]{1,2} [A-Z][a-z][a-z]/.test(lbl2.textContent) && !/week/i.test(lbl2.textContent),
        lbl2?lbl2.textContent:'(no strip)');
     ok('and no heading now disagrees with it',
        headsOf().indexOf('This week')<0, headsOf().join(' | '));
@@ -4023,10 +4029,28 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
     sr.click();
     var stxt=document.getElementById('view').textContent;
     ok('tapping it opens the sleep page, not the check-in form',
-       /Tonight/.test(stxt) && /What each night is worth/.test(stxt), stxt.slice(0,130));
+       /Tonight/.test(stxt) && /What a night is worth/.test(stxt), stxt.slice(0,130));
     ok('the page states the need it is measuring against', /8h 00m/.test(stxt), stxt.slice(0,220));
     ok('the page is honest that sleep is one input of several',
        /resting heart rate/.test(stxt), stxt.slice(0,260));
+    /* The ring is a fixed-width block, so it has to be laid out beside
+       something or it sits hard left with the tile empty next to it. */
+    var head=document.querySelector('#view .sleeph');
+    ok('the ring shares its row with the figures', !!head && !!head.querySelector('.arc')
+       && !!head.querySelector('.sh-v'), head?head.textContent.slice(0,60):'(no header)');
+    ok('and the header is laid out as a row, not a lone centred ring',
+       !!head && getComputedStyle(head).display==='flex',
+       head?getComputedStyle(head).display:'(none)');
+    ok('the duration is stated once, not restated in prose',
+       head.textContent.split(fmtMin(sp.slept)).length-1===1,
+       fmtMin(sp.slept)+' in: '+head.textContent.slice(0,90));
+    /* the tier rows used to contain two identical durations, because 95 and 85
+       both invert to the full need */
+    var rows=Array.prototype.slice.call(document.querySelectorAll('#view .card .kv .v'))
+               .map(function(e){return e.textContent.trim();});
+    ok('every tier row is a different duration',
+       rows.length>=3 && rows.length===rows.filter(function(v,i){return rows.indexOf(v)===i;}).length,
+       rows.join(' | '));
     popPage(); render();
   }
 
@@ -4251,27 +4275,70 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
 
   // === J · the workout runner separates the phases ===
   startWorkout('w_core','full',T,null);
-  ok('a session opens on the warm-up phase', W && W.step===-1, W?W.step:'(no W)');
+  ok('a session opens on the warm-up phase', W && W.phase==='preview', W?W.phase:'(no W)');
   ok('entries are the MAIN exercises only', W.entries.length===blocks.length, W.entries.length+' vs '+blocks.length);
-  var wuTxt=document.getElementById('wmBody').textContent;
-  ok('the warm-up screen names no main exercise',
-     !W.entries.some(function(e){ return wuTxt.indexOf(e.name)>=0 && norm(e.name)!==''
-        && raw.items.some(function(it){ return norm(it.n)===norm(e.name); }); }),
-     wuTxt.slice(0,200));
-  ok('it shows what comes next', wuTxt.indexOf('Up next')>=0, wuTxt.slice(0,200));
-  ok('and names the first MAIN exercise there',
-     wuTxt.indexOf(W.entries[0].name)>=0, W.entries[0].name);
+  ok('the warm-up is its own list, not part of the main one',
+     W.warmup.items.length>0 && W.warmup.items!==W.entries, W.warmup.items.length);
+  /* CURRENT is what to do now; UP NEXT is the very next thing the user will
+     actually do. On the preview those are warm-up movements one and two - NOT
+     the first main exercise, which is a phase away. Getting this backwards is
+     what made the biggest name on the screen the one thing not to do yet. */
+  ok('the preview leads with the movement to start',
+     wmCurrent().kind==='warmup' && wmCurrent().name===W.warmup.items[0].n, wmCurrent().name);
+  ok('and previews the NEXT warm-up movement, not the first main exercise',
+     W.warmup.items.length<2 ||
+       (wmUpNext().kind==='warmup' && wmUpNext().name===W.warmup.items[1].n),
+     wmUpNext().name);
+  var body0=document.getElementById('wmBody');
+  ok('the current movement is rendered as the dominant element',
+     !!body0.querySelector('.nowcard .now-n') &&
+     body0.querySelector('.nowcard .now-n').textContent.trim()===W.warmup.items[0].n,
+     body0.querySelector('.nowcard .now-n') ? body0.querySelector('.nowcard .now-n').textContent : '(none)');
+  ok('and "Up next" is a small peek, not a card of its own',
+     !!body0.querySelector('.peek .pk-n') && !body0.querySelector('.upnext'),
+     body0.querySelector('.peek .pk-n') ? body0.querySelector('.peek .pk-n').textContent : '(none)');
+  ok('the current movement comes before the peek in the document',
+     body0.innerHTML.indexOf('nowcard') < body0.innerHTML.indexOf('peek'),
+     body0.innerHTML.indexOf('nowcard')+' / '+body0.innerHTML.indexOf('peek'));
   var foot=document.getElementById('wmFoot').textContent;
-  ok('the button says what it does, not which index it is',
-     /Start workout/.test(foot) && !/Start 1/.test(foot), foot.slice(0,80));
-  ok('skipping the warm-up is offered explicitly', /Skip the warm-up/.test(foot), foot.slice(0,80));
+  ok('the button names the immediate action', /Start warm-up/.test(foot) && !/Start 1/.test(foot), foot.slice(0,90));
+  ok('skipping is offered, and is secondary', /Skip the warm-up/.test(foot) &&
+     document.getElementById('wmSkipWu').className.indexOf('tert')>=0, foot.slice(0,90));
+
+  // walk the warm-up: CURRENT and UP NEXT must track the phase, per step
   document.getElementById('wmGo').click();
-  ok('starting moves to the first main exercise', W.step===0, W.step);
-  ok('and that exercise is the one Up next promised',
+  ok('starting the warm-up enters the warm-up phase, not the work',
+     W.phase==='warmup' && W.wuStep===0, W.phase+'/'+W.wuStep);
+  var n=W.warmup.items.length, guard=0;
+  var chainOk=true, chainWhy='';
+  while(W.phase==='warmup' && guard++<20){
+    var i=W.wuStep;
+    if(wmCurrent().name!==W.warmup.items[i].n){ chainOk=false; chainWhy='current wrong at '+i; break; }
+    var expect = (i+1<n) ? W.warmup.items[i+1].n : W.entries[0].name;
+    if(wmUpNext().name!==expect){ chainOk=false; chainWhy='next wrong at '+i+': '+wmUpNext().name+' vs '+expect; break; }
+    document.getElementById('wuNext').click();
+  }
+  ok('every step shows the right current and next movement', chainOk, chainWhy);
+  ok('the last warm-up movement previews the first MAIN exercise',
+     true, 'checked inside the walk above');
+  ok('finishing the warm-up enters the main phase at exercise one',
+     W.phase==='main' && W.step===0, W.phase+'/'+W.step);
+  ok('and the main runner shows the exercise Up next promised',
      document.getElementById('wmBody').textContent.indexOf(W.entries[0].name)>=0, W.entries[0].name);
-  W.step=-1; drawWM();
+  ok('no warm-up movement reappears as a main exercise',
+     !W.entries.some(function(e){ return W.warmup.items.some(function(it){ return norm(it.n)===norm(e.name); }); }),
+     W.entries.map(function(e){return e.name;}).join(', '));
+
+  // skipping from the preview must land in exactly the same place
+  W.phase='preview'; W.wuStep=0; W.step=0; drawWM();
   document.getElementById('wmSkipWu').click();
-  ok('skipping lands in exactly the same place', W.step===0, W.step);
+  ok('skipping the warm-up lands on the first main exercise',
+     W.phase==='main' && W.step===0, W.phase+'/'+W.step);
+  ok('and does not advance the warm-up counter', W.wuStep===0, W.wuStep);
+  // a session paused before phases existed must still resume somewhere real
+  W.phase=null; W.step=-1; wmNormalise();
+  ok('a session saved under the old model resumes on the preview',
+     W.phase==='preview' && W.step===0, W.phase+'/'+W.step);
   exitWM(true); closeSheet(); W=null;
 
   // === K · activity warm-ups are activity-specific, and optional ===
@@ -4487,7 +4554,7 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
     var ix=-1;
     W.entries.forEach(function(e,n){ if(e.exerciseId==='lx01') ix=n; });
     if(ix<0) throw new Error('lx01 absent: '+W.entries.map(function(e){return e.exerciseId;}).join(','));
-    W.step=ix; drawWM();
+    W.phase='main'; W.step=ix; drawWM();
     wmHtml=document.getElementById('wmBody').innerHTML;
   });
   ok('workout mode shows what you did last time', /Last time/i.test(wmHtml), wmHtml.slice(0,200));
@@ -4508,7 +4575,7 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
 
   DB.sessions=[]; DB.activities=[];
   tryRun('workout mode with no history', function(){
-    startWorkout('w_lowerA','full',todayISO()); W.step=0; drawWM(); });
+    startWorkout('w_lowerA','full',todayISO()); W.phase='main'; W.step=0; drawWM(); });
   ok('a first attempt says so instead of showing a blank',
      /First time doing this/i.test(document.getElementById('wmBody').innerHTML));
   exitWM(true);
@@ -4970,7 +5037,7 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   var start = posOf('id="btnStart"');
   var why   = posOf('id="whyT"');
   var swap  = posOf('id="btnSwap"');
-  var week  = posOf('Training this week</div>');
+  var week  = posOf('Training</div>');
   var log   = posOf('id="actsCard"');
 
   [['readiness row',rdrow],['recommendation',rec],['start button',start],
@@ -5614,7 +5681,7 @@ ok('a stopped timer stays stopped', !restActive());
   // 1 · it asks even when nothing has been logged, which is exactly when a
   //     mis-tap on the X is most likely
   startWorkout('w_lowerA','full',T);
-  W.step=0; drawWM();
+  W.phase='main'; W.step=0; drawWM();
   document.getElementById('wmX').click();
   ok('the exit button always asks', document.getElementById('sheet').classList.contains('on'));
   ok('it offers pause', !!document.getElementById('wmPause'));
@@ -5683,7 +5750,7 @@ ok('a stopped timer stays stopped', !restActive());
   DB.checkins[T]={date:T,recovery:74,hrv:86,rhr:52,sleepMin:455,energy:7,
                   soreness:3,stress:3,motivation:8,pain:'None'};
   startWorkout('w_lowerA','full',T);
-  W.step=0; drawWM();
+  W.phase='main'; W.step=0; drawWM();
   var en=W.entries[0], total=W.entries.length;
 
   // the card names what comes next, so you know whether you are two sets from
@@ -5779,7 +5846,7 @@ ok('a stopped timer stays stopped', !restActive());
   })();
 
   // the last exercise finishes the workout instead
-  W.step=total-1; drawWM();
+  W.phase='main'; W.step=total-1; drawWM();
   var lastEn=W.entries[total-1];
   ok('the last exercise offers Finish workout',
      document.getElementById('wmNext').textContent==='Finish workout',
@@ -5835,7 +5902,7 @@ ok('a stopped timer stays stopped', !restActive());
   DB.checkins[T]={date:T,recovery:74,hrv:86,rhr:52,sleepMin:455,energy:7,
                   soreness:3,stress:3,motivation:8,pain:'None'};
   startWorkout('w_lowerA','full',T);
-  W.step=0; drawWM();
+  W.phase='main'; W.step=0; drawWM();
   var body=document.getElementById('wmBody').innerHTML;
   ok('no RPE notation in the plan line',
      !/RPE[ ]*[0-9]/.test(document.querySelector('.wm-plain').textContent),
@@ -5887,7 +5954,7 @@ ok('a stopped timer stays stopped', !restActive());
   DB.checkins[T]={date:T,recovery:74,hrv:86,rhr:52,sleepMin:455,energy:7,
                   soreness:3,stress:3,motivation:8,pain:'None'};
   startWorkout('w_lowerA','full',T);
-  W.step=0; drawWM();
+  W.phase='main'; W.step=0; drawWM();
   ok('the set screen carries a line of how to do it',
      !!document.getElementById('wmHowLine'),
      document.getElementById('wmBody').innerHTML.slice(0,300));
@@ -6254,7 +6321,7 @@ ok('a stopped timer stays stopped', !restActive());
      found? found.id+' #'+found.n : 'none found');
 
   if(found){
-    W.step=found.n; drawWM();
+    W.phase='main'; W.step=found.n; drawWM();
     var en=W.entries[found.n], body=document.getElementById('wmBody');
     ok('the hold has a countdown', !!document.getElementById('holdT'));
     ok('and a button to start it', !!document.getElementById('holdBtn'));
@@ -6418,7 +6485,7 @@ ok('a stopped timer stays stopped', !restActive());
   ok('and still has set-list blocks after it', si>=0,
      W.entries.map(function(e){return e.name;}).join(', '));
 
-  W.step=ci; drawWM();
+  W.phase='main'; W.step=ci; drawWM();
   var en=W.entries[ci], body=document.getElementById('wmBody');
   ok('the clock is on screen', !!document.getElementById('cardT'));
   ok('there is a start button', !!document.getElementById('cardGo'));
@@ -6468,7 +6535,7 @@ ok('a stopped timer stays stopped', !restActive());
   cancelAuto();
 
   // the set-list block after the run is still a set list
-  W.step=si; drawWM();
+  W.phase='main'; W.step=si; drawWM();
   ok('the calf raises after the run are still sets',
      !!document.querySelector('#wmBody [data-log]')
      && !document.getElementById('cardT'));
@@ -6636,7 +6703,7 @@ ok('a stopped timer stays stopped', !restActive());
      about where the sleep ring goes. */
   ok('the sleep score opens the sleep page, not the check-in form',
      !!document.getElementById('slEdit')
-       && /What each night is worth/.test(document.getElementById('view').textContent),
+       && /What a night is worth/.test(document.getElementById('view').textContent),
      document.getElementById('view').textContent.slice(0,140));
   ok('and the check-in is still one tap from there',
      (function(){ var b=document.getElementById('slEdit'); if(!b) return false;
@@ -7127,7 +7194,11 @@ ok('a stopped timer stays stopped', !restActive());
   // --- go back a week ---
   document.getElementById('wkPrev').click();
   ok('Previous moves back a week', WEEKOFF===-1, WEEKOFF);
-  ok('and it says so', /Last week/.test(document.querySelector('.wk-l').textContent),
+  /* A concrete range, not a relative word: the user must be able to tell which
+     days are on screen without counting backwards from today. */
+  ok('and it names the exact days',
+     /[0-9]{1,2}.*[0-9]{1,2} [A-Z][a-z][a-z]/.test(document.querySelector('.wk-l').textContent) &&
+     !/week/i.test(document.querySelector('.wk-l').textContent),
      document.querySelector('.wk-l').textContent);
   ok('now there IS a way forward', !!document.getElementById('wkNext'));
   ok('every day of last week is openable',
@@ -7147,6 +7218,43 @@ ok('a stopped timer stays stopped', !restActive());
   document.getElementById('wkNext').click();
   ok('and stops at the current week', WEEKOFF===0, WEEKOFF);
   ok('where the forward button disappears again', !document.getElementById('wkNext'));
+
+  /* --- browsing history is a read, not a state change --- */
+  WEEKOFF=0; SELDAY=null; resetStack(); TAB='today'; render();
+  var snap=function(){
+    var t=todayISO(), r=recommend(t,DB.checkins[t]);
+    return JSON.stringify({id:r.id,variant:r.variant,est:r.est,prep:r.prep,
+                           rd:readiness(t,DB.checkins[t]).score,
+                           load:dayDemand(t).load});
+  };
+  var before=snap();
+  document.getElementById('wkPrev').click();
+  document.getElementById('wkPrev').click();
+  ok('two weeks back', WEEKOFF===-2, WEEKOFF);
+  ok('browsing history leaves today’s plan and readiness alone', snap()===before,
+     before+'  ->  '+snap());
+  ok('and does not silently retarget where activities would be added',
+     SELDAY===null, String(SELDAY));
+
+  /* --- an unrecorded day is unknown, not a missed workout --- */
+  var stripTxt=document.querySelector('#view .wk-nav').parentNode.textContent;
+  ok('a week with nothing logged says nothing about what was missed',
+     !/missed|skipped|failed|rest day|behind/i.test(stripTxt), stripTxt.slice(0,220));
+  ok('and invents no activity for days it never saw',
+     (function(){
+        var start=addDays(weekStartOf(todayISO()), WEEKOFF*7);
+        for(var i=0;i<7;i++){
+          var d=addDays(start,i);
+          var hasData = DB.sessions.some(function(s){return s.done&&s.date===d;})
+                     || DB.activities.some(function(a){return a.date===d;});
+          var cell=document.querySelector('#view .wk-d[data-day="'+d+'"]');
+          if(!hasData && cell && /Sport|Legs|Upper|Core|Run|Bike|Mob|Prep|Str/.test(cell.textContent)) return false;
+        }
+        return true;
+     })(), 'an empty day must render empty');
+  WEEKOFF=0; SELDAY=null; render();
+  ok('returning to the current week says so', /This week/.test(document.querySelector('.wk-l').textContent),
+     document.querySelector('.wk-l').textContent);
 
   // --- leaving Today resets it ---
   WEEKOFF=-3;
