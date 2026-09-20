@@ -375,7 +375,12 @@ DB.targets.lower=2; DB.sessions=[];
 DB.targets.upper=3;
 var rb=rec(D1,GOOD);
 var up2=rb.scored.find(function(x){return x.c.id==='upper';});
-ok('behind on target is surfaced', up2.notes.some(function(n){return /behind on upper/i.test(n.t||'');}),
+/* The shortfall is still stated - it is what justifies the score - but as a
+   count rather than a verdict. "You are behind" told a user who had done
+   nothing wrong that they had failed a quota the app set for them. */
+ok('an unmet target is surfaced as a count', up2.notes.some(function(n){return /0 of 3 upper body strength so far this week/i.test(n.t||'');}),
+   JSON.stringify(up2.notes.map(function(n){return n.t;})));
+ok('and not as an accusation', !up2.notes.some(function(n){return /behind/i.test(n.t||'');}),
    JSON.stringify(up2.notes.map(function(n){return n.t;})));
 DB.targets.upper=2;
 
@@ -2950,7 +2955,7 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   ok('and every system reads as not-found', H.since.lower===99 && H.since.upper===99);
   ok('the wording does not invent a fortnight',
      sinceSpan(99,0).indexOf('two weeks')<0, sinceSpan(99,0));
-  ok('it says this is the first day', /first day/.test(sinceSpan(99,0)), sinceSpan(99,0));
+  ok('it claims no duration at all', sinceSpan(99,0)==='yet', sinceSpan(99,0));
 
   DB.checkins[T]={date:T,energy:7,soreness:3,stress:3,motivation:8,sleepMin:450,pain:'None'};
   var r=readiness(T,DB.checkins[T]);
@@ -2967,7 +2972,7 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   H=systemHistory(T);
   ok('four days of history is reported as four', H.spanDays===4, H.spanDays);
   ok('the wording scopes itself to what it has seen',
-     /4 days you have logged/.test(sinceSpan(99,4)), sinceSpan(99,4));
+     /4 days Baseline has been tracking/.test(sinceSpan(99,4)), sinceSpan(99,4));
   ok('and still does not say two weeks',
      sinceSpan(99,4).indexOf('two weeks')<0, sinceSpan(99,4));
 
@@ -3921,6 +3926,413 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
 })();
 
 
+// ---------- THE HOME SCREEN MUST DESCRIBE TODAY ----------
+// Four ways it asserted something it did not know, or ignored something it did.
+(function(){
+  var keepSe=JSON.parse(JSON.stringify(DB.sessions)),
+      keepAc=JSON.parse(JSON.stringify(DB.activities)),
+      keepCi=JSON.parse(JSON.stringify(DB.checkins)),
+      keepWh=DB.whoop,
+      keepBl=JSON.parse(JSON.stringify(DB.baselines)),
+      keepPr=JSON.parse(JSON.stringify(DB.profile));
+  var T=todayISO();
+
+  // 1 · A PHYSIOLOGICAL IMPORT IS NOT A TRAINING HISTORY.
+  // Three days of use plus a WHOOP export reaching back six months. The span
+  // was read off the export, so the app announced a fortnight of idle legs to
+  // a profile it had known for three days.
+  DB.sessions=[]; DB.activities=[];
+  DB.checkins={};
+  DB.checkins[T]={sleepMin:430,energy:7,soreness:2,stress:4,motivation:7};
+  DB.checkins[addDays(T,-1)]={sleepMin:420,energy:6,soreness:2};
+  DB.checkins[addDays(T,-2)]={sleepMin:440,energy:7,soreness:3};
+  var cyc=[];
+  for(var i=179;i>=0;i--) cyc.push({date:addDays(T,-i),recovery:60,hrv:76,rhr:52,strain:8,sleepMin:430});
+  DB.whoop={cycles:cyc,workouts:[],journal:[],imports:[]};
+  var H3=systemHistory(T);
+  var cov3=dataCoverage(T);
+  /* Three days of check-ins and six months of imported cycles. The window that
+     qualifies a body-system claim is the first of those, not the second. */
+  ok('coverage sees the import', cov3.hasImport && cov3.importDays>=179, cov3.importDays);
+  ok('but the self window is what Baseline itself watched', cov3.selfDays<=3, cov3.selfDays);
+  ok('span follows the self window, not the import', H3.spanDays===cov3.selfDays && H3.spanDays<=3,
+     H3.spanDays+' vs import '+cov3.importDays);
+  ok('three days is still "learning"', cov3.level==='learning', cov3.level);
+  var why3=recommend(T,DB.checkins[T]).why.map(function(n){return n.t;}).join(' ');
+  ok('a three-day-old profile is not told its legs idled for a fortnight',
+     !/over two weeks/.test(why3), why3.slice(0,170));
+  // and once there IS training logged, the span is that training's span
+  DB.activities=[{id:'a_h1',date:addDays(T,-2),type:'swimming',min:40,strain:7}];
+  ok('span counts every day Baseline was in a position to see',
+     systemHistory(T).spanDays===2, systemHistory(T).spanDays);
+  ok('the prose names the span it actually has',
+     /in the 2 days Baseline has been tracking/.test(sinceSpan(99,2)), sinceSpan(99,2));
+  ok('a real fortnight still reads as a fortnight', /over two weeks/.test(sinceSpan(99,30)), sinceSpan(99,30));
+  ok('no logged training claims no duration at all', sinceSpan(99,0)==='yet', sinceSpan(99,0));
+
+  // 2 · THE WEEK HEADING MUST NOT CONTRADICT THE WEEK STRIP.
+  WEEKOFF=0; SELDAY=null; resetStack(); TAB='today'; render();
+  var headsOf=function(){
+    return Array.prototype.slice.call(document.querySelectorAll('#view .sec-t'))
+             .map(function(e){return e.textContent.trim();}); };
+  ok('the week section is not titled with a week that can change',
+     headsOf().indexOf('This week')<0, headsOf().join(' | '));
+  ok('the week section is still labelled', headsOf().indexOf('Training this week')>=0, headsOf().join(' | '));
+  var lbl=document.querySelector('#view .wk-l');
+  ok('the strip is what names the week', lbl && /This week/.test(lbl.textContent),
+     lbl?lbl.textContent:'(no strip)');
+  var prev=document.getElementById('wkPrev');
+  ok('the strip can step backwards', !!prev);
+  if(prev){
+    prev.click();
+    var lbl2=document.querySelector('#view .wk-l');
+    ok('stepping back relabels the strip', lbl2 && /Last week/.test(lbl2.textContent),
+       lbl2?lbl2.textContent:'(no strip)');
+    ok('and no heading now disagrees with it',
+       headsOf().indexOf('This week')<0, headsOf().join(' | '));
+  }
+  WEEKOFF=0; SELDAY=null;
+
+  // 3 · THE SLEEP RING ANSWERS A SLEEP QUESTION.
+  DB.baselines.sleepNeed=480; DB.baselines.sleepNeedGeneric=false;
+  DB.checkins[T]={sleepMin:390,sleepNeed:480,energy:7,soreness:2,stress:4,motivation:7,
+                  recovery:60,hrv:76,rhr:52,prevStrain:8};
+  var sp=sleepPlan(T);
+  ok('the sleep plan knows the target', sp.need===480, sp.need);
+  ok('and the shortfall against it', sp.shortfall===90, sp.shortfall);
+  ok('the readiness sleep curve is invertible',
+     Math.abs(sleepScoreFor(sleepMinsForScore(60,480),480)-60)<0.6,
+     sleepScoreFor(sleepMinsForScore(60,480),480));
+  ok('meeting the need is the top of the range', sleepMinsForScore(95,480)===480, sleepMinsForScore(95,480));
+  ok('it says how long tonight has to be', sp.better && sp.better.mins>sp.slept,
+     sp.better?sp.better.mins:'(none)');
+  ok('and what that is worth in readiness points', sp.better && sp.better.gain>0,
+     sp.better?sp.better.gain:null);
+  ok('points are scaled by the signals that actually reported today',
+     sp.perPt>0 && sp.perPt<1, sp.perPt);
+  ok('a night that met the target promises nothing further',
+     (function(){ DB.checkins[T].sleepMin=500; var s2=sleepPlan(T);
+                  DB.checkins[T].sleepMin=390;
+                  return s2.better===null && s2.shortfall<=0; })());
+  ok('sleep never claims more than its own weight', sp.weight===18 && sp.maxGain<18,
+     sp.weight+'/'+sp.maxGain);
+  resetStack(); TAB='today'; render();
+  var sr=document.getElementById('ringSleep');
+  ok('the sleep ring is tappable', !!sr);
+  if(sr){
+    sr.click();
+    var stxt=document.getElementById('view').textContent;
+    ok('tapping it opens the sleep page, not the check-in form',
+       /Tonight/.test(stxt) && /What each night is worth/.test(stxt), stxt.slice(0,130));
+    ok('the page states the need it is measuring against', /8h 00m/.test(stxt), stxt.slice(0,220));
+    ok('the page is honest that sleep is one input of several',
+       /resting heart rate/.test(stxt), stxt.slice(0,260));
+    popPage(); render();
+  }
+
+  // 4 · SOMETHING DONE THIS MORNING CHANGES THIS EVENING'S PLAN.
+  // Deliberately NOT the main sport: a basketball game loads legs whether or
+  // not basketball is what you train for, and the old code only ever noticed
+  // the main sport, as a yes/no flag.
+  DB.profile.sports=['tennis']; DB.profile.sport='tennis';
+  DB.sessions=[]; DB.activities=[]; DB.whoop={cycles:[],workouts:[],journal:[],imports:[]};
+  DB.checkins={};
+  DB.checkins[T]={sleepMin:470,sleepNeed:480,energy:8,soreness:1,stress:3,motivation:8,
+                  recovery:78,hrv:88,rhr:50,prevStrain:6};
+  ok('the test activity is not the main sport', isMainSportAct('basketball')===false);
+  var before=recommend(T,DB.checkins[T]);
+  ok('nothing logged means no load in today yet', dayDemand(T).load===0, dayDemand(T).load);
+  ok('a fresh green day does prescribe real work',
+     ['lower','power','upper'].indexOf(before.id)>=0, before.id+'/'+before.variant);
+  DB.activities=[{id:'a_bb',date:T,type:'basketball',min:110,strain:15,time:'11:00'}];
+  var after=recommend(T,DB.checkins[T]);
+  ok('a game logged this morning registers as load today', dayDemand(T).load>=10, dayDemand(T).load);
+  ok('legs logged today are seen as loaded today', dayDemand(T).lower>=6, dayDemand(T).lower);
+  ok('the plan actually responds to it',
+     after.id!==before.id || after.variant!==before.variant,
+     before.id+'/'+before.variant+' -> '+after.id+'/'+after.variant);
+  ok('a leg session is not stacked on top of a hard game',
+     after.id!=='lower' && after.id!=='power', after.id);
+  var whyA=after.why.map(function(n){return n.t;}).join(' ');
+  ok('and it says why, naming today', /today/.test(whyA), whyA.slice(0,200));
+  ok('it no longer claims fresh legs after a game',
+     !/have not taken real load/.test(whyA), whyA.slice(0,200));
+  // a gentle activity must NOT derail a good day - the response is proportional
+  DB.activities=[{id:'a_w',date:T,type:'walking',min:25,strain:2,time:'09:00'}];
+  var mild=recommend(T,DB.checkins[T]);
+  ok('a short walk does not derail the day', mild.id===before.id, mild.id+' vs '+before.id);
+  ok('a short walk does not cut the volume', mild.variant===before.variant,
+     mild.variant+' vs '+before.variant);
+
+  DB.sessions=keepSe; DB.activities=keepAc; DB.checkins=keepCi; DB.whoop=keepWh;
+  DB.baselines=keepBl; DB.profile=keepPr;
+  WEEKOFF=0; SELDAY=null; resetStack(); TAB='today';
+})();
+
+
+// ---------- BASELINE MUST NOT CLAIM WHAT IT NEVER OBSERVED ----------
+// The engine may score an unseen system as due - "never observed" and "not
+// trained recently" lead to the same decision. What it may not do is DESCRIBE
+// the second when it only has grounds for the first.
+(function(){
+  var kSe=JSON.parse(JSON.stringify(DB.sessions)), kAc=JSON.parse(JSON.stringify(DB.activities)),
+      kCi=JSON.parse(JSON.stringify(DB.checkins)), kMe=JSON.parse(JSON.stringify(DB.meta)),
+      kPr=JSON.parse(JSON.stringify(DB.profile)), kWh=DB.whoop,
+      kBl=JSON.parse(JSON.stringify(DB.baselines)), kTg=JSON.parse(JSON.stringify(DB.targets));
+  var T=todayISO();
+  var FEEL={sleepMin:450,energy:7,soreness:2,stress:3,motivation:7,pain:'None'};
+  var reset=function(installedDaysAgo){
+    DB.sessions=[]; DB.activities=[]; DB.checkins={};
+    DB.whoop={cycles:[],workouts:[],journal:[],imports:[]};
+    DB.meta.created=addDays(T,-installedDaysAgo)+'T08:00:00.000Z';
+  };
+  var whyOf=function(){
+    var r=recommend(T,DB.checkins[T]);
+    return r.why.map(function(n){return n.t;})
+      .concat((r.ruledOut||[]).map(function(x){return x.why;})).join('  ');
+  };
+
+  // === A · a brand-new profile knows nothing, and says so ===
+  reset(0);
+  var c0=dataCoverage(T);
+  ok('a new profile has observed nothing', c0.selfDays===0 && !c0.hasImport, c0.selfDays);
+  ok('and reports itself as still learning', c0.level==='learning', c0.level);
+  ok('no absence is describable on day zero',
+     absenceNote('core work',99,c0.selfDays)===null, absenceNote('core work',99,c0.selfDays));
+  DB.checkins[T]=Object.assign({},FEEL);
+  var w0=whyOf();
+  ok('a new profile is never told it has not trained core',
+     !/has not been trained/i.test(w0) && !/core work in over two weeks/i.test(w0), w0.slice(0,240));
+  ok('and is never told it is behind', !/behind/i.test(w0), w0.slice(0,240));
+  ok('and is never told a system idled for several days',
+     !/in several days/i.test(w0), w0.slice(0,240));
+  ok('but it does say plainly that it is still learning',
+     /still learning|first day|not yet enough|does not have enough history/i.test(w0), w0.slice(0,240));
+  ok('and it still produces a recommendation', !!recommend(T,DB.checkins[T]).id);
+
+  // === B · four days in: describable, but scoped to four days ===
+  reset(4);
+  DB.checkins[addDays(T,-3)]={sleepMin:440,energy:7};
+  DB.checkins[T]=Object.assign({},FEEL);
+  var c4=dataCoverage(T);
+  ok('four days in, the window is four days', c4.selfDays===4, c4.selfDays);
+  ok('an absence becomes describable, scoped to what was watched',
+     /4 days Baseline has been tracking/.test(absenceNote('core work',99,4)||''),
+     absenceNote('core work',99,4));
+  ok('and still refuses to claim a fortnight',
+     (absenceNote('core work',99,4)||'').indexOf('two weeks')<0, absenceNote('core work',99,4));
+  ok('the wording is "logged", not "trained"',
+     /logged/.test(absenceNote('core work',99,4)||'') && !/trained/.test(absenceNote('core work',99,4)||''),
+     absenceNote('core work',99,4));
+
+  // === C · a month in, plain language is earned ===
+  reset(30);
+  DB.checkins[T]=Object.assign({},FEEL);
+  ok('a month in, coverage reads as established', dataCoverage(T).level==='established', dataCoverage(T).level);
+  ok('and a real fortnight is finally stated plainly',
+     absenceNote('core work',99,30)==='No core work in over two weeks.', absenceNote('core work',99,30));
+
+  // === D · a gap that was actually seen needs no hedging ===
+  // since!==99 means a load WAS found on that day, which is itself proof the
+  // window reaches back that far.
+  ok('an observed gap is stated as days', absenceNote('core work',5,5)==='No core work for 5 days.',
+     absenceNote('core work',5,5));
+  ok('and does not depend on the coverage window', absenceNote('core work',5,0)==='No core work for 5 days.',
+     absenceNote('core work',5,0));
+
+  // === E · an import extends physiology, never body-system claims ===
+  reset(2);
+  var cyc=[];
+  for(var i=200;i>=0;i--) cyc.push({date:addDays(T,-i),recovery:62,hrv:80,rhr:52,strain:9,sleepMin:440});
+  DB.whoop={cycles:cyc,workouts:[{date:addDays(T,-40),activity:'Weightlifting',strain:11}],journal:[],imports:[]};
+  DB.checkins[T]=Object.assign({},FEEL);
+  var cI=dataCoverage(T);
+  ok('the import is visible as an import', cI.hasImport && cI.importDays>=200, cI.importDays);
+  ok('the combined window includes it', cI.days>=200, cI.days);
+  ok('the self window does not', cI.selfDays<=2, cI.selfDays);
+  ok('so six months of cycles cannot manufacture a fortnight claim',
+     whyOf().indexOf('two weeks')<0, whyOf().slice(0,240));
+  ok('and the import is still usable for physiology',
+     dataCoverage(T).importStart===addDays(T,-200), dataCoverage(T).importStart);
+
+  // === F · weekly targets need the week observed before they judge it ===
+  DB.targets=Object.assign({},DB.targets,{core:4});
+  var coreNotes=function(){
+    var r=recommend(T,DB.checkins[T]);
+    var c=(r.scored||[]).filter(function(x){return x.c.id==='core';})[0];
+    return c ? c.notes.map(function(n){return n.t;}).filter(Boolean).join('  ') : '';
+  };
+  reset(1);
+  DB.checkins[T]=Object.assign({},FEEL);
+  var n1=coreNotes();
+  ok('a one-day-old profile makes no weekly claim at all',
+     n1.indexOf('so far this week')<0 && !/behind/i.test(n1), n1.slice(0,200));
+  reset(40);
+  DB.checkins[T]=Object.assign({},FEEL);
+  var n40=coreNotes();
+  ok('with the week observed, the shortfall is stated as a count',
+     /0 of 4 .* so far this week/.test(n40), n40.slice(0,200));
+  ok('and never as an accusation', !/behind/i.test(n40), n40.slice(0,200));
+  var scoreAt=function(days){
+    reset(days); DB.checkins[T]=Object.assign({},FEEL);
+    var r=recommend(T,DB.checkins[T]);
+    var c=(r.scored||[]).filter(function(x){return x.c.id==='core';})[0];
+    return c?c.score:null;
+  };
+  var s1=scoreAt(1), s40=scoreAt(40);
+  ok('coverage changes the words, not the decision', s1!=null && s40!=null && Math.abs(s1-s40)<0.5,
+     s1+' vs '+s40);
+  DB.targets=JSON.parse(JSON.stringify(kTg));
+
+  // === G · missing inputs are omitted, never invented ===
+  reset(30);
+  DB.checkins[T]={energy:7,soreness:2,stress:3,motivation:7,pain:'None'};   // no sleep, no HRV, no recovery
+  var wM=whyOf();
+  ok('no recovery figure is quoted when none exists', !/recovery <b>/.test(wM) && !/recovery [0-9]/.test(wM), wM.slice(0,240));
+  ok('no HRV figure is quoted when none exists', wM.indexOf('HRV')<0, wM.slice(0,240));
+  ok('no sleep figure is quoted when none exists', !/sleep <b>/.test(wM), wM.slice(0,240));
+  ok('what WAS reported is still used', /energy/i.test(wM) || /soreness/i.test(wM), wM.slice(0,240));
+  ok('and it still recommends something', !!recommend(T,DB.checkins[T]).id);
+
+  // === H · tennis: planned is not the same as played ===
+  reset(14);
+  DB.profile.sports=['tennis']; DB.profile.sport='tennis';
+  DB.checkins[T]=Object.assign({sportToday:true},FEEL);
+  var planned=recommend(T,DB.checkins[T]);
+  ok('a match still ahead offers pre-sport prep', planned.prep==='w_prep', planned.prep);
+  ok('and is flagged as ahead, not done', planned.sportAhead===true && planned.sportDone===false);
+  DB.activities=[{id:'a_ten',date:T,type:'tennis',min:114,strain:16.5,time:'11:00'}];
+  var played=recommend(T,DB.checkins[T]);
+  ok('a match already played cancels pre-sport prep', played.prep===null, String(played.prep));
+  ok('and is flagged as done', played.sportDone===true && played.sportAhead===false);
+  var wT=played.why.map(function(n){return n.t;})
+          .concat((played.ruledOut||[]).map(function(x){return x.why;})).join('  ');
+  ok('nothing still speaks as though the match were upcoming',
+     !/you are doing tennis today/i.test(wT), wT.slice(0,260));
+  ok('the past tense is used instead', /you played tennis today/i.test(wT),
+     JSON.stringify(played.ruledOut));
+  /* the exclusions must be about today, not about a yesterday that no longer
+     describes the day */
+  var outTxt=(played.ruledOut||[]).map(function(x){return x.why;}).join('  ');
+  ok('"Not today" leads with what was actually ruled out',
+     (played.ruledOut||[])[0] && played.ruledOut[0].hard===true, JSON.stringify(played.ruledOut[0]));
+  ok('nothing calls the legs fresh after a match',
+     outTxt.indexOf('fresh legs')<0, outTxt.slice(0,200));
+  ok('nothing claims the recent days held nothing hard',
+     outTxt.indexOf('Nothing hard in recent days')<0, outTxt.slice(0,200));
+  ok('the match load reaches the decision', dayDemand(T).lower>=6, dayDemand(T).lower);
+  ok('and legs are not prescribed on top of it', played.id!=='lower' && played.id!=='power', played.id);
+  // a non-sport activity must not switch the prep row on
+  DB.activities=[{id:'a_wk',date:T,type:'walking',min:30,strain:2}];
+  ok('an unrelated activity does not resurrect pre-sport prep',
+     recommend(T,DB.checkins[T]).prep==='w_prep', 'sportToday is still set, so prep is still correct');
+  DB.checkins[T]=Object.assign({},FEEL);
+  ok('and with no match planned or played there is no prep at all',
+     recommend(T,DB.checkins[T]).prep===null, String(recommend(T,DB.checkins[T]).prep));
+
+  // === I · a warm-up must not rehearse the session it warms up for ===
+  var norm=function(s){ return String(s||'').toLowerCase().replace(/[^a-z]/g,''); };
+  var core=DB.workouts.filter(function(w){return w.id==='w_core';})[0];
+  var blocks=sessionBlocks({workoutId:'w_core',variant:'full',date:T});
+  var mains=blocks.map(function(b){ return (exOf(b.ex)||{}).name; }).filter(Boolean);
+  var raw=warmupFor(core), cut=warmupMinus(raw,mains);
+  var overlap=function(wu){ return wu.items.filter(function(it){
+      return mains.some(function(m){ return norm(m)===norm(it.n); }); }).map(function(i){return i.n;}); };
+  ok('the authored core warm-up really does overlap its own block',
+     overlap(raw).length>0, overlap(raw).join(', '));
+  ok('and the overlap is gone by the time it is shown',
+     overlap(cut).length===0, overlap(cut).join(', '));
+  ok('the warm-up is never emptied entirely', cut.items.length>=1, cut.items.length);
+  ok('filtering the warm-up does not touch the main list',
+     sessionBlocks({workoutId:'w_core',variant:'full',date:T})
+       .map(function(b){return b.ex;}).join(',')===blocks.map(function(b){return b.ex;}).join(','));
+  ok('a warm-up with no overlap is returned unchanged',
+     warmupMinus(WARMUPS.upper,['Pallof Press'])===WARMUPS.upper);
+
+  // === J · the workout runner separates the phases ===
+  startWorkout('w_core','full',T,null);
+  ok('a session opens on the warm-up phase', W && W.step===-1, W?W.step:'(no W)');
+  ok('entries are the MAIN exercises only', W.entries.length===blocks.length, W.entries.length+' vs '+blocks.length);
+  var wuTxt=document.getElementById('wmBody').textContent;
+  ok('the warm-up screen names no main exercise',
+     !W.entries.some(function(e){ return wuTxt.indexOf(e.name)>=0 && norm(e.name)!==''
+        && raw.items.some(function(it){ return norm(it.n)===norm(e.name); }); }),
+     wuTxt.slice(0,200));
+  ok('it shows what comes next', wuTxt.indexOf('Up next')>=0, wuTxt.slice(0,200));
+  ok('and names the first MAIN exercise there',
+     wuTxt.indexOf(W.entries[0].name)>=0, W.entries[0].name);
+  var foot=document.getElementById('wmFoot').textContent;
+  ok('the button says what it does, not which index it is',
+     /Start workout/.test(foot) && !/Start 1/.test(foot), foot.slice(0,80));
+  ok('skipping the warm-up is offered explicitly', /Skip the warm-up/.test(foot), foot.slice(0,80));
+  document.getElementById('wmGo').click();
+  ok('starting moves to the first main exercise', W.step===0, W.step);
+  ok('and that exercise is the one Up next promised',
+     document.getElementById('wmBody').textContent.indexOf(W.entries[0].name)>=0, W.entries[0].name);
+  W.step=-1; drawWM();
+  document.getElementById('wmSkipWu').click();
+  ok('skipping lands in exactly the same place', W.step===0, W.step);
+  exitWM(true); closeSheet(); W=null;
+
+  // === K · activity warm-ups are activity-specific, and optional ===
+  ok('a sport with a profile offers one', !!activityWarmup('tennis'));
+  ok('a different sport gets a different one',
+     activityWarmup('running').items.map(function(i){return i.n;}).join(',')
+       !== activityWarmup('tennis').items.map(function(i){return i.n;}).join(','));
+  ok('an activity with no profile is offered none', activityWarmup('walking')===null);
+  ok('and neither is "other"', activityWarmup('other')===null);
+  ok('nor yoga', activityWarmup('yoga')===null);
+  preStartSheet('tennis');
+  var f1=document.getElementById('sheetFoot').textContent;
+  ok('starting an activity asks about the warm-up first',
+     /Start with warm-up/.test(f1) && /Start right away/.test(f1), f1.slice(0,90));
+  document.getElementById('psWu').click();
+  var b1=document.getElementById('sheetBody').textContent;
+  ok('the warm-up screen leads to the activity, not an exercise',
+     b1.indexOf('Up next')>=0 && b1.indexOf('Tennis')>=0, b1.slice(0,140));
+  ok('and says the clock has not started', /clock starts when you begin/i.test(b1), b1.slice(0,200));
+  ok('the activity is what starts from there',
+     /Start Tennis/.test(document.getElementById('sheetFoot').textContent),
+     document.getElementById('sheetFoot').textContent.slice(0,80));
+  closeSheet();
+  preStartSheet('walking');
+  var f2=document.getElementById('sheetFoot').textContent;
+  ok('an activity with no warm-up just starts',
+     /Start activity/.test(f2) && !/Start with warm-up/.test(f2), f2.slice(0,90));
+  closeSheet();
+  // the warm-up cannot be counted as activity time: nothing is recorded until
+  // startLiveActivity runs, which the warm-up screen never calls
+  ok('no activity is created by viewing a warm-up',
+     DB.activities.filter(function(a){return a.date===T&&a.type==='tennis';}).length===0,
+     DB.activities.length);
+
+  // === L · logging something shows the plan it produced, not a stale one ===
+  reset(14);
+  DB.profile.sports=['tennis']; DB.profile.sport='tennis';
+  DB.checkins[T]=Object.assign({},FEEL);
+  var logged={id:'a_done',date:T,type:'tennis',min:114,strain:16.5,intensity:'Hard'};
+  DB.activities=[logged];
+  activityLoggedSheet(logged);
+  var conf=document.getElementById('sheetBody').textContent;
+  ok('the confirmation names what was logged', /Tennis logged/.test(conf), conf.slice(0,120));
+  ok('and its actual figures', /1h 54m/.test(conf) && /16.5/.test(conf), conf.slice(0,140));
+  ok('and says the plan moved', /plan has been updated/i.test(conf), conf.slice(0,160));
+  ok('the next session shown is the recalculated one',
+     conf.indexOf(recommend(T,DB.checkins[T]).label)>=0,
+     conf.slice(0,200)+' :: expected '+recommend(T,DB.checkins[T]).label);
+  ok('and it is not the pre-match plan',
+     (function(){ DB.activities=[]; var before=recommend(T,DB.checkins[T]);
+                  DB.activities=[logged]; var after=recommend(T,DB.checkins[T]);
+                  return before.id!==after.id || before.variant!==after.variant; })(),
+     'logging a match must change something');
+  closeSheet();
+
+  DB.sessions=kSe; DB.activities=kAc; DB.checkins=kCi; DB.meta=kMe;
+  DB.profile=kPr; DB.whoop=kWh; DB.baselines=kBl; DB.targets=kTg;
+  resetStack(); TAB='today';
+})();
+
+
 // ---------- WEARABLES: WHOOP IS ONE OPTION, NOT THE MODEL ----------
 (function(){
   var keep=JSON.parse(JSON.stringify(DB.profile)), keepW=DB.whoop, keepC=DB.checkins;
@@ -4385,7 +4797,8 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
 
 // ---------- BUILD IDENTITY AND BUG REPORTS ----------
 (function(){
-  ok('the app has a build stamp', typeof APP_BUILD==='string' && /^\\d{4}-\\d{2}-\\d{2}$/.test(APP_BUILD), APP_BUILD);
+  // date, with an optional letter for a second build on the same day
+  ok('the app has a build stamp', typeof APP_BUILD==='string' && /^[0-9]{4}-[0-9]{2}-[0-9]{2}[a-z]?$/.test(APP_BUILD), APP_BUILD);
 
   var d=diagnostics();
   ok('diagnostics names the build', d.indexOf(APP_BUILD)>=0, d.slice(0,60));
@@ -4557,7 +4970,7 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   var start = posOf('id="btnStart"');
   var why   = posOf('id="whyT"');
   var swap  = posOf('id="btnSwap"');
-  var week  = posOf('This week</div>');
+  var week  = posOf('Training this week</div>');
   var log   = posOf('id="actsCard"');
 
   [['readiness row',rdrow],['recommendation',rec],['start button',start],
@@ -5568,12 +5981,22 @@ ok('a stopped timer stays stopped', !restActive());
 
   var at=function(week){
     // put the plan start far enough back that `week` is the current one, and
-    // give every week a logged session so trainedWeeks does not hold it back
+    // give every week a logged session so trainedWeeks does not hold it back.
+    //
+    // The session dates are aligned to ISO weeks (Monday), NOT to planStart+7w.
+    // trainedWeeks() walks Monday-to-Sunday buckets, so seeding at planStart+1
+    // put that session in the wrong bucket whenever planStart fell on a Sunday
+    // - the first week's bucket came up empty, the phase stalled at 1, and
+    // seven progression assertions failed. Only on Sundays, which is why it
+    // survived this long.
     var start=addDays(todayISO(), -(week-1)*7);
     DB.profile.planStart=start;
     DB.sessions=[];
+    var wk0=weekStartOf(start);
     for(var w=0; w<week; w++){
-      DB.sessions.push({id:'ph'+w, date:addDays(start, w*7+1), done:true,
+      var d=addDays(wk0, w*7+1);
+      if(d>todayISO()) d=todayISO();          // never log in the future
+      DB.sessions.push({id:'ph'+w, date:d, done:true,
         workoutId:'w_lowerA', workoutName:'Lower A', variant:'full', entries:[]});
     }
     return currentPhase();
@@ -6197,12 +6620,35 @@ ok('a stopped timer stays stopped', !restActive());
      document.getElementById('ciEn').value);
   closeSheet();
 
-  /* and the sleep score is a way into it */
+  /* The sleep score now opens the sleep page rather than the check-in: it is a
+     sleep number, and what people want from it is the target and what tonight
+     is worth. Editing is still reachable from there. */
+  /* Built directly as well as through the ring: an exception thrown inside a
+     click handler never reaches the caller, so a broken page would otherwise
+     show up only as a mysteriously empty view. */
   resetStack(); TAB='today'; render();
-  document.getElementById('ringSleep').click();
-  ok('the sleep score opens the read view, not the form',
-     !!document.getElementById('ciEdit') && !document.getElementById('ciEn'));
-  closeSheet();
+  var slErr=null;
+  try{ pushPage({build:pageSleep(T)}); }catch(e){ slErr=(e&&e.message)||String(e); }
+  ok('the sleep page renders without error', slErr===null, slErr);
+  /* Asserted on what the page SAYS, not on the absence of a #ciEn node: the
+     check-in sheet closed just above leaves its markup parked in the DOM, so
+     "no check-in form exists" is a question about sheet teardown rather than
+     about where the sleep ring goes. */
+  ok('the sleep score opens the sleep page, not the check-in form',
+     !!document.getElementById('slEdit')
+       && /What each night is worth/.test(document.getElementById('view').textContent),
+     document.getElementById('view').textContent.slice(0,140));
+  ok('and the check-in is still one tap from there',
+     (function(){ var b=document.getElementById('slEdit'); if(!b) return false;
+                  b.click();
+                  var open=!!document.getElementById('ciEn');
+                  if(open) closeSheet();
+                  return open; })());
+  resetStack(); TAB='today'; render();
+  ok('and the sleep ring is what opens it',
+     (function(){ document.getElementById('ringSleep').click();
+                  return STACK.length===1; })(), STACK.length);
+  resetStack(); render();
 
   DB.checkins=keepC; resetStack(); render();
 })();

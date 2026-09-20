@@ -13,9 +13,20 @@ $app = Join-Path $BUILD "baseline.html"
 Copy-Item $app (Join-Path $HT "baseline.html") -Force
 "built $([math]::Round((Get-Item $app).Length/1KB,1)) KB"
 
+# Out-Null hid the one failure that matters most here. When build_test.py dies
+# it does not rewrite test.html, the browser is served the PREVIOUS run's file,
+# and the suite reports a confident pass for code it never loaded - which has
+# happened more than once in this project, most recently on an escape sequence
+# Python rejects ("\d" in a non-raw string). Stop instead of lying.
 Push-Location $PSScriptRoot
 python -W error::SyntaxWarning build_test.py | Out-Null
+$built = $?
 Pop-Location
+if (-not $built) {
+  "BUILD FAILED - build_test.py did not write test.html. Re-run it directly to see the error:"
+  "  python -W error::SyntaxWarning tools\build_test.py"
+  exit 1
+}
 Copy-Item (Join-Path $HT "test.html") (Join-Path $HT "test.html") -Force -ErrorAction SilentlyContinue
 
 $edge="C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
