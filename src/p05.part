@@ -852,8 +852,12 @@ function pageSleep(d){
       ${sp.tiers.map(t=>`<div class="kv"><span class="k">${esc(t.label)}</span>
         <span class="v num">${fmtMin(t.mins)}${t.pts!=null?` <small>${t.pts} pts</small>`:''}</span></div>`).join('')}
     </div>
-    <div class="hint">Sleep is ${sp.weight} of ~${sp.totalWeight? Math.round(sp.totalWeight) : 100} readiness
-      points. HRV, resting heart rate and yesterday's strain make up the rest.</div>
+    ${''/* A share, not a pair of raw weights. "18 of ~60" is arithmetically
+           right - sleep is 18 of whatever weight actually reported today - but
+           it reads as a puzzle, and the denominator moves with which signals
+           came in. The percentage is the same fact, already solved. */}
+    <div class="hint">Sleep is ${sp.perPt!=null?Math.round(sp.perPt*100)+'%':'about a fifth'} of today's
+      readiness. HRV, resting heart rate and yesterday's strain make up the rest.</div>
 
     <button class="btn ghost block" id="slEdit">${ci?'Edit check-in':'Check in'}</button>`;
     const e=$('#slEdit'); if(e) e.onclick=()=>openCheckin(d);
