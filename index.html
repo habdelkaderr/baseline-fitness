@@ -822,19 +822,9 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .wnow.fin .wnow-t{color:var(--text)}
 .wnow.fin p{font-size:13.5px;color:var(--text-2);line-height:1.55;margin:0 0 12px}
 
-/* what you have already logged: one strip of chips, tap to undo */
-.wdone{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:var(--sp-2)}
-.wdone .wd-l{font-size:9.5px;font-weight:800;letter-spacing:.5px;
-  text-transform:uppercase;color:var(--text-3)}
-.wdone .wd-h{font-size:11px;font-weight:600;color:var(--text-3)}
-.wdone button{
-  display:inline-flex;align-items:center;gap:6px;min-height:36px;
-  padding:6px 12px;border-radius:999px;font-family:inherit;cursor:pointer;
-  background:var(--accent-wash);border:1px solid var(--accent-line);color:var(--text);
-  font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;
-}
-.wdone button i{font-style:normal;font-weight:850;color:var(--accent)}
-.wdone button:active{background:var(--surface-3)}
+/* The strip of logged-set chips that used to sit under the card is gone: you
+   do not need to read back your own database while training, and undo belongs
+   in More with the other exceptions. Its styles went with it. */
 
 /* ---------- Rest, inside the set that started it ----------
    It used to be a bar fixed to the bottom of the screen, far enough from the
@@ -1160,6 +1150,34 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 /* the plan, said in words rather than in coach notation */
 .wm-plain{font-size:12.5px;color:var(--text-2);font-weight:600;
   margin-top:7px;line-height:1.5}
+
+/* ---------- The active set: one state of one exercise screen ----------
+   Not a card per set, and no list of what has already been logged. During a
+   workout the phone is glanced at with sweaty hands from a metre away, so the
+   screen carries the exercise, the set it is on, and one button. */
+.wset{margin:16px 0 14px;text-align:center}
+.wset .ws-l{font-size:11.5px;font-weight:750;letter-spacing:.6px;
+  text-transform:uppercase;color:var(--text-3)}
+.wset .ws-v{display:block;width:100%;margin-top:6px;padding:4px 0;background:none;
+  border:0;font-family:inherit;color:var(--text);cursor:pointer;
+  font-size:44px;font-weight:850;letter-spacing:-1.6px;line-height:1.05}
+.wset .ws-v:active{opacity:.6}
+.wset .ws-kg{font-size:22px;font-weight:800;color:var(--text-3);letter-spacing:-.6px}
+/* the number to beat. One muted line, because it is a reference and not a
+   control - but it stays, because standing in front of the bar is exactly when
+   you want it. */
+.wset .ws-last{font-size:12px;font-weight:600;color:var(--text-3);margin-top:7px}
+/* Rest: a number big enough to read across a room, and one way out. */
+.wrestx{margin:18px 0 14px;text-align:center}
+.wrestx .wrx-n{font-size:52px;font-weight:850;letter-spacing:-2px;line-height:1;
+  color:var(--accent)}
+.wrestx .wrx-b{height:5px;border-radius:3px;background:var(--surface-3);
+  margin:13px auto 0;max-width:260px;overflow:hidden}
+.wrestx .wrx-b i{display:block;height:100%;background:var(--accent);
+  transition:width .25s linear}
+.wrestx .wrx-t{font-size:19px;font-weight:800;margin-top:13px;letter-spacing:-.4px}
+.wrestx .wrx-s{font-size:13px;font-weight:600;color:var(--text-3);margin-top:4px}
+.wrestx .wm-row{max-width:260px;margin:12px auto 0}
 
 /* The sleep header. `.arc` is a fixed-width block, so text-align on its parent
    never moved it: the ring sat hard left with the rest of the tile empty.
@@ -1667,7 +1685,7 @@ const SCHEMA_VERSION=2;             // bump to transform stored records
 /* A date, plus a letter when more than one build ships in a day. Without the
    letter there was no way to tell a second same-day deploy from the cached
    copy of the first, which is exactly the question "did my upload work?". */
-const APP_BUILD='2026-09-20d';
+const APP_BUILD='2026-09-20e';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */
@@ -12347,10 +12365,12 @@ function exitWM(discard){
      <button class="btn ghost block" id="wmKeep">Cancel — keep training</button>
      <button class="btn danger block" id="wmDrop">Discard this workout</button>`);
   $('#wmKeep').onclick=()=>closeSheet();
+  /* Persist FIRST, tear down after the sheet has closed. Deferring the whole
+     thing meant a pause was not on disk until a quarter of a second later,
+     which is exactly the window in which a phone gets locked or killed. */
   $('#wmPause').onclick=()=>{
     if(W){ W.pausedAt=Date.now(); W.endedAt=Date.now(); saveLive(); }
-    closeSheet(); toast('Paused — pick it up from Today','ok');
-    setTimeout(fin,240);
+    closeSheet(); setTimeout(pauseWM,240);
   };
   $('#wmDrop').onclick=()=>{
     closeSheet();
@@ -12555,6 +12575,69 @@ function drawWM(){
   drawExercise(W.entries[i],i,total);
   if(_body && _keep) _body.scrollTop=_keep;
 }
+/* Logging a set, and taking one back — the only two things that change the
+   record during a session.
+
+   Module level rather than a closure inside the renderer, because a completed
+   hold finishes on a timer and has no button to press. It used to synthesise a
+   click on the log button, which stopped existing the moment a hold's primary
+   action became "Start the hold" - so a plank ran its countdown out and logged
+   nothing. Completion must not depend on what happens to be on screen. */
+function wmComplete(exIdx, n){
+  if(!W) return;
+  const en=W.entries[exIdx]; if(!en || !en.sets[n]) return;
+  const s=en.sets[n];
+  s.done=!s.done;
+  if(s.done){
+    if(!s.reps){ const ph=String(en.plannedReps).replace(/[^0-9–\-]/g,'').split(/[–\-]/)[0]; s.reps=ph||''; }
+    if(!s.rpe){ const m=String(en.plannedRpe||'').match(/([0-9]+)/); if(m)s.rpe=m[1]; }
+    if(!s.at) s.at=Date.now();          // kept for the adaptive engine
+    /* Whatever you just confirmed is the best guess for the sets after it.
+       Only untouched ones, so an already-logged set is never rewritten. */
+    for(let k=n+1;k<en.sets.length;k++){
+      const nx=en.sets[k];
+      if(nx.done || nx.touched) continue;
+      nx.reps=s.reps; nx.weight=s.weight;
+    }
+    haptic(); SOUND.set();
+    /* Rest starts itself, because resting is the next instruction and asking
+       somebody to press a timer between sets is asking them to operate the app
+       while out of breath. Skipped entirely where the plan prescribes none.
+       When the exercise is finished the redraw advances on its own: see the
+       guard at the top of drawExercise(). */
+    const rest=parseRest(en.plannedRest);
+    const finished=en.sets.every(x=>x.done);
+    if(DB.settings.restTimerOn && rest && (!finished || exIdx<W.entries.length-1)){
+      startRest(rest,en.name,n+1,en.sets.length);
+    }
+  } else {
+    cancelAuto(); stopRest();
+  }
+  saveLive(); drawWM();
+}
+
+/* Forward movement is the app's job, never a button the user has to find.
+   Called when an exercise runs out of sets, and by the draw guard for anything
+   that lands on a finished exercise. Skipped entries are stepped over. */
+function wmAdvance(){
+  if(!W) return;
+  cancelAuto(); stopRest(); clearHold();
+  let n=W.step+1;
+  while(n<W.entries.length && W.entries[n].skipped) n++;
+  W.step=n;
+  saveLive(); drawWM();
+  const b=$('#wmBody'); if(b) b.scrollTop=0;
+}
+/* Pause, from the footer control or from the exit sheet. One behaviour, so the
+   two cannot drift. */
+function pauseWM(){
+  if(W){ W.pausedAt=Date.now(); W.endedAt=Date.now(); saveLive(); }
+  cancelAuto(); stopRest(); clearHold();
+  clearInterval(cardTimer); cardTimer=null;
+  $('#wmode').classList.remove('on'); document.body.style.overflow='';
+  W=null; toast('Paused — pick it up from Today','ok'); render();
+}
+
 /* ---- the jump that lands on the first MAIN exercise, from anywhere ---- */
 function wmToMain(){
   W.phase='main'; W.step=0;
@@ -12644,123 +12727,91 @@ function drawExercise(en,i,total){
   const prevW  = n=>{ if(!prev) return '';
                       const m=prev.sets[Math.min(n,prev.sets.length-1)];
                       return (m&&m.weight!==''&&m.weight!=null)?String(m.weight):''; };
-  /* What comes after the thing you are doing right now, named. "Skip to next"
-     told you there was a next; it never told you what, so there was no way to
-     know whether you were two sets from the end of the exercise or two sets
-     from the end of the session. */
-  const nextLabel=(()=>{
-    if(cur>=0 && cur<nSets-1) return 'Next: set '+(cur+2)+' of '+nSets;
-    if(i<total-1){ const nx=W.entries[i+1];
-      return 'Next: '+nx.name+' · set 1 of '+nx.sets.length; }
-    return 'Next: finish the workout';
-  })();
   /* a hold logged as the number 40 must never read back as "40 reps" */
   const tm=en.timed;
-  const label  = (s,n)=>{ const r=s.reps||planReps||'—';
-                          const w=(showKg&&s.weight!==''&&s.weight!=null)?s.weight:'';
-                          const unit=tm? r+'s' : r+' reps';
-                          return w!==''? (tm? r+'s×'+w+'kg' : r+'×'+w+'kg') : unit; };
 
-  /* what you did last time - the number you are trying to beat, small enough
-     to sit inside the card instead of pushing the controls off the screen */
-  const lastHTML=(()=>{
-    if(!prev) return `<div class="lastrow none">First time doing this — today's numbers become the target to beat.</div>`;
-    const ago=daysBetween(prev.date, W.date);
-    const p=progressVs(prev, en);
-    return `<div class="lastrow${p&&p.up===true?' up':p&&p.up===false?' down':''}">
-      <div class="ll">Last time <i>${ago<=0?'today':ago===1?'yesterday':ago+' days ago'}</i></div>
-      <div class="lv">${esc(setsSummary(prev.sets, !!tm))}${prev.bestRpe?` · RPE ${prev.bestRpe}`:''}</div>
-      ${p&&p.up===true?`<div class="lp up">${svg('up')} ${p.pct}% more volume so far</div>`:''}
-      ${p&&p.up===false?`<div class="lp down">${svg('down2')} ${Math.abs(p.pct)}% below last time — fine on a low-readiness day</div>`:''}
-    </div>`;})();
+  /* EVERY SET LOGGED -> MOVE ON.
+     There is no screen for "you finished an exercise", because there is no
+     decision to make: the app knows what comes next and the user has already
+     done the work. This replaces a card that counted down from four, offered
+     "Stay on this exercise", and asked the user to press "Next exercise" - a
+     tap per set turned into a tap per set plus two more per exercise.
+     The rest timer is the one thing allowed to hold the screen here, because
+     resting IS the next instruction. */
+  if(allDone && !restActive()) return wmAdvance();
 
-  /* rest belongs to the set that started it, so it is drawn inside the card */
-  const restHTML = (restActive() && REST.ex===i) ? `<div class="wrest">
-      <span class="wrt num" id="restT">${mmss(restRemaining())}</span>
-      <span class="wrl" id="restL">Rest after set ${REST.set+1}${allDone?'':` · then set ${cur+1} of ${nSets}`}</span>
-      <button class="btn sm" id="restAdd">+30s</button>
-      <button class="btn sm primary" id="restSkip">Skip rest</button>
+  const curSet = allDone ? nSets-1 : cur;
+  const sideTxt = /side/i.test(en.plannedReps||'') ? ' / side' : '';
+  const wNow = (()=>{ const v=en.sets[curSet].weight;
+                      return (v!==''&&v!=null)?String(v):prevW(curSet); })();
+  const bigVal = tm ? (en.sets[curSet].reps||tm.hi)+'s'
+                    : (en.sets[curSet].reps||planReps||'—')+sideTxt;
+
+  /* The glimpse. One line, never a card, never the whole workout. */
+  const nextName = i<total-1 ? W.entries[i+1].name : null;
+  const peek = nextName
+    ? `<div class="peek"><span class="pk-l">Up next</span><span class="pk-n">${esc(nextName)}</span></div>`
+    : `<div class="peek"><span class="pk-l">Last exercise</span><span class="pk-d">almost done</span></div>`;
+
+  /* REST — one number, one secondary escape. It runs itself. */
+  const restCard = restActive() ? `<div class="wrestx">
+      <div class="wrx-n num" id="restT">${mmss(restRemaining())}</div>
+      <div class="wrx-b"><i id="restBar" style="width:${
+        REST.total? Math.max(0,Math.min(100, restRemaining()/REST.total*100)) : 0}%"></i></div>
+      <div class="wrx-t">Rest</div>
+      <div class="wrx-s">${allDone
+        ? (nextName? 'Get ready for '+esc(nextName) : 'Then you are done')
+        : 'Then set '+(cur+1)+' of '+nSets}</div>
+      <div class="wm-row">
+        <button class="tert" id="restAdd">+30s</button>
+        <button class="tert" id="restSkip">Skip rest</button>
+      </div>
     </div>` : '';
 
-  /* the sets already logged: one strip, tap a chip to take it back */
-  const doneHTML = en.sets.some(s=>s.done) ? `<div class="wdone">
-      <span class="wd-l">Logged</span>
-      ${en.sets.map((s,n)=>!s.done?'':`<button data-undo="${n}"
-         aria-label="Undo set ${n+1}"><i>${n+1}</i> ${esc(label(s,n))}</button>`).join('')}
-      <span class="wd-h">tap to undo</span>
-    </div>` : '';
+  /* THE SET — a compact state of the same exercise screen, not a new screen
+     and not a card per set. The prescribed number is a button: tapping it is
+     how a deviation gets recorded, and it is the only reason to touch it. */
+  const setCard = restActive() ? '' : (tm ? (()=>{
+      const on = holdActive() && HOLD.ex===i && HOLD.set===cur;
+      const want = +en.sets[cur].reps || tm.hi;
+      /* the target is tappable while the hold is not running, for the same
+         reason the rep count is: changing it is the exception, not the flow */
+      return `<div class="hold${on?' run':''}">
+        <div class="hl">Set ${cur+1} of ${nSets}${tm.perSide?' · per side':''}</div>
+        ${on ? `<div class="ht num" id="holdT">${mmss(holdRemaining())}</div>`
+             : `<button class="ht num" id="wsAdj" aria-label="Adjust the hold">${mmss(want)}</button>`}
+      </div>`;})()
+    : `<div class="wset">
+        <div class="ws-l">Set ${cur+1} of ${nSets}</div>
+        <button class="ws-v" id="wsAdj" aria-label="Adjust reps${showKg?' or weight':''}">
+          ${esc(bigVal)}${(showKg&&wNow!=='')?` <span class="ws-kg">${esc(wNow)} kg</span>`:''}
+        </button>
+        ${prev?`<div class="ws-last">Last time ${esc(setsSummary(prev.sets, !!tm))}</div>`:''}
+      </div>`);
 
-  const primed = !allDone && !en.sets.some(s=>s.done)
-              && (en.sets[cur].reps!=='' || en.sets[cur].weight!=='');
-
-  const cardHTML = allDone
-    ? `<div class="wnow fin" id="wmDoneN">
-         <div class="wnow-t">${esc(en.name)} done<span>${nSets} set${nSets===1?'':'s'} logged</span></div>
-         <p id="wmNextP">${esc(nextLabel.replace(/^Next: /,'Moving on to '))}
-           in <b id="wmCount">${autoLeft()||Math.round(AUTO_MS/1000)}</b>s — tap anywhere to stay.</p>
-         <button class="btn ghost block" id="wmStay">Stay on this exercise</button>
-       </div>`
-    : `<div class="wnow">
-         <div class="wnow-t">Set ${cur+1} of ${nSets}<span>${esc(nextLabel)}</span></div>
-         ${restHTML}
-         ${lastHTML}
-         ${tm?(()=>{
-           /* a countdown, not a rep count. It logs the set itself when it
-              finishes, so holding one is genuinely one tap. */
-           const on = holdActive() && HOLD.ex===i && HOLD.set===cur;
-           const want = +en.sets[cur].reps || tm.hi;
-           return `<div class="hold${on?' run':''}">
-             <div class="hl">${on? 'Holding' : 'Hold for '+want+' seconds'
-               +(tm.perSide?' per side':'')}</div>
-             <div class="ht num" id="holdT">${mmss(on?holdRemaining():want)}</div>
-             <button class="btn ${on?'ghost':'primary'}" id="holdBtn" data-secs="${want}">${
-               on? svg('x')+' Stop' : svg('play')+' Start the hold'}</button>
-           </div>`;})():''}
-         <div class="wnow-f">
-           <div class="sfield"><div class="sl">${tm?'Seconds':'Reps'}</div>${
-             stepper(cur,'reps',en.sets[cur].reps,tm?String(tm.hi):planReps,
-                     tm?5:null, tm?'Seconds held':'Reps')}</div>
-           ${showKg?`<div class="sfield"><div class="sl">kg</div>${stepper(cur,'weight',en.sets[cur].weight,prevW(cur))}</div>`:''}
-         </div>
-         ${primed?`<div class="hint">${
-            (en.target&&en.target.line) ? esc(en.target.line)
-            : prev ? 'Filled in from last time — change it first if today was different.'
-            : 'Filled in from the plan — change it first if you did something else.'}</div>`:''}
-         <button class="btn ${tm?'ghost':'primary'} big block wlog" data-log="${cur}">${svg('check')} Log set ${cur+1}${
-           tm&&en.sets[cur].reps? ' · '+esc(en.sets[cur].reps)+'s' : ''}</button>
-       </div>`;
+  /* ONE primary action. */
+  const primary = restActive() ? ''
+    : tm ? (()=>{ const on = holdActive() && HOLD.ex===i && HOLD.set===cur;
+        const want = +en.sets[cur].reps || tm.hi;
+        return `<button class="btn ${on?'ghost':'primary'} big block" id="holdBtn" data-secs="${want}">${
+          on? svg('x')+' Stop' : svg('play')+' Start the hold'}</button>`;})()
+    : `<button class="btn primary big block wlog" data-log="${cur}">Log set</button>`;
 
   $('#wmBody').innerHTML=`
     <div class="wm-ex">${esc(en.name)}</div>
-    <div class="wm-sub">${nSets} set${nSets===1?'':'s'} of ${
-       tm? esc(secsLabel(tm)) : esc(en.plannedReps)+' reps'}</div>
-    ${(()=>{ const bits=[effortWords(en.plannedRpe, !!tm), restWords(en.plannedRest)].filter(Boolean);
-       return bits.length?`<div class="wm-plain">${esc(bits.join(' · '))}</div>`:''; })()}
+    <div class="wm-sub">${nSets} × ${tm? esc(secsLabel(tm)) : esc(en.plannedReps)}</div>
     ${(()=>{ const h=briefHow(e);
        return h?`<button class="wm-how" id="wmHowLine">${esc(h)} <i>More</i></button>`:''; })()}
     ${en.blockNote?`<div class="note warn">${esc(en.blockNote)}</div>`:''}
-    <div class="setlist">
-      ${cardHTML}
-      ${doneHTML}
-    </div>
-    <div class="btn-row">
-      <button class="btn sm ghost" id="wmAddSet">${svg('plus')} Add a set</button>
-      <button class="btn sm ghost" id="wmMore">More</button>
-    </div>
-    ${en.sets.some(s=>s.done)?`
-    <div class="ruled" style="display:flex;align-items:center;gap:12px">
-      <div style="flex:1"><div style="font-size:13px;font-weight:700">Effort</div>
-        <div style="font-size:11.5px;color:var(--text-3);margin-top:2px">Optional — planned ${esc(en.plannedRpe||'—')}</div></div>
-      <div style="flex:0 0 128px">${stepper(-1,'rpe',
-        (en.sets.filter(s=>s.done&&s.rpe)[0]||{}).rpe||'', '')}</div>
-    </div>`:''}
-    ${en.note?`<div class="note"><b>Your note:</b> ${esc(en.note)}</div>`:''}`;
+    ${restCard}
+    ${setCard}
+    ${primary}
+    ${peek}`;
 
-  /* "Skip to next" was on screen even when every set was logged. */
-  $('#wmFoot').innerHTML=`<div class="btn-row">
-      ${i>0?`<button class="btn ghost" id="wmPrev">Back</button>`:''}
-      <button class="btn ${allDone?'primary':'ghost'}" id="wmNext" style="flex:2">${
-        i<total-1?'Next exercise':'Finish workout'}</button>
+  /* Two controls, both secondary, neither part of the training loop. */
+  $('#wmFoot').innerHTML=`<div class="wm-row">
+      <button class="tert" id="wmPauseBtn">Pause</button>
+      <button class="tert" id="wmMore">More</button>
     </div>`;
 
   /* one place that writes a set value, whether it came from a stepper button
@@ -12773,60 +12824,38 @@ function drawExercise(en,i,total){
     }
     saveLive();
   };
-  $$('.wmIn').forEach(inp=>inp.addEventListener('input',()=>{
-    const n=+inp.dataset.s;
-    if(n>=0 && en.sets[n]) en.sets[n].touched=true;   // stop carry-forward
-    putVal(inp.dataset.s, inp.dataset.k, inp.value);
-  }));
-  $$('.stp button').forEach(b=>b.onclick=ev=>{
-    ev.stopPropagation();
-    const wrap=b.parentElement, inp=wrap.querySelector('input');
-    const sn=+inp.dataset.s;
-    if(sn>=0 && en.sets[sn]) en.sets[sn].touched=true;
-    const k=inp.dataset.k, dir=+b.dataset.d;
-    const cv = inp.value!=='' ? parseFloat(inp.value)
-             : (inp.placeholder!=='' ? parseFloat(inp.placeholder) : NaN);
-    const base = isNaN(cv) ? 0 : cv;
-    /* an explicit increment wins: seconds do not move one at a time */
-    const step = inp.dataset.step ? +inp.dataset.step : stepSize(k, base);
-    let next = base + dir*step;
-    if(k==='rpe') next=clamp(next,1,10);
-    if(next<0) next=0;
-    /* 2.5 kg increments must not accumulate floating-point dust */
-    next = Math.round(next*100)/100;
-    inp.value = String(next);
-    putVal(inp.dataset.s, k, inp.value);
-    haptic();
-  });
-  /* logging a set, and taking one back: the only two things that change the
-     record on this screen */
-  const complete=(n)=>{
-    const s=en.sets[n];
-    s.done=!s.done;
-    if(s.done){
-      if(!s.reps){ const ph=String(en.plannedReps).replace(/[^0-9–\-]/g,'').split(/[–\-]/)[0]; s.reps=ph||''; }
-      if(!s.rpe){ const m=String(en.plannedRpe||'').match(/(\d+)/); if(m)s.rpe=m[1]; }
-      /* Whatever you just confirmed is the best guess for the sets after it.
-         Only untouched ones, so an already-logged set is never rewritten. */
-      for(let k=n+1;k<en.sets.length;k++){
-        const nx=en.sets[k];
-        if(nx.done || nx.touched) continue;
-        nx.reps=s.reps; nx.weight=s.weight;
-      }
-      haptic(); SOUND.set();
-      if(en.sets.every(x=>x.done)){
-        /* the exercise is finished - say so and move on rather than leaving
-           somebody on a screen with nothing left to do on it */
-        stopRest(); armAuto(i);
-      } else {
-        const rest=parseRest(en.plannedRest);
-        if(DB.settings.restTimerOn && rest) startRest(rest,en.name,n+1,en.sets.length);
-      }
-    } else {
-      cancelAuto(); stopRest();
-    }
-    saveLive(); drawWM();
+  /* The steppers now live in the adjust sheet rather than on the set screen,
+     so this wiring has to be callable twice - once for whatever is on the
+     screen, once for the sheet when it opens. */
+  const wireSteppers=()=>{
+    $$('.wmIn').forEach(inp=>inp.addEventListener('input',()=>{
+      const n=+inp.dataset.s;
+      if(n>=0 && en.sets[n]) en.sets[n].touched=true;   // stop carry-forward
+      putVal(inp.dataset.s, inp.dataset.k, inp.value);
+    }));
+    $$('.stp button').forEach(b=>b.onclick=ev=>{
+      ev.stopPropagation();
+      const wrap=b.parentElement, inp=wrap.querySelector('input');
+      const sn=+inp.dataset.s;
+      if(sn>=0 && en.sets[sn]) en.sets[sn].touched=true;
+      const k=inp.dataset.k, dir=+b.dataset.d;
+      const cv = inp.value!=='' ? parseFloat(inp.value)
+               : (inp.placeholder!=='' ? parseFloat(inp.placeholder) : NaN);
+      const base = isNaN(cv) ? 0 : cv;
+      /* an explicit increment wins: seconds do not move one at a time */
+      const step = inp.dataset.step ? +inp.dataset.step : stepSize(k, base);
+      let next = base + dir*step;
+      if(k==='rpe') next=clamp(next,1,10);
+      if(next<0) next=0;
+      /* 2.5 kg increments must not accumulate floating-point dust */
+      next = Math.round(next*100)/100;
+      inp.value = String(next);
+      putVal(inp.dataset.s, k, inp.value);
+      haptic();
+    });
   };
+  wireSteppers();
+  const complete=(n)=>wmComplete(i,n);
   $$('#wmBody [data-log]').forEach(b=>b.onclick=ev=>{
     ev.stopPropagation(); complete(+b.dataset.log); });
   $$('#wmBody [data-undo]').forEach(b=>b.onclick=ev=>{
@@ -12839,41 +12868,48 @@ function drawExercise(en,i,total){
   };
   const rSkip=$('#restSkip'); if(rSkip) rSkip.onclick=()=>{ stopRest(); drawWM(); };
   const rAdd =$('#restAdd');  if(rAdd)  rAdd.onclick=()=>restAdd30();
-  const stay =$('#wmStay');   if(stay)  stay.onclick=()=>{
-    cancelAuto();
-    const p=$('#wmDoneN p'); if(p) p.textContent='Staying here. Add a set, rate the effort, or press Next exercise when you are ready.';
-    stay.remove();
-  };
-  /* Reaching for the undo chip is itself the signal that you are not finished
-     with this screen, so ANY touch or scroll cancels the automatic move.
-     Note what this must NOT do: removing the Stay button here would swallow
-     the click that follows the pointerdown on it. */
-  if(allDone && autoPending()){
-    const body=$('#wmBody');
-    const halt=()=>{
-      if(!autoPending()) return;
-      cancelAuto();
-      const p=$('#wmNextP');
-      if(p) p.textContent='Staying here — nothing will move until you say so.';
-    };
-    if(body){
-      body.addEventListener('pointerdown',halt,{once:true});
-      body.addEventListener('scroll',halt,{once:true});
-      body.addEventListener('keydown',halt,{once:true});
-    }
-  }
+  const pb=$('#wmPauseBtn');  if(pb) pb.onclick=()=>pauseWM();
 
-  $('#wmAddSet').onclick=()=>{
-    cancelAuto();
-    en.sets.push({reps:'',weight:'',rpe:'',done:false});
-    en.plannedSets=en.sets.length; saveLive(); drawWM();
+  /* DEVIATION, and only deviation. The prescribed number is a button; the
+     normal path never opens this, because the normal path is that you did what
+     was prescribed and the app already recorded it. */
+  const adj=$('#wsAdj');
+  if(adj) adj.onclick=()=>{
+    openSheet('This set',`
+      <div class="wnow-f">
+        <div class="sfield"><div class="sl">${tm?'Seconds':'Reps'}</div>${
+          stepper(cur,'reps',en.sets[cur].reps,tm?String(tm.hi):planReps,
+                  tm?5:null, tm?'Seconds held':'Reps')}</div>
+        ${showKg?`<div class="sfield"><div class="sl">kg</div>${
+          stepper(cur,'weight',en.sets[cur].weight,prevW(cur))}</div>`:''}
+      </div>
+      <div class="hint">Only needed if today was different from the plan.</div>`,
+      `<button class="btn primary big block" id="wsDone">Done</button>`);
+    wireSteppers();
+    const dn=$('#wsDone'); if(dn) dn.onclick=()=>{ closeSheet(); setTimeout(drawWM,180); };
   };
+
   /* the things you do between exercises, not during a set.
      Each row carries the function it runs. It used to dispatch on the row
      index, so adding a conditional row shifted every index below it and wired
      the wrong handler to the wrong label. */
   $('#wmMore').onclick=()=>{
+    const lastDone = (()=>{ for(let k=en.sets.length-1;k>=0;k--) if(en.sets[k].done) return k;
+                            return -1; })();
     const rows=[
+      /* the everyday exceptions first: these are why somebody opens this menu */
+      lastDone>=0 ? {t:'Undo the last set', s:'Set '+(lastDone+1)+' back to not done',
+       icon:'undo', now:true, run:()=>{ complete(lastDone); }} : null,
+      {t:'Add a set', s:'One more than the plan asked for',
+       icon:'plus', now:true, run:()=>{ en.sets.push({reps:'',weight:'',rpe:'',done:false});
+                              en.plannedSets=en.sets.length; saveLive(); drawWM(); }},
+      i>0 ? {t:'Back an exercise', s:'Reopen '+W.entries[i-1].name,
+       icon:'left', now:true, run:()=>{
+         /* un-complete its last set, or the auto-advance would bounce straight
+            back here the moment it redrew */
+         const pe=W.entries[i-1];
+         for(let k=pe.sets.length-1;k>=0;k--) if(pe.sets[k].done){ pe.sets[k].done=false; break; }
+         stopRest(); W.step=i-1; saveLive(); drawWM(); }} : null,
       {t:'How to do it', s:en.cue? en.cue.slice(0,44)+'…' : 'Cue, progression and the plan in full',
        icon:'book', run:()=>wmHow()},
       {t:'Why this exercise?', s:'What it covers and why it was picked',
@@ -12900,6 +12936,10 @@ function drawExercise(en,i,total){
     $$('#wmMoreRows button').forEach(b=>b.onclick=()=>{
       const act=rows[+b.dataset.r];
       closeSheet();
+      /* The delay exists so a sheet does not open while this one is closing.
+         An action that opens no sheet does not need it, and waiting made the
+         screen appear to ignore the tap. */
+      if(act && act.now) { if(act.run) act.run(); return; }
       setTimeout(()=>{ if(act&&act.run) act.run(); },200);
     });
   };
@@ -12974,8 +13014,8 @@ function drawExercise(en,i,total){
     saveLive(); drawWM();
   });
   const hl=$('#wmHowLine'); if(hl) hl.onclick=()=>{ cancelAuto(); wmHow(); };
-  const p=$('#wmPrev'); if(p)p.onclick=()=>{ cancelAuto(); stopRest(); W.step=Math.max(0,i-1); drawWM(); };
-  $('#wmNext').onclick=nextStep;
+  /* Back and Next exercise are gone from the footer: forward movement is
+     automatic and backward movement is an exception, so it lives under More. */
 }
 /* A number you change with your thumb. `n` is the set index, or -1 for a
    control that applies to the whole exercise. The field stays typeable. */
@@ -13693,10 +13733,10 @@ function paintHold(){
       W.entries[ex].sets[n].reps=String(secs);
       W.entries[ex].sets[n].touched=true;
     }
-    /* let the ordinary log path do the work: carry-forward, the rest timer
-       and the automatic move to the next exercise all live there */
-    const b=$('#wmBody [data-log="'+n+'"]');
-    if(b) b.click(); else { saveLive(); drawWM(); }
+    /* the ordinary log path does the work: carry-forward, the rest timer and
+       the automatic move to the next exercise all live there. Called directly
+       rather than by clicking a button that a timed exercise does not have. */
+    wmComplete(ex,n);
   }
 }
 
@@ -13708,12 +13748,15 @@ function paintHold(){
    It has no element of its own any more. The countdown is drawn inside the
    card for the set that started it, which is where somebody looking for it
    expects it to be; REST records which set that is. */
-let restEnd=0, restDone=false, restTick=-1, REST={ex:-1,set:-1,of:0,name:''};
+let restEnd=0, restDone=false, restTick=-1, REST={ex:-1,set:-1,of:0,name:'',total:0};
 function restRemaining(){ return Math.max(0,(restEnd-Date.now())/1000); }
 function restActive(){ return restEnd>0 && restRemaining()>0; }
 function paintRest(){
   const r=restRemaining();
   const t=$('#restT'); if(t) t.textContent=mmss(r);
+  /* the bar drains with it, so the screen reads at a glance from across a room */
+  const bar=$('#restBar');
+  if(bar && REST.total) bar.style.width=Math.max(0,Math.min(100,r/REST.total*100))+'%';
   /* count the last three seconds out loud, once each, however often the
      250ms interval happens to fire */
   const s=Math.ceil(r);
@@ -13729,12 +13772,12 @@ function paintRest(){
 }
 function startRest(sec,name,n,of){
   restEnd=Date.now()+sec*1000; restDone=false; restTick=-1;
-  REST={ex:W?W.step:-1, set:(n||1)-1, of:of||0, name:name||''};
+  REST={ex:W?W.step:-1, set:(n||1)-1, of:of||0, name:name||'', total:sec};
   clearInterval(restTimer); restTimer=setInterval(paintRest,250);
 }
 function stopRest(){
   clearInterval(restTimer); restTimer=null;
-  restEnd=0; restTick=-1; REST={ex:-1,set:-1,of:0,name:''};
+  restEnd=0; restTick=-1; REST={ex:-1,set:-1,of:0,name:'',total:0};
 }
 function restAdd30(){ if(!restEnd) return; restEnd+=30000; restDone=false; paintRest(); }
 
