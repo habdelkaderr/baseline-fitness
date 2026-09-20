@@ -431,11 +431,19 @@ function noticeRow(date){
      decision has already been made. */
   const pw=pausedWorkout();
   if(pw){
-    const k=sum(pw.entries.map(e=>e.sets.filter(s=>s.done).length));
-    return {id:'paused', icon:'play',
-      t:pw.pausedAt?'Workout paused':'Workout still open',
-      s:pw.workoutName+' · '+(k? k+' set'+(k===1?'':'s')+' logged' : 'nothing logged yet'),
-      go:()=>resumeWorkout()};
+    /* ...unless it IS today's session, in which case the recommendation card
+       below carries it and this row is a second door to the same room. Two
+       entries to one workout, one of them headed "Workout still open", read as
+       two different things to do. */
+    const plan=todayPlan(d);
+    const sameSession = plan && plan.workoutId===pw.workoutId;
+    if(!sameSession){
+      const k=sum(pw.entries.map(e=>e.sets.filter(s=>s.done).length));
+      return {id:'paused', icon:'play',
+        t:'Session in progress',
+        s:pw.workoutName+' · '+(k? k+' set'+(k===1?'':'s')+' logged' : 'nothing logged yet'),
+        go:()=>resumeWorkout()};
+    }
   }
 
   /* 1 · away: the most important thing to say, because it explains why the
@@ -676,9 +684,16 @@ function viewToday(v){
     <div class="rec-m">${pl.est?`~${pl.est} min`:''}${pl.est&&pl.intensity?' · ':''}${esc(pl.intensity||'')}</div>
     ${pl.overridden?'<div class="rec-m" style="color:var(--violet)">Your choice</div>':''}
     ${hasLimits(d)?`<div class="rec-m" style="color:var(--orange)">Working around ${esc(limitsText(d))}</div>`:''}
+    ${(()=>{ const lv=pausedWorkout();
+       if(!lv || lv.workoutId!==pl.workoutId) return '';
+       const k=sum(lv.entries.map(e=>e.sets.filter(s=>s.done).length));
+       return `<div class="rec-m" style="color:var(--accent)">Started · ${
+         k? k+' set'+(k===1?'':'s')+' logged' : 'nothing logged yet'}</div>`; })()}
   </div>
 
-  ${wk?`<button class="btn primary big block" id="btnStart">${svg('play')} Start session</button>`
+  ${wk?`<button class="btn primary big block" id="btnStart">${svg('play')} ${
+        (()=>{ const lv=pausedWorkout();
+               return (lv && lv.workoutId===pl.workoutId) ? 'Resume session' : 'Start session'; })()}</button>`
       :`<div class="hint" style="margin-top:13px;text-align:center">Rest is the recommendation today, not the absence of one.</div>`}
 
   <button class="tert" id="whyT" aria-expanded="false" aria-controls="whyB">Why this? ${svg('down')}</button>
@@ -1146,7 +1161,13 @@ function wireToday(d){
   wireNotice(d);
   on('btnCheck',()=>openCheckin(d));
   on('btnEditCi',()=>openCheckinView(d));
-  on('btnStart',()=>{ const p=todayPlan(d); startWorkout(p.workoutId,p.variant,d,p); });
+  on('btnStart',()=>{
+    const p=todayPlan(d), lv=pausedWorkout();
+    /* Resuming and starting are the same button, because from the user's side
+       they are the same intention: get on with today's session. */
+    if(lv && lv.workoutId===p.workoutId) return resumeWorkout();
+    startWorkout(p.workoutId,p.variant,d,p);
+  });
   on('btnPreview',()=>{ const p=todayPlan(d); previewWorkout(p.workoutId,p.variant,p); });
   on('btnSwap',()=>changePlan(d));
   on('btnPrep',()=>previewWorkout('w_prep','full'));

@@ -716,6 +716,19 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .wm-prog i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);transition:width .3s}
 .wm-b{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
   padding:18px var(--gut-r) 20px var(--gut-l);max-width:680px;margin:0 auto;width:100%}
+/* A live set, hold or rest is three bands, and the middle one takes the slack.
+   Without this the four blocks of a set screen stack into the top third of a
+   phone and leave the rest of it blank, which reads as an unfinished screen
+   rather than a calm one. */
+.wm-b.live{display:flex;flex-direction:column;gap:8px}
+.wm-b.live .wm-top{flex:0 0 auto}
+.wm-b.live .wm-mid{flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;
+  min-height:0}
+.wm-b.live .wm-bot{flex:0 0 auto}
+.wm-b.live .wm-bot .btn{margin-bottom:0}
+.wm-b.live .wm-bot .peek{margin-top:12px}
+/* short phones: the middle band gives way rather than pushing the action off */
+@media (max-height:700px){ .wm-b.live{gap:4px} .wm-b.live .nowcard{padding:12px 14px} }
 .wm-f{
   padding:12px var(--gut-r) calc(14px + var(--sa-b)) var(--gut-l);
   border-top:1px solid var(--border-soft);background:var(--bg-elev);flex:0 0 auto;
@@ -1150,6 +1163,16 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 /* the plan, said in words rather than in coach notation */
 .wm-plain{font-size:12.5px;color:var(--text-2);font-weight:600;
   margin-top:7px;line-height:1.5}
+
+/* ---------- The overview: the one dense screen, on purpose ----------
+   Everything after it shows a single thing at a time, so this is where the
+   whole session is allowed to be read at once. */
+.ov-h{font-size:11px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;
+  color:var(--text-3)}
+.ov-s{font-size:13px;font-weight:650;color:var(--text-2);margin:4px 0 10px}
+.ov-n{font-size:14.5px;font-weight:700;letter-spacing:-.1px}
+.ov-m{font-size:12.5px;color:var(--accent);font-weight:700;margin-top:2px;
+  font-variant-numeric:tabular-nums}
 
 /* ---------- The active set: one state of one exercise screen ----------
    Not a card per set, and no list of what has already been logged. During a
