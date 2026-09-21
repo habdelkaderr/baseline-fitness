@@ -15,7 +15,7 @@ function viewWorkouts(v){
     {t:'Exercises', icon:'barbell',
      s:`${countDoable(DB.profile.gear||[])} of ${DB.exercises.length} you can do`,
      go:()=>openPane('Exercises','Filtered to your equipment', paneLibrary)},
-    {t:'Warm-ups', icon:'flame',
+    {t:'Warm-ups', icon:'warmup',
      s: hasSportChosen()? `Sport prep for ${sportLC()}, plus the session routines`
                         : 'The routine before each session type',
      go:()=>openPane('Warm-ups', null, paneWarmups)},
@@ -287,7 +287,7 @@ function editWorkout(wid){
          <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px">
            <b style="flex:1;font-size:13.5px">${i+1}. ${e?esc(e.name):'<span style="color:var(--red)">Missing exercise</span>'}</b>
            <button class="icon-btn" style="width:32px;height:32px" data-up="${i}">${svg('up')}</button>
-           <button class="icon-btn" style="width:32px;height:32px" data-dn="${i}">${svg('down2')}</button>
+           <button class="icon-btn" style="width:32px;height:32px" data-dn="${i}">${svg('down')}</button>
            <button class="icon-btn" style="width:32px;height:32px;color:var(--red)" data-rm="${i}">${svg('trash')}</button>
          </div>
          <div class="grid2">

@@ -789,10 +789,9 @@ function settingsBody(v){
         place:placeOf(P), open:!!SETGEAR_OPEN})}</div>
      <div class="field" style="margin-top:12px"><label>Anything else</label>
        <input class="inp" id="sEqNote" value="${esc(P.equipNote||'')}" placeholder="e.g. TRX, rowing machine"></div>
-     <div style="margin-top:6px"><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
-       <input type="checkbox" id="sBest" ${P.preferBest!==false?'checked':''} style="width:22px;height:22px;accent-color:var(--accent)">
-       Use the best exercise my equipment allows</label>
-       <div class="hint">On: the best variation your kit allows. Off: always the base exercise.</div></div>
+     <div style="margin-top:6px">${toggleRow({id:'sBest', on:P.preferBest!==false,
+       label:'Use the best exercise my equipment allows',
+       hint:'On, a session picks the strongest variation your kit allows. Off, it always gives you the base exercise.'})}</div>
      
    </div>
 
@@ -946,35 +945,36 @@ function settingsBody(v){
        <div class="hint">Currently <b>week ${currentPhase().absWeek}</b> — ${esc(currentPhase().name)}.</div></div>
      <button class="btn ghost block" id="sSched">${svg('edit')} Edit weekly targets</button>
      
-     <div style="margin-top:12px"><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
-       <input type="checkbox" id="sAuto" ${S.autoAdjust?'checked':''} style="width:22px;height:22px;accent-color:var(--accent)">
-       Let readiness reduce session volume</label>
-       <div class="hint">Off: the chosen session always comes at full volume.</div></div>
+     <div style="margin-top:12px">${toggleRow({id:'sAuto', on:!!S.autoAdjust,
+       label:'Let readiness reduce session volume',
+       hint:'On, a low-readiness morning cuts sets rather than the session. Off, the chosen session always comes at full volume.'})}</div>
    </div>
 
    <div class="card spane alerts">
      <div class="card-t accent" style="margin-bottom:12px">While you train</div>
-     <div><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
-       <input type="checkbox" id="sRest" ${S.restTimerOn?'checked':''} style="width:22px;height:22px;accent-color:var(--accent)">
-       Rest timer between sets</label>
-       <div class="hint">Counts down in the card for the set you just finished.</div></div>
-     <div style="margin-top:14px"><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
-       <input type="checkbox" id="sSound" ${S.sound!==false?'checked':''} style="width:22px;height:22px;accent-color:var(--accent)">
-       Sound</label>
-       <div class="hint">Three ticks as a rest runs out, a chime when it ends, a click
-         when a set goes in. The app makes the tones itself — nothing is downloaded
-         and they work offline.</div></div>
+     ${toggleRow({id:'sRest', on:!!S.restTimerOn,
+       label:'Rest timer between sets',
+       hint:'Starts counting down in the card as soon as you log a set, so you do not have to time your own rest.'})}
+     ${toggleRow({id:'sSound', on:S.sound!==false,
+       label:'Sound',
+       hint:'Three ticks as a rest runs out, a chime when it ends, a click when a set '
+           +'goes in. The app makes the tones itself &mdash; nothing is downloaded, and '
+           +'they work with no signal.'})}
    </div>
 
    <div class="card spane alerts">
      <div class="card-t accent" style="margin-bottom:12px">When the screen is off</div>
-     <div><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
-       <input type="checkbox" id="sNotify" ${S.notify?'checked':''} ${notifyState()==='unsupported'?'disabled':''} style="width:22px;height:22px;accent-color:var(--accent)">
-       Alert me when a rest timer finishes</label>
-       <div class="hint" id="sNotifyH">${
-         notifyState()==='unsupported' ? 'This browser cannot show alerts.'
-         : notifyState()==='denied' ? 'Your browser has blocked alerts for this app. Turn them back on in its site settings, then try again.'
-         : 'Lets you put the phone down mid-session. Your browser will ask permission the first time.'}</div></div>
+     ${''/* The switch alone could not say what was going on. "On" with the
+              browser blocking notifications means a silent phone, and the old
+              copy explained the feature rather than the state, so there was no
+              way to tell a working switch from a blocked one. */}
+     ${toggleRow({id:'sNotify', on:!!S.notify,
+       disabled:notifyState()==='unsupported',
+       label:'Notify me when a rest is over',
+       hint:'Baseline shows a notification the moment a rest timer ends, so you can '
+           +'put the phone down between sets.',
+       state:notifyText(), stateCls:notifyCls()})}
+     <div class="hint" id="sNotifyH" style="margin-top:2px">${notifyNext()}</div>
      <div class="note acc" style="margin-top:12px">
        This is a <b>local</b> alert: your own device raising a notification for a
        timer your own device is running. It is not a push notification — there is
@@ -1288,22 +1288,28 @@ function settingsBody(v){
      checkbox is put back if the browser says no */
   (function(){
     const e=$('#sNotify'); if(!e) return;
+    /* The row says what is actually happening, so it has to be rewritten
+       whenever the answer changes - including when the browser refuses, which
+       is the case where the switch on its own would be misleading. */
+    const repaint=()=>{
+      const tag=e.parentNode.querySelector('.tg-s'), h=$('#sNotifyH');
+      if(tag){ tag.textContent=notifyText(); tag.className='tg-s '+notifyCls(); }
+      if(h) h.innerHTML=notifyNext();
+    };
     e.addEventListener('change',()=>{
-      const h=$('#sNotifyH');
-      if(!e.checked){ DB.settings.notify=false; save(); toast('Alerts off','ok'); return; }
+      if(!e.checked){ DB.settings.notify=false; save(); repaint(); toast('Notifications off','ok'); return; }
       if(notifyState()==='granted'){
-        DB.settings.notify=true; save(); toast('Alerts on','ok');
-        notify('Alerts are on','Baseline will tell you when a rest timer finishes.');
+        DB.settings.notify=true; save(); repaint(); toast('Notifications on','ok');
+        notify('Notifications are on','Baseline will tell you when a rest is over.');
         return;
       }
       notifyAsk(p=>{
         if(p==='granted'){
-          DB.settings.notify=true; save(); toast('Alerts on','ok');
-          notify('Alerts are on','Baseline will tell you when a rest timer finishes.');
+          DB.settings.notify=true; save(); repaint(); toast('Notifications on','ok');
+          notify('Notifications are on','Baseline will tell you when a rest is over.');
         } else {
-          e.checked=false; DB.settings.notify=false; save();
-          if(h) h.textContent='Your browser blocked alerts for this app. Turn them back on in its site settings, then try again.';
-          toast('Your browser blocked alerts','err');
+          e.checked=false; DB.settings.notify=false; save(); repaint();
+          toast('Your browser blocked notifications','err');
         }
       });
     });

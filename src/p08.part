@@ -114,10 +114,10 @@ function progOverview(v,R){
      </div>
 
      <div class="stats c2" style="margin-top:10px">
-       <div class="stat a"><div class="lab">${svg('shoe')} Sessions</div>
+       <div class="stat a"><div class="lab">${svg('checkc')} Sessions</div>
          <div><div class="val num">${A.sessions}</div>
            <div class="dlt">vs ${P.sessions} last week</div></div></div>
-       <div class="stat g"><div class="lab">${svg('run')} Activities</div>
+       <div class="stat g"><div class="lab">${svg('shoe')} Activities</div>
          <div><div class="val num">${A.acts}</div>
            <div class="dlt">${A.sport} ${esc(sportLC())}</div></div></div>
      </div>

@@ -989,8 +989,11 @@ function drawActivityFinish(){
     <div style="text-align:center;padding:14px 0 6px">
       <div style="width:64px;height:64px;border-radius:20px;background:var(--accent);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" style="width:32px;height:32px">${ICON.check}</svg></div>
-      <div style="font-size:27px;font-weight:850;letter-spacing:-.9px">${esc(T.name)} done</div>
-      <div style="font-size:13px;color:var(--text-3);margin-top:5px;font-weight:600">${hms(cardElapsedSec(en))} from start to finish</div>
+      ${''/* The activity is the title; "done" is what happened to it. "Tennis
+            done" read as the name of a thing rather than as a statement. */}
+      <div id="afWhat" style="font-size:27px;font-weight:850;letter-spacing:-.9px">${esc(T.name)}</div>
+      <div id="afDone" style="font-size:13px;color:var(--text-3);margin-top:5px;font-weight:600">Done · ${
+        hms(cardElapsedSec(en))} from start to finish</div>
     </div>
     <div class="stats c4">
       ${statTile('Time',mins,'m','a')}
@@ -998,13 +1001,12 @@ function drawActivityFinish(){
       ${statTile('Effort','RPE '+rpe,'','c')}
       ${statTile('Laps',laps||'—','','')}
     </div>
-    <div class="field"><label>How long was it really?</label>
-      <div class="fine">
-        <input class="inp num" type="number" inputmode="numeric" id="afMin" value="${mins}">
-        <span class="hint" style="margin:0">minutes</span>
-      </div>
-      <div class="hint">Taken from the clock. Change it if it ran on after you stopped.</div>
-    </div>
+    ${''/* No duration field. The clock ran from the Start you pressed to the
+          Finish you pressed, so asking for the number it just measured - and
+          offering plus and minus buttons to nudge it - is asking the user to
+          check the app's arithmetic. The figure is shown in the Time tile
+          above; if it is wrong, the activity can be edited after saving, which
+          is the rare case rather than the default one. */}
     ${T.dist?`<div class="field"><label>How far? <span style="font-weight:600;color:var(--text-3)">optional</span></label>
       <div class="fine">
         <input class="inp num" type="number" inputmode="decimal" step="0.1" id="afDist" placeholder="—">
@@ -1036,12 +1038,12 @@ function drawActivityFinish(){
   const curStrain=()=>{
     const e=$('#afStrain');
     if(STSET && e && e.value.trim()!=='') return clamp(+e.value,0,21);
-    const m=Math.max(1,+($('#afMin')||{}).value||mins);
+    const m=mins;   /* the clock measured it; there is nothing to override */
     const iB=$('#afInt button.on');
     return rnd(liveStrain(W.actType, m, effortRpe(iB?iB.dataset.v:W.intensity, null)),1);
   };
   const paint=()=>{
-    const m=Math.max(1,+($('#afMin')||{}).value||mins);
+    const m=mins;   /* the clock measured it; there is nothing to override */
     const dEl=$('#afDist');
     const dist=dEl&&dEl.value!==''? (+dEl.value||null) : null;
     const st=curStrain();
@@ -1055,7 +1057,7 @@ function drawActivityFinish(){
       min:m, dist:dist, strain:st}) + weekContext(ACT_CAT(W.actType), m);
   };
   paint();
-  ['afMin','afDist'].forEach(id=>{ const e=$('#'+id); if(e) e.addEventListener('input',paint); });
+  ['afDist'].forEach(id=>{ const e=$('#'+id); if(e) e.addEventListener('input',paint); });
   (function(){ const e=$('#afStrain'); if(e) e.addEventListener('input',()=>{
     STSET = e.value.trim()!==''; paint(); }); })();
   $$('#afInt button').forEach(b=>b.onclick=()=>{
@@ -1063,7 +1065,7 @@ function drawActivityFinish(){
     b.classList.add('on'); W.intensity=b.dataset.v; haptic(); paint(); });
 
   $('#afSave').onclick=()=>{
-    const m=Math.max(1,+($('#afMin')||{}).value||mins);
+    const m=mins;   /* the clock measured it; there is nothing to override */
     const dEl=$('#afDist');
     const dist=dEl&&dEl.value!==''? (+dEl.value||null) : null;
     const iB=$('#afInt button.on');
@@ -1383,19 +1385,11 @@ function preStartSheet(type){
         <div class="ps-n">${esc(T.name)}</div>
         <button class="tert" id="psChange">Choose something else</button>
       </div>
-      <div class="ruled" style="display:flex;align-items:center;gap:12px">
-        <div style="flex:1">
-          <div style="font-size:13px;font-weight:700">Strain target</div>
-          <div style="font-size:11.5px;color:var(--text-3);margin-top:2px">${
-            target!=null? 'You will be told when you reach it.'
+      <div class="ruled">${toggleRow({id:'psOn', on:target!=null,
+        label:'Strain target',
+        hint: target!=null? 'You will be told when you reach it.'
             : prev? 'Last time this came to '+rnd(prev.strain,1)+'.'
-            : 'Optional. Nothing is set.'}</div>
-        </div>
-        <label style="display:flex;align-items:center;gap:8px">
-          <input type="checkbox" id="psOn" ${target!=null?'checked':''}
-                 style="width:22px;height:22px;accent-color:var(--accent)">
-        </label>
-      </div>
+            : 'Optional. Nothing is set.'})}</div>
       ${target!=null?`<div class="field">
         <div class="fine">
           <input class="inp num" type="number" inputmode="decimal" step="0.1"

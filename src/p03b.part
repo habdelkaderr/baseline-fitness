@@ -106,7 +106,7 @@ function gearEditorHTML(o){
 
   if(!place) return `
     <div class="rows" id="${o.id}_place">
-      <button data-p="home"><i class="rw-i">${svg('today')}</i>
+      <button data-p="home"><i class="rw-i">${svg('home')}</i>
         <span class="rw-x"><span class="rw-t">At home</span>
           <span class="rw-s">You pick what you have — nothing is assumed</span></span>
         <i class="rw-c">${svg('chev')}</i></button>
@@ -243,16 +243,16 @@ function canDo(e){
    engine work identically whatever you wear.
    ====================================================================== */
 const DATA_FIELDS={
-  recovery :{name:'Recovery',        unit:'%',  lo:0,  hi:100, icon:'heart', hint:'A 0–100 daily readiness score'},
+  recovery :{name:'Recovery',        unit:'%',  lo:0,  hi:100, icon:'battery', hint:'A 0–100 daily readiness score'},
   hrv      :{name:'HRV',             unit:'ms', lo:5,  hi:250, icon:'pulse', hint:'Overnight heart-rate variability'},
   rhr      :{name:'Resting HR',      unit:'bpm',lo:25, hi:120, icon:'heart', hint:'Overnight resting heart rate'},
   sleep    :{name:'Sleep',           unit:'h',  lo:0,  hi:16,  icon:'moon', hint:'Time actually asleep'},
-  sleepNeed:{name:'Sleep need',      unit:'h',  lo:4,  hi:14,  icon:'moon', hint:'What your device says you needed'},
+  sleepNeed:{name:'Sleep need',      unit:'h',  lo:4,  hi:14,  icon:'hourglass', hint:'What your device says you needed'},
   strain   :{name:'Strain / load',   unit:'',   lo:0,  hi:21,  icon:'flame', hint:"Yesterday's cardiovascular load"},
-  resp     :{name:'Respiratory rate',unit:'rpm',lo:6,  hi:30, icon:'pulse'},
-  spo2     :{name:'Blood oxygen',    unit:'%',  lo:70, hi:100, icon:'drop'},
+  resp     :{name:'Respiratory rate',unit:'rpm',lo:6,  hi:30, icon:'lungs'},
+  spo2     :{name:'Blood oxygen',    unit:'%',  lo:70, hi:100, icon:'spo2'},
   temp     :{name:'Skin temp change',unit:'°C', lo:-5, hi:5, icon:'thermo'},
-  steps    :{name:'Steps',           unit:'',   lo:0,  hi:80000, icon:'run'}
+  steps    :{name:'Steps',           unit:'',   lo:0,  hi:80000, icon:'walk'}
 };
 /* `importer`: 'whoop' = the built-in CSV parser for WHOOP's export format;
    'csv' = the generic column-mapping importer; null = type it in each day. */

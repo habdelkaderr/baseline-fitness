@@ -424,9 +424,12 @@ function greeting(){ const h=new Date().getHours(); return h<5?'Good night':h<12
    is. Both read the plan rather than being written per screen, so the card and
    the history rows cannot describe the same session differently. */
 function planIcon(pl){
-  const m={lower:'barbell',upper:'dumbbell',power:'flame',core:'ul',
-           run_e:'run',run_q:'run',run_int:'run',bike:'bike',
-           mobility:'heart',rest:'moon',prep:'tennis'};
+  /* Each session type has its own mark. They used to collapse: the three
+     runs shared one glyph, mobility borrowed the heart that means resting
+     heart rate, and core carried the upload arrow. */
+  const m={lower:'barbell',upper:'dumbbell',power:'bolt',core:'core',
+           run_e:'run',run_q:'gauge',run_int:'intervals',bike:'bike',
+           mobility:'yoga',rest:'moon',prep:'tennis'};
   return m[(pl&&pl.id)||'']||'dumbbell';
 }
 function planTags(pl,wk){
@@ -931,7 +934,7 @@ function ringRow(d){
     ${HOME_TILES?`<div class="score-pair">
       ${''/* an icon, the figure, and a bar: readable in half a second */}
       <button class="mtile" id="ringStrain" aria-label="Strain today ${rnd(load,1)} of 21. See the day">
-        <span class="mt-h"><i class="mt-i cyan">${svg('shoe')}</i><span class="mt-l">Strain</span></span>
+        <span class="mt-h"><i class="mt-i cyan">${svg('flame')}</i><span class="mt-l">Strain</span></span>
         <span class="mt-v">${load? rnd(load,1) : '0'} <small>of 21</small></span>
         <span class="mt-b"><i style="width:${Math.min(100, (load||0)/21*100)}%;background:var(--cyan)"></i></span>
       </button>
@@ -953,7 +956,7 @@ function ringRow(d){
         const tgt=Math.max(3,(DB.targets&&DB.targets.sessions)||4);
         return `
           <button class="mtile" id="ringWeek" aria-label="${n} logged this week. See your training">
-            <span class="mt-h"><i class="mt-i">${svg('today')}</i><span class="mt-l">This week</span></span>
+            <span class="mt-h"><i class="mt-i">${svg('cal')}</i><span class="mt-l">This week</span></span>
             <span class="mt-v">${n} <small>logged</small></span>
             <span class="mt-b"><i style="width:${Math.min(100, n/tgt*100)}%;background:var(--accent)"></i></span>
           </button>`;

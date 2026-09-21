@@ -15,14 +15,17 @@ function activityRows(){
   const n=(DB.activities||[]).length;
   const sessions=(DB.sessions||[]).filter(s=>s.done).length;
   return [
-    {t:'Recent days', icon:'today', s:'The last ten days, day by day',
+    {t:'Recent days', icon:'cal', s:'The last ten days, day by day',
      go:()=>openPane('Recent days', null, paneTimeline)},
     {t:'All activity', icon:'book',
      s: n? `${n} logged` : 'Nothing logged yet',
      go:()=>openPane('All activity', null, paneActHistory)},
     {t:'Totals', icon:'chart', s:'By week and by type',
      go:()=>openPane('Totals','Volume by week and type', paneTotals)},
-    hasSportChosen() ? {t:SPORT_LABEL(), icon:'flame', s:'Your sport in detail',
+    /* Now that every sport has its own drawing, the row for the user's sport
+       shows that sport rather than the load flame it used to borrow. */
+    hasSportChosen() ? {t:SPORT_LABEL(), icon:ACT_ICON(mainSportActs()[0]||'other'),
+     s:'Your sport in detail',
      go:()=>openPane(SPORT_LABEL(), null, paneTennis)} : null
   ].filter(Boolean);
 }
@@ -152,7 +155,7 @@ function paneTennis(c){
        </div>
        ${t.notes?`<div class="note" style="font-size:11.5px">${esc(t.notes)}</div>`:''}
      </div>`).join('')
-    :`<div class="empty"><div class="ei">${svg('flame')}</div><h4>No ${esc(SLC)} logged yet</h4><p>Log a session and the engine will start protecting the day after it.</p></div>`}
+    :`<div class="empty"><div class="ei">${svg(ACT_ICON(mainSportActs()[0]||'other'))}</div><h4>No ${esc(SLC)} logged yet</h4><p>Log a session and the engine will start protecting the day after it.</p></div>`}
    ${wT.length?`<div class="note">Plus <b>${wT.length}</b> matching sessions imported from WHOOP.</div>`:''}`;
   $$('[data-w]',c).forEach(b=>b.onclick=()=>previewWorkout(b.dataset.w,'full'));
   $$('[data-aid]',c).forEach(b=>b.onclick=()=>activityView(b.dataset.aid));
@@ -277,18 +280,37 @@ function otherSuggestions(){
    not a grid you scan.
    ====================================================================== */
 
-/* An honest icon or a generic one. Inventing a distinct glyph per sport would
-   mean thirty drawings, most of them guesses; these are the ones the icon set
-   genuinely has. */
+/* One drawing per activity.
+   The rules this replaces were written to avoid drawing thirty glyphs, and
+   the saving showed: the log grid put the same runner on running, walking and
+   hiking, and the same flame on football, basketball, volleyball, martial
+   arts, skiing, golf and "other" - seven rows of one mark, side by side in a
+   two-column grid. A generic mark on the long tail is defensible; a generic
+   mark on the things the user does every week is not. Every type ACT_TYPES
+   knows about is named here, so the table is checkable rather than a chain of
+   regexes whose last line quietly catches whatever it missed. */
+const ACT_ICONS={
+  tennis:'tennis',  padel:'padel',      squash:'squash',
+  football:'soccer',basketball:'bball', volleyball:'vball',
+  running:'run',    walking:'walk',     hiking:'hike',      cycling:'bike',
+  swimming:'swim',  rowing:'row',       strength:'dumbbell',climbing:'climb',
+  martial:'martial',skiing:'ski',       golf:'golf',        yoga:'yoga',
+  other:'dots'
+};
 function ACT_ICON(k){
-  if(/tennis|padel|squash|badminton/.test(k)) return 'tennis';
-  if(k==='cycling') return 'bike';
-  if(/running|walking|hiking|triathlon/.test(k)) return 'run';
-  if(k==='swimming') return 'drop';
-  if(/strength|gym|climbing/.test(k)) return 'dumbbell';
-  if(/yoga|mobility|stretch/.test(k)) return 'heart';
-  if(k==='rowing') return 'pulse';
-  return 'flame';
+  if(ACT_ICONS[k]) return ACT_ICONS[k];
+  /* imported names and the odd synonym, mapped onto the same drawings */
+  if(/tennis|badminton|racquet/.test(k)) return 'tennis';
+  if(/running|jog|triathlon/.test(k)) return 'run';
+  if(/walk/.test(k)) return 'walk';
+  if(/hik|trek/.test(k)) return 'hike';
+  if(/cycl|bike/.test(k)) return 'bike';
+  if(/swim/.test(k)) return 'swim';
+  if(/row/.test(k)) return 'row';
+  if(/yoga|mobility|stretch|pilates/.test(k)) return 'yoga';
+  if(/strength|gym|weight/.test(k)) return 'dumbbell';
+  if(/climb/.test(k)) return 'climb';
+  return 'dots';
 }
 
 /* =========================================================================
@@ -320,7 +342,7 @@ function viewLog(v){
   const recent=(DB.activities||[]).slice()
     .sort((a,b)=>(a.date===b.date? 0 : (a.date<b.date?1:-1))).slice(0,4);
   v.innerHTML=`
-    <div class="lg-find">${svg('target')}
+    <div class="lg-find">${svg('search')}
       <input class="inp" id="lgQ" type="search" placeholder="Search activities…"
              value="${esc(LOGQ)}" autocomplete="off"></div>
     ${types.length?`<div class="lgrid" id="lgGrid">${types.map(k=>
@@ -328,7 +350,7 @@ function viewLog(v){
       ).join('')}</div>`
      :`<div class="hint" style="margin-top:14px">Nothing matches “${esc(LOGQ)}”. Log it as
         <b>Other</b> and give it a name.</div>
-       <div class="lgrid"><button data-k="other"><i>${svg('flame')}</i><span>Other activity</span></button></div>`}
+       <div class="lgrid"><button data-k="other"><i>${svg('dots')}</i><span>Other activity</span></button></div>`}
     ${recent.length?`<div class="sec-t">Recent</div>
       <div class="rows" id="lgRecent">${recent.map((a,i)=>{
         const T=ACT_TYPES[a.type]||ACT_TYPES.other;
