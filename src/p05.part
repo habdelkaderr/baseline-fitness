@@ -276,8 +276,12 @@ function bindInputs(root){
    appears and disappears is a worse answer than reaching it from the
    readiness row on Today, where the number it explains already is. */
 function tabs(){ return [
-  {id:'today',   label:'Today',    icon:'home'},
-  {id:'workouts',label:'Train',    icon:'dumbbell'},
+  {id:'today',   label:'Home',     icon:'home'},
+  {id:'workouts',label:'Training', icon:'dumbbell'},
+  /* Logging is not a place, it is the thing you do most often that is not
+     training - so it gets the middle of the bar and a shape of its own rather
+     than being a row buried inside Home. */
+  {id:'log',     label:'Log',      icon:'plus', mid:true},
   {id:'progress',label:'Progress', icon:'chart'},
   /* Settings was a gear in the top-right corner - the only destination
      reachable by a different gesture from every other one, in the hardest
@@ -326,7 +330,9 @@ function renderNav(){
   $('#nav').innerHTML=
     `<div class="nav-brand"><i>${svg('ring')}</i><div>Baseline<span>Adaptive training</span></div></div>`+
     tabs().map(t=>
-      `<button data-tab="${t.id}" class="${TAB===t.id?'on':''}" aria-current="${TAB===t.id?'page':'false'}">${svg(t.icon)}<span>${esc(t.label)}</span></button>`).join('')+
+      `<button data-tab="${t.id}" class="${t.mid?'mid ':''}${TAB===t.id?'on':''}"
+         aria-current="${TAB===t.id?'page':'false'}"
+         >${t.mid?`<i class="nav-fab">${svg(t.icon)}</i>`:svg(t.icon)}<span>${esc(t.label)}</span></button>`).join('')+
     `<div class="nav-foot">All data stays on this device.<br>No account, no server, no tracking.</div>`;
   $$('#nav button').forEach(b=>b.onclick=()=>{ haptic(); go(b.dataset.tab); });
 }
@@ -353,6 +359,7 @@ function render(){
     v.innerHTML=''; pg.build(v); bindInputs(v); return;
   }
   ({today:viewToday, workouts:viewWorkouts,
+    log:viewLog,
     progress:viewProgress, settings:viewSettings}[TAB]||viewToday)(v);
   bindInputs(v);
 }
@@ -735,7 +742,7 @@ function viewToday(v){
   `
   :`
   <div class="rec">
-    <div class="rec-l">Today</div>
+    <div class="rec-l">Today's recommendation</div>
     ${''/* The session gets its own mark and a line of tags, so the card says
           what KIND of work it is without a sentence about it. */}
     <div class="rec-hd">
@@ -782,6 +789,9 @@ function viewToday(v){
     <div class="hint" style="margin-top:10px">Based on ${esc(rd.sources.label)}.</div>
   </div>
 
+  ${''/* No "Log activity" card here: logging has the middle of the nav now,
+        and a card repeating it would be a second door to the same room -
+        which is the thing this screen has spent several passes removing. */}
   <div class="rows" style="margin-top:10px"><button id="btnSwap">
     <i class="rw-i">${svg('swap')}</i>
     <span class="rw-x"><span class="rw-t">Change today's plan</span></span>
@@ -806,13 +816,17 @@ function viewToday(v){
   ${''/* The heading names the period the strip is SHOWING, so it stays true
           when the arrows move it, and offers the way through to the full
           history rather than making the strip carry everything. */}
-  <div class="sec-hd">
-    <div class="sec-t" style="margin:0">Training · ${esc(weekRangeLabel(
+  ${''/* "This week" while it IS this week, and the dates once the arrows have
+          moved it - so the heading is never a period the strip is not showing,
+          and reads as plainly as possible in the common case. */}
+  <div class="sec-t">${WEEKOFF===0 ? 'This week' : esc(weekRangeLabel(
       addDays(weekStartOf(d), WEEKOFF*7), addDays(weekStartOf(d), WEEKOFF*7+6)))}</div>
-    <button class="sec-more" id="tdAllTrain">View all ${svg('chev')}</button>
-  </div>
   ${weekStrip(d)}
 
+  <div class="sec-hd">
+    <div class="sec-t" style="margin:0">Recent activity</div>
+    <button class="sec-more" id="tdAllTrain">View all ${svg('chev')}</button>
+  </div>
   ${activitiesCard(selDay())}
   ${activityRowsHTML()}`;
 
@@ -850,6 +864,14 @@ function ringHTML(o){
     </svg>
   </span>`;
 }
+
+/* Home carries readiness, strain and sleep.
+   Readiness is built from the other two among other things, so there is an
+   argument for showing it alone - but in practice strain and sleep are the two
+   figures people check without wanting an explanation, and making them a tap
+   away costs more than the tidiness is worth. They stay, sized as context
+   rather than as equals. */
+const HOME_TILES=true;
 
 /* The three numbers that describe a day - but not as three equals. Readiness
    is what this app is built around, so it leads at full width with its band
@@ -900,10 +922,14 @@ function ringRow(d){
       </span>
       <i class="rw-c">${svg('chev')}</i>
     </button>
-    <div class="score-pair">
-      ${''/* Strain and sleep are context for the number above, not two more
-            rings competing with it. An icon, the figure, and a bar that shows
-            how far along it is - readable in the half-second this row gets. */}
+    ${''/* Strain and sleep moved off Home.
+          Readiness already answers "how am I today", and it is BUILT from
+          those two among other things - so showing them beside it asked the
+          user to reconcile three numbers about the same question. They live on
+          the readiness screen, one tap in, where they explain the score
+          instead of competing with it. */}
+    ${HOME_TILES?`<div class="score-pair">
+      ${''/* an icon, the figure, and a bar: readable in half a second */}
       <button class="mtile" id="ringStrain" aria-label="Strain today ${rnd(load,1)} of 21. See the day">
         <span class="mt-h"><i class="mt-i cyan">${svg('shoe')}</i><span class="mt-l">Strain</span></span>
         <span class="mt-v">${load? rnd(load,1) : '0'} <small>of 21</small></span>
@@ -932,7 +958,7 @@ function ringRow(d){
             <span class="mt-b"><i style="width:${Math.min(100, n/tgt*100)}%;background:var(--accent)"></i></span>
           </button>`;
       })()}
-    </div>
+    </div>`:''}
   </div>`;
 }
 function wireRings(d){
@@ -1062,11 +1088,22 @@ function pageReadiness(d){
       ${ci.pain&&ci.pain!=='None'?`<div class="kv"><span class="k">Pain</span><span class="v">${esc(ci.pain)}</span></div>`:''}
     </div>
 
+    ${''/* Sleep's own screen used to be reached from a tile on Home. Home no
+          longer carries that tile - readiness is built from sleep, so the two
+          sat there asking to be reconciled - so the door is here, beside the
+          figure it explains. */}
+    <div class="rows"><button id="rdSleep">
+      <i class="rw-i">${svg('moon')}</i>
+      <span class="rw-x"><span class="rw-t">Sleep</span>
+        <span class="rw-s">Your target, and what tonight is worth</span></span>
+      <i class="rw-c">${svg('chev')}</i></button></div>
+
     <button class="btn ghost block" id="rdEdit">Edit check-in</button>
     ${(usesDevice()||DB.whoop.cycles.length)
       ? `<button class="btn ghost block" id="rdMetrics">Wearable metrics and trends</button>`
       : ''}`;
     const e=$('#rdEdit'); if(e) e.onclick=()=>openCheckin(d);
+    const sl=$('#rdSleep'); if(sl) sl.onclick=()=>pushPage({build:pageSleep(d)});
     const m=$('#rdMetrics'); if(m) m.onclick=()=>{ HTAB='trends'; openMetrics(); };
   };
 }
@@ -1312,10 +1349,12 @@ function wireToday(d){
   });
   on('btnPreview',()=>{ const p=todayPlan(d); previewWorkout(p.workoutId,p.variant,p); });
   on('btnSwap',()=>changePlan(d));
-  /* the avatar goes where the profile lives, which is Settings */
-  on('tdProfile',()=>{ go('settings'); });
+  /* Straight to the profile, not to Settings. An avatar means "me", so landing
+     on a list of preferences with the profile one more tap away is a door that
+     does not open onto the room it is labelled with. */
+  on('tdProfile',()=>pushPage({build:c=>{ SETTAB='profile'; settingsBody(c); }}));
   /* and the heading's way through to the whole history */
-  on('tdAllTrain',()=>{ resetStack(); openPane('Training','Everything you have logged', paneHistory); });
+  on('tdAllTrain',()=>{ resetStack(); openPane('Recent activity','Everything you have logged', paneHistory); });
   on('btnPrep',()=>previewWorkout('w_prep','full'));
   wireRings(d);
   wireWeekStrip(d);

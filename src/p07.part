@@ -291,6 +291,90 @@ function ACT_ICON(k){
   return 'flame';
 }
 
+/* =========================================================================
+   THE LOG TAB
+   Logging is the thing people do most often that is not training, so it has
+   the middle of the nav and a screen of its own rather than being a row
+   somewhere on Home. A grid of activities, a search for the long tail, and
+   what you logged recently - which is usually what you are about to log.
+   ====================================================================== */
+let LOGQ='';
+/* the order the grid is offered in: what this profile actually does first */
+function logGridTypes(){
+  const seen={}, out=[];
+  const add=k=>{ if(ACT_TYPES[k] && !seen[k]){ seen[k]=1; out.push(k); } };
+  recentActTypes(4).forEach(add);
+  mainSportActs().forEach(add);
+  ['running','cycling','walking','strength','football','swimming','basketball',
+   'hiking','yoga','tennis','padel','squash','volleyball','martial','rowing',
+   'climbing','skiing','golf'].forEach(add);
+  add('other');
+  return out;
+}
+function viewLog(v){
+  appbar('Log activity','Keep Baseline up to date',
+    `<button class="icon-btn" id="lgX" aria-label="Close">${svg('x')}</button>`);
+  const q=LOGQ.trim().toLowerCase();
+  const types=logGridTypes().filter(k=>
+    !q || (ACT_TYPES[k].name||'').toLowerCase().indexOf(q)>=0 || k.indexOf(q)>=0);
+  const recent=(DB.activities||[]).slice()
+    .sort((a,b)=>(a.date===b.date? 0 : (a.date<b.date?1:-1))).slice(0,4);
+  v.innerHTML=`
+    <div class="lg-find">${svg('target')}
+      <input class="inp" id="lgQ" type="search" placeholder="Search activities…"
+             value="${esc(LOGQ)}" autocomplete="off"></div>
+    ${types.length?`<div class="lgrid" id="lgGrid">${types.map(k=>
+      `<button data-k="${esc(k)}"><i>${svg(ACT_ICON(k))}</i><span>${esc(ACT_TYPES[k].name)}</span></button>`
+      ).join('')}</div>`
+     :`<div class="hint" style="margin-top:14px">Nothing matches “${esc(LOGQ)}”. Log it as
+        <b>Other</b> and give it a name.</div>
+       <div class="lgrid"><button data-k="other"><i>${svg('flame')}</i><span>Other activity</span></button></div>`}
+    ${recent.length?`<div class="sec-t">Recent</div>
+      <div class="rows" id="lgRecent">${recent.map((a,i)=>{
+        const T=ACT_TYPES[a.type]||ACT_TYPES.other;
+        return `<button data-r="${i}">
+          <i class="rw-i">${svg(ACT_ICON(a.type))}</i>
+          <span class="rw-x"><span class="rw-t">${esc(T.name)}</span>
+            <span class="rw-s">${esc(fmtMin(a.min))}${a.intensity?' · '+esc(a.intensity):''} · ${
+              a.date===todayISO()?'Today':esc(fmtDate(a.date))}</span></span>
+          <i class="rw-c">${svg('chev')}</i></button>`;}).join('')}</div>`:''}`;
+  const x=$('#lgX'); if(x) x.onclick=()=>go('today');
+  const qi=$('#lgQ');
+  if(qi) qi.addEventListener('input',()=>{
+    LOGQ=qi.value;
+    const at=qi.selectionStart;
+    viewLog(v);
+    const n=$('#lgQ'); if(n){ n.focus(); try{ n.setSelectionRange(at,at); }catch(e){} }
+  });
+  $$('#lgGrid button').forEach(b=>b.onclick=()=>{ haptic(); logChoose(b.dataset.k); });
+  $$('#lgRecent button').forEach(b=>b.onclick=()=>activityView(recent[+b.dataset.r].id));
+  bindInputs(v);
+}
+
+/* The grid REPLACES the picker sheet, and nothing else.
+   Both logging paths are unchanged behind it: an activity that has already
+   happened goes to activitySheet, one about to happen goes to preStartSheet
+   with its warm-up choice. Picking the type first means neither path has to
+   open a search sheet the user has just used. */
+function logChoose(type){
+  const T=ACT_TYPES[type]||ACT_TYPES.other;
+  const today=todayISO(), d=selDay();
+  const rows=[
+    {t:'Log it as done', s:'Something you have already finished',
+     icon:'check', run:()=>activitySheet(null, d, type)},
+    /* a clock can only start now, so it is offered only on today */
+    d===today ? {t:'Start it now', s:'Time and strain count from the moment you start',
+     icon:'timer', run:()=>preStartSheet(type)} : null
+  ].filter(Boolean);
+  if(rows.length===1){ rows[0].run(); return; }
+  openSheet(T.name, navRows('lgWhich',rows));
+  $$('#lgWhich button').forEach(b=>b.onclick=()=>{
+    const act=rows[+b.dataset.r];
+    closeSheet();
+    setTimeout(()=>{ if(act&&act.run) act.run(); },200);
+  });
+}
+
 /* What you have actually been doing, newest first. A profile that names
    sports supplies the shortlist until there is history to supply it. */
 function recentActTypes(n){

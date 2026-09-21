@@ -542,12 +542,12 @@ const SET_PANES=[
      opened to answer. */
   {id:'profile',   name:'Profile',    icon:'user',    sec:null,
    s:'Name, age, height, weight'},
-  {id:'appearance',name:'Appearance', icon:'moon',    sec:'appearance',
-   s:'Light, dark or follow system'},
-  {id:'training',  name:'Training preferences', icon:'dumbbell', sec:'training',
+  {id:'appearance',name:'Appearance', icon:'sun',     sec:'app',
+   s:'Light, dark or system'},
+  {id:'training',  name:'Training preferences', icon:'sliders', sec:'training',
    s:'Equipment, goals, schedule, injuries'},
-  {id:'alerts',    name:'Workout display', icon:'sliders', sec:'training',
-   s:'Sets, timers, sounds and alerts'},
+  {id:'alerts',    name:'Workout experience', icon:'sliders2', sec:'training',
+   s:'Sets, timers, sounds and display'},
   /* Under health rather than training: a cycle is not a training preference,
      and this is where somebody would look for it. It stays listed even when
      off, because otherwise there would be no way to turn it on. */
@@ -559,11 +559,13 @@ const SET_PANES=[
    s:'Backup, restore, export or erase'},
   {id:'privacy',   name:'Privacy',    icon:'shield',  sec:'health',
    s:'Your data stays on this device'},
+  {id:'help',      name:'Help & feedback', icon:'help', sec:'support',
+   s:'Get help or send feedback'},
   {id:'about',     name:'About Baseline', icon:'info', sec:'support',
    s:'Version, acknowledgements and links'}
 ];
 const SET_SECTIONS=[
-  {id:'appearance', t:'Appearance'},
+  {id:'app',        t:'App experience'},
   {id:'training',   t:'Training'},
   {id:'health',     t:'Health & data'},
   {id:'support',    t:'Support'}
@@ -712,7 +714,7 @@ function profileWire(){
 }
 
 function viewSettings(v){
-  appbar('Settings');
+  appbar('Settings','Personalize your experience');
   const open=id=>pushPage({build:c=>{ SETTAB=id; settingsBody(c); }});
   const rows=SET_PANES.filter(g=>g.sec).map(g=>({
     t:g.name, s:g.s, icon:g.icon, go:()=>open(g.id)
@@ -729,11 +731,15 @@ function viewSettings(v){
       <span class="set-av">${who? esc(who.trim().charAt(0).toUpperCase()) : svg('user')}</span>
       <span class="set-mx">
         <span class="set-who">${who?esc(who):'Baseline'}</span>
-        <span class="set-sub">${
-          [c.sessions+' session'+(c.sessions===1?'':'s'),
-           c.activities+' activit'+(c.activities===1?'y':'ies'),
-           c.cycles? c.cycles+' imported day'+(c.cycles===1?'':'s') : null
-          ].filter(Boolean).join(' · ')}</span>
+        <span class="set-sub">${(()=>{
+          /* how long this copy has been going, which is the third thing the
+             card is asked - and the honest measure of how much it knows */
+          const cov=dataCoverage(todayISO());
+          return [c.sessions+' session'+(c.sessions===1?'':'s'),
+                  c.activities+' activit'+(c.activities===1?'y':'ies'),
+                  cov.selfDays? cov.selfDays+' day'+(cov.selfDays===1?'':'s') : null
+                 ].filter(Boolean).join(' · ');
+        })()}</span>
       </span>
       <i class="rw-c">${svg('chev')}</i>
     </button>
@@ -1052,9 +1058,21 @@ function settingsBody(v){
         ((window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)||window.navigator.standalone===true)
           ? 'Installed app' : 'Browser tab'}</span></div>
      <div class="hint" style="margin-top:8px">Quote the build number in any bug report.</div>
+   </div>
+
+   ${''/* Getting help is its own errand, so it gets its own door rather than
+          sitting at the bottom of the version screen. */}
+   <div class="card spane help">
+     <div class="card-t" style="margin-bottom:10px">Getting help</div>
+     <p style="font-size:13px;line-height:1.6;color:var(--text-2)">There is no account and no
+       server, so nobody can look at your data to help you — which means a good report has to
+       carry its own context. The build number is most of the diagnosis.</p>
      <button class="btn ghost block" id="sTour">${svg('info')} How Baseline works</button>
      <button class="btn ghost block" id="sDiag">${svg('copy')} Copy diagnostics</button>
-     <div class="hint" style="margin-top:8px">Device, browser, storage and how much you have logged. <b>Counts only</b>, never what you entered.</div>
+     <div class="hint" style="margin-top:8px">Device, browser, storage and how much you have logged.
+       <b>Counts only</b>, never what you entered. Paste it into your report.</div>
+     <div class="kv" style="margin-top:12px"><span class="k">Build</span>
+       <span class="v num">${esc(APP_BUILD)}</span></div>
    </div>
    <div class="card spane data">
      <div class="card-t" style="margin-bottom:10px;color:var(--red)">Danger zone</div>

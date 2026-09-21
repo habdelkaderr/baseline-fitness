@@ -95,10 +95,21 @@ function exitWM(discard){
                   W=null; render(); };
   if(discard){ try{ Store.pref('live',null); }catch(e){} return fin(); }
 
-  /* Always ask. This used to leave silently whenever nothing had been logged
-     yet, which is exactly when a mis-tap on a 44px button is most likely, and
-     it never offered the third answer people actually want: pause. */
   const logged=W? sum(W.entries.map(e=>e.sets.filter(s=>s.done).length)) : 0;
+  /* Ask only when there is something to lose.
+     This used to ask every time, on the reasoning that a mis-tap on the close
+     button is most likely before anything is logged. That was backwards: with
+     nothing logged a mis-tap costs nothing, so the dialogue protected against
+     the cheap mistake and charged for it on every single exit - including the
+     common one of opening a session, reading the overview and backing out.
+     A running clock counts as progress even with no sets: a cardio session IS
+     its elapsed time. */
+  const clockRun = !!(W && (W.kind==='activity'
+    || (W.entries||[]).some(e=>e.cardio && cardElapsedSec(e)>20)));
+  if(!logged && !clockRun){
+    try{ Store.pref('live',null); }catch(e){}
+    return fin();
+  }
   openSheet('Leave this workout?',
     `<p class="lede">${logged
       ? logged+' set'+(logged===1?'':'s')+' logged so far. Pausing keeps all of it and offers the session back on Today.'

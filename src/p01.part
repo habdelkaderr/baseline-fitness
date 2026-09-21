@@ -257,6 +257,15 @@ a{color:var(--accent);text-decoration:none}
 .nav button.on{color:var(--accent)}
 .nav button.on svg{stroke-width:2.3}
 .nav button:active{background:var(--press)}
+/* The middle of the bar is an action, not a destination, so it is shaped like
+   one: a filled disc that sits slightly above the row. */
+.nav button.mid{gap:4px}
+.nav button.mid .nav-fab{display:flex;align-items:center;justify-content:center;
+  width:40px;height:40px;border-radius:50%;background:var(--accent);color:var(--accent-ink);
+  margin-top:-12px;box-shadow:0 4px 12px rgba(0,0,0,.16)}
+.nav button.mid .nav-fab svg{width:22px;height:22px;stroke-width:2.6}
+.nav button.mid.on{color:var(--accent)}
+.nav button.mid:active .nav-fab{transform:scale(.94)}
 
 /* ---------- Cards ---------- */
 .card{
@@ -1163,6 +1172,49 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 /* the plan, said in words rather than in coach notation */
 .wm-plain{font-size:12.5px;color:var(--text-2);font-weight:600;
   margin-top:7px;line-height:1.5}
+
+/* ---------- The Log tab: a grid, a search, and what you did lately ---------- */
+.lg-find{display:flex;align-items:center;gap:9px;padding:0 13px;border-radius:13px;
+  background:var(--surface-2);border:1px solid var(--border-soft);margin-bottom:var(--sp-2)}
+.lg-find svg{width:17px;height:17px;color:var(--text-3);flex:0 0 auto}
+.lg-find .inp{border:0;background:none;padding:12px 0;min-height:0}
+.lgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.lgrid button{display:flex;align-items:center;gap:11px;padding:14px 13px;border-radius:14px;
+  background:var(--surface);border:1px solid var(--border-soft);font-family:inherit;
+  color:var(--text);text-align:left;cursor:pointer;min-height:56px}
+.lgrid button:active{background:var(--surface-2);transform:scale(.99)}
+.lgrid button i{flex:0 0 auto;display:flex;color:var(--accent)}
+.lgrid button i svg{width:20px;height:20px}
+.lgrid button span{font-size:14px;font-weight:700;letter-spacing:-.2px;
+  overflow-wrap:anywhere}
+@media (max-width:340px){ .lgrid{grid-template-columns:1fr} }
+/* the form: three questions, each with room to answer */
+.lgf-h{display:flex;flex-direction:column;align-items:center;gap:10px;
+  padding:6px 0 18px;text-align:center}
+.lgf-h i{display:flex;align-items:center;justify-content:center;width:54px;height:54px;
+  border-radius:50%;background:var(--accent-wash);border:1px solid var(--accent-line);
+  color:var(--accent)}
+.lgf-h i svg{width:26px;height:26px}
+.lgf-t{font-size:21px;font-weight:850;letter-spacing:-.6px}
+.lgf-dur{display:flex;align-items:center;gap:12px}
+.lgf-sb{flex:0 0 auto;width:46px;height:46px;border-radius:50%;background:var(--surface-2);
+  border:1px solid var(--border-soft);display:flex;align-items:center;justify-content:center;
+  color:var(--text);cursor:pointer}
+.lgf-sb svg{width:19px;height:19px}
+.lgf-sb:active{background:var(--surface-3)}
+.lgf-v{flex:1;text-align:center;font-size:26px;font-weight:750;letter-spacing:-.6px;
+  color:var(--text-3);font-variant-numeric:tabular-nums}
+.lgf-v b{font-size:30px;font-weight:850;color:var(--text)}
+/* five faces, and the one you picked is unmistakable */
+.faces{display:flex;gap:7px}
+.faces button{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;
+  padding:9px 2px;border-radius:12px;background:none;border:1px solid transparent;
+  font-family:inherit;color:var(--text-3);cursor:pointer}
+.faces button i{display:flex}
+.faces button i svg{width:26px;height:26px}
+.faces button span{font-size:9.5px;font-weight:700;line-height:1.2;text-align:center}
+.faces button.on{background:var(--accent-wash);border-color:var(--accent);color:var(--accent)}
+.faces button.on i svg{stroke-width:2.2}
 
 /* ---------- Progress: a period, four views, then the week ---------- */
 .pperiod{display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border-radius:999px;
