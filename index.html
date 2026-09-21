@@ -1164,6 +1164,122 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .wm-plain{font-size:12.5px;color:var(--text-2);font-weight:600;
   margin-top:7px;line-height:1.5}
 
+/* ---------- Progress: a period, four views, then the week ---------- */
+.pperiod{display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border-radius:999px;
+  background:var(--surface);border:1px solid var(--border);font-family:inherit;
+  font-size:13px;font-weight:750;color:var(--text);cursor:pointer;white-space:nowrap}
+.pperiod svg{width:14px;height:14px;color:var(--text-3)}
+/* the four views, as one control rather than four rows */
+.seg{display:flex;gap:4px;padding:4px;border-radius:999px;background:var(--surface-2);
+  margin-bottom:var(--sp-2);overflow-x:auto;scrollbar-width:none}
+.seg::-webkit-scrollbar{display:none}
+.seg button{flex:1 0 auto;padding:8px 14px;border-radius:999px;border:0;background:none;
+  font-family:inherit;font-size:13px;font-weight:750;color:var(--text-3);cursor:pointer;
+  white-space:nowrap}
+.seg button.on{background:var(--accent);color:var(--accent-ink)}
+/* the load: a figure, its direction, and the week beside it */
+.pload{display:flex;align-items:flex-start;gap:14px}
+.pload .pl-x{flex:0 0 auto;min-width:88px}
+.pload .pl-v{font-size:34px;font-weight:850;letter-spacing:-1.2px;line-height:1}
+.pload .pl-d{font-size:13px;font-weight:800;margin-top:4px}
+.pload .pl-d.up{color:var(--accent)} .pload .pl-d.down{color:var(--orange)}
+.pload .pl-s{font-size:11.5px;font-weight:650;color:var(--text-3);margin-top:3px;line-height:1.35}
+.pload .pl-c{flex:1;min-width:0}
+/* where the work went */
+.pfocus{display:block;width:100%;text-align:left;font-family:inherit;color:var(--text);
+  cursor:pointer;margin-top:10px}
+.fbar{display:flex;align-items:center;gap:10px;margin-top:9px}
+.fbar .fb-l{flex:0 0 78px;font-size:12.5px;font-weight:650;color:var(--text-2)}
+.fbar .fb-t{flex:1;height:8px;border-radius:4px;background:var(--surface-3);overflow:hidden}
+.fbar .fb-t i{display:block;height:100%;border-radius:4px}
+.fbar .fb-p{flex:0 0 34px;text-align:right;font-size:12px;font-weight:750;
+  font-variant-numeric:tabular-nums;color:var(--text-2)}
+/* the date column on a recent-session row */
+.rows .pr-d{flex:0 0 62px;font-size:11.5px;font-weight:700;color:var(--text-3);line-height:1.3}
+.stat .lab svg{width:14px;height:14px;vertical-align:-2px;margin-right:4px;color:var(--text-3)}
+
+/* ---------- Settings: one card for you, then grouped rows ---------- */
+.set-card{padding:0;overflow:hidden}
+.set-me{display:flex;align-items:center;gap:13px;width:100%;padding:15px 16px 14px;
+  background:none;border:0;font-family:inherit;color:var(--text);text-align:left;cursor:pointer}
+.set-me:active{background:var(--surface-2)}
+.set-av{flex:0 0 auto;width:44px;height:44px;border-radius:50%;background:var(--surface-2);
+  display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;
+  color:var(--text-2)}
+.set-av svg{width:22px;height:22px}
+.set-mx{flex:1;min-width:0}
+.set-who{display:block;font-size:18px;font-weight:800;letter-spacing:-.4px}
+.set-sub{display:block;font-size:13px;font-weight:600;color:var(--text-3);margin-top:2px}
+.set-store{display:flex;align-items:center;gap:8px;padding:11px 16px 13px;
+  border-top:1px solid var(--border-soft);font-size:12.5px;font-weight:650;color:var(--text-2)}
+.set-store svg{width:16px;height:16px;flex:0 0 auto}
+.set-store.ok svg{color:var(--green)}
+.set-store.bad svg{color:var(--red)}
+
+/* ---------- Today: the header, the tiles, the card ----------
+   The date sits above the greeting so the greeting can be the largest thing on
+   the screen, and the avatar gives the profile a door that is not a menu. */
+.ab-txt .pre{font-size:12px;font-weight:650;color:var(--text-3);margin-bottom:2px}
+.icon-btn.av{background:var(--surface-2);border-radius:50%;width:38px;height:38px;
+  display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.icon-btn.av svg{width:20px;height:20px}
+
+/* Strain and sleep: context for readiness, not two more rings competing with
+   it. Icon, figure, bar - legible in the half-second this row gets. */
+.mtile{display:flex;flex-direction:column;gap:7px;width:100%;padding:12px 13px 13px;
+  border-radius:var(--r-lg);background:var(--surface);border:1px solid var(--border-soft);
+  font-family:inherit;color:var(--text);text-align:left;cursor:pointer}
+.mtile:active{background:var(--surface-2)}
+.mtile .mt-h{display:flex;align-items:center;gap:8px}
+.mtile .mt-i{flex:0 0 auto;display:flex;color:var(--text-3)}
+.mtile .mt-i svg{width:17px;height:17px}
+.mtile .mt-i.cyan{color:var(--cyan)} .mtile .mt-i.violet{color:var(--violet)}
+.mtile .mt-l{font-size:12.5px;font-weight:700;color:var(--text-2)}
+.mtile .mt-v{font-size:22px;font-weight:850;letter-spacing:-.6px;line-height:1}
+.mtile .mt-v small{font-size:12.5px;font-weight:650;color:var(--text-3);letter-spacing:0}
+.mtile .mt-b{display:block;height:5px;border-radius:3px;background:var(--surface-3);overflow:hidden}
+.mtile .mt-b i{display:block;height:100%;border-radius:3px;transition:width .4s ease}
+
+/* the recommendation's own mark, and the tags that say what kind of work */
+.rec-hd{display:flex;align-items:flex-start;gap:12px;margin-top:7px}
+.rec-i{flex:0 0 auto;width:34px;height:34px;border-radius:10px;background:var(--surface-2);
+  display:flex;align-items:center;justify-content:center;color:var(--text-2);margin-top:2px}
+.rec-i svg{width:19px;height:19px}
+.rec-hd .rec-t{margin-top:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}
+.chip{font-size:11.5px;font-weight:700;padding:4px 9px;border-radius:999px;
+  background:var(--accent-wash);border:1px solid var(--accent-line);color:var(--text-2)}
+
+/* Why this?, as a card that already answers a little */
+.whyc{display:flex;align-items:flex-start;gap:11px;width:100%;margin-top:11px;
+  padding:12px 13px;border-radius:var(--r-lg);background:var(--accent-wash);
+  border:1px solid var(--accent-line);font-family:inherit;color:var(--text);
+  text-align:left;cursor:pointer}
+.whyc .whyc-i{flex:0 0 auto;display:flex;color:var(--accent);margin-top:1px}
+.whyc .whyc-i svg{width:17px;height:17px}
+.whyc .whyc-x{flex:1;min-width:0}
+.whyc .whyc-t{display:block;font-size:14px;font-weight:800}
+.whyc .whyc-s{display:block;font-size:12.5px;font-weight:600;color:var(--text-2);
+  margin-top:3px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;
+  -webkit-box-orient:vertical;overflow:hidden}
+.whyc .whyc-c{flex:0 0 auto;display:flex;color:var(--text-3);margin-top:2px}
+.whyc .whyc-c svg{width:16px;height:16px}
+.whyc[aria-expanded="true"] .whyc-c{transform:rotate(90deg)}
+
+/* the kind of day, as a mark rather than an abbreviation */
+.wk-ic{min-height:20px;margin-top:5px;display:flex;align-items:center;justify-content:center;
+  color:var(--text-3)}
+.wk-ic svg{width:15px;height:15px}
+.wk-d.sel .wk-ic{color:var(--accent)}
+
+/* a section heading with a way through to the whole of it */
+.sec-hd{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+  margin:var(--sp-2) 0 9px}
+.sec-more{display:inline-flex;align-items:center;gap:3px;background:none;border:0;
+  font-family:inherit;font-size:12.5px;font-weight:750;color:var(--accent);
+  cursor:pointer;padding:2px 0}
+.sec-more svg{width:14px;height:14px}
+
 /* ---------- Exercise illustrations ----------
    One figure system, themed through tokens so it reads in both schemes. The
    figure is instructional, so the body is the strongest line, equipment takes
@@ -1656,6 +1772,21 @@ const ICON = {
   info:'<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/>',
   /* a coaching cue — the one thing a coach would say out loud */
   bulb:'<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z"/>',
+  /* you, on the home screen and on the profile row */
+  user:'<circle cx="12" cy="8" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>',
+  /* the day’s accumulated load — a shoe, because it is what you did, not a metric */
+  shoe:'<path d="M2 16.5h14.5a4.5 4.5 0 0 0 4.3-3.2l.2-.8-6.5-2-2-2.5H8l-1 3H4a2 2 0 0 0-2 2z"/><path d="M2 20h19"/>',
+  /* swapping today’s plan for another */
+  swap:'<path d="M4 8h13l-3-3M20 16H7l3 3"/>',
+  /* a section that leads somewhere bigger */
+  layers:'<path d="M12 3 3 8l9 5 9-5z"/><path d="M3 13l9 5 9-5"/>',
+  /* the settings index, one mark per row so the list scans by shape */
+  home:'<path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/>',
+  checkc:'<circle cx="12" cy="12" r="9"/><path d="M8 12.2l2.6 2.6L16 9.4"/>',
+  sliders:'<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
+  cal:'<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8.5 3v4M15.5 3v4"/>',
+  db:'<ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6"/><path d="M4.5 12v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6"/>',
+  shield:'<path d="M12 3l7.5 3v5.5c0 4.6-3.1 8-7.5 9.5-4.4-1.5-7.5-4.9-7.5-9.5V6z"/>',
   /* the open readiness ring — the app's own mark, and sport-neutral */
   ring:'<path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5"/>',
   /* device types — enough to tell a ring from a band from a watch */
@@ -1786,7 +1917,7 @@ const SCHEMA_VERSION=2;             // bump to transform stored records
 /* A date, plus a letter when more than one build ships in a day. Without the
    letter there was no way to tell a second same-day deploy from the cached
    copy of the first, which is exactly the question "did my upload work?". */
-const APP_BUILD='2026-09-21b';
+const APP_BUILD='2026-09-21c';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */
@@ -8430,7 +8561,18 @@ function barChart(pts,opts){
     g+=`<rect x="${x.toFixed(1)}" y="${(H-P.b-h).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${Math.min(3,w/2).toFixed(1)}" fill="${p.color||opts.color||'var(--accent)'}" opacity="${p.dim?.35:1}"/>`;
     if(p.t) g+=`<text x="${(x+w/2).toFixed(1)}" y="${H-5}" fill="var(--text-3)" font-size="8.5" text-anchor="middle" font-weight="600">${esc(p.t)}</text>`;
   });
-  if(P.l>8) g+=`<text x="${P.l-5}" y="${P.t+7}" fill="var(--text-3)" font-size="8.5" text-anchor="end" font-weight="600">${rnd(hi,0)}</text>`;
+  /* `axis` draws a few labelled gridlines instead of only the top value, so a
+     bar can be read as a number rather than just as taller than its neighbour */
+  if(opts.axis){
+    const step = hi<=12?4 : hi<=30?10 : hi<=60?20 : 50;
+    for(let gv=0; gv<=hi; gv+=step){
+      const y=P.t+(1-gv/hi)*(H-P.t-P.b);
+      if(gv>0) g+=`<line x1="${P.l}" y1="${y.toFixed(1)}" x2="${W-P.r}" y2="${y.toFixed(1)}"
+        stroke="var(--border-soft)" stroke-dasharray="2 4"/>`;
+      g+=`<text x="${P.l-5}" y="${(y+3).toFixed(1)}" fill="var(--text-3)" font-size="8.5"
+        text-anchor="end" font-weight="600">${gv}</text>`;
+    }
+  } else if(P.l>8) g+=`<text x="${P.l-5}" y="${P.t+7}" fill="var(--text-3)" font-size="8.5" text-anchor="end" font-weight="600">${rnd(hi,0)}</text>`;
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="height:${H}px">${g}</svg>`;
 }
 function ringSvg(pct,color,size){
@@ -8632,7 +8774,7 @@ function bindInputs(root){
    appears and disappears is a worse answer than reaching it from the
    readiness row on Today, where the number it explains already is. */
 function tabs(){ return [
-  {id:'today',   label:'Today',    icon:'today'},
+  {id:'today',   label:'Today',    icon:'home'},
   {id:'workouts',label:'Train',    icon:'dumbbell'},
   {id:'progress',label:'Progress', icon:'chart'},
   /* Settings was a gear in the top-right corner - the only destination
@@ -8718,11 +8860,15 @@ function render(){
    It used to carry a settings gear, which was a second way into a screen the
    tab bar now offers directly - and put it in the corner of the phone that is
    hardest to reach. */
-function appbar(title,sub,actions){
+/* `pre` is a small line ABOVE the title. Today uses it for the date, so the
+   greeting can be the biggest thing on the screen without the date competing
+   with it or being pushed into a subtitle that says something else. */
+function appbar(title,sub,actions,pre){
   const onPage=STACK.length>0;
   $('#appbar').innerHTML=
     (onPage?`<button class="icon-btn ab-back" id="abBack" aria-label="Back">${svg('left')}</button>`:'')+
-    `<div class="ab-txt"><div class="ttl">${title}</div>${sub?`<div class="sub">${sub}</div>`:''}</div>`+
+    `<div class="ab-txt">${pre?`<div class="pre">${pre}</div>`:''}<div class="ttl">${title}</div>${
+      sub?`<div class="sub">${sub}</div>`:''}</div>`+
     `<div class="appbar-actions">${actions||''}</div>`;
   const bk=$('#abBack'); if(bk) bk.onclick=()=>{ haptic(); popPage(); };
 }
@@ -8765,6 +8911,38 @@ function wireRows(id,items){
    VIEW: TODAY
    ====================================================================== */
 function greeting(){ const h=new Date().getHours(); return h<5?'Good night':h<12?'Good morning':h<18?'Good afternoon':'Good evening'; }
+/* The mark for a recommendation, and the tags that say what kind of work it
+   is. Both read the plan rather than being written per screen, so the card and
+   the history rows cannot describe the same session differently. */
+function planIcon(pl){
+  const m={lower:'barbell',upper:'dumbbell',power:'flame',core:'ul',
+           run_e:'run',run_q:'run',run_int:'run',bike:'bike',
+           mobility:'heart',rest:'moon',prep:'tennis'};
+  return m[(pl&&pl.id)||'']||'dumbbell';
+}
+function planTags(pl,wk){
+  const out=[];
+  const byId={lower:'Lower body',upper:'Upper body',power:'Power',core:'Core',
+              run_e:'Easy run',run_q:'Tempo',run_int:'Intervals',bike:'Zone 2',
+              mobility:'Mobility',rest:'Rest'};
+  if(byId[(pl&&pl.id)||'']) out.push(byId[pl.id]);
+  /* The workout's own subtitle, which is where its patterns are already
+     written: "Upper B — Pull, Posture & Arms" gives "Pull · Posture". The
+     `focus` field was the wrong source - it is a sentence about intent, and
+     its first clause ("Anti-extension") reads as jargon on a chip. */
+  if(wk&&wk.name && wk.name.indexOf('—')>=0){
+    const sub=wk.name.split('—')[1]||'';
+    const parts=sub.split(/[,&]/).map(s=>s.trim()).filter(s=>s&&s.length<=12);
+    if(parts.length) out.push(parts.slice(0,2).join(' · '));
+  }
+  const ty=wk&&wk.type;
+  const tyName={strength:'Strength',power:'Power',core:'Core',cardio:'Cardio',
+                mobility:'Mobility',tennis:'Sport prep'}[ty];
+  if(tyName && out.indexOf(tyName)<0) out.push(tyName);
+  return out.slice(0,3);
+}
+/* the one-line version of a reason, for a card that has no room for markup */
+function stripTags(s){ return String(s||'').replace(/<[^>]*>/g,''); }
 
 /* =========================================================================
    AWAY MODE
@@ -9017,7 +9195,12 @@ function sinceText(n, span){
 function viewToday(v){
   const d=todayISO(), ci=DB.checkins[d];
   const first=(DB.profile.name||'').trim().split(/\s+/)[0];
-  appbar(greeting()+(first?', '+esc(first):''), fmtDate(d));
+  /* Date, greeting, and one line that says what the screen is for. The date
+     used to be the subtitle, which left nowhere to say anything. */
+  appbar(greeting()+(first?', '+esc(first):''),
+    'Ready to move forward?',
+    `<button class="icon-btn av" id="tdProfile" aria-label="Your profile and data">${svg('user')}</button>`,
+    fmtDate(d));
 
   /* No check-in yet: the screen has exactly one thing to offer. */
   if(!ci){ v.innerHTML=setupPrompt()+todayNoCheckin(d); wireToday(d); return; }
@@ -9051,14 +9234,23 @@ function viewToday(v){
   :`
   <div class="rec">
     <div class="rec-l">Today</div>
-    <div class="rec-t">${esc(pl.label)}${pl.addCore?' + Core':''}</div>
-    <div class="rec-m">${pl.est?`~${pl.est} min`:''}${pl.est&&pl.intensity?' · ':''}${esc(pl.intensity||'')}</div>
-    ${pl.overridden?'<div class="rec-m" style="color:var(--violet)">Your choice</div>':''}
-    ${hasLimits(d)?`<div class="rec-m" style="color:var(--orange)">Working around ${esc(limitsText(d))}</div>`:''}
+    ${''/* The session gets its own mark and a line of tags, so the card says
+          what KIND of work it is without a sentence about it. */}
+    <div class="rec-hd">
+      <i class="rec-i">${svg(planIcon(pl))}</i>
+      <div style="flex:1;min-width:0">
+        <div class="rec-t">${esc(pl.label)}${pl.addCore?' + Core':''}</div>
+        <div class="rec-m">${pl.est?`~${pl.est} min`:''}${pl.est&&pl.intensity?' · ':''}${esc(pl.intensity||'')}</div>
+      </div>
+    </div>
+    ${(()=>{ const t=planTags(pl,wk);
+       return t.length?`<div class="chips">${t.map(x=>`<span class="chip">${esc(x)}</span>`).join('')}</div>`:''; })()}
+    ${pl.overridden?'<div class="rec-m" style="color:var(--violet);margin-top:8px">Your choice</div>':''}
+    ${hasLimits(d)?`<div class="rec-m" style="color:var(--orange);margin-top:8px">Working around ${esc(limitsText(d))}</div>`:''}
     ${(()=>{ const lv=pausedWorkout();
        if(!lv || lv.workoutId!==pl.workoutId) return '';
        const k=sum(lv.entries.map(e=>e.sets.filter(s=>s.done).length));
-       return `<div class="rec-m" style="color:var(--accent)">Started · ${
+       return `<div class="rec-m" style="color:var(--accent);margin-top:8px">Started · ${
          k? k+' set'+(k===1?'':'s')+' logged' : 'nothing logged yet'}</div>`; })()}
   </div>
 
@@ -9067,7 +9259,17 @@ function viewToday(v){
                return (lv && lv.workoutId===pl.workoutId) ? 'Resume session' : 'Start session'; })()}</button>`
       :`<div class="hint" style="margin-top:13px;text-align:center">Rest is the recommendation today, not the absence of one.</div>`}
 
-  <button class="tert" id="whyT" aria-expanded="false" aria-controls="whyB">Why this? ${svg('down')}</button>
+  ${''/* Why this? leads with its own answer rather than being a bare toggle.
+        The first reason, in one line, is usually the whole explanation; the
+        rest opens under it. */}
+  <button class="whyc" id="whyT" aria-expanded="false" aria-controls="whyB">
+    <i class="whyc-i">${svg('bulb')}</i>
+    <span class="whyc-x">
+      <span class="whyc-t">Why this?</span>
+      <span class="whyc-s">${(pl.why[0]&&pl.why[0].t)? stripTags(pl.why[0].t) : 'What went into today’s call.'}</span>
+    </span>
+    <i class="whyc-c">${svg('chev')}</i>
+  </button>
   <div class="whybox" id="whyB" hidden>
     <ul class="whyl">${pl.why.map(w=>`<li class="${w.k}"><span class="dot"></span><span>${w.t}</span></li>`).join('')}</ul>
     ${(pl.ruledOut&&pl.ruledOut.length)?`<div class="ruled">
@@ -9078,7 +9280,10 @@ function viewToday(v){
     <div class="hint" style="margin-top:10px">Based on ${esc(rd.sources.label)}.</div>
   </div>
 
-  <button class="btn ghost block" id="btnSwap">Change today's plan</button>`}
+  <div class="rows" style="margin-top:10px"><button id="btnSwap">
+    <i class="rw-i">${svg('swap')}</i>
+    <span class="rw-x"><span class="rw-t">Change today's plan</span></span>
+    <i class="rw-c">${svg('chev')}</i></button></div>`}
 
   ${(pl.prep&&!done)?`
   <div class="rows" id="prepRows">
@@ -9096,7 +9301,14 @@ function viewToday(v){
           the strip navigates, so any period in the heading is wrong as soon as
           the user presses the arrow. Which week is on screen is the strip's
           job, and it says so in one place. */}
-  <div class="sec-t">Training</div>
+  ${''/* The heading names the period the strip is SHOWING, so it stays true
+          when the arrows move it, and offers the way through to the full
+          history rather than making the strip carry everything. */}
+  <div class="sec-hd">
+    <div class="sec-t" style="margin:0">Training · ${esc(weekRangeLabel(
+      addDays(weekStartOf(d), WEEKOFF*7), addDays(weekStartOf(d), WEEKOFF*7+6)))}</div>
+    <button class="sec-more" id="tdAllTrain">View all ${svg('chev')}</button>
+  </div>
   ${weekStrip(d)}
 
   ${activitiesCard(selDay())}
@@ -9168,8 +9380,14 @@ function ringRow(d){
              on whether Baseline has been running long enough to have a normal
              for this person at all. Neither case invents a figure, and neither
              leaves a dash sitting in a card. */
+          /* One short line, not the band's full prescription - that belongs on
+             the readiness screen, and at this size it wrapped to three lines
+             beside the ring. */
           if(rd) return `<span class="score-w" style="color:${B.color}">${esc(B.label)}</span>
-            <span class="score-s">out of 100</span>`;
+            <span class="score-s">${esc({green:'Good to train today.',
+              yellow:'Train, but keep it moderate.',
+              orange:'Keep it light today.',
+              red:'Rest is the better call.'}[rd.band]||'')}</span>`;
           const lvl=dataCoverage(d).level;
           return lvl==='learning'
             ? `<span class="score-w">Learning your baseline</span>
@@ -9181,13 +9399,13 @@ function ringRow(d){
       <i class="rw-c">${svg('chev')}</i>
     </button>
     <div class="score-pair">
-      <button class="score" id="ringStrain" aria-label="Strain today ${rnd(load,1)} of 21. See the day">
-        ${''/* Strain is computed from what you logged, not read off a strap:
-              nothing logged is a real zero, not an unknown. */}
-        ${ringHTML({pct: load? Math.min(100, load/21*100) : null,
-                    value: load? rnd(load,1) : '0', color:'var(--cyan)'})}
-        <span class="score-x"><span class="score-l">Strain</span>
-          <span class="score-s">of 21 today</span></span>
+      ${''/* Strain and sleep are context for the number above, not two more
+            rings competing with it. An icon, the figure, and a bar that shows
+            how far along it is - readable in the half-second this row gets. */}
+      <button class="mtile" id="ringStrain" aria-label="Strain today ${rnd(load,1)} of 21. See the day">
+        <span class="mt-h"><i class="mt-i cyan">${svg('shoe')}</i><span class="mt-l">Strain</span></span>
+        <span class="mt-v">${load? rnd(load,1) : '0'} <small>of 21</small></span>
+        <span class="mt-b"><i style="width:${Math.min(100, (load||0)/21*100)}%;background:var(--cyan)"></i></span>
       </button>
       ${(()=>{
         /* Sleep is a wearable-or-check-in figure, and it is NOT always there.
@@ -9197,21 +9415,19 @@ function ringRow(d){
            than a coach. When there is no figure, the slot carries something
            Baseline always knows: the training it has actually seen this week. */
         if(slept!=null) return `
-          <button class="score" id="ringSleep" aria-label="Slept ${fmtMin(slept)}">
-            ${ringHTML({pct: Math.min(100, slept/need*100),
-                        value:(Math.round(slept/60*10)/10)+'h', color:'var(--violet)'})}
-            <span class="score-x"><span class="score-l">Sleep</span>
-              <span class="score-s">of ${Math.round(need/60)}h needed</span></span>
+          <button class="mtile" id="ringSleep" aria-label="Slept ${fmtMin(slept)} of ${Math.round(need/60)} hours needed">
+            <span class="mt-h"><i class="mt-i violet">${svg('moon')}</i><span class="mt-l">Sleep</span></span>
+            <span class="mt-v">${(Math.round(slept/60*10)/10)}h <small>of ${Math.round(need/60)}h</small></span>
+            <span class="mt-b"><i style="width:${Math.min(100, slept/need*100)}%;background:var(--violet)"></i></span>
           </button>`;
-        const wp=weekProgress(d);
         const n=(DB.sessions||[]).filter(s=>s.done && s.date>=weekStartOf(d) && s.date<=d).length
               + (DB.activities||[]).filter(a=>a.date>=weekStartOf(d) && a.date<=d).length;
+        const tgt=Math.max(3,(DB.targets&&DB.targets.sessions)||4);
         return `
-          <button class="score" id="ringWeek" aria-label="${n} logged this week. See your training">
-            ${ringHTML({pct: n? Math.min(100, n/Math.max(3,(DB.targets&&DB.targets.sessions)||4)*100) : null,
-                        value: String(n), color:'var(--accent)'})}
-            <span class="score-x"><span class="score-l">This week</span>
-              <span class="score-s">${n===1?'session logged':'sessions logged'}</span></span>
+          <button class="mtile" id="ringWeek" aria-label="${n} logged this week. See your training">
+            <span class="mt-h"><i class="mt-i">${svg('today')}</i><span class="mt-l">This week</span></span>
+            <span class="mt-v">${n} <small>logged</small></span>
+            <span class="mt-b"><i style="width:${Math.min(100, n/tgt*100)}%;background:var(--accent)"></i></span>
           </button>`;
       })()}
     </div>
@@ -9423,7 +9639,16 @@ function weekStrip(d){
       <div style="font-size:9.5px;font-weight:800;color:${isT?'var(--accent)':'var(--text-3)'};letter-spacing:.5px">${DOW_NAME[dow].toUpperCase()}</div>
       <div style="font-size:14px;font-weight:750;margin:3px 0 6px;color:${isSel||isT?'var(--text)':'var(--text-2)'}">${new Date(day+'T12:00:00').getDate()}</div>
       <div style="width:7px;height:7px;border-radius:50%;background:${col};margin:0 auto"></div>
-      <div style="font-size:9.5px;color:var(--text-3);margin-top:5px;font-weight:700;line-height:1.2;min-height:20px">${esc(tag)}</div>
+      ${''/* The kind of day as a mark, not an abbreviation. "Bball" and "Mob"
+            were three letters the user had to decode; a racquet and a pair of
+            legs are read at a glance, which is all this cell gets. */}
+      <div class="wk-ic">${(()=>{
+        if(ten){ const t=(acts.find(a=>isMainSportAct(a.type))||{}).type;
+                 return svg(ACT_ICON(t)); }
+        if(sess) return svg(planIcon({id:sess.category||catOfWorkout(DB.workouts.find(w=>w.id===sess.workoutId))}));
+        if(acts.length) return svg(ACT_ICON(acts[0].type));
+        return '';
+      })()}</div>
       ${(()=>{
         /* Readiness, not the wearable's raw recovery. The ring at the top of
            this same screen shows readiness; two different numbers answering
@@ -9585,6 +9810,10 @@ function wireToday(d){
   });
   on('btnPreview',()=>{ const p=todayPlan(d); previewWorkout(p.workoutId,p.variant,p); });
   on('btnSwap',()=>changePlan(d));
+  /* the avatar goes where the profile lives, which is Settings */
+  on('tdProfile',()=>{ go('settings'); });
+  /* and the heading's way through to the whole history */
+  on('tdAllTrain',()=>{ resetStack(); openPane('Training','Everything you have logged', paneHistory); });
   on('btnPrep',()=>previewWorkout('w_prep','full'));
   wireRings(d);
   wireWeekStrip(d);
@@ -11212,17 +11441,55 @@ function activitySheet(id,defDate,preset){
    its numbers to the top of Training. What was left duplicated Today's target
    bars and the Metrics trends.
    ====================================================================== */
-let PTAB='training';
-/* Progress leads with how the week actually went - the verdict and the load
-   chart - and keeps the deeper questions as rows. */
+/* Which of the four views is showing, and which week it is showing. Both are
+   view state, so neither is saved: arriving at Progress should mean arriving at
+   the overview of this week, not wherever you were a fortnight ago. */
+let PTAB='overview', POFF=0;
+const PTABS=[{id:'overview',t:'Overview'},{id:'training',t:'Training'},
+             {id:'activities',t:'Activities'},{id:'trends',t:'Trends'}];
+const pPeriodLabel=off=> off===0 ? 'This week'
+  : off===-1 ? 'Last week'
+  : weekRangeLabel(addDays(weekStartOf(todayISO()),off*7), addDays(weekStartOf(todayISO()),off*7+6));
+
+/* Progress leads with how the week actually went - the load, what was logged,
+   where the work went - and keeps the deeper questions behind the other tabs. */
 function viewProgress(v){
-  appbar('Progress');
-  const R=weekReview();
+  /* A tab id from an older build - or from anywhere else that has ever written
+     this variable - would leave no tab marked and nothing rendered. */
+  if(!PTABS.some(t=>t.id===PTAB)) PTAB='overview';
+  appbar('Progress', null,
+    `<button class="pperiod" id="pPeriod">${esc(pPeriodLabel(POFF))} ${svg('down')}</button>`);
+  const R=weekReview(POFF);
+  v.innerHTML=`<div class="seg" id="pSeg">${PTABS.map(t=>
+      `<button data-p="${t.id}" class="${PTAB===t.id?'on':''}">${esc(t.t)}</button>`).join('')}</div>
+    <div id="pBody"></div>`;
+  $$('#pSeg button').forEach(b=>b.onclick=()=>{ haptic(); PTAB=b.dataset.p; viewProgress(v); });
+  const pp=$('#pPeriod');
+  if(pp) pp.onclick=()=>{
+    const opts=[0,-1,-2,-3].map(o=>({t:pPeriodLabel(o), s:o===0?'so far':'the whole week',
+      icon:'cal', run:o}));
+    openSheet('Which week', navRows('pPerRows',opts));
+    $$('#pPerRows button').forEach((b,i)=>b.onclick=()=>{
+      POFF=opts[+b.dataset.r].run; closeSheet(); setTimeout(()=>render(),180);
+    });
+  };
+  const body=$('#pBody');
+  if(PTAB==='overview')   progOverview(body,R);
+  else if(PTAB==='training')   openInline(body,paneStrength);
+  else if(PTAB==='activities') openInline(body,paneActs);
+  else                         openInline(body,paneLinks);
+  bindInputs(v);
+}
+/* the deeper panes, rendered in place rather than pushed - the tab IS the
+   navigation, so pushing a page on top of it would be two of them */
+function openInline(host,fn){ try{ fn(host); }catch(e){ host.innerHTML=''; } }
+
+/* the activities tab: what you actually did, which p07 already renders */
+function paneActs(c){ c.innerHTML=activityRowsHTML(); wireActivityRows(); }
+
+function progOverview(v,R){
   const nT=(DB.tests||[]).length, nP=(DB.physique||[]).length;
   const nS=(DB.sessions||[]).filter(s=>s.done).length;
-  const verdict = R.attn.length ? R.attn.length+' thing'+(R.attn.length>1?'s':'')+' to watch'
-                : R.good.length ? 'Going well so far'
-                : 'Not enough logged yet to judge';
   const rows=[
     {t:'Strength', icon:'dumbbell',
      s: nS? `${nS} session${nS===1?'':'s'} of history` : 'No sessions yet',
@@ -11237,18 +11504,123 @@ function viewProgress(v){
      s:'What your data does and does not show',
      go:()=>openPane('Patterns','Correlations only, never causes', paneLinks)}
   ];
+  const A=R.A, P=R.P;
+  /* the load, as a figure with its direction and the week beside it */
+  const dLoad = (A.load!=null&&P.load!=null) ? rnd(A.load-P.load,1) : null;
+  const bars=R.wk.map(d=>{ const dd=dayDemand(d);
+    return {v:dd.load, t:DOW_NAME[dowOf(d)][0],
+            color: dd.load>=12?'var(--orange)': dd.load>0?'var(--accent)':'var(--surface-3)'}; });
+  const focus=(()=>{
+    /* where the work actually went, as a share of the week's load */
+    const keys=[['Upper body','upper','var(--blue)'],['Lower body','lower','var(--accent)'],
+                ['Core','core','var(--orange)']];
+    const tot={upper:0,lower:0,core:0};
+    R.wk.forEach(d=>{
+      DB.sessions.filter(s=>s.done&&s.date===d).forEach(s=>{
+        const cat=s.category||catOfWorkout(DB.workouts.find(w=>w.id===s.workoutId));
+        const L=sessionLoad(s).load;
+        if(cat==='upper') tot.upper+=L; else if(cat==='core') tot.core+=L; else tot.lower+=L;
+      });
+      DB.activities.filter(a=>a.date===d).forEach(a=>{ tot.lower+=activityDemand(a).lower*0.5; });
+    });
+    const sum3=tot.upper+tot.lower+tot.core;
+    if(!sum3) return null;
+    return keys.map(k=>({t:k[0], pct:Math.round(tot[k[1]]/sum3*100), color:k[2]}));
+  })();
+  const recent=(()=>{
+    const out=[];
+    DB.sessions.filter(s=>s.done).forEach(s=>out.push({d:s.date,kind:'s',o:s}));
+    DB.activities.forEach(a=>out.push({d:a.date,kind:'a',o:a}));
+    out.sort((x,y)=>x.d<y.d?1:x.d>y.d?-1:0);
+    return out.slice(0,4);
+  })();
+
   v.innerHTML=
-    `<div class="rec" style="margin-top:0">
-       <div class="rec-l">This week</div>
-       <div class="rec-t" style="font-size:22px">${esc(verdict)}</div>
-     </div>`
-    + weekNumbers(R)
-    + `<button class="tert" id="pFull">Full week review ${svg('chev')}</button>`
-    + '<div class="sec-t">Go deeper</div>' + navRows('pRows',rows);
-  const f=$('#pFull');
-  if(f) f.onclick=()=>openPane('This week','How the week went', paneWeek);
+    `<div class="card">
+       <div class="card-t" style="margin-bottom:8px">Training load</div>
+       <div class="pload">
+         <div class="pl-x">
+           <div class="pl-v">${A.load!=null?rnd(A.load,0):'0'}</div>
+           ${dLoad!=null&&dLoad!==0?`<div class="pl-d ${dLoad>0?'up':'down'}">${
+             dLoad>0?'▲':'▼'} ${Math.abs(dLoad)}</div>`:''}
+           <div class="pl-s">vs ${R.off===0?'last week':'the week before'}</div>
+         </div>
+         <div class="pl-c">${barChart(bars,{h:78,axis:true})}</div>
+       </div>
+     </div>
+
+     <div class="stats c2" style="margin-top:10px">
+       <div class="stat a"><div class="lab">${svg('shoe')} Sessions</div>
+         <div><div class="val num">${A.sessions}</div>
+           <div class="dlt">vs ${P.sessions} last week</div></div></div>
+       <div class="stat g"><div class="lab">${svg('run')} Activities</div>
+         <div><div class="val num">${A.acts}</div>
+           <div class="dlt">${A.sport} ${esc(sportLC())}</div></div></div>
+     </div>
+
+     ${''/* Wearable figures, still conditional: present when a device reported
+            them, absent rather than dashed when it did not. They sit below
+            what the app always knows, because that is their standing. */}
+     ${(()=>{
+        const tiles=[
+          A.rec!=null  ? statTile('Avg recovery',rnd(A.rec,0),'%',A.rec>=67?'g':A.rec>=34?'y':'r',R.dl(A.rec,P.rec)) : '',
+          A.hrv!=null  ? statTile('Avg HRV',rnd(A.hrv,0),'ms','c',R.dl(A.hrv,P.hrv)) : '',
+          A.rhr!=null  ? statTile('Avg RHR',rnd(A.rhr,1),'bpm','',R.dl(A.rhr,P.rhr,1)) : '',
+          A.sleep!=null? statTile('Avg sleep',fmtMin(A.sleep),'',A.sleep>=R.sleepNeed-60?'g':'o',R.dl(A.sleep,P.sleep)) : ''
+        ].filter(Boolean);
+        return tiles.length
+          ? `<div class="stats${tiles.length>2?' c2':''}" id="wearWk" style="margin-top:10px">${tiles.join('')}</div>`
+          : '';
+     })()}
+
+     ${focus?`<button class="card pfocus" id="pFocus">
+       <div class="sec-hd" style="margin:0 0 10px">
+         <div class="card-t" style="margin:0">Focus areas</div>
+         <i style="color:var(--text-3);display:flex">${svg('chev')}</i>
+       </div>
+       ${focus.map(f=>`<div class="fbar">
+         <span class="fb-l">${esc(f.t)}</span>
+         <span class="fb-t"><i style="width:${f.pct}%;background:${f.color}"></i></span>
+         <span class="fb-p">${f.pct}%</span></div>`).join('')}
+     </button>`:''}
+
+     ${R.attn.length?`<button class="whyc" id="pWatch" style="align-items:flex-start">
+       <i class="whyc-i">${svg('chart')}</i>
+       <span class="whyc-x">
+         <span class="whyc-t">One thing to watch</span>
+         <span class="whyc-s">${esc(stripTags(R.attn[0]))}</span>
+       </span>
+       <i class="whyc-c">${svg('chev')}</i>
+     </button>`:''}
+
+     <div class="sec-hd">
+       <div class="sec-t" style="margin:0">Recent sessions</div>
+       <button class="sec-more" id="pAll">View all ${svg('chev')}</button>
+     </div>
+     ${recent.length?`<div class="rows" id="pRecent">${recent.map((r,i)=>{
+       const isS=r.kind==='s';
+       const nm=isS ? (r.o.workoutName||'Session')
+                    : ((ACT_TYPES[r.o.type]||ACT_TYPES.other).name);
+       const sub=isS ? `${r.o.durationMin||0} min${r.o.setsDone?' · '+r.o.setsDone+' sets':''}`
+                     : `${fmtMin(r.o.min)}${r.o.strain!=null?' · '+rnd(r.o.strain,1)+' strain':''}`;
+       return `<button data-r="${i}">
+         <span class="pr-d">${esc(fmtDate(r.d).replace(/^\\w+\\s/,''))}</span>
+         <i class="rw-i">${svg(isS?planIcon({id:r.o.category}):ACT_ICON(r.o.type))}</i>
+         <span class="rw-x"><span class="rw-t">${esc(nm)}</span>
+           <span class="rw-s">${esc(sub)}</span></span>
+         <i class="rw-c">${svg('chev')}</i></button>`;}).join('')}</div>`
+      : '<div class="hint">Nothing logged in this period yet.</div>'}
+
+     <div class="sec-t">Go deeper</div>` + navRows('pRows',rows);
+
+  const fo=$('#pFocus'); if(fo) fo.onclick=()=>openPane('Strength','What is moving, and what is not', paneStrength);
+  const wa=$('#pWatch'); if(wa) wa.onclick=()=>openPane(pPeriodLabel(POFF),'How the week went', paneWeek);
+  const al=$('#pAll');   if(al) al.onclick=()=>openPane('History','Completed sessions', paneHistory);
+  $$('#pRecent button').forEach(b=>b.onclick=()=>{
+    const r=recent[+b.dataset.r];
+    if(r.kind==='s') sessionDetail(r.o.id); else activityView(r.o.id);
+  });
   wireRows('pRows',rows);
-  bindInputs(v);
 }
 
 /* "How did my week go" - the numbers and the narrative together, which is
@@ -11260,11 +11632,17 @@ function paneWeek(c){
 }
 
 /* ------------------------------------------------------------- WEEK */
-function weekReview(){
-
-  const today=todayISO(), start=addDays(today,-dowOf(today)), prevStart=addDays(start,-7);
+/* `off` is a week offset: 0 is this week, -1 the one before. The screen's
+   period selector passes it, so "vs last week" always compares the week on
+   screen with the one before it rather than being pinned to today. */
+function weekReview(off){
+  off=off||0;
+  const today=todayISO();
+  const thisStart=weekStartOf(today);
+  const start=addDays(thisStart, off*7), prevStart=addDays(start,-7);
+  const end=off<0 ? addDays(start,6) : today;   // a past week is whole
   const range=(s,e)=>{ const o=[]; let d=s; while(d<=e){o.push(d);d=addDays(d,1);} return o; };
-  const wk=range(start,today), pv=range(prevStart,addDays(start,-1));
+  const wk=range(start,end), pv=range(prevStart,addDays(start,-1));
   const stat=(days)=>{
     const cy=days.map(cycleByDate).filter(Boolean);
     const ci=days.map(d=>DB.checkins[d]).filter(Boolean);
@@ -11322,7 +11700,7 @@ function weekReview(){
   if(A.expl>=20) next.push('Cut one plyometric block next week and keep the jump quality high rather than the volume.');
   if(!next.length) next.push('Hold this pattern. It is working — repeat it before adding anything.');
 
-  return {A, P, dl, wk, pv, good, attn, next,
+  return {A, P, dl, wk, pv, good, attn, next, off, start, end,
           tgtDone, tgtTotal, compl, missed, strTgt, sleepNeed, genericSleep};
 }
 
@@ -12170,28 +12548,36 @@ function openSetup(auto){
    groups appear in, so anything addressing a group by position sees no
    change - and nothing should be addressing them by position anyway. */
 const SET_PANES=[
-  {id:'profile',   name:'Profile',    icon:'today',   sec:'you',
+  /* Profile is not a row: it is the card at the top, because "whose copy is
+     this and where does the data live" is what a settings screen is most often
+     opened to answer. */
+  {id:'profile',   name:'Profile',    icon:'user',    sec:null,
    s:'Name, age, height, weight'},
-  {id:'appearance',name:'Appearance', icon:'moon',    sec:'you',
-   s:'Light, dark or follow the system'},
-  {id:'training',  name:'Training',   icon:'dumbbell',sec:'training',
-   s:'Equipment, sport, goals, schedule, injuries'},
-  {id:'alerts',    name:'Sound & alerts', icon:'timer', sec:'training',
-   s:'Rest timer, tones, and being told when it ends'},
-  {id:'cycle',     name:'Cycle',      icon:'drop',    sec:'training',
+  {id:'appearance',name:'Appearance', icon:'moon',    sec:'appearance',
+   s:'Light, dark or follow system'},
+  {id:'training',  name:'Training preferences', icon:'dumbbell', sec:'training',
+   s:'Equipment, goals, schedule, injuries'},
+  {id:'alerts',    name:'Workout display', icon:'sliders', sec:'training',
+   s:'Sets, timers, sounds and alerts'},
+  /* Under health rather than training: a cycle is not a training preference,
+     and this is where somebody would look for it. It stays listed even when
+     off, because otherwise there would be no way to turn it on. */
+  {id:'cycle',     name:'Cycle',      icon:'drop',    sec:'health',
    s:'Optional menstrual cycle tracking'},
-  {id:'wearables', name:'Wearables',  icon:'watch',   sec:'data',
+  {id:'wearables', name:'Wearables',  icon:'watch',   sec:'health',
    s:'Your device and what it provides'},
-  {id:'data',      name:'Data',       icon:'dl',      sec:'data',
-   s:'Backup, restore, erase'},
-  {id:'about',     name:'About',      icon:'info',    sec:'about',
-   s:'Version, diagnostics, install, privacy'}
+  {id:'data',      name:'Data',       icon:'db',      sec:'health',
+   s:'Backup, restore, export or erase'},
+  {id:'privacy',   name:'Privacy',    icon:'shield',  sec:'health',
+   s:'Your data stays on this device'},
+  {id:'about',     name:'About Baseline', icon:'info', sec:'support',
+   s:'Version, acknowledgements and links'}
 ];
 const SET_SECTIONS=[
-  {id:'you',      t:'You'},
-  {id:'training', t:'Training'},
-  {id:'data',     t:'Your data'},
-  {id:'about',    t:null}
+  {id:'appearance', t:'Appearance'},
+  {id:'training',   t:'Training'},
+  {id:'health',     t:'Health & data'},
+  {id:'support',    t:'Support'}
 ];
 let SETTAB='profile';
 /* Whether the gym's "something missing?" list is expanded. It lives out here
@@ -12338,23 +12724,31 @@ function profileWire(){
 
 function viewSettings(v){
   appbar('Settings');
-  const rows=SET_PANES.map(g=>({
-    t:g.name, s:g.s, icon:g.icon,
-    go:()=>pushPage({build:c=>{ SETTAB=g.id; settingsBody(c); }})
+  const open=id=>pushPage({build:c=>{ SETTAB=id; settingsBody(c); }});
+  const rows=SET_PANES.filter(g=>g.sec).map(g=>({
+    t:g.name, s:g.s, icon:g.icon, go:()=>open(g.id)
   }));
   /* the build, where somebody looking for "what version am I on" looks */
   /* Who this copy belongs to, and where its data actually lives: the two
      questions a settings screen is most often opened to answer. */
   const who=(DB.profile.name||'').trim();
   const c=Store.counts();
-  const head=`<div class="set-head">
-    <div class="set-who">${who?esc(who):'Baseline'}</div>
-    <div class="set-sub">${
-      [c.sessions+' session'+(c.sessions===1?'':'s'),
-       c.activities+' activit'+(c.activities===1?'y':'ies'),
-       c.cycles? c.cycles+' imported day'+(c.cycles===1?'':'s') : null
-      ].filter(Boolean).join(' · ')}</div>
-    <div class="set-store">${svg(Store.durable?'check':'x')}
+  /* One card: who this copy belongs to, what is in it, and where it is kept -
+     with a way into the profile rather than a row further down repeating it. */
+  const head=`<div class="card set-card">
+    <button class="set-me" id="setProfile" aria-label="Your profile">
+      <span class="set-av">${who? esc(who.trim().charAt(0).toUpperCase()) : svg('user')}</span>
+      <span class="set-mx">
+        <span class="set-who">${who?esc(who):'Baseline'}</span>
+        <span class="set-sub">${
+          [c.sessions+' session'+(c.sessions===1?'':'s'),
+           c.activities+' activit'+(c.activities===1?'y':'ies'),
+           c.cycles? c.cycles+' imported day'+(c.cycles===1?'':'s') : null
+          ].filter(Boolean).join(' · ')}</span>
+      </span>
+      <i class="rw-c">${svg('chev')}</i>
+    </button>
+    <div class="set-store${Store.durable?' ok':' bad'}">${svg(Store.durable?'checkc':'x')}
       <span>${Store.durable
         ? 'Stored on this device · '+esc(Store.mode)
         : 'Not storing — this browser is blocking storage'}</span></div>
@@ -12383,6 +12777,7 @@ function viewSettings(v){
     const mine=rows.filter(r=>(SET_PANES.find(g=>g.name===r.t)||{}).sec===sec.id);
     if(mine.length) wireRows('setRows_'+sec.id, mine);
   });
+  const pb=$('#setProfile'); if(pb) pb.onclick=()=>{ haptic(); open('profile'); };
   bindInputs(v);
 }
 
@@ -12646,8 +13041,11 @@ function settingsBody(v){
      <div class="hint" style="margin-top:6px">That is a one-time snapshot. Changes made afterwards on either device will not appear on the other.</div>
    </div>
 
-   <div class="card spane about">
-     <div class="card-t" style="margin-bottom:10px">Privacy</div>
+   ${''/* Its own pane, not a card buried in About: "where does my data go" is
+          a question people come looking for, and it should have a door with
+          that name on it. */}
+   <div class="card spane privacy">
+     <div class="card-t" style="margin-bottom:10px">Your data stays on this device</div>
      <ul class="why" style="border:none;padding:0;margin:0">
        <li class="pos"><span class="dot"></span><span>No analytics, no tracking, no advertising, no external services.</span></li>
        <li class="pos"><span class="dot"></span><span>No network requests of any kind — the app works fully offline.</span></li>
