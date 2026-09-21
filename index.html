@@ -779,13 +779,69 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
    rather than a calm one. */
 .wm-b.live{display:flex;flex-direction:column;gap:8px}
 .wm-b.live .wm-top{flex:0 0 auto}
-.wm-b.live .wm-mid{flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;
-  min-height:0}
+/* THE OVERLAP BUG.
+   This was `justify-content:center` with the default `overflow:visible`. A
+   flex container that centres content taller than itself spills it out of
+   BOTH ends, and nothing clips it - so on a 375x667 phone the middle band
+   measured 210px against 344px of content and pushed 134px of that outside
+   its own box: the illustration painted over the exercise name above, and the
+   set card landed on top of the Log set button below. Measured, not guessed:
+   .wset ran 377..495 while the button ran 365..421.
+
+   Auto margins centre the same way when there is room and collapse to zero
+   when there is not, so overflow scrolls inside the band instead of escaping
+   it. The button below can then never be covered. */
+.wm-b.live .wm-mid{flex:1 1 auto;display:flex;flex-direction:column;
+  min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;justify-content:flex-start}
+.wm-b.live .wm-mid > :first-child{margin-top:auto}
+.wm-b.live .wm-mid > :last-child{margin-bottom:auto}
+/* THE ILLUSTRATION YIELDS, THE INSTRUCTION DOES NOT.
+   With a fixed max-height the drawing took every pixel it was allowed and
+   the one line of instruction under it was the part that got scrolled out of
+   sight - which is the opposite of the priority. §17 wants the illustration
+   to have real presence; it does not want it to push the sentence off the
+   screen. So the drawing shrinks to whatever is left and the cue keeps its
+   own height. */
+.wm-b.live .wm-mid .illus{flex:1 1 auto;min-height:0}
+.wm-b.live .wm-mid .illus svg.fig{max-height:100%;height:100%;
+  object-fit:contain;width:100%}
+.wm-b.live .wm-mid .cue,
+.wm-b.live .wm-mid .wm-swap{flex:0 0 auto}
+/* The action band: the set card and the button. It never shrinks and never
+   scrolls, so the thing being tapped is always whole and always in place. */
 .wm-b.live .wm-bot{flex:0 0 auto}
 .wm-b.live .wm-bot .btn{margin-bottom:0}
+.wm-b.live .wm-bot .wset,.wm-b.live .wm-bot .hold{margin-bottom:10px}
+.wm-b.live .wm-bot .wrestx{margin-bottom:10px}
 .wm-b.live .wm-bot .peek{margin-top:12px}
 /* short phones: the middle band gives way rather than pushing the action off */
 @media (max-height:700px){ .wm-b.live{gap:4px} .wm-b.live .nowcard{padding:12px 14px} }
+/* Very short, which in practice means a small phone in landscape or a 320x568
+   in portrait with browser chrome. There is not room for a drawing AND a
+   sentence AND the set, so the drawing goes: the set and the button are what
+   the user is touching, and the sentence is what tells them what to do. A
+   squeezed illustration with a clipped instruction under it serves neither. */
+@media (max-height:520px){
+  .wm-b.live .wm-mid .illus{display:none}
+  .wm-b.live .wm-mid .wm-swap{display:none}
+  .wm-b.live .wm-mid .cue{margin-top:0}
+}
+/* Paused. Three lines and two buttons, because somebody who has just paused a
+   workout is dealing with whatever interrupted them, not reading. */
+.wpause{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;min-height:min(46vh,340px);gap:4px}
+.wpause .wp-i{width:62px;height:62px;border-radius:20px;background:var(--surface-2);
+  border:1px solid var(--border);display:flex;align-items:center;justify-content:center;
+  color:var(--text-2);margin-bottom:14px}
+.wpause .wp-i svg{width:28px;height:28px}
+.wpause .wp-t{font-size:27px;font-weight:850;letter-spacing:-.9px}
+.wpause .wp-s{font-size:13px;color:var(--text-3);font-weight:600}
+.wpause .wp-n{font-size:13.5px;color:var(--text-2);margin-top:14px;
+  padding:9px 14px;border-radius:11px;background:var(--surface-2);
+  border:1px solid var(--border)}
+.wpause .wp-n b{font-weight:750;color:var(--text)}
+
 .wm-f{
   padding:12px var(--gut-r) calc(14px + var(--sa-b)) var(--gut-l);
   border-top:1px solid var(--border-soft);background:var(--bg-elev);flex:0 0 auto;
@@ -1407,9 +1463,20 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 /* a list thumbnail */
 .illus.sm{width:56px;height:40px;flex:0 0 auto;background:var(--surface-2);
   border-radius:8px;padding:2px}
-.illus.none{display:flex;align-items:center;justify-content:center;color:var(--text-3)}
-.illus.none svg{width:26px;height:26px}
-.illus.sm.none{width:56px;height:40px}
+/* No verified drawing for this movement.
+   This has to read as an absence. It used to be the dumbbell icon, which on a
+   training screen looks like the illustration rather than the lack of one -
+   a silent claim about a movement nothing had checked. */
+.illus.none{display:flex;align-items:center;justify-content:center;color:var(--text-3);
+  border:1.5px dashed var(--border);border-radius:14px;min-height:96px;
+  background:var(--surface-2)}
+.illus.none svg{width:22px;height:22px}
+.illus.none .il-n{display:flex;flex-direction:column;align-items:center;gap:7px;
+  font-size:11.5px;font-weight:650;letter-spacing:.01em;padding:10px}
+.illus.lg.none{min-height:min(22vh,150px)}
+.illus.sm.none{width:56px;height:40px;min-height:0;border-radius:10px;padding:0}
+.illus.sm.none .il-n{gap:0;padding:0}
+.illus.sm.none svg{width:18px;height:18px}
 
 /* ---------- The warm-up sheet: every movement on one screen ----------
    An accordion, not a runner. Five movements are five lines; the one you are
@@ -1439,6 +1506,32 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .cue i{flex:0 0 auto;color:var(--accent);display:flex}
 .cue i svg{width:16px;height:16px}
 .cue span{font-size:12.5px;font-weight:650;color:var(--text-2);line-height:1.45}
+/* the cue is now a button - it opens the full instructions, which used to be
+   a second block of prose sitting under it */
+button.cue{width:100%;text-align:left;font-family:inherit;cursor:pointer}
+button.cue:active{background:var(--accent-line)}
+/* "this stands in for X", as one glance rather than a warning paragraph */
+.wm-swap{display:flex;align-items:center;gap:8px;margin-top:9px;
+  font-size:11.5px;font-weight:650;color:var(--text-3);line-height:1.35}
+.wm-swap svg{width:14px;height:14px;flex:0 0 auto;color:var(--text-3)}
+
+/* The check-in streak. One small mark on the date line: motivation to come
+   back, not a score, so it must never be the loudest thing on the screen. */
+.stk{display:inline-flex;align-items:center;gap:3px;margin-left:7px;
+  padding:1px 6px 1px 4px;border-radius:7px;background:var(--surface-2);
+  border:1px solid var(--border-soft);color:var(--text-3);
+  font-size:10.5px;font-weight:800;vertical-align:middle}
+.stk svg{width:11px;height:11px}
+
+/* A target the current equipment cannot reach. Deliberately quiet: it is not
+   a warning, it is a note that nothing was lost. */
+.tg-held{margin-top:12px;padding:11px 13px;border-radius:12px;
+  background:var(--surface-2);border:1px solid var(--border-soft)}
+.tg-held .tgh-t{display:flex;align-items:center;gap:7px;font-size:11.5px;
+  font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--text-3)}
+.tg-held .tgh-t svg{width:14px;height:14px}
+.tg-held .tgh-r{margin-top:8px;font-size:12.5px;line-height:1.5;color:var(--text-3)}
+.tg-held .tgh-r b{display:block;font-weight:750;color:var(--text-2);font-size:13.5px}
 
 /* ---------- Up next, as a row you can read at a glance ---------- */
 .unext{display:flex;align-items:center;gap:11px;width:100%;margin-top:12px;
@@ -1857,6 +1950,9 @@ const ICON = {
   copy:'<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>',
   trash:'<path d="M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2M19 6l-1 14a1 1 0 01-1 1H7a1 1 0 01-1-1L5 6"/>',
   play:'<path d="M6 4l14 8-14 8z"/>', up:'<path d="M18 15l-6-6-6 6"/>',
+  /* pause, which the set had no glyph for - so the control that stops a
+     workout was wearing the stopwatch that means a rest timer */
+  pause:'<path d="M9 5v14M15 5v14"/>',
   dl:'<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
   ul:'<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>',
   flame:'<path d="M12 2s4 4.5 4 8a4 4 0 01-8 0c0-1 .5-2 .5-2S7 10 6 12a6 6 0 1012 0c0-5-6-10-6-10z"/>',
@@ -2138,14 +2234,16 @@ function haptic(){ try{ if(navigator.vibrate) navigator.vibrate(8);}catch(e){} }
    ====================================================================== */
 const DB_NAME='baseline';
 const DB_VERSION=2;                 // bump to add/alter object stores
-const SCHEMA_VERSION=2;             // bump to transform stored records
+const SCHEMA_VERSION=3;             // bump to transform stored records
+/* v3: equipment stopped being allowed to delete a training target. See
+   the migration in p10 - it restores the ones the old prune zeroed. */
 /* A readable build stamp. Without one, a tester reporting "it's broken" cannot
    tell you whether they are on today's build or a cached copy from last week,
    which is most of the diagnosis. Bump this on every deploy. */
 /* A date, plus a letter when more than one build ships in a day. Without the
    letter there was no way to tell a second same-day deploy from the cached
    copy of the first, which is exactly the question "did my upload work?". */
-const APP_BUILD='2026-09-21e';
+const APP_BUILD='2026-09-21f';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */
@@ -2536,9 +2634,13 @@ const whoopMode = ()=> !!(DB&&DB.profile&&DB.profile.source&&DB.profile.source!=
      4. Adding one is a pose object of six coordinate pairs, which is what
         "easy to expand" has to mean for this to keep up with 173 exercises.
 
-   Equipment drawn here is only what the app actually supports: bodyweight, a
-   pair of dumbbells, a band, a wall, the floor, a bike. No racks, no cables,
-   no machines - an illustration must never show kit the user has not got.
+   Equipment drawn here is only what the app actually supports as equipment:
+   bodyweight, dumbbells, a band, a kettlebell, a medicine ball, a pull-up or
+   fixed bar, a barbell, a bench/step/block, a wall, the floor, a bike. No
+   cables and no machines, because the app has no such tier - and an
+   illustration must never show kit the user has not got. A gym-only prop
+   (barbell, bar) is only ever reached from a gym-only exercise, which the
+   equipment gate has already filtered before the drawing is asked for.
 
    Coordinates: x 0..120, y 0..84, y downwards. Ground line at y=76.
    ====================================================================== */
@@ -2577,6 +2679,33 @@ function figProp(p){
     return `<path d="M${n(x-r)} ${n(y)} A${r} ${r} 0 1 1 ${n(x+r)} ${n(y)}" class="fg-a"
       fill="none" stroke-width="2"/>`;
   }
+  /* A fixed bar overhead: a pull-up bar. Drawn as equipment rather than
+     structure, because it is a thing the user has to own. */
+  if(p.t==='bar') return `<line x1="${n(p.x1)}" y1="${n(p.y)}" x2="${n(p.x2)}" y2="${n(p.y)}"
+      class="fg-e" stroke-width="3.2"/>`;
+  /* The edge of a table or a step, to row or press under. Structure, like the
+     wall and the ground, because "a sturdy table" is not equipment and must
+     not read as a bar somebody needs to buy. */
+  if(p.t==='edge') return `<path d="M${n(p.x1)} ${n(p.y)} H${n(p.x2)} V${n(p.y+4)}"
+      class="fg-g" fill="none" stroke-width="3"/>`;
+  if(p.t==='kb'){
+    /* bell with a handle - the handle is what tells it from a dumbbell */
+    const x=p.at[0], y=p.at[1];
+    return `<g class="fg-e"><path d="M${n(x-3.4)} ${n(y-3)} a3.4 3.4 0 0 1 6.8 0"
+        fill="none" stroke-width="2"/>
+      <circle cx="${n(x)}" cy="${n(y+2.4)}" r="4.2" class="fg-ef"/></g>`;
+  }
+  if(p.t==='ball') return `<circle cx="${n(p.at[0])}" cy="${n(p.at[1])}" r="5.2"
+      class="fg-e" fill="none" stroke-width="2.4"/>`;
+  if(p.t==='bb'){
+    /* a long bar with a collar at each end. Only ever drawn for exercises the
+       barbell tier actually unlocks, so it cannot appear for someone who has
+       told the app they train at home with a band. */
+    const x=p.at[0], y=p.at[1], w=p.w||24;
+    return `<g class="fg-e"><line x1="${n(x-w)}" y1="${n(y)}" x2="${n(x+w)}" y2="${n(y)}" stroke-width="2.4"/>
+      <line x1="${n(x-w+2.5)}" y1="${n(y-4.2)}" x2="${n(x-w+2.5)}" y2="${n(y+4.2)}" stroke-width="2.8"/>
+      <line x1="${n(x+w-2.5)}" y1="${n(y-4.2)}" x2="${n(x+w-2.5)}" y2="${n(y+4.2)}" stroke-width="2.8"/></g>`;
+  }
   if(p.t==='bike'){
     const x=p.at[0], y=p.at[1];
     return `<g class="fg-e"><circle cx="${n(x-13)}" cy="${n(y)}" r="9" fill="none" stroke-width="2.2"/>
@@ -2602,13 +2731,13 @@ function figSVG(p, o){
          class="fg-t" fill="none" stroke-width="6.4"/>`
     : seg(p.sh,p.hip,6.4,'fg-t');
   return `<svg viewBox="0 0 ${FIG_W} ${FIG_H}" class="fig" role="img" aria-hidden="true">
-    ${(p.props||[]).filter(x=>x.t==='wall'||x.t==='block').map(figProp).join('')}
+    ${(p.props||[]).filter(x=>x.t==='wall'||x.t==='block'||x.t==='edge').map(figProp).join('')}
     ${p.ground!==false?`<line x1="6" y1="${FIG_GND}" x2="${FIG_W-6}" y2="${FIG_GND}" class="fg-g" stroke-width="2.4"/>`:''}
     ${limb(p.hip,p.leg2,'fg-f')}${limb(p.sh,p.arm2,'fg-f')}
     ${spine}
     ${limb(p.hip,p.leg,'fg-l')}${limb(p.sh,p.arm,'fg-l')}
     <circle cx="${n(p.head[0])}" cy="${n(p.head[1])}" r="6.6" class="fg-h"/>
-    ${(p.props||[]).filter(x=>x.t!=='wall'&&x.t!=='block').map(figProp).join('')}
+    ${(p.props||[]).filter(x=>x.t!=='wall'&&x.t!=='block'&&x.t!=='edge').map(figProp).join('')}
   </svg>`;
 }
 
@@ -2833,6 +2962,304 @@ const POSES={
     arm:[[34,74],[24,76]], arm2:[[36,74],[26,76]],
     leg:[[82,56],[80,74]], leg2:[[76,58],[74,74]],
     props:[{t:'arr',a:[96,58],b:[86,58]},{t:'arr',a:[62,58],b:[72,58]}]},
+  /* ======================================================================
+     ADDED IN THE ILLUSTRATION AUDIT
+     Every pose below replaces a borrow that was wrong in a way a user would
+     see: a bench press drawn on the floor, a box jump with no box, a
+     suitcase carry with two weights, a single-leg squat drawn on two legs, a
+     hamstring bridge-curl drawn as a biceps curl. The rule applied was: if
+     the body position, the moving limb, the direction of travel and the
+     implement are not all right, it is not the same drawing.
+     ================================================================== */
+
+  /* ---- pressing on a bench ---------------------------------------------
+     floor-press was standing in for both of these. On the floor the upper
+     arm stops at the ground, which is the whole difference between a floor
+     press and a bench press, so it cannot show either bench variant. */
+  'db-bench-press':{head:[26,54],sh:[40,54],hip:[70,54],
+    arm:[[40,42],[40,30]], arm2:[[42,44],[42,32]],
+    leg:[[84,60],[84,74]], leg2:[[82,62],[82,76]],
+    props:[{t:'block',x:22,y:58,w:62},{t:'db',at:[40,29]},{t:'arr',a:[56,38],b:[56,26]}]},
+  'db-incline-press':{head:[88,30],sh:[76,40],hip:[48,58],
+    arm:[[76,28],[76,14]], arm2:[[74,30],[74,16]],
+    leg:[[34,66],[20,74]], leg2:[[32,68],[18,76]],
+    props:[{t:'block',x:44,y:58,w:46},{t:'db',at:[76,13]},{t:'arr',a:[96,26],b:[96,14]}]},
+
+  /* ---- the barbell lifts ----------------------------------------------
+     These were drawing a pair of dumbbells for a bar, which is the one
+     mistake a lifter spots instantly. */
+  'bb-squat':{head:[62,26],sh:[56,38],hip:[48,56],
+    arm:[[64,40],[74,36]], arm2:[[64,42],[74,38]],
+    leg:[[70,58],[62,76]], leg2:[[68,60],[60,76]],
+    props:[{t:'bb',at:[58,34],w:26},{t:'arr',a:[30,46],b:[30,62]}]},
+  'bb-hinge':{head:[32,34],sh:[44,38],hip:[66,44],
+    arm:[[44,50],[44,62]], leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]],
+    props:[{t:'bb',at:[44,64],w:22},{t:'arr',a:[22,54],b:[22,42]}]},
+  'bb-bench':{head:[26,54],sh:[40,54],hip:[70,54],
+    arm:[[40,42],[40,30]], arm2:[[42,44],[42,32]],
+    leg:[[84,60],[84,74]], leg2:[[82,62],[82,76]],
+    props:[{t:'block',x:22,y:58,w:62},{t:'bb',at:[41,28],w:20},{t:'arr',a:[58,38],b:[58,26]}]},
+  'bb-ohp':{head:[60,20],sh:[60,34],hip:[60,52],
+    arm:[[46,26],[44,12]], arm2:[[74,26],[76,12]],
+    leg:[[54,64],[52,76]], leg2:[[66,64],[68,76]],
+    props:[{t:'bb',at:[60,11],w:26},{t:'arr',a:[60,20],b:[60,6]}]},
+  'bb-row':{head:[30,36],sh:[44,40],hip:[66,46],
+    arm:[[46,52],[50,42]], arm2:[[44,54],[48,44]],
+    leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]],
+    props:[{t:'bb',at:[49,62],w:22},{t:'arr',a:[68,66],b:[68,52]}]},
+  'bb-hip-thrust':{head:[22,66],sh:[34,66],hip:[60,54],
+    arm:[[32,72],[24,76]], arm2:[[34,72],[26,76]],
+    leg:[[84,60],[84,76]], leg2:[[82,62],[82,76]],
+    props:[{t:'block',x:8,y:66,w:26},{t:'bb',at:[60,48],w:18},{t:'arr',a:[60,40],b:[60,46]}]},
+
+  /* ---- hanging from a bar --------------------------------------------
+     These three had no drawing at all, which was at least honest. */
+  'pull-up':{head:[60,26],sh:[60,38],hip:[60,58],
+    arm:[[52,28],[50,16]], arm2:[[68,28],[70,16]],
+    leg:[[58,70],[48,78]], leg2:[[62,70],[52,80]],
+    props:[{t:'bar',x1:24,x2:96,y:14},{t:'arr',a:[88,42],b:[88,28]}], ground:false},
+  'hang-leg-raise':{head:[54,26],sh:[54,38],hip:[54,58],
+    arm:[[48,28],[46,16]], arm2:[[60,28],[62,16]],
+    leg:[[72,58],[88,56]], leg2:[[70,60],[86,58]],
+    props:[{t:'bar',x1:20,x2:90,y:14},{t:'arr',a:[102,74],b:[102,58]}], ground:false},
+  /* under a table or a step, which is what the library's inverted row uses */
+  'inverted-row':{head:[28,62],sh:[42,60],hip:[72,64],
+    arm:[[42,48],[44,36]], arm2:[[44,50],[46,38]],
+    leg:[[86,66],[100,70]], leg2:[[84,68],[98,72]],
+    props:[{t:'edge',x1:20,x2:62,y:32},{t:'arr',a:[60,54],b:[60,42]}]},
+
+  /* ---- the kettlebell ------------------------------------------------ */
+  'kb-swing':{head:[32,34],sh:[44,38],hip:[66,44],
+    arm:[[46,50],[48,62]], leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]],
+    props:[{t:'kb',at:[48,64]},{t:'arr',a:[30,60],b:[16,46]}]},
+  'kb-front-squat':{head:[62,26],sh:[56,38],hip:[48,56],
+    arm:[[62,40],[60,34]], arm2:[[64,42],[62,36]],
+    leg:[[70,58],[62,76]], leg2:[[68,60],[60,76]],
+    props:[{t:'kb',at:[61,31]}]},
+
+  /* ---- the medicine ball --------------------------------------------
+     A rotational THROW was drawn as a band Pallof press, which is an
+     isometric hold: opposite intent, opposite implement. */
+  'ball-throw':{head:[50,18],sh:[50,32],hip:[52,50],
+    arm:[[62,32],[74,28]], arm2:[[60,34],[72,30]],
+    leg:[[44,62],[38,76]], leg2:[[62,62],[68,76]],
+    props:[{t:'wall',x:110},{t:'ball',at:[79,27]},{t:'arr',a:[88,40],b:[102,36]}]},
+
+  /* ---- stepping onto and down from something ------------------------
+     Both were drawn as a lunge, which has no step in it. */
+  'step-up':{head:[42,16],sh:[42,30],hip:[44,50],
+    arm:[[46,40],[48,52]], arm2:[[38,40],[36,52]],
+    leg:[[60,54],[76,58]], leg2:[[40,64],[36,76]],
+    props:[{t:'block',x:74,y:58,w:32},{t:'arr',a:[22,58],b:[22,44]}]},
+  'step-down':{head:[72,14],sh:[72,28],hip:[72,48],
+    arm:[[76,38],[78,50]], arm2:[[68,38],[66,50]],
+    leg:[[74,60],[76,70]], leg2:[[58,58],[42,66]],
+    props:[{t:'block',x:64,y:70,w:42},{t:'arr',a:[26,52],b:[26,68]}]},
+  'box-jump':{head:[38,28],sh:[32,40],hip:[24,56],
+    arm:[[42,44],[54,38]], arm2:[[40,46],[52,42]],
+    leg:[[46,60],[38,76]], leg2:[[44,62],[36,76]],
+    props:[{t:'block',x:76,y:50,w:34},{t:'arr',a:[54,52],b:[76,40]}]},
+
+  /* ---- carrying one weight, not two -------------------------------- */
+  'suitcase-carry':{head:[60,14],sh:[58,28],hip:[56,48],
+    arm:[[62,38],[64,50]], arm2:[[50,38],[46,48]],
+    leg:[[68,60],[74,76]], leg2:[[46,62],[40,76]],
+    props:[{t:'db',at:[64,52]}]},
+  'suitcase-march':{head:[60,14],sh:[58,28],hip:[56,48],
+    arm:[[62,38],[64,50]], arm2:[[50,38],[46,48]],
+    leg:[[58,62],[58,76]], leg2:[[72,52],[86,58]],
+    props:[{t:'db',at:[64,52]},{t:'arr',a:[96,62],b:[96,50]}]},
+
+  /* ---- one leg, drawn on one leg ----------------------------------- */
+  'sl-squat':{head:[62,28],sh:[56,40],hip:[48,58],
+    arm:[[62,44],[74,40]], arm2:[[62,46],[74,44]],
+    leg:[[66,62],[58,76]], leg2:[[62,52],[80,48]],
+    props:[{t:'arr',a:[30,48],b:[30,62]}]},
+  'sl-hinge':{head:[30,36],sh:[42,40],hip:[64,44],
+    arm:[[44,34],[56,26]], arm2:[[44,48],[46,60]],
+    leg:[[64,58],[64,76]], leg2:[[82,42],[98,38]]},
+  /* One leg bent and loaded, the other straight, and the torso over the bent
+     one. Drawn symmetric it read as a wide squat, which is a different
+     exercise with a different point. */
+  'lateral-lunge':{head:[42,22],sh:[44,34],hip:[52,52],
+    arm:[[40,44],[34,54]], arm2:[[50,44],[56,54]],
+    leg:[[34,64],[32,76]], leg2:[[74,64],[100,74]],
+    props:[{t:'arr',a:[16,48],b:[16,64]}]},
+
+  /* ---- on the back: hamstrings and hips ----------------------------
+     x17 Single-Leg Bridge Curl was drawing a DUMBBELL BICEPS CURL, because
+     its name contains the word curl. That one mistake is why the whole
+     resolution moved from name rules to an explicit table. */
+  'sliding-leg-curl':{head:[24,70],sh:[36,70],hip:[60,56],
+    arm:[[32,74],[22,76]], arm2:[[34,74],[24,76]],
+    leg:[[82,62],[96,72]], leg2:[[80,64],[94,74]],
+    props:[{t:'arr',a:[100,58],b:[112,66]}]},
+  'sl-bridge-curl':{head:[24,70],sh:[36,70],hip:[60,56],
+    arm:[[32,74],[22,76]],
+    leg:[[82,62],[96,72]], leg2:[[76,48],[92,42]],
+    props:[{t:'arr',a:[100,58],b:[112,66]}]},
+  'band-leg-curl':{head:[96,62],sh:[84,66],hip:[50,70],
+    arm:[[86,58],[98,52]], arm2:[[84,60],[96,54]],
+    leg:[[36,66],[44,52]], leg2:[[34,70],[20,72]],
+    props:[{t:'wall',x:10},{t:'anchor',at:[10,70]},
+           {t:'band',a:[10,70],b:[44,52],c:[24,66]},{t:'arr',a:[56,48],b:[48,38]}]},
+  'hip-thrust-march':{head:[26,70],sh:[36,70],hip:[62,54],
+    arm:[[32,74],[24,76]], arm2:[[34,74],[26,76]],
+    leg:[[84,60],[84,76]], leg2:[[78,46],[76,34]],
+    props:[{t:'arr',a:[96,44],b:[96,32]}]},
+  'bridge-walkout':{head:[20,70],sh:[32,70],hip:[58,58],
+    arm:[[28,74],[18,76]], arm2:[[30,74],[20,76]],
+    leg:[[86,64],[104,74]], leg2:[[84,66],[102,76]],
+    props:[{t:'arr',a:[106,60],b:[116,68]}]},
+  'frog-pump':{head:[26,70],sh:[38,70],hip:[62,58],
+    arm:[[34,74],[24,76]], arm2:[[36,74],[26,76]],
+    leg:[[86,52],[94,68]], leg2:[[82,64],[92,70]],
+    props:[{t:'arr',a:[62,48],b:[62,54]}]},
+  'reverse-crunch':{head:[26,70],sh:[38,70],hip:[64,64],
+    arm:[[34,74],[24,76]], arm2:[[36,74],[26,76]],
+    leg:[[70,50],[56,46]], leg2:[[68,52],[54,48]],
+    props:[{t:'arr',a:[88,58],b:[76,48]}]},
+  'windshield-wiper':{head:[26,70],sh:[38,70],hip:[66,70],
+    arm:[[36,62],[22,58]], arm2:[[38,74],[24,76]],
+    leg:[[74,56],[86,44]], leg2:[[72,58],[84,46]],
+    props:[{t:'arc',at:[86,42],r:9}]},
+  'adductor-slide':{head:[26,70],sh:[38,70],hip:[64,66],
+    arm:[[34,74],[24,76]], arm2:[[36,74],[26,76]],
+    leg:[[82,56],[80,74]], leg2:[[76,58],[74,74]],
+    props:[{t:'arr',a:[70,58],b:[58,58]},{t:'arr',a:[88,58],b:[100,58]}]},
+  'side-lying-adductor':{head:[96,64],sh:[86,66],hip:[56,70],
+    arm:[[86,58],[86,46]], arm2:[[84,72],[76,76]],
+    leg:[[40,64],[24,58]], leg2:[[42,74],[26,76]],
+    props:[{t:'arr',a:[14,70],b:[14,56]}]},
+
+  /* ---- front support variants ------------------------------------- */
+  'bear-hold':{head:[30,50],sh:[44,46],hip:[80,46],
+    arm:[[44,60],[44,76]], arm2:[[42,60],[42,76]],
+    leg:[[80,60],[90,70]], leg2:[[78,60],[88,72]]},
+  'mountain-climber':{head:[86,48],sh:[74,52],hip:[48,56],
+    arm:[[74,64],[80,76]], arm2:[[72,64],[78,76]],
+    leg:[[30,62],[18,74]], leg2:[[56,58],[68,62]],
+    props:[{t:'arr',a:[38,50],b:[56,50]}]},
+  'feet-elev-push-up':{head:[92,62],sh:[80,62],hip:[54,56],
+    arm:[[90,70],[86,76]], arm2:[[88,70],[84,76]],
+    leg:[[36,50],[22,46]], leg2:[[34,52],[20,48]],
+    props:[{t:'block',x:8,y:46,w:26},{t:'arr',a:[66,48],b:[66,58]}]},
+  'archer-push-up':{head:[88,56],sh:[76,60],hip:[50,60],
+    arm:[[86,68],[80,76]], arm2:[[60,66],[42,74]],
+    leg:[[32,64],[18,74]], leg2:[[30,66],[16,76]],
+    props:[{t:'arr',a:[64,44],b:[64,54]}]},
+  'diamond-push-up':{head:[88,56],sh:[76,60],hip:[50,60],
+    arm:[[80,68],[72,76]], arm2:[[78,68],[70,76]],
+    leg:[[32,64],[18,74]], leg2:[[30,66],[16,76]],
+    props:[{t:'arr',a:[62,44],b:[62,54]}]},
+  'prone-lat-pull':{head:[94,60],sh:[82,66],hip:[46,70],
+    arm:[[88,56],[100,50]], arm2:[[78,60],[70,52]],
+    leg:[[30,70],[16,72]], leg2:[[28,72],[14,74]],
+    props:[{t:'arr',a:[106,46],b:[92,42]}]},
+
+  /* ---- standing, band ---------------------------------------------- */
+  'band-curl':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[48,40],[50,26]], arm2:[[72,40],[74,52]],
+    leg:[[54,62],[52,76]], leg2:[[66,62],[68,76]],
+    props:[{t:'band',a:[52,76],b:[50,26],c:[36,52]},{t:'arr',a:[34,44],b:[34,30]}]},
+  'band-pull-through':{head:[32,34],sh:[44,38],hip:[66,44],
+    arm:[[46,52],[50,64]], leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]],
+    props:[{t:'wall',x:112},{t:'anchor',at:[112,72]},
+           {t:'band',a:[112,72],b:[50,64]},{t:'arr',a:[26,52],b:[14,44]}]},
+  'band-good-morning':{head:[32,34],sh:[44,38],hip:[66,44],
+    arm:[[46,34],[50,30]], leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]],
+    props:[{t:'band',a:[44,36],b:[66,76],c:[46,58]},{t:'arr',a:[26,52],b:[26,40]}]},
+
+  /* ---- running drills ---------------------------------------------- */
+  'wall-drill':{head:[46,18],sh:[48,32],hip:[52,50],
+    arm:[[38,28],[26,22]], arm2:[[40,30],[28,24]],
+    leg:[[54,64],[58,76]], leg2:[[66,52],[80,56]],
+    props:[{t:'wall',x:20},{t:'arr',a:[94,60],b:[94,46]}]},
+  'resisted-sprint':{head:[62,14],sh:[60,28],hip:[56,48],
+    arm:[[70,34],[78,26]], arm2:[[46,36],[38,44]],
+    leg:[[74,54],[86,64]], leg2:[[42,60],[28,56]],
+    props:[{t:'anchor',at:[8,48]},{t:'band',a:[8,48],b:[56,48],c:[32,56]},
+           {t:'arr',a:[96,40],b:[110,40]}]},
+  'toe-walk':{head:[60,14],sh:[58,28],hip:[56,48],
+    arm:[[64,38],[68,48]], arm2:[[50,38],[46,48]],
+    leg:[[68,58],[74,70]], leg2:[[46,60],[40,70]],
+    props:[{t:'arr',a:[94,64],b:[94,52]}]},
+  'heel-lower':{head:[58,14],sh:[58,28],hip:[58,48],
+    arm:[[58,38],[58,48]], leg:[[58,60],[58,72]],
+    leg2:[[46,58],[48,46]],
+    props:[{t:'arr',a:[76,38],b:[76,54]},{t:'wall',x:98}]},
+
+  /* ---- named by the validator: prescribed by a workout, needs only home kit ---- */
+  'hamstring-flow':{head:[24,70],sh:[36,70],hip:[64,70],
+    arm:[[46,62],[58,56]], arm2:[[42,72],[30,76]],
+    leg:[[76,56],[86,40]], leg2:[[84,72],[100,74]],
+    props:[{t:'arr',a:[98,52],b:[98,40]}]},
+  'wall-iso-raise':{head:[52,16],sh:[52,30],hip:[52,50],
+    arm:[[66,30],[80,30]], arm2:[[46,40],[44,52]],
+    leg:[[48,62],[46,76]], leg2:[[56,62],[58,76]],
+    props:[{t:'wall',x:88},{t:'arr',a:[72,44],b:[72,34]}]},
+  /* both hands meet: one arm curls, the other resists it. No dumbbell, which
+     is the whole point - this exercise is what you do when you have none. */
+  'self-resisted-curl':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[48,40],[52,26]], arm2:[[72,38],[56,26]],
+    leg:[[54,62],[52,76]], leg2:[[66,62],[68,76]],
+    props:[{t:'arr',a:[36,44],b:[36,30]}]},
+
+  /* ---- one limb, drawn on one limb -------------------------------------
+     §1 asks whether the drawing says unilateral or bilateral. These three
+     were saying bilateral for unilateral work. */
+  'sl-hop':{head:[62,24],sh:[56,36],hip:[48,54],
+    arm:[[66,40],[78,34]], arm2:[[64,42],[76,38]],
+    leg:[[70,58],[62,76]], leg2:[[62,50],[78,44]],
+    props:[{t:'arr',a:[34,52],b:[34,26]}]},
+  'row-single':{head:[30,36],sh:[44,40],hip:[66,46],
+    arm:[[48,52],[54,42]], arm2:[[42,50],[36,58]],
+    leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]],
+    props:[{t:'arr',a:[56,64],b:[56,48]}]},
+
+  /* ---- travelling, not rising ----------------------------------------
+     A broad jump with an upward arrow is an instruction to do a vertical
+     jump. The whole exercise is the horizontal distance. */
+  'broad-jump':{head:[62,24],sh:[56,36],hip:[48,54],
+    arm:[[66,40],[80,36]], arm2:[[64,42],[78,38]],
+    leg:[[70,58],[62,76]], leg2:[[68,60],[60,76]],
+    props:[{t:'arr',a:[86,50],b:[112,44]}]},
+  'split-jump':{head:[58,22],sh:[56,34],hip:[54,52],
+    arm:[[64,40],[74,32]], arm2:[[46,42],[36,36]],
+    leg:[[72,56],[84,64]], leg2:[[40,58],[26,66]],
+    props:[{t:'arr',a:[14,48],b:[14,26]}]},
+
+  /* ---- the load that was missing -------------------------------------- */
+  'band-raise':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[44,28],[30,28]], arm2:[[76,28],[90,28]],
+    leg:[[54,62],[52,76]], leg2:[[66,62],[68,76]],
+    props:[{t:'band',a:[30,28],b:[52,76],c:[34,54]},
+           {t:'band',a:[90,28],b:[68,76],c:[86,54]},
+           {t:'arr',a:[30,42],b:[30,31]}]},
+  'db-hip-thrust':{head:[26,70],sh:[36,70],hip:[62,54],
+    arm:[[32,68],[46,56]], arm2:[[34,70],[48,58]],
+    leg:[[84,60],[84,76]], leg2:[[82,62],[82,76]],
+    props:[{t:'db',at:[54,50]},{t:'arr',a:[62,44],b:[62,50]}]},
+  'band-glute-bridge':{head:[26,70],sh:[36,70],hip:[62,54],
+    arm:[[32,74],[24,76]], arm2:[[34,74],[26,76]],
+    leg:[[84,60],[84,76]], leg2:[[82,62],[82,76]],
+    props:[{t:'band',a:[48,52],b:[78,54],c:[62,44]},{t:'arr',a:[62,40],b:[62,48]}]},
+
+  /* landing on one leg, which is the exercise and the risk both */
+  'sl-landing':{head:[54,18],sh:[56,32],hip:[62,50],
+    arm:[[48,38],[38,32]], arm2:[[66,40],[74,34]],
+    leg:[[78,60],[84,76]], leg2:[[58,54],[44,48]],
+    props:[{t:'arr',a:[100,44],b:[86,44]}]},
+
+  /* ---- hips on the floor ------------------------------------------- */
+  pigeon:{head:[40,38],sh:[44,50],hip:[54,66],
+    arm:[[58,60],[70,64]], arm2:[[56,62],[68,66]],
+    leg:[[46,72],[28,70]], leg2:[[72,70],[92,72]]},
+  'adductor-rock':{head:[30,52],sh:[44,48],hip:[80,48],
+    arm:[[44,60],[44,76]], arm2:[[42,60],[42,76]],
+    leg:[[80,62],[92,74]], leg2:[[86,58],[106,62]],
+    props:[{t:'arr',a:[62,36],b:[46,36]}]},
+
   'worlds-greatest':{head:[46,26],sh:[48,38],hip:[44,56],
     arm:[[54,30],[60,18]], arm2:[[46,52],[44,70]],
     leg:[[70,58],[74,76]], leg2:[[30,66],[18,74]],
@@ -2843,7 +3270,20 @@ const POSES={
     props:[{t:'wall',x:112},{t:'anchor',at:[112,20]},{t:'band',a:[112,20],b:[64,22],c:[88,18]}]}
 };
 
-/* WHICH POSE AN EXERCISE USES.
+/* RETIRED: name rules.
+   These decided every exercise's drawing until the illustration audit. They
+   are kept only because WU_ILLUS below is the same idea applied to warm-up
+   movement names, which genuinely have no id - and because the list is the
+   record of which names were ambiguous. NOTHING READS POSE_RULES ANY MORE;
+   illusKey() goes to EX_ILLUS. If you are adding an exercise, add a line to
+   EX_ILLUS, look at the drawing, and leave it null if it is not right.
+
+   What went wrong with rules, concretely: order decided meaning. "Sliding Leg
+   Curl" had to be caught by the hamstring rule before the biceps rule saw
+   "curl", "Step-Up" fell into the lunge rule because no step existed to draw,
+   and a name nobody had written a rule for silently got the nearest match
+   instead of nothing.
+
    Derived from the name, by rules, in order - not from a table of ids.
 
    The first version WAS a table of ids, written by reading the id ranges and
@@ -2945,18 +3385,36 @@ const POSE_RULES=[
   [/\bbounds?\b/,                          'jump']
 ];
 
-/* Exceptions only. Anything in here is a movement whose name does not describe
-   its shape; it is deliberately short, and a growing one is a sign a rule
-   should be added instead. */
+/* RETIRED with POSE_RULES. Every one of these is now a line in EX_ILLUS,
+   which is where an exception and a rule look the same - because to the
+   reader of a table they are the same. */
 const EX_ILLUS_OVERRIDE={
   mo12:'legs-up-wall',     /* "Hamstring Flow" is a supine flow, not a hinge */
   sp01:'decel',            /* "Split-Step Reaction Drill" is a braking step */
   sp07:'lateral-bound'     /* "Crossover Step Start" moves sideways first */
 };
 
-/* Warm-up movements whose names the rules cannot reach - mostly swings and
-   circles, which describe a motion rather than a shape. */
+/* WARM-UP MOVEMENTS, BY NAME.
+   A warm-up item is a line of text inside a workout - "Pogo hops", "12 reps"
+   - not a library row, so it has no id to look up and a name is all there
+   is. This is now the ONLY place a name decides a drawing, and it is a
+   closed table: a warm-up name that is not here gets the placeholder, not
+   the nearest match.
+
+   Keys are lower-cased, because illusKey() lower-cases before looking up. */
 const WU_ILLUS={
+  /* the stock routines, every movement they prescribe */
+  'ankle dorsiflexion rock':'ankle-rock', 'bodyweight squats':'squat',
+  'glute bridge':'glute-bridge', 'walking lunge':'lunge',
+  'pogo hops':'pogo-hops', 'band pull-apart':'band-pull-apart',
+  'wall slides':'wall-slides', 'shoulder cars':'shoulder-cars',
+  'scapular push-ups':'scap-pushup', 'incline push-ups':'incline-push-up',
+  'band face pull':'band-face-pull', "world's greatest stretch":'worlds-greatest',
+  'a-skips':'run', 'high knees':'run', 'butt kicks':'run',
+  'lateral shuffle':'lateral-bound', 'split squat':'split-squat',
+  '90/90 hip switch':'hip-90-90', 'cat-cow':'cat-cow',
+  'dead bug':'dead-bug', 'bird dog':'bird-dog',
+  /* motions rather than shapes, which is why they are named here at all */
   'arm circles':'arm-circles', 'arm circles + leg swings':'arm-circles',
   'leg swings front/back':'stand', 'leg swings lateral':'stand',
   'leg swings all directions':'stand', 'hip circles + leg swings':'stand',
@@ -2970,46 +3428,316 @@ const WU_ILLUS={
   'build-up runs':'run', 'build-up sprints':'run',
   'countermovement jumps':'jump', 'drop and stick':'decel',
   'lateral shuffle + crossover':'lateral-bound',
-  'split step + first step':'decel', 'adductor rock':'hip-90-90'
+  'split step + first step':'decel', 'adductor rock':'adductor-rock'
 };
 
-/* The one lookup everything else uses. Returns a pose key or null - never a
-   guess, because a wrong illustration is worse than none. */
+/* =========================================================================
+   EXERCISE -> ILLUSTRATION, EXPLICITLY
+   ------------------------------------------------------------------------
+   One line per exercise id. The pose named here was compared against the
+   rendered drawing, checking body position, which limb moves, the direction
+   of travel, the implement in the hands, whether it is one limb or two, and
+   whether the arrow says what actually happens. `null` means no drawing has
+   been verified for it, and null renders a placeholder rather than the
+   nearest-looking thing.
+
+   This replaces name-pattern matching. Patterns are how a hamstring bridge
+   curl came to be drawn as a biceps curl: the name contained "curl", the
+   rule fired, and nothing downstream could tell that the picture was of a
+   different exercise entirely. A table makes a wrong drawing a visible line
+   in a diff instead of an emergent property of rule order.
+
+   Where two exercises share a pose it is because the drawing is true of
+   both - Chin-Up and Pull-Up differ only in grip, which a stick figure
+   cannot show and which no drawing here pretends to show.
+   ====================================================================== */
+const EX_ILLUS = {
+  /* ---- cardio ---- */
+  cd01:'run',              // Zone 2 Run
+  cd02:'bike',             // Zone 2 Bike
+  cd03:'run',              // Tennis Interval Run
+  cd04:'run',              // Hill Sprints
+  cd05:'bike',             // Recovery Spin
+  cd06:'walk',             // Easy Walk
+  cd07:'bike',             // Bike Intervals
+  cd08:'run',              // Tempo Run
+
+  /* ---- core ---- */
+  co01:'plank',            // RKC Plank
+  co02:'plank',            // Long-Lever Plank
+  co03:'side-plank',       // Side Plank
+  co04:'side-plank',       // Side Plank Hip Dip
+  co05:'dead-bug',         // Dead Bug
+  co06:'bird-dog',         // Bird Dog
+  co07:'hollow-hold',      // Hollow Body Hold
+  co08:'bear-hold',        // Bear Hold / Bear Crawl - knees off the floor, not a plank
+  co09:'band-pallof',      // Band Pallof Press
+  co10:'band-pallof',      // Band Anti-Rotation Hold
+  co11:'band-pallof',      // Half-Kneeling Band Chop
+  co12:'band-pallof',      // Band Rotational Press
+  co13:'suitcase-carry',   // Suitcase Carry - ONE weight
+  co14:'suitcase-march',   // Suitcase March - one weight, knee up
+  co15:'mountain-climber', // Mountain Climbers - was a static plank
+  co16:'reverse-crunch',   // Reverse Crunch - was a hollow hold
+  co17:'hollow-hold',      // Hollow Rock
+
+  /* ---- gym library ---- */
+  g01:'bb-squat',          // Barbell Back Squat - was a bodyweight squat
+  g02:'bb-hinge',          // Barbell Romanian Deadlift - was an unloaded hinge
+  g03:'bb-hip-thrust',     // Barbell Hip Thrust - was a floor glute bridge
+  g04:null,                // Leg Press - a machine, and machines are not drawn
+  g05:null,                // Seated Leg Curl - a machine; was drawn as a Nordic curl
+  g06:'calf-raise',        // Standing Calf Raise (machine) - the movement is the same
+  g07:'lunge',             // Walking Lunge (loaded)
+  g08:'bb-bench',          // Barbell Bench Press - had no drawing at all
+  g09:'db-bench-press',    // DB Bench Press - was drawn on the floor
+  g10:'bb-ohp',            // Overhead Press (barbell) - was two dumbbells
+  g11:null,                // Cable Lateral Raise - a cable stack is not drawn
+  g12:'pull-up',           // Pull-Up
+  g13:null,                // Lat Pulldown - a machine; was drawn as a band
+  g14:'bb-row',            // Barbell Row - was an unloaded bent-over row
+  g15:null,                // Seated Cable Row - a machine
+  g16:null,                // Cable Face Pull - a cable stack
+  g17:'band-pallof',       // Cable Pallof Press - same position and direction
+  g18:null,                // Cable Woodchop - a cable stack
+  g19:'hang-leg-raise',    // Hanging Leg Raise - had no drawing
+  g20:null,                // Trap Bar Jump - a trap bar is not drawn
+  g21:'db-incline-press',  // Incline DB Press - was drawn flat on the floor
+  g22:'row',               // Chest-Supported DB Row
+  g23:'split-squat',       // Bulgarian Split Squat (loaded)
+  g24:'nordic',            // Nordic Curl (anchored)
+  g25:'carry',             // Farmer Carry - two weights, which is right here
+  g26:'box-jump',          // Box Jump - was a jump with no box
+  g27:'ball-throw',        // Med Ball Rotational Throw - was a band Pallof press
+  g28:null,                // Treadmill / Rower Intervals - no one machine to draw
+
+  /* ---- lower body ---- */
+  lx01:'goblet-squat',     // Tempo Goblet Squat
+  lx02:'split-squat',      // Bulgarian Split Squat
+  lx03:'split-squat',      // Split Squat
+  lx04:'lunge',            // Reverse Lunge
+  lx05:'lateral-lunge',    // Lateral Lunge - was a forward lunge
+  lx06:'lateral-lunge',    // Cossack Squat - a deep SIDE lunge, not a split squat
+  lx07:'sl-squat',         // Skater Squat - one leg, with the other trailing
+  lx08:'step-up',          // Step-Up - was a lunge, with no step in it
+  lx09:'sl-rdl',           // Single-Leg RDL
+  lx10:'hinge',            // DB Romanian Deadlift
+  lx11:'nordic',           // Nordic Curl Eccentric
+  lx12:'sliding-leg-curl', // Sliding Leg Curl - was a kneeling Nordic curl
+  lx13:'sl-glute-bridge',  // Single-Leg Glute Bridge
+  lx14:'db-hip-thrust',    // Floor Hip Thrust - it is loaded, so show the load
+  lx15:'wall-sit',         // Wall Sit
+  lx16:'calf-raise',       // Standing Calf Raise
+  lx17:'sl-calf-raise',    // Single-Leg Calf Raise
+  lx18:'tibialis-raise',   // Tibialis Raise
+  lx19:'copenhagen',       // Copenhagen Plank
+  lx20:'adductor-squeeze', // Adductor Squeeze
+
+  /* ---- mobility ---- */
+  mo01:'hip-90-90',        // 90/90 Hip Switch
+  mo02:'worlds-greatest',  // World's Greatest Stretch
+  mo03:'couch-stretch',    // Couch Stretch
+  mo04:'ankle-rock',       // Ankle Dorsiflexion Rock
+  mo05:'open-book',        // Thoracic Rotation (Open Book)
+  mo06:'cat-cow',          // Cat-Cow
+  mo07:'wall-slides',      // Wall Slides
+  mo08:'shoulder-cars',    // Shoulder CARs
+  mo09:'adductor-rock',    // Adductor Rock - was a seated 90/90
+  mo10:'pigeon',           // Pigeon Stretch - was a seated 90/90
+  mo11:'calf-stretch',     // Calf Stretch
+  mo12:'hamstring-flow',   // Hamstring Flow
+  mo13:'band-overhead',    // Band Shoulder Dislocates
+
+  /* ---- plyometrics ---- */
+  pl01:'pogo-hops',        // Pogo Hops
+  pl02:'jump',             // Countermovement Jump
+  pl03:'jump',             // Squat Jump (paused)
+  pl04:'lateral-bound',    // Lateral Bound (Skater)
+  pl05:'broad-jump',       // Broad Jump - the arrow pointed up, not forward
+  pl06:'decel',            // Depth Drop & Stick
+  pl07:'split-jump',       // Split Jump - it lands in a split stance
+  pl08:'sl-hop',           // Single-Leg Hop & Stick - was drawn on two legs
+  pl09:'jump',             // Serve-Jump Simulation
+  pl10:'pogo-hops',        // Ankle Stiffness Hops
+
+  /* ---- speed ---- */
+  sp01:'decel',            // Split-Step Reaction Drill
+  sp02:'run',              // Acceleration Sprints
+  sp03:'decel',            // 5-10-5 Pro Agility
+  sp04:'lateral-bound',    // Lateral Shuffle
+  sp05:'lateral-bound',    // Spider / Star Drill
+  sp06:'decel',            // Deceleration Drill
+  sp07:'lateral-bound',    // Crossover Step Start
+
+  /* ---- upper body: pull ---- */
+  ul01:'row',              // Band Row
+  ul02:'row-single',       // Band Single-Arm Row - one arm
+  ul03:'row',              // DB Bent-Over Row
+  ul04:'row-single',       // DB Single-Arm Row - one arm
+  ul05:'inverted-row',     // Inverted Row - was a bent-over row, the opposite way up
+  ul06:'lat-pull',         // Band Lat Pulldown
+  ul07:'lat-pull',         // Band Straight-Arm Pulldown
+  ul08:'band-pull-apart',  // Band Pull-Apart
+  ul09:'band-face-pull',   // Band Face Pull
+  ul10:'prone-ytw',        // Prone Y-T-W
+  ul11:'band-pull-apart',  // Band Reverse Fly
+  ul12:'db-curl',          // DB Bicep Curl
+  ul13:'db-curl',          // DB Hammer Curl
+  ul14:'band-curl',        // Band Curl - was drawn holding dumbbells
+  ul15:'superman',         // Superman
+
+  /* ---- upper body: push ---- */
+  up01:'push-up',          // Push-Up
+  up02:'feet-elev-push-up',// Feet-Elevated Push-Up - the elevation is the exercise
+  up03:'archer-push-up',   // Archer Push-Up - one arm out is the exercise
+  up04:'diamond-push-up',  // Diamond Push-Up - hand position is the exercise
+  up05:'pike-push-up',     // Pike Push-Up
+  up06:'pike-push-up',     // Elevated Pike Push-Up
+  up07:'floor-press',      // DB Floor Press
+  up08:'db-press-oh',      // DB Overhead Press
+  up09:'db-press-oh',      // DB Arnold Press
+  up10:'db-raise',         // DB Lateral Raise
+  up11:'band-raise',       // Band Lateral Raise - was drawn holding dumbbells
+  up12:'db-raise',         // DB Front Raise
+  up13:'band-overhead',    // Band Overhead Press
+  up14:'band-pushdown',    // Band Triceps Pushdown
+  up15:'db-overhead-tri',  // DB Overhead Triceps Extension
+
+  /* ---- the extended library ---- */
+  x01:'squat',             // Prisoner Squat
+  x02:'squat',             // 1.5-Rep Squat
+  x03:'goblet-squat',      // Heels-Elevated Goblet Squat
+  x04:'kb-front-squat',    // Kettlebell Front Squat - was an empty-handed squat
+  x05:'sl-hinge',          // Single-Leg Hip Hinge - was drawn on two legs
+  x06:'band-pull-through', // Band Pull-Through - was an unloaded hinge
+  x07:'band-good-morning', // Banded Good Morning - was an unloaded hinge
+  x08:'kb-swing',          // Kettlebell Swing - had no drawing
+  x09:'step-down',         // Step-Down (Eccentric) - was a lunge
+  x10:'sl-squat',          // Shrimp Squat - was drawn on two legs
+  x11:'sl-squat',          // Pistol Squat Progression - was drawn on two legs
+  x12:'frog-pump',         // Frog Pump
+  x13:'band-glute-bridge', // Banded Glute Bridge - the band was not shown
+  x14:'hip-thrust-march',  // Hip Thrust March - was a standing dumbbell carry
+  x15:'band-leg-curl',     // Band Leg Curl - was a kneeling Nordic curl
+  x16:'bridge-walkout',    // Long-Lever Bridge Walkout - was a walking figure
+  x17:'sl-bridge-curl',    // Single-Leg Bridge Curl - was a DUMBBELL BICEPS CURL
+  x18:'calf-raise',        // Bent-Knee Calf Raise
+  x19:'heel-lower',        // Eccentric Heel Lower - the arrow now points down
+  x20:'toe-walk',          // Toe Walk - was a flat-footed walk
+  x21:'tibialis-raise',    // Tibialis Wall Raise
+  x22:'side-lying-adductor',// Side-Lying Adductor Raise - was a Copenhagen plank
+  x23:'adductor-slide',    // Adductor Slide-Out - arrows now point out, not in
+  x24:'pull-up',           // Chin-Up - grip differs from a pull-up; a figure cannot show grip
+  x25:'pull-up',           // Negative Pull-Up
+  x26:'lat-pull',          // Band Kneeling Lat Pull - the pose is kneeling, which is right
+  x27:'band-pallof',       // Half-Kneeling Band Rotation
+  x28:'band-pallof',       // Standing Band Woodchop
+  x29:'decel',             // Snap-Down
+  x30:'sl-landing',        // Single-Leg Drop Landing - was landing on two feet
+  x31:'decel',             // Lateral Drop & Stick
+  x32:'lateral-bound',     // Continuous Skater Bounds
+  x33:'broad-jump',        // Standing Triple Jump - travels forward
+  x34:'wall-drill',        // Wall Acceleration Drill - was a free run, with no wall
+  x35:'run',               // Flying Sprints
+  x36:'resisted-sprint',   // Resisted Sprint Starts - the band was missing
+  x37:'broad-jump',        // Hill Bounds - travel, not height
+  x38:'wall-iso-raise',    // Wall Isometric Lateral Raise - was drawn holding dumbbells
+  x39:'self-resisted-curl',// Self-Resisted Curl - was drawn holding dumbbells
+  x40:'windshield-wiper',  // Lying Windshield Wiper - was a side-lying open book
+  x41:'prone-lat-pull'     // Prone Sliding Lat Pull - was a kneeling band pulldown
+};
+
+/* The one lookup everything else uses. Returns a verified pose key, or null.
+   Never a guess: an illustration of the wrong exercise is worse than no
+   illustration, because the user cannot tell that it is wrong.
+
+   Resolution order, and why:
+     1. `ex.illus`   - a row that states its own pose, for user-added
+                       exercises. Checked against POSES so a stale key
+                       cannot render nothing.
+     2. EX_ILLUS[id] - the verified table. AUTHORITATIVE, including when the
+                       answer is null. An id that is in the table never falls
+                       through to a name rule, which is what stopped
+                       "Single-Leg Bridge Curl" being drawn as a biceps curl.
+     3. WU_ILLUS     - warm-up movement names. These are free text inside a
+                       workout, not library rows, so they have no id to look
+                       up and a name is all there is.
+     4. nothing      - and nothing is a real answer. */
 function illusKey(ex){
   if(!ex) return null;
   if(ex.illus && POSES[ex.illus]) return ex.illus;
-  if(ex.id && EX_ILLUS_OVERRIDE[ex.id] && POSES[EX_ILLUS_OVERRIDE[ex.id]]) return EX_ILLUS_OVERRIDE[ex.id];
+  if(ex.id && Object.prototype.hasOwnProperty.call(EX_ILLUS, ex.id)){
+    const k=EX_ILLUS[ex.id];
+    return (k && POSES[k]) ? k : null;
+  }
   const nm=String(ex.name||'').trim().toLowerCase();
   if(!nm) return null;
   if(WU_ILLUS[nm] && POSES[WU_ILLUS[nm]]) return WU_ILLUS[nm];
-  for(let i=0;i<POSE_RULES.length;i++){
-    if(POSE_RULES[i][0].test(nm)){
-      const k=POSE_RULES[i][1];
-      return POSES[k] ? k : null;
-    }
-  }
   return null;
 }
-/* Which rule answered, for the validator's error messages. */
+/* Where the answer came from, for the validator's messages and for the
+   "why this drawing" line in the library. */
 function illusWhy(ex){
-  const nm=String((ex&&ex.name)||'').trim().toLowerCase();
-  for(let i=0;i<POSE_RULES.length;i++) if(POSE_RULES[i][0].test(nm)) return String(POSE_RULES[i][0]);
-  return '(no rule)';
+  if(!ex) return 'no exercise';
+  if(ex.illus && POSES[ex.illus]) return 'declared on the exercise';
+  if(ex.id && Object.prototype.hasOwnProperty.call(EX_ILLUS, ex.id))
+    return EX_ILLUS[ex.id] ? 'verified table' : 'table: none verified';
+  const nm=String(ex.name||'').trim().toLowerCase();
+  if(WU_ILLUS[nm]) return 'warm-up name';
+  return 'not in the table';
 }
-/* `size` is 'lg' on the training screen, 'sm' for a list thumbnail. A movement
-   with no pose yet gets a deliberate mark, not a broken image. */
+/* `size` is 'lg' on the training screen, 'sm' for a list thumbnail.
+
+   A movement with no verified drawing gets a PLACEHOLDER, and the
+   placeholder has to look like a placeholder. It used to be the dumbbell
+   icon, which on a training screen reads as "here is your exercise" - a
+   silent claim about a movement nothing had checked. A dashed frame with a
+   line of text reads as an absence, which is what it is. */
 function illusHTML(ex, size){
   const k=illusKey(ex);
-  const cls='illus '+(size||'lg')+(k?'':' none');
-  if(!k) return `<div class="${cls}" aria-hidden="true">${svg('dumbbell')}</div>`;
-  return `<div class="${cls}">${figSVG(POSES[k])}</div>`;
+  const sz=size||'lg';
+  if(!k) return `<div class="illus ${sz} none" role="img"
+      aria-label="No illustration for this movement yet">
+      <span class="il-n">${svg('help')}${sz==='sm'?'':'<b>No illustration yet</b>'}</span>
+    </div>`;
+  return `<div class="illus ${sz}">${figSVG(POSES[k])}</div>`;
 }
-/* coverage, for the validator and the About screen */
+/* Coverage and correctness, for the validator and the About screen.
+   `unverified` is named rather than counted, because the point of the number
+   is to be worked through. */
 function illusCoverage(){
   const all=(DB&&DB.exercises)||[];
-  let n=0;
-  all.forEach(e=>{ if(illusKey(e)) n++; });
-  return {have:n, total:all.length, poses:Object.keys(POSES).length};
+  const unverified=[], missing=[];
+  all.forEach(e=>{
+    if(illusKey(e)) return;
+    if(e.id && Object.prototype.hasOwnProperty.call(EX_ILLUS, e.id)) unverified.push(e.id);
+    else missing.push(e.id||e.name);
+  });
+  return {have:all.length-unverified.length-missing.length, total:all.length,
+          poses:Object.keys(POSES).length,
+          unverified:unverified, missing:missing};
+}
+/* Every pose named by the table must exist, and every exercise must be in
+   the table. Returned rather than thrown so a test can name the rows. */
+function illusAudit(){
+  const all=(DB&&DB.exercises)||[];
+  const notInTable=[], deadPose=[], unusedPose=[];
+  const used={};
+  all.forEach(e=>{
+    if(!e.id || !Object.prototype.hasOwnProperty.call(EX_ILLUS, e.id)) notInTable.push(e.id||e.name);
+  });
+  Object.keys(EX_ILLUS).forEach(id=>{
+    const k=EX_ILLUS[id];
+    if(k==null) return;
+    if(!POSES[k]) deadPose.push(id+' -> '+k); else used[k]=1;
+  });
+  Object.keys(WU_ILLUS).forEach(n=>{
+    const k=WU_ILLUS[n];
+    if(!POSES[k]) deadPose.push('warm-up "'+n+'" -> '+k); else used[k]=1;
+  });
+  Object.keys(POSES).forEach(k=>{ if(!used[k]) unusedPose.push(k); });
+  return {notInTable:notInTable, deadPose:deadPose, unusedPose:unusedPose,
+          rows:Object.keys(EX_ILLUS).length};
 }
 
 /* =========================================================================
@@ -4384,6 +5112,9 @@ function freshDB(){
     settings:{
       bands:{green:72,yellow:56,orange:42},
       autoAdjust:true, hardStrain:14, restTimerOn:true,
+      /* §12: off until asked for. A streak is motivation for some people
+         and pressure for others, and the app cannot tell which. */
+      streak:false,
       /* sound is on because it belongs to a timer the user started; alerts
          are off because they need a permission nobody has granted yet */
       sound:true, notify:false
@@ -4876,7 +5607,19 @@ const TARGET_ORDER=['lower','upper','power','core','run','bike','mobility'];
 const TARGET_BAR={lower:'a',upper:'c',power:'o',core:'v',run:'g',bike:'c',mobility:'g'};
 /* slider bounds for the target editor */
 const TARGET_MAX={lower:5,upper:5,power:3,core:6,run:5,bike:6,mobility:7};
+/* The week's targets AS THEY CAN BE TRAINED TODAY.
+   Reads targetsNow(), which masks anything the current equipment cannot
+   reach without touching the stored intent - so a target hidden because the
+   bike is in the shed comes straight back when the bike does. */
 function targetKeys(){
+  const T=(typeof targetsNow==='function') ? targetsNow() : ((DB&&DB.targets)||{});
+  const inOrder=TARGET_ORDER.filter(k=>T[k]>0);
+  Object.keys(T).forEach(k=>{ if(T[k]>0&&inOrder.indexOf(k)<0) inOrder.push(k); });
+  return inOrder;
+}
+/* Every target the user has asked for, reachable or not. The editor and the
+   "why is this missing" line need the intent, not the mask. */
+function targetKeysIntent(){
   const T=(DB&&DB.targets)||{};
   const inOrder=TARGET_ORDER.filter(k=>T[k]>0);
   Object.keys(T).forEach(k=>{ if(T[k]>0&&inOrder.indexOf(k)<0) inOrder.push(k); });
@@ -6214,7 +6957,18 @@ function resolveOne(exId){
   const alt=DB.exercises
     .filter(x=>x.pat===e.pat && x.id!==e.id && canDo(x) && !blocked(x.pat) && notTaken(x))
     .sort((a,b)=>(b.tier||0)-(a.tier||0))[0];
-  return alt||fallbackFor(e)||e;
+  if(alt) return alt;
+  const fb=fallbackFor(e);
+  if(fb) return fb;
+  /* §8: EQUIPMENT IS A HARD CONSTRAINT.
+     This line used to be `|| e` - hand back the exercise the user cannot do.
+     The library always contains bodyweight work, so the branch was rare, and
+     rare is exactly how a prescription for kit somebody does not own reaches
+     a screen without anyone noticing. Anything needing nothing at all is a
+     worse session and an honest one. */
+  return DB.exercises.find(x=>(!x.needs||!x.needs.length) && x.id!==e.id && notTaken(x))
+      || DB.exercises.find(x=>(!x.needs||!x.needs.length) && x.id!==e.id)
+      || null;
 }
 /* graceful degradation when a whole pattern is unavailable — e.g. no space to
    run means sprint work becomes the nearest doable explosive/leg option */
@@ -7335,16 +8089,161 @@ const ACT_CAT = t =>
   : t==='yoga' ? 'mobility' : t==='strength' ? 'strength'
   : isMainSportAct(t) ? 'sport' : 'otherSport';
 
+/* ==========================================================================
+   THE CHECK-IN STREAK
+   -------------------------------------------------------------------------
+   Deliberately NOT a training streak. Tennis is unpredictable, recovery days
+   are prescribed, and a streak that breaks because the engine said rest is a
+   streak that teaches people to ignore the engine. This counts days the user
+   came back to Baseline at all.
+
+   Nothing here is stored: the streak is computed from the check-ins,
+   activities and sessions that already exist, so it cannot drift out of step
+   with them and there is no counter to reset.
+   ====================================================================== */
+
+/* Did the user show up on this day? Any meaningful interaction counts. */
+function streakDay(d){
+  const ci=DB.checkins[d];
+  if(ci){
+    /* a check-in with any real field in it - not an empty record */
+    if(ci.recovery!=null||ci.energy!=null||ci.soreness!=null||ci.stress!=null
+       ||ci.motivation!=null||ci.sleepMin!=null||ci.hrv!=null||ci.rhr!=null
+       ||ci.pain!=null) return true;
+  }
+  if((DB.activities||[]).some(a=>a.date===d)) return true;
+  if((DB.sessions||[]).some(s=>s.date===d && (s.done||sessionCompletion(s)>0))) return true;
+  return false;
+}
+/* A day that cannot break the streak.
+   Rest the engine recommended, and days the user said they were away. This
+   is the part that makes the streak safe to show: it never punishes taking
+   the advice. */
+function streakExcused(d){
+  const u=(DB.profile&&DB.profile.awayUntil)||null;
+  if(u && d<=u) return true;
+  /* the plan for that day, if one was recorded */
+  const pl=(DB.plans&&DB.plans[d])||null;
+  if(pl && (pl.id==='rest'||pl==='rest')) return true;
+  /* a day the engine would call rest on the evidence it has */
+  try{
+    const r=recommend(d, DB.checkins[d]);
+    if(r && r.id==='rest') return true;
+  }catch(e){}
+  return false;
+}
+/* Days in a row, counting back from today. Today itself does not have to be
+   done yet - a streak that reads 0 until you check in would nag. */
+function checkinStreak(date){
+  const today=date||todayISO();
+  let n=0, d=today, guard=0;
+  /* today counts if it happened; if not, start from yesterday so the number
+     is "days you have kept going", not "have you done it yet today" */
+  if(!streakDay(today)) d=addDays(today,-1);
+  while(guard++ < 400){
+    if(streakDay(d)){ n++; d=addDays(d,-1); continue; }
+    if(streakExcused(d)){ d=addDays(d,-1); continue; }   // does not count, does not break
+    break;
+  }
+  return n;
+}
+/* Everything a screen needs, including whether to say anything at all. */
+function streakInfo(date){
+  const on=(DB.settings&&DB.settings.streak)===true;
+  const n=on ? checkinStreak(date) : 0;
+  return {
+    on:on, days:n,
+    /* Under three days is not a streak, it is a number. Saying "1-day
+       streak" to somebody on their first day is the kind of gamification
+       that makes an app feel like it is managing you. */
+    show: on && n>=3,
+    text: n+'-day check-in streak',
+    todayDone: streakDay(date||todayISO())
+  };
+}
+
+/* ==========================================================================
+   HOW MUCH OF A SESSION ACTUALLY HAPPENED
+   -------------------------------------------------------------------------
+   A saved session used to carry one fact - done:true - and every consumer
+   treated that as a whole session. Logging two exercises out of seven and
+   walking out scored the same as finishing. These five states and one
+   fraction are derived from the sets, so sessions saved before this existed
+   report correctly too.
+   ====================================================================== */
+const SESSION_COMPLETE=0.75;   /* at or above this, it counts as done */
+
+/* Planned sets and logged sets for a stored session. */
+function sessionSets(s){
+  const ent=(s&&s.entries)||[];
+  let planned=0, logged=0, skipped=0;
+  ent.forEach(e=>{
+    if(e.skipped){ skipped++; planned+=(e.plannedSets||(e.sets||[]).length||0); return; }
+    planned += (e.plannedSets || (e.sets||[]).length || 0);
+    logged  += (e.sets||[]).filter(x=>x.done).length;
+  });
+  /* A cardio block is one "set" that is its elapsed time, so a session with
+     no strength sets still reports honestly rather than as 0 of 0. */
+  if(!planned && ent.length){ planned=ent.length; logged=ent.filter(e=>
+    (e.sets||[]).some(x=>x.done)).length; }
+  return {planned:planned, logged:logged, skippedExercises:skipped};
+}
+/* 0..1. How much of what was planned was actually done. */
+function sessionCompletion(s){
+  const n=sessionSets(s);
+  if(!n.planned) return s&&s.done?1:0;
+  return Math.max(0, Math.min(1, n.logged/n.planned));
+}
+/* One of: planned, started, partial, completed, skipped. */
+function sessionState(s){
+  if(!s) return 'planned';
+  if(s.skipped===true) return 'skipped';
+  const c=sessionCompletion(s);
+  if(c<=0) return s.done ? 'skipped' : 'started';
+  if(c>=SESSION_COMPLETE) return 'completed';
+  return 'partial';
+}
+/* The credit a session contributes to a weekly target: 1 for a completed
+   session, the actual fraction for a partial one, 0 for a skipped one.
+   Partial credit rather than none, because two-thirds of a leg session IS
+   two-thirds of a leg session - and rather than 1, because it is not one. */
+function sessionCredit(s){
+  const st=sessionState(s);
+  if(st==='completed') return 1;
+  if(st==='partial') return rnd(sessionCompletion(s),2);
+  return 0;
+}
+/* Said in words, for a history row. */
+function sessionStateText(s){
+  const st=sessionState(s);
+  if(st==='completed') return 'Completed';
+  if(st==='partial') return Math.round(sessionCompletion(s)*100)+'% completed';
+  if(st==='skipped') return 'Skipped';
+  if(st==='started') return 'Started, nothing logged';
+  return 'Planned';
+}
+
 function weekProgress(date){
   const start=weekStartOf(date), days=[];
   for(let i=0;i<7;i++){ const d=addDays(start,i); if(d<=date) days.push(d); }
   const p={lower:0,upper:0,power:0,core:0,run:0,bike:0,mobility:0,sport:0,otherSport:0,strength:0,
            runMin:0,bikeMin:0,sportMin:0,load:0,start,days,elapsed:days.length};
+  /* CREDIT, NOT A TICK.
+     This counted every done session as a whole one, so a workout abandoned
+     after two of seven exercises filled a weekly target as completely as one
+     finished. sessionCredit() is 1 for a completed session and the actual
+     fraction for a partial one - see §13. `full` is kept alongside so
+     anything that wants a count of finished sessions still has one. */
+  p.credit={lower:0,upper:0,power:0,core:0,run:0,bike:0,mobility:0,strength:0};
+  p.full=0; p.partial=0; p.skipped=0;
   DB.sessions.filter(s=>s.done&&days.indexOf(s.date)>=0).forEach(s=>{
     const cat=s.category||catOfWorkout(DB.workouts.find(w=>w.id===s.workoutId));
-    if(p[cat]!=null) p[cat]++;
-    if(cat==='lower'||cat==='upper'||cat==='strength') p.strength++;
-    if(s.addCore) p.core++;
+    const cr=sessionCredit(s), st=sessionState(s);
+    if(st==='completed') p.full++; else if(st==='partial') p.partial++; else p.skipped++;
+    if(p[cat]!=null) p[cat]+=cr;
+    if(p.credit[cat]!=null) p.credit[cat]+=cr;
+    if(cat==='lower'||cat==='upper'||cat==='strength') p.strength+=cr;
+    if(s.addCore) p.core+=cr;
     if(cat==='run') p.runMin+=s.durationMin||0;
     if(cat==='bike') p.bikeMin+=s.durationMin||0;
   });
@@ -7359,6 +8258,11 @@ function weekProgress(date){
   });
   days.forEach(d=>{ p.load+=dayDemand(d).load; });
   p.load=rnd(p.load,1);
+  /* Credit is fractional, and "1.67 lower-body sessions" is not a thing to
+     put on a screen. Rounded for reading; the fraction stays in p.credit for
+     anything that wants to reason with it. */
+  ['lower','upper','power','core','run','bike','mobility','sport','otherSport','strength']
+    .forEach(k=>{ if(typeof p[k]==='number') p[k]=Math.round(p[k]*100)/100; });
   return p;
 }
 
@@ -7544,10 +8448,76 @@ const BAND_RANK={red:0,orange:1,yellow:2,green:3};
 /* =========================================================================
    THE ENGINE
    ====================================================================== */
+/* ==========================================================================
+   WHAT THE RECOMMENDATION DEPENDS ON
+   -------------------------------------------------------------------------
+   recommend() is a pure function of the arguments below plus stored state,
+   and it is called fresh on every render - nothing is memoised, so there is
+   no cache that can go stale. This names the inputs anyway, for two reasons:
+   a test can change one and assert the answer moved, and a reader can see
+   the list without reading the scoring.
+
+   Every field here is read by recommend() or by something recommend() calls.
+   If you add an input to the engine, add it here, and the test that asserts
+   the two lists agree will tell you if you forget.
+   ====================================================================== */
+function recInputs(date){
+  date=date||todayISO();
+  const ci=DB.checkins[date]||{};
+  const rd=readiness(date,ci);
+  const td=dayDemand(date), yd=dayDemand(addDays(date,-1));
+  const P=DB.profile||{};
+  return {
+    /* --- today's state, as reported --- */
+    readiness:rd.score, band:rd.band,
+    recovery:ci.recovery!=null?ci.recovery:null,
+    hrv:ci.hrv!=null?ci.hrv:null, rhr:ci.rhr!=null?ci.rhr:null,
+    sleepMin:ci.sleepMin!=null?ci.sleepMin:null,
+    soreness:ci.soreness!=null?ci.soreness:null,
+    energy:ci.energy!=null?ci.energy:null,
+    stress:ci.stress!=null?ci.stress:null,
+    motivation:ci.motivation!=null?ci.motivation:null,
+    pain:ci.pain||null,
+    /* --- what the user has to work with --- */
+    availTime:ci.availTime||sessMin(),
+    gear:(P.gear||[]).slice().sort().join(','),
+    place:placeOf(P)||null,
+    /* --- goals, and the targets they produced --- */
+    sports:(P.sports||[]).slice().sort().join(','),
+    goals:(P.goals||[]).slice().sort().join(','),
+    targets:JSON.stringify(targetsNow()),
+    blocked:JSON.stringify(targetBlocks()),
+    phase:currentPhase().absWeek,
+    /* --- today, already: the thing the engine used to be blind to --- */
+    todayLoad:td.load, todayLower:td.lower, todayUpper:td.upper,
+    todayExpl:td.expl, todayImpact:td.impact, todayCount:td.n,
+    sportDone:DB.activities.some(a=>a.date===date&&isMainSportAct(a.type)),
+    sportAhead:(ci.sportToday===true||ci.tennisToday===true)
+               && !DB.activities.some(a=>a.date===date&&isMainSportAct(a.type)),
+    /* --- yesterday, and the week behind it --- */
+    yesterdayLoad:yd.load, yesterdayLower:yd.lower,
+    since:JSON.stringify(systemHistory(date).since),
+    weekDone:JSON.stringify(weekProgress(date)),
+    /* --- standing limitations, which outrank everything above --- */
+    limits:(activeLimits(date)||[]).map(l=>l.area+':'+l.severity).sort().join(','),
+    /* --- how much the engine is allowed to claim --- */
+    coverage:dataCoverage(date).band
+  };
+}
+/* One string for the whole input set, so a test can assert that a change
+   in any listed input changes what the engine is looking at. */
+function recFingerprint(date){
+  const i=recInputs(date);
+  return Object.keys(i).sort().map(k=>k+'='+i[k]).join('|');
+}
+
 function recommend(date, ci, rd){
   ci = ci || DB.checkins[date] || {};
   rd = rd || readiness(date, ci);
-  const H=systemHistory(date), P=weekProgress(date), T=DB.targets, ph=currentPhase();
+  /* targetsNow(), not DB.targets: the week as it can be trained today. The
+     stored value is the user's intent and keeps a cycling target through a
+     week without a bicycle - the engine must not chase it meanwhile. */
+  const H=systemHistory(date), P=weekProgress(date), T=targetsNow(), ph=currentPhase();
   const cov=dataCoverage(date);
   const band=rd.band, rank=BAND_RANK[band];
   const sore=ci.soreness!=null?ci.soreness:3;
@@ -9435,10 +10405,17 @@ function viewToday(v){
   const first=(DB.profile.name||'').trim().split(/\s+/)[0];
   /* Date, greeting, and one line that says what the screen is for. The date
      used to be the subtitle, which left nowhere to say anything. */
+  /* §12: the streak, if the user asked for one. It sits on the date line
+     rather than anywhere prominent - it is motivation to come back, not a
+     score, and it must never be the loudest thing on the screen. */
+  const stk=streakInfo(d);
   appbar(greeting()+(first?', '+esc(first):''),
     'Ready to move forward?',
     `<button class="icon-btn av" id="tdProfile" aria-label="Your profile and data">${svg('user')}</button>`,
-    fmtDate(d));
+    fmtDate(d)+(stk.show
+      ? ` <span class="stk" title="Days in a row you have checked in. Rest days never break it.">${
+          svg('flame')}${stk.days}</span>`
+      : ''));
 
   /* No check-in yet: the screen has exactly one thing to offer. */
   if(!ci){ v.innerHTML=setupPrompt()+todayNoCheckin(d); wireToday(d); return; }
@@ -10458,10 +11435,18 @@ function viewWorkouts(v){
 function targetsCard(){
   const P=weekProgress(todayISO()), T=DB.targets;
   const M=targetMeta(), ks=targetKeys();
+  /* Anything the user asked for that this week's equipment cannot reach. It
+     is listed rather than dropped: a target that silently disappears is the
+     same experience as the bug where equipment deleted it, and the whole
+     point of separating intent from feasibility is that the user can see
+     which one is which. */
+  const blocks=targetBlocks();
+  const held=targetKeysIntent().filter(k=>blocks[k]);
   return `<div class="card">
     <div class="card-h"><div class="card-t accent">This week's targets</div>
       <button class="btn xs ghost" id="edSched">${svg('edit')} Edit</button></div>
-    ${!ks.length ? '<div class="hint">No targets yet — they are built from the sports, goals, days and equipment you enter in setup.</div>'
+    ${!ks.length && !held.length
+      ? '<div class="hint">No targets yet — they are built from the sports, goals, days and equipment you enter in setup.</div>'
       : ks.map(k=>{
         const meta=M[k]||[k,''];
         const done=P[k]||0, t=T[k]||0;
@@ -10469,6 +11454,15 @@ function targetsCard(){
           <div class="rt"><div class="rn">${esc(meta[0])}</div><div class="rs">${esc(meta[1])}</div></div>
           <div class="rv" style="text-align:right"><span style="color:${done>=t?'var(--green)':'var(--text-2)'}">${done}</span>
             <span style="color:var(--text-3)"> / ${t}</span></div></div>`;}).join('')}
+    ${held.length?`<div class="tg-held" id="tgHeld">
+      <div class="tgh-t">${svg('info')} On hold, not lost</div>
+      ${held.map(k=>{
+        const meta=M[k]||[k,''];
+        return `<div class="tgh-r"><b>${esc(meta[0])}</b>
+          <span>${esc(blocks[k])}. Your target of ${targetIntent(k)} a week is
+          kept — it comes back on its own when the equipment does.</span></div>`;
+      }).join('')}
+    </div>`:''}
     <div class="hint" style="margin-top:8px">Guidelines, not quotas. The engine still chooses each day.</div>
   </div>`;
 }
@@ -13342,6 +14336,15 @@ function settingsBody(v){
      ${toggleRow({id:'sRest', on:!!S.restTimerOn,
        label:'Rest timer between sets',
        hint:'Starts counting down in the card as soon as you log a set, so you do not have to time your own rest.'})}
+     ${''/* §12: opt-in, and the copy says what it will NOT do. The thing
+              people dislike about streaks is being punished for resting, so
+              the row promises the opposite before they turn it on. */}
+     ${toggleRow({id:'sStreak', on:S.streak===true,
+       label:'Show a check-in streak',
+       hint:'Counts days in a row you opened Baseline and checked in, logged '
+           +'something, or trained. A rest day, a recovery day or a day the '
+           +'engine tells you to rest <b>never</b> breaks it &mdash; it is not '
+           +'a train-every-day streak.'})}
      ${toggleRow({id:'sSound', on:S.sound!==false,
        label:'Sound',
        hint:'Three ticks as a rest runs out, a chime when it ends, a click when a set '
@@ -13662,6 +14665,7 @@ function settingsBody(v){
     S.autoAdjust=ck('sAuto',true);
     S.restTimerOn=ck('sRest',true);
     S.sound=ck('sSound',true);
+    S.streak=ck('sStreak',false);
     /* never left true without the permission that makes it mean anything */
     S.notify=ck('sNotify',false) && notifyState()==='granted';
     if(reDerive) applyGoalTargets(); else pruneTargets();
@@ -13701,7 +14705,7 @@ function settingsBody(v){
       });
     });
   })();
-  ['sAuto','sRest','sSound'].forEach(id=>{ const e=$('#'+id); if(!e)return;
+  ['sAuto','sRest','sSound','sStreak'].forEach(id=>{ const e=$('#'+id); if(!e)return;
     e.addEventListener('change',()=>{
       const on=e.checked;
       if(id==='sSound'&&on) SOUND.set();      // hear what you just turned on
@@ -13709,6 +14713,8 @@ function settingsBody(v){
         ? (on?'Readiness will adjust your session volume':'Sessions will always come at full volume')
         : id==='sSound'
         ? (on?'Sound on':'Sound off')
+        : id==='sStreak'
+        ? (on?'Streak on — rest days will not break it':'Streak off')
         : (on?'Rest timer on':'Rest timer off'),'ok');
     });
   });
@@ -13861,8 +14867,11 @@ function exitWM(discard){
      thing meant a pause was not on disk until a quarter of a second later,
      which is exactly the window in which a phone gets locked or killed. */
   $('#wmPause').onclick=()=>{
+    /* From the exit sheet, "pause and finish later" means LEAVE with the
+       session kept - the user is already on their way out. The footer's
+       Pause is the other thing, and holds the screen. */
     if(W){ W.pausedAt=Date.now(); W.endedAt=Date.now(); saveLive(); }
-    closeSheet(); setTimeout(pauseWM,240);
+    closeSheet(); setTimeout(leavePausedWM,240);
   };
   $('#wmDrop').onclick=()=>{
     closeSheet();
@@ -14035,6 +15044,9 @@ function peekHTML(n){
 
 function drawWM(){
   if(!W)return;
+  /* A paused session owns the screen until it is resumed. Without this, any
+     stray tick or save redrew the exercise underneath the pause. */
+  if(W.pausedAt) return drawPaused();
   wmNormalise();
   /* Re-rendering the body threw the user back to the top of the exercise on
      every single tick, which on a four-set list meant scrolling down again
@@ -14069,7 +15081,8 @@ function drawWM(){
     </div>
     ${W.phase==='preview'
       ? `<span class="icon-btn" aria-hidden="true"></span>`
-      : `<button class="icon-btn" id="wmPauseTop" aria-label="Pause">${svg('timer')}</button>`}`;
+      : `<button class="icon-btn" id="wmPauseTop" aria-label="Pause workout"
+             title="Pause workout">${svg('pause')}</button>`}`;
   $('#wmX').onclick=()=>exitWM();
   const pt=$('#wmPauseTop'); if(pt) pt.onclick=()=>pauseWM();
 
@@ -14131,15 +15144,74 @@ function wmAdvance(){
   saveLive(); drawWM();
   const b=$('#wmBody'); if(b) b.scrollTop=0;
 }
-/* Pause, from the footer control or from the exit sheet. One behaviour, so the
-   two cannot drift. */
+/* PAUSE HOLDS THE SESSION OPEN.
+   It used to tear workout mode down, null out W and drop the user on Today,
+   which is an exit that keeps your place rather than a pause - and it was
+   reached from a stopwatch icon, so the control that ended the session looked
+   like the one that timed a rest. Now the screen stays, the clock stops, and
+   Resume is one tap. Leaving is a separate, named choice.
+
+   The state is written to disk BEFORE anything is drawn, because the reason
+   people pause is that something else needs them, and the phone may be locked
+   or the tab evicted a second later. */
 function pauseWM(){
-  if(W){ W.pausedAt=Date.now(); W.endedAt=Date.now(); saveLive(); }
+  if(!W) return;
+  W.pausedAt=Date.now();
+  /* rest and holds stop with the session; the workout clock is derived from
+     pausedAt, so nothing keeps counting behind the overlay */
   cancelAuto(); stopRest(); clearHold();
   clearInterval(cardTimer); cardTimer=null;
+  saveLive();
+  haptic();
+  drawPaused();
+}
+/* Leave the session, from the paused screen. This is the old pauseWM: the
+   session stays on disk and Today offers it back. */
+function leavePausedWM(){
+  if(W){ W.endedAt=Date.now(); saveLive(); }
   $('#wmode').classList.remove('on'); document.body.style.overflow='';
   W=null; toast('Paused — pick it up from Today','ok'); render();
 }
+/* Back to training. The clock resumes from where it stopped rather than
+   pretending the paused minutes were training. */
+function resumePausedWM(){
+  if(!W) return;
+  const held = W.pausedAt ? (Date.now()-W.pausedAt) : 0;
+  if(held>0 && W.startedAt) W.startedAt += held;   // paused time is not training time
+  W.pausedAt=null;
+  saveLive(); haptic();
+  const b=$('#wmBody'); if(b) b.classList.remove('paused');
+  drawWM();
+}
+/* The paused screen. Deliberately three lines and two buttons: somebody who
+   paused is not reading, they are dealing with whatever interrupted them. */
+function drawPaused(){
+  const total=W.entries.length;
+  const doneSets=sum(W.entries.map(e=>e.sets.filter(s=>s.done).length));
+  const allSets=sum(W.entries.map(e=>e.plannedSets));
+  const mins=Math.max(0, Math.round(((W.pausedAt||Date.now())-W.startedAt)/60000));
+  const body=$('#wmBody');
+  body.classList.remove('live');
+  body.innerHTML=`
+    <div class="wpause">
+      <div class="wp-i">${svg('pause')}</div>
+      <div class="wp-t">Paused</div>
+      <div class="wp-s">${doneSets} of ${allSets} set${allSets===1?'':'s'} logged
+        &middot; ${mins} min so far</div>
+      ${''/* What you were doing, so resuming needs no re-orientation. */}
+      ${W.step<total?`<div class="wp-n">Next: <b>${esc(W.entries[W.step].name)}</b></div>`:''}
+    </div>`;
+  $('#wmFoot').innerHTML=`
+    <button class="btn primary big block" id="wpResume">${svg('play')} Resume workout</button>
+    <button class="btn ghost block" id="wpEnd">End workout</button>`;
+  $('#wpResume').onclick=()=>resumePausedWM();
+  /* Ending goes through the same sheet as the close button, so there is one
+     answer to "what happens to what I logged". */
+  $('#wpEnd').onclick=()=>exitWM();
+}
+/* Is the live session paused? Read by the rest-timer code, which must never
+   be the thing that paused it. */
+function wmPaused(){ return !!(W && W.pausedAt); }
 
 /* ---- the jump that lands on the first MAIN exercise, from anywhere ---- */
 function wmToMain(){
@@ -14366,13 +15438,26 @@ function drawExercise(en,i,total){
     </div>
     <div class="wm-mid">
       ${restActive()?'':illusHTML(e||{name:en.name},'lg')}
-      ${(()=>{ const h=briefHow(e);
-         return h?`<button class="wm-how" id="wmHowLine">${esc(h)} <i>More</i></button>`:''; })()}
-      ${en.cue?`<div class="cue"><i>${svg('bulb')}</i><span>${esc(en.cue)}</span></div>`:''}
-      ${en.blockNote?`<div class="note warn">${esc(en.blockNote)}</div>`:''}
-      ${restCard}${setCard}
+      ${''/* ONE line of instruction, and it is the cue - the thing a coach
+             would say out loud while you are moving. The `how` paragraph that
+             used to sit here as a truncated line with a More affordance is
+             reference reading, and it is already in More under "How to do
+             it". Two blocks of prose above the set card is what pushed the
+             set card onto the Log button. */}
+      ${(en.cue||briefHow(e))?`<button class="cue" id="wmHowLine"
+          aria-label="Show full instructions">
+          <i>${svg('bulb')}</i><span>${esc(en.cue||briefHow(e))}</span>
+        </button>`:''}
+      ${''/* That this exercise is standing in for another is worth a glance,
+             not a paragraph. It was a full-width warning note. */}
+      ${en.blockNote?`<div class="wm-swap">${svg('swap')}<span>${esc(en.blockNote)}</span></div>`:''}
     </div>
-    <div class="wm-bot">${primary}${peek}</div>`;
+    ${''/* The set card moved down here from the middle band. It is the thing
+           being touched, so it belongs with the button and not with the
+           reference material - and in the middle band it was the last child,
+           which on a 320-tall phone meant the rep count was clipped in half
+           by the band's own scroller. This band does not shrink. */}
+    <div class="wm-bot">${restCard}${setCard}${primary}${peek}</div>`;
 
   /* Two controls, both secondary, neither part of the training loop. */
   $('#wmFoot').innerHTML=`<div class="wm-row">
@@ -15502,6 +16587,35 @@ function migrate(d){
   out.profile.tier=tierOf(out.profile.gear);
   out.profile.equipment=equipmentList(out.profile.gear,out.profile.equipNote,out.profile.dbKg);
   out.profile.physique=out.profile.physiques[0]||null;
+  /* ---- v3: equipment no longer deletes a goal -------------------------
+     Until v3, pruneTargets() wrote zeros into DB.targets whenever the kit
+     for a target went missing, and putting the kit back could not undo it.
+     A stored zero on an equipment-gated target, on a device that STILL has
+     no such kit, is that bug's fingerprint: the prune is the only thing that
+     wrote it. Restore the intent the goals imply, and leave every other zero
+     exactly as the user left it.
+
+     Additive: nothing is removed, no history is touched, and a target the
+     user genuinely set to zero while owning the kit stays at zero. */
+  if(from<3 && out.targets && typeof out.targets==='object'){
+    const gear=out.profile.gear||[], sports=out.profile.sports||[];
+    const restored=[];
+    const wants={bike:{gear:'bike',sport:'cycling'}, run:{gear:'run',sport:'running'}};
+    Object.keys(wants).forEach(k=>{
+      if(out.targets[k]) return;                       // already has one
+      const w=wants[k];
+      if(gear.indexOf(w.gear)>=0) return;              // kit is present, so the
+                                                       // zero was a choice
+      /* only where the goals actually call for it, so this cannot invent a
+         target for somebody who never wanted one */
+      const asked = sports.indexOf(w.sport)>=0
+        || (k==='bike' && (out.profile.goals||[]).indexOf('lean')>=0);
+      if(!asked) return;
+      out.targets[k]=1;
+      restored.push(k);
+    });
+    if(restored.length) out.meta.targetsRestored=restored.join(',');
+  }
   out.meta.schema=SCHEMA_VERSION;
   // legacy: fold old separate tennis/cardio logs into the unified activity log
   if(Array.isArray(d.tennis)) d.tennis.forEach(t=>out.activities.push({
@@ -16184,17 +17298,68 @@ function applyGoalTargets(){
   DB.targets=T;
   return T;
 }
-/* Remove targets the user can no longer do. Deliberately one-directional:
-   losing a bike drops the bike target, but buying one does not silently add
-   sessions to your week — "Rebuild from my setup" does that on request. */
-function pruneTargets(){
-  const gear=(DB.profile&&DB.profile.gear)||[], T=DB.targets||{};
+/* ==========================================================================
+   TARGETS ARE INTENT. FEASIBILITY IS DERIVED.
+   -------------------------------------------------------------------------
+   This used to be pruneTargets(), which wrote zeros into DB.targets whenever
+   the equipment for a target went missing. Its own comment called the
+   behaviour deliberate and one-directional. It was the bug: taking the bike
+   off the equipment list DELETED the intent to ride, and putting the bike
+   back could not restore it, because by then nothing remembered that riding
+   had ever been wanted. Equipment is a fact about this week. A goal is not.
+
+   So DB.targets is the user's intent and nothing derived from equipment ever
+   writes to it. What is possible right now is computed on read:
+
+     targetBlocks()  what is currently out of reach, and why, in words
+     targetsNow()    intent with the unreachable masked to 0, for progress
+                     and for anything that draws a list of this week's work
+
+   Putting the bicycle back therefore restores cycling by arithmetic. There
+   is nothing to remember to undo.
+   ====================================================================== */
+
+/* What a target needs, and whether the user has it. One table, so a new
+   equipment-dependent target cannot be added without saying what gates it. */
+const TARGET_NEEDS={
+  bike:{gear:'bike', sport:'cycling',
+        why:'No bicycle on your equipment list'},
+  run: {gear:'run',  sport:'running', impactOk:true,
+        why:'Nowhere to run on your equipment list'}
+};
+/* Which targets cannot be met with the equipment on the list today, and why.
+   Derived every time: it is a question about now, not a stored fact. */
+function targetBlocks(){
+  const gear=(DB&&DB.profile&&DB.profile.gear)||[];
   const sp=sportsOf();
-  if(T.bike && gear.indexOf('bike')<0 && sp.indexOf('cycling')<0) T.bike=0;
-  if(T.run  && gear.indexOf('run')<0  && sp.indexOf('running')<0
-     && !sp.some(id=>(SPORT_PROFILES[id]||{}).impact==='high')) T.run=0;
+  const out={};
+  Object.keys(TARGET_NEEDS).forEach(k=>{
+    const n=TARGET_NEEDS[k];
+    if(gear.indexOf(n.gear)>=0) return;            // owns the kit
+    if(sp.indexOf(n.sport)>=0) return;             // plays the sport, so does it anyway
+    /* a sport that supplies the same work counts as having it */
+    if(n.impactOk && sp.some(id=>(SPORT_PROFILES[id]||{}).impact==='high')) return;
+    out[k]=n.why;
+  });
+  return out;
+}
+/* The week as it can actually be trained today: intent, with anything the
+   equipment cannot reach masked to zero. THE MASK IS NOT SAVED. */
+function targetsNow(){
+  const T=Object.assign({}, (DB&&DB.targets)||{});
+  const blocked=targetBlocks();
+  Object.keys(blocked).forEach(k=>{ if(T[k]) T[k]=0; });
   return T;
 }
+/* Kept as a name because several places call it, but it no longer prunes
+   anything - it reports. Writing to DB.targets from here is what §9 forbids. */
+function pruneTargets(){ return targetsNow(); }
+/* Is this target reachable right now? */
+function targetFeasible(k){ return !targetBlocks()[k]; }
+/* The user's intent for a target, whatever this week's equipment says. Used
+   by the target editor, which must show what you asked for rather than what
+   you can reach today. */
+function targetIntent(k){ return ((DB&&DB.targets)||{})[k]||0; }
 /* labels + rationale for whatever targets exist, written from the user's setup */
 function targetMeta(){
   const sp=SPORT_LABEL(), q=sportProf().qualities;
