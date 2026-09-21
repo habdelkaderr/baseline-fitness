@@ -551,6 +551,54 @@ input[type=range]::-moz-range-progress{height:8px;border-radius:99px;background:
 }
 .pills button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:750}
 
+/* ---------- Switches ----------------------------------------------------
+   Every boolean in this app was a bare <input type=checkbox>, and the reset
+   near the top of this file sets appearance:none on every input. That erased
+   the box: the control was still there, still 22x22, still clickable, and
+   completely invisible, so a tap changed a setting with nothing on screen to
+   show it. A switch has to draw itself.
+
+   The input stays a real checkbox - it keeps the keyboard behaviour, the
+   label association and the change event - and is made transparent on top of
+   the track it drives, so the whole row is the hit area. */
+.tglr{display:flex;align-items:flex-start;gap:12px;position:relative;
+  padding:11px 0;min-height:48px}
+.tglr + .tglr{border-top:1px solid var(--border)}
+.tglr .tg-x{flex:1 1 auto;min-width:0}
+/* spans, so the builder can nest them inside a label without a block element
+   swallowing the click - which means each one has to be told to be a block */
+.tglr .tg-t{display:block;font-size:14.5px;font-weight:650;line-height:1.3}
+.tglr .tg-h{display:block;font-size:12px;line-height:1.45;color:var(--text-3);margin-top:4px}
+.tglr .tg-s{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.06em;
+  margin-top:6px;padding:2px 7px;border-radius:6px;background:var(--surface-2);
+  color:var(--text-3);border:1px solid var(--border)}
+.tglr .tg-s.g{color:var(--accent);border-color:var(--accent-line)}
+.tglr .tg-s.r{color:var(--red);border-color:var(--red-line)}
+/* the slot stays in the markup so a repaint can fill it; while there is
+   nothing to say it takes up no room */
+.tglr .tg-s:empty{display:none}
+/* the track */
+.tgl{flex:0 0 auto;position:relative;width:48px;height:30px;border-radius:15px;
+  background:var(--surface-2);border:1px solid var(--border);margin-top:2px;
+  transition:background .16s ease,border-color .16s ease}
+.tgl::after{content:'';position:absolute;top:3px;left:3px;width:22px;height:22px;
+  border-radius:50%;background:var(--text-3);
+  transition:transform .16s ease,background .16s ease}
+/* the checkbox itself, laid over the whole row */
+.tglr input[type=checkbox]{position:absolute;inset:0;width:100%;height:100%;
+  margin:0;opacity:0;cursor:pointer;z-index:2}
+.tglr input[type=checkbox]:checked ~ .tgl{background:var(--accent);border-color:var(--accent)}
+.tglr input[type=checkbox]:checked ~ .tgl::after{transform:translateX(18px);
+  background:var(--accent-ink)}
+.tglr input[type=checkbox]:focus-visible ~ .tgl{outline:2px solid var(--accent);
+  outline-offset:2px}
+.tglr input[type=checkbox]:disabled{cursor:not-allowed}
+.tglr input[type=checkbox]:disabled ~ .tgl{opacity:.4}
+.tglr:has(input:disabled) .tg-t,.tglr:has(input:disabled) .tg-h{opacity:.55}
+@media (prefers-reduced-motion:reduce){
+  .tgl,.tgl::after{transition:none}
+}
+
 /* ---------- Forms ---------- */
 .field{margin-bottom:var(--sp-3)}
 /* the last thing in a container never adds space below itself: that is what
@@ -1796,7 +1844,6 @@ function pearson(xs,ys){
   return {r:n/Math.sqrt(dx*dy), n:p.length};
 }
 const ICON = {
-  today:'<path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1z"/><path d="M9 21v-7h6v7"/>',
   dumbbell:'<path d="M6.5 6.5v11M3 9v6M17.5 6.5v11M21 9v6M6.5 12h11"/>',
   tennis:'<circle cx="12" cy="12" r="9"/><path d="M5 5c4.5 4 4.5 10 0 14M19 5c-4.5 4-4.5 10 0 14"/>',
   chart:'<path d="M3 20h18"/><path d="M6 20v-6M11 20V7M16 20v-9M21 20v-4"/>',
@@ -1810,7 +1857,7 @@ const ICON = {
   copy:'<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>',
   trash:'<path d="M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2M19 6l-1 14a1 1 0 01-1 1H7a1 1 0 01-1-1L5 6"/>',
   play:'<path d="M6 4l14 8-14 8z"/>', up:'<path d="M18 15l-6-6-6 6"/>',
-  down2:'<path d="M6 9l6 6 6-6"/>', dl:'<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+  dl:'<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
   ul:'<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>',
   flame:'<path d="M12 2s4 4.5 4 8a4 4 0 01-8 0c0-1 .5-2 .5-2S7 10 6 12a6 6 0 1012 0c0-5-6-10-6-10z"/>',
   moon:'<path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/>',
@@ -1826,7 +1873,7 @@ const ICON = {
   bulb:'<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z"/>',
   /* you, on the home screen and on the profile row */
   user:'<circle cx="12" cy="8" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>',
-  /* the day’s accumulated load — a shoe, because it is what you did, not a metric */
+  /* what you did, rather than what a device measured about it */
   shoe:'<path d="M2 16.5h14.5a4.5 4.5 0 0 0 4.3-3.2l.2-.8-6.5-2-2-2.5H8l-1 3H4a2 2 0 0 0-2 2z"/><path d="M2 20h19"/>',
   /* swapping today’s plan for another */
   swap:'<path d="M4 8h13l-3-3M20 16H7l3 3"/>',
@@ -1856,12 +1903,97 @@ const ICON = {
   medball:'<circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16"/>',
   barbell:'<path d="M2 12h20M5 8v8M19 8v8M8.5 9.5v5M15.5 9.5v5"/>',
   cable:'<path d="M5 4v6a7 7 0 0014 0V4"/><circle cx="12" cy="18.5" r="2.4"/>',
+  /* ---- one glyph per activity ----------------------------------------
+     A runner, a walker and a hiker drawn with the same silhouette does not
+     read as a tidy icon set; it reads as an app that cannot tell them apart.
+     The same went for the flame, which stood in for seven different sports.
+     These are the drawings that were missing, so nothing has to double up. */
+  walk:'<circle cx="12.5" cy="3.8" r="2"/><path d="M12.5 6.2v6.6"/><path d="M12.5 12.8L9.6 21M12.5 12.8l3.1 4.2.7 4"/><path d="M12.5 8.4L8.8 10.8M12.5 8.4l3.4 2.1"/>',
+  hike:'<path d="M2.5 20.5h19"/><path d="M5.5 20.5 11 8.5l3.4 7 1.8-3 5.3 8z"/><path d="M11 8.5 12.8 5"/>',
+  swim:'<circle cx="7" cy="7.5" r="2"/><path d="M10.2 10.6 14 8.2l4.5 3.4"/><path d="M2.5 16.4c1.6-1.3 3.2-1.3 4.8 0s3.2 1.3 4.8 0 3.2-1.3 4.8 0 3.2 1.3 4.6 0"/><path d="M2.5 20.4c1.6-1.3 3.2-1.3 4.8 0s3.2 1.3 4.8 0 3.2-1.3 4.8 0 3.2 1.3 4.6 0"/>',
+  soccer:'<circle cx="12" cy="12" r="9"/><path d="M12 7.6l3.6 2.6-1.4 4.3H9.8L8.4 10.2z"/><path d="M12 3v4.6M20 9.4l-4.4 3.1M17.2 19.6l-2.6-3.4M6.8 19.6l2.6-3.4M4 9.4l4.4 3.1"/>',
+  bball:'<circle cx="12" cy="6.2" r="3.6"/><path d="M3.4 12.8h17.2"/><path d="M6.4 12.8l1.5 6.8M17.6 12.8l-1.5 6.8M12 12.8v6.8"/><path d="M7.9 16.4h8.2"/>',
+  vball:'<circle cx="12" cy="12" r="9"/><path d="M12 3c3.1 3.7 3.1 14.3 0 18"/><path d="M3.9 7.6c5.1 1 9.6 5.1 11.1 13"/><path d="M20.1 7.6c-5.1 1-9.6 5.1-11.1 13"/>',
+  padel:'<rect x="5.6" y="2.6" width="12.8" height="12.4" rx="4.4"/><path d="M10.7 15.2 10.2 21.4h3.6l-.5-6.2"/><path d="M9.6 7.4h.01M14.4 7.4h.01M12 10.6h.01"/>',
+  squash:'<ellipse cx="12" cy="7.8" rx="4.8" ry="5.8"/><path d="M7.4 7.8h9.2M12 2.2v11.4"/><path d="M12 13.6v7.8"/>',
+  martial:'<path d="M5.5 9.2a4.6 4.6 0 0 1 4.6-4.6h2.4A5.5 5.5 0 0 1 18 10.1v3.6H5.5z"/><path d="M5.5 10.8h2.2a1.8 1.8 0 1 0 0-3.6"/><path d="M7.2 13.7v3.7a2 2 0 0 0 2 2h5.2a2 2 0 0 0 2-2v-3.7"/>',
+  ski:'<circle cx="13.2" cy="4" r="1.9"/><path d="M13 6.4l-2.2 4.8 3.6 2.1-1.1 4.2"/><path d="M13.6 8.2l3.6 2.6"/><path d="M3 21.2 20.6 16.8"/>',
+  golf:'<path d="M7 3v18"/><path d="M7 3.4l9.2 3.1L7 9.6z"/><circle cx="16.4" cy="19.6" r="1.6"/>',
+  row:'<path d="M5.6 18.4 18.4 5.6M18.4 18.4 5.6 5.6"/><path d="M2.8 21.2c-1-1-1-2.2 0-3.2l3.2 3.2c-1 1-2.2 1-3.2 0z"/><path d="M21.2 21.2c1-1 1-2.2 0-3.2l-3.2 3.2c1 1 2.2 1 3.2 0z"/>',
+  yoga:'<circle cx="12" cy="4" r="2"/><path d="M12 6.4v5.8"/><path d="M12 12.2l-6 3M12 12.2l6 3"/><path d="M4.4 19.2c2.6-2.6 12.6-2.6 15.2 0"/>',
+  climb:'<path d="M4.6 21V5.6a2 2 0 0 1 2-2H19"/><path d="M9.2 8.2h.01M14.8 6.4h.01M11.2 13h.01M16.8 11.2h.01M8.6 17.6h.01M14.2 16.4h.01"/>',
+  /* anything the list does not have a drawing for, said as "and the rest"
+     rather than borrowed from something else */
+  dots:'<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
+  /* ---- the trunk, drawn as a trunk ---------------------------------------
+     The core session used to carry `ul`, the upload arrow. That is the share
+     glyph on every phone, so the one strength session named after a body part
+     was marked with an action from a different part of the app entirely. */
+  core:'<rect x="7" y="3.4" width="10" height="17.2" rx="4.2"/><path d="M12 5.2v14"/><path d="M7.4 9.4h9.2M7.2 14.6h9.6"/>',
+  /* the two runs that are not just "a run": a pace to hold, and a pattern to
+     repeat */
+  gauge:'<path d="M3.6 17.5a8.4 8.4 0 1 1 16.8 0"/><path d="M12 17.5l4.6-4.8"/><path d="M3.6 20.5h16.8"/>',
+  intervals:'<path d="M2 17.5h4.2V6.5h5v11h5V9h5.8"/>',
+  /* explosive work. The flame stays with load, where it means the cost of a
+     day rather than the shape of a session. */
+  bolt:'<path d="M13.2 2.5 4.6 13.6h6.6l-1 7.9 8.4-11.1H12z"/>',
+  /* getting warm, as a ramp rather than as the flame that means load */
+  warmup:'<path d="M12 21.2v-9.4"/><path d="M8.4 15.4 12 11.8l3.6 3.6"/><path d="M5 8.2a7 7 0 0 1 14 0"/>',
+  /* ---- metrics that used to borrow another metric's mark ---------------- */
+  lungs:'<path d="M12 3.4v8.2"/><path d="M9.6 6.6C7.1 6.6 4 8.6 4 13.1c0 3.5 1.2 6.5 3.6 6.5 2 0 3.4-1.6 3.4-4.2v-3.8"/><path d="M14.4 6.6c2.5 0 5.6 2 5.6 6.5 0 3.5-1.2 6.5-3.6 6.5-2 0-3.4-1.6-3.4-4.2v-3.8"/>',
+  battery:'<rect x="2.4" y="7.8" width="16" height="8.8" rx="2.4"/><path d="M20.8 11v2.6"/><path d="M5.4 11.2v2M8.8 11.2v2M12.2 11.2v2"/>',
+  hourglass:'<path d="M6.5 3h11M6.5 21h11"/><path d="M8 3v3.8l4 5.2 4-5.2V3M8 21v-3.8l4-5.2 4 5.2V21"/>',
+  spo2:'<path d="M12 3.2s6 6.6 6 10.2a6 6 0 11-12 0C6 9.8 12 3.2 12 3.2z"/><path d="M9.4 14.2h5.2M12 11.6v5.2"/>',
+  /* a search field takes a magnifier. It had the target, which is the mark
+     this app uses for a test you are due to retake. */
+  search:'<circle cx="11" cy="11" r="6.4"/><path d="M15.8 15.8 20.6 20.6"/>',
   /* metrics */
   drop:'<path d="M12 3.2s6 6.6 6 10.2a6 6 0 11-12 0C6 9.8 12 3.2 12 3.2z"/>',
   thermo:'<path d="M10 14.2V5a2 2 0 114 0v9.2a4 4 0 11-4 0z"/>'
 };
 const FILLED={play:1};
 const svg=(k,cls)=>`<svg class="${cls||''}" viewBox="0 0 24 24" fill="${FILLED[k]?'currentColor':'none'}" stroke="currentColor" stroke-width="${FILLED[k]?0:2}" stroke-linecap="round" stroke-linejoin="round">${ICON[k]||''}</svg>`;
+
+/* Two names for the same drawing is a fault no diff shows: the set looks
+   complete, and somewhere on screen one mark stands for two things. Reported
+   here so a test can fail on it rather than a user noticing it. */
+function iconAudit(){
+  const seen={}, dup=[];
+  Object.keys(ICON).forEach(k=>{
+    const g=String(ICON[k]).replace(/[ \n]+/g,'');
+    if(seen[g]) dup.push(seen[g]+'='+k); else seen[g]=k;
+  });
+  return {total:Object.keys(ICON).length, dup:dup};
+}
+
+/* A switch, drawn.
+   Every boolean setting used to be written out by hand as a bare checkbox
+   with an inline width and an accent-color, which the appearance:none reset
+   in the stylesheet turned into an invisible 22px square. Tapping one changed
+   the setting and showed nothing, so the screen looked broken. One builder
+   means that cannot happen in one place and not another, and it puts the
+   label, the explanation and the state in a fixed order.
+
+   `state` is for a switch whose position is not the whole story - an alert
+   the browser has blocked is "on" here and still silent - so the row can say
+   what is actually happening underneath it. */
+function toggleRow(o){
+  o=o||{};
+  const id=o.id||('tg'+uid());
+  return `<div class="tglr">
+    <input type="checkbox" id="${esc(id)}"${o.on?' checked':''}${o.disabled?' disabled':''}
+           aria-describedby="${esc(id)}_h">
+    <span class="tg-x">
+      <span class="tg-t">${esc(o.label||'')}</span>
+      ${o.hint?`<span class="tg-h" id="${esc(id)}_h">${o.hint}</span>`:''}
+      ${''/* Always emitted when the row has a state to report, even when that
+             state is currently nothing to report, so a repaint can fill it in
+             later. CSS hides it while it is empty. */}
+      ${o.state!=null?`<span class="tg-s ${esc(o.stateCls||'')}">${esc(o.state)}</span>`:''}
+    </span>
+    <span class="tgl" aria-hidden="true"></span>
+  </div>`;
+}
 
 /* =========================================================================
    AUDIBLE CUES
@@ -1926,6 +2058,47 @@ function notifyAsk(cb){
   }catch(e){ done('denied'); }
 }
 function notifyOn(){ return !!(DB&&DB.settings&&DB.settings.notify) && notifyState()==='granted'; }
+
+/* Saying what is actually happening, rather than what the feature is.
+   A notification switch has two states that both look like "on": the user has
+   turned it on and the browser allows it, and the user has turned it on and
+   the browser is blocking it. The second one is a silent phone, and the
+   switch cannot show the difference, so it is said in words. */
+function notifyText(){
+  const st=notifyState(), want=!!(DB&&DB.settings&&DB.settings.notify);
+  if(st==='unsupported') return 'NOT AVAILABLE HERE';
+  if(st==='denied')      return 'BLOCKED BY YOUR BROWSER';
+  /* Nothing to add: the switch itself already says off, and a second label
+     saying the same thing is the kind of noise that makes people stop reading
+     the ones that matter. */
+  if(!want)              return '';
+  return st==='granted' ? 'ON' : 'NEEDS PERMISSION';
+}
+function notifyCls(){
+  const st=notifyState();
+  if(st==='unsupported') return '';
+  if(st==='denied')      return 'r';
+  return notifyOn() ? 'g' : '';
+}
+/* the one sentence that tells them what to do next, if anything */
+function notifyNext(){
+  const st=notifyState(), want=!!(DB&&DB.settings&&DB.settings.notify);
+  if(st==='unsupported')
+    return 'This browser has no notifications, so nothing here can be turned on. '
+         + 'Sound and the on-screen timer still work.';
+  if(st==='denied')
+    return 'You blocked notifications for this page, so turning this on would '
+         + 'change nothing. Allow them for this site in your browser settings, '
+         + 'then come back and switch it on.';
+  if(st==='default')
+    return 'Your browser will ask for permission the first time you switch '
+         + 'this on. Nothing is sent anywhere either way.';
+  return want
+    ? 'Allowed. You will get a notification the moment a rest timer ends, even '
+      + 'with the screen off.'
+    : 'Your browser already allows this, so switching it on takes effect '
+      + 'straight away.';
+}
 function notify(title,body){
   if(!notifyOn()) return;
   const opt={body:body||'', tag:'baseline-timer', renotify:true,
@@ -1972,7 +2145,7 @@ const SCHEMA_VERSION=2;             // bump to transform stored records
 /* A date, plus a letter when more than one build ships in a day. Without the
    letter there was no way to tell a second same-day deploy from the cached
    copy of the first, which is exactly the question "did my upload work?". */
-const APP_BUILD='2026-09-21d';
+const APP_BUILD='2026-09-21e';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */
@@ -4343,7 +4516,7 @@ function gearEditorHTML(o){
 
   if(!place) return `
     <div class="rows" id="${o.id}_place">
-      <button data-p="home"><i class="rw-i">${svg('today')}</i>
+      <button data-p="home"><i class="rw-i">${svg('home')}</i>
         <span class="rw-x"><span class="rw-t">At home</span>
           <span class="rw-s">You pick what you have — nothing is assumed</span></span>
         <i class="rw-c">${svg('chev')}</i></button>
@@ -4480,16 +4653,16 @@ function canDo(e){
    engine work identically whatever you wear.
    ====================================================================== */
 const DATA_FIELDS={
-  recovery :{name:'Recovery',        unit:'%',  lo:0,  hi:100, icon:'heart', hint:'A 0–100 daily readiness score'},
+  recovery :{name:'Recovery',        unit:'%',  lo:0,  hi:100, icon:'battery', hint:'A 0–100 daily readiness score'},
   hrv      :{name:'HRV',             unit:'ms', lo:5,  hi:250, icon:'pulse', hint:'Overnight heart-rate variability'},
   rhr      :{name:'Resting HR',      unit:'bpm',lo:25, hi:120, icon:'heart', hint:'Overnight resting heart rate'},
   sleep    :{name:'Sleep',           unit:'h',  lo:0,  hi:16,  icon:'moon', hint:'Time actually asleep'},
-  sleepNeed:{name:'Sleep need',      unit:'h',  lo:4,  hi:14,  icon:'moon', hint:'What your device says you needed'},
+  sleepNeed:{name:'Sleep need',      unit:'h',  lo:4,  hi:14,  icon:'hourglass', hint:'What your device says you needed'},
   strain   :{name:'Strain / load',   unit:'',   lo:0,  hi:21,  icon:'flame', hint:"Yesterday's cardiovascular load"},
-  resp     :{name:'Respiratory rate',unit:'rpm',lo:6,  hi:30, icon:'pulse'},
-  spo2     :{name:'Blood oxygen',    unit:'%',  lo:70, hi:100, icon:'drop'},
+  resp     :{name:'Respiratory rate',unit:'rpm',lo:6,  hi:30, icon:'lungs'},
+  spo2     :{name:'Blood oxygen',    unit:'%',  lo:70, hi:100, icon:'spo2'},
   temp     :{name:'Skin temp change',unit:'°C', lo:-5, hi:5, icon:'thermo'},
-  steps    :{name:'Steps',           unit:'',   lo:0,  hi:80000, icon:'run'}
+  steps    :{name:'Steps',           unit:'',   lo:0,  hi:80000, icon:'walk'}
 };
 /* `importer`: 'whoop' = the built-in CSV parser for WHOOP's export format;
    'csv' = the generic column-mapping importer; null = type it in each day. */
@@ -8977,9 +9150,12 @@ function greeting(){ const h=new Date().getHours(); return h<5?'Good night':h<12
    is. Both read the plan rather than being written per screen, so the card and
    the history rows cannot describe the same session differently. */
 function planIcon(pl){
-  const m={lower:'barbell',upper:'dumbbell',power:'flame',core:'ul',
-           run_e:'run',run_q:'run',run_int:'run',bike:'bike',
-           mobility:'heart',rest:'moon',prep:'tennis'};
+  /* Each session type has its own mark. They used to collapse: the three
+     runs shared one glyph, mobility borrowed the heart that means resting
+     heart rate, and core carried the upload arrow. */
+  const m={lower:'barbell',upper:'dumbbell',power:'bolt',core:'core',
+           run_e:'run',run_q:'gauge',run_int:'intervals',bike:'bike',
+           mobility:'yoga',rest:'moon',prep:'tennis'};
   return m[(pl&&pl.id)||'']||'dumbbell';
 }
 function planTags(pl,wk){
@@ -9484,7 +9660,7 @@ function ringRow(d){
     ${HOME_TILES?`<div class="score-pair">
       ${''/* an icon, the figure, and a bar: readable in half a second */}
       <button class="mtile" id="ringStrain" aria-label="Strain today ${rnd(load,1)} of 21. See the day">
-        <span class="mt-h"><i class="mt-i cyan">${svg('shoe')}</i><span class="mt-l">Strain</span></span>
+        <span class="mt-h"><i class="mt-i cyan">${svg('flame')}</i><span class="mt-l">Strain</span></span>
         <span class="mt-v">${load? rnd(load,1) : '0'} <small>of 21</small></span>
         <span class="mt-b"><i style="width:${Math.min(100, (load||0)/21*100)}%;background:var(--cyan)"></i></span>
       </button>
@@ -9506,7 +9682,7 @@ function ringRow(d){
         const tgt=Math.max(3,(DB.targets&&DB.targets.sessions)||4);
         return `
           <button class="mtile" id="ringWeek" aria-label="${n} logged this week. See your training">
-            <span class="mt-h"><i class="mt-i">${svg('today')}</i><span class="mt-l">This week</span></span>
+            <span class="mt-h"><i class="mt-i">${svg('cal')}</i><span class="mt-l">This week</span></span>
             <span class="mt-v">${n} <small>logged</small></span>
             <span class="mt-b"><i style="width:${Math.min(100, n/tgt*100)}%;background:var(--accent)"></i></span>
           </button>`;
@@ -10260,7 +10436,7 @@ function viewWorkouts(v){
     {t:'Exercises', icon:'barbell',
      s:`${countDoable(DB.profile.gear||[])} of ${DB.exercises.length} you can do`,
      go:()=>openPane('Exercises','Filtered to your equipment', paneLibrary)},
-    {t:'Warm-ups', icon:'flame',
+    {t:'Warm-ups', icon:'warmup',
      s: hasSportChosen()? `Sport prep for ${sportLC()}, plus the session routines`
                         : 'The routine before each session type',
      go:()=>openPane('Warm-ups', null, paneWarmups)},
@@ -10532,7 +10708,7 @@ function editWorkout(wid){
          <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px">
            <b style="flex:1;font-size:13.5px">${i+1}. ${e?esc(e.name):'<span style="color:var(--red)">Missing exercise</span>'}</b>
            <button class="icon-btn" style="width:32px;height:32px" data-up="${i}">${svg('up')}</button>
-           <button class="icon-btn" style="width:32px;height:32px" data-dn="${i}">${svg('down2')}</button>
+           <button class="icon-btn" style="width:32px;height:32px" data-dn="${i}">${svg('down')}</button>
            <button class="icon-btn" style="width:32px;height:32px;color:var(--red)" data-rm="${i}">${svg('trash')}</button>
          </div>
          <div class="grid2">
@@ -10802,14 +10978,17 @@ function activityRows(){
   const n=(DB.activities||[]).length;
   const sessions=(DB.sessions||[]).filter(s=>s.done).length;
   return [
-    {t:'Recent days', icon:'today', s:'The last ten days, day by day',
+    {t:'Recent days', icon:'cal', s:'The last ten days, day by day',
      go:()=>openPane('Recent days', null, paneTimeline)},
     {t:'All activity', icon:'book',
      s: n? `${n} logged` : 'Nothing logged yet',
      go:()=>openPane('All activity', null, paneActHistory)},
     {t:'Totals', icon:'chart', s:'By week and by type',
      go:()=>openPane('Totals','Volume by week and type', paneTotals)},
-    hasSportChosen() ? {t:SPORT_LABEL(), icon:'flame', s:'Your sport in detail',
+    /* Now that every sport has its own drawing, the row for the user's sport
+       shows that sport rather than the load flame it used to borrow. */
+    hasSportChosen() ? {t:SPORT_LABEL(), icon:ACT_ICON(mainSportActs()[0]||'other'),
+     s:'Your sport in detail',
      go:()=>openPane(SPORT_LABEL(), null, paneTennis)} : null
   ].filter(Boolean);
 }
@@ -10939,7 +11118,7 @@ function paneTennis(c){
        </div>
        ${t.notes?`<div class="note" style="font-size:11.5px">${esc(t.notes)}</div>`:''}
      </div>`).join('')
-    :`<div class="empty"><div class="ei">${svg('flame')}</div><h4>No ${esc(SLC)} logged yet</h4><p>Log a session and the engine will start protecting the day after it.</p></div>`}
+    :`<div class="empty"><div class="ei">${svg(ACT_ICON(mainSportActs()[0]||'other'))}</div><h4>No ${esc(SLC)} logged yet</h4><p>Log a session and the engine will start protecting the day after it.</p></div>`}
    ${wT.length?`<div class="note">Plus <b>${wT.length}</b> matching sessions imported from WHOOP.</div>`:''}`;
   $$('[data-w]',c).forEach(b=>b.onclick=()=>previewWorkout(b.dataset.w,'full'));
   $$('[data-aid]',c).forEach(b=>b.onclick=()=>activityView(b.dataset.aid));
@@ -11064,18 +11243,37 @@ function otherSuggestions(){
    not a grid you scan.
    ====================================================================== */
 
-/* An honest icon or a generic one. Inventing a distinct glyph per sport would
-   mean thirty drawings, most of them guesses; these are the ones the icon set
-   genuinely has. */
+/* One drawing per activity.
+   The rules this replaces were written to avoid drawing thirty glyphs, and
+   the saving showed: the log grid put the same runner on running, walking and
+   hiking, and the same flame on football, basketball, volleyball, martial
+   arts, skiing, golf and "other" - seven rows of one mark, side by side in a
+   two-column grid. A generic mark on the long tail is defensible; a generic
+   mark on the things the user does every week is not. Every type ACT_TYPES
+   knows about is named here, so the table is checkable rather than a chain of
+   regexes whose last line quietly catches whatever it missed. */
+const ACT_ICONS={
+  tennis:'tennis',  padel:'padel',      squash:'squash',
+  football:'soccer',basketball:'bball', volleyball:'vball',
+  running:'run',    walking:'walk',     hiking:'hike',      cycling:'bike',
+  swimming:'swim',  rowing:'row',       strength:'dumbbell',climbing:'climb',
+  martial:'martial',skiing:'ski',       golf:'golf',        yoga:'yoga',
+  other:'dots'
+};
 function ACT_ICON(k){
-  if(/tennis|padel|squash|badminton/.test(k)) return 'tennis';
-  if(k==='cycling') return 'bike';
-  if(/running|walking|hiking|triathlon/.test(k)) return 'run';
-  if(k==='swimming') return 'drop';
-  if(/strength|gym|climbing/.test(k)) return 'dumbbell';
-  if(/yoga|mobility|stretch/.test(k)) return 'heart';
-  if(k==='rowing') return 'pulse';
-  return 'flame';
+  if(ACT_ICONS[k]) return ACT_ICONS[k];
+  /* imported names and the odd synonym, mapped onto the same drawings */
+  if(/tennis|badminton|racquet/.test(k)) return 'tennis';
+  if(/running|jog|triathlon/.test(k)) return 'run';
+  if(/walk/.test(k)) return 'walk';
+  if(/hik|trek/.test(k)) return 'hike';
+  if(/cycl|bike/.test(k)) return 'bike';
+  if(/swim/.test(k)) return 'swim';
+  if(/row/.test(k)) return 'row';
+  if(/yoga|mobility|stretch|pilates/.test(k)) return 'yoga';
+  if(/strength|gym|weight/.test(k)) return 'dumbbell';
+  if(/climb/.test(k)) return 'climb';
+  return 'dots';
 }
 
 /* =========================================================================
@@ -11107,7 +11305,7 @@ function viewLog(v){
   const recent=(DB.activities||[]).slice()
     .sort((a,b)=>(a.date===b.date? 0 : (a.date<b.date?1:-1))).slice(0,4);
   v.innerHTML=`
-    <div class="lg-find">${svg('target')}
+    <div class="lg-find">${svg('search')}
       <input class="inp" id="lgQ" type="search" placeholder="Search activities…"
              value="${esc(LOGQ)}" autocomplete="off"></div>
     ${types.length?`<div class="lgrid" id="lgGrid">${types.map(k=>
@@ -11115,7 +11313,7 @@ function viewLog(v){
       ).join('')}</div>`
      :`<div class="hint" style="margin-top:14px">Nothing matches “${esc(LOGQ)}”. Log it as
         <b>Other</b> and give it a name.</div>
-       <div class="lgrid"><button data-k="other"><i>${svg('flame')}</i><span>Other activity</span></button></div>`}
+       <div class="lgrid"><button data-k="other"><i>${svg('dots')}</i><span>Other activity</span></button></div>`}
     ${recent.length?`<div class="sec-t">Recent</div>
       <div class="rows" id="lgRecent">${recent.map((a,i)=>{
         const T=ACT_TYPES[a.type]||ACT_TYPES.other;
@@ -11728,10 +11926,10 @@ function progOverview(v,R){
      </div>
 
      <div class="stats c2" style="margin-top:10px">
-       <div class="stat a"><div class="lab">${svg('shoe')} Sessions</div>
+       <div class="stat a"><div class="lab">${svg('checkc')} Sessions</div>
          <div><div class="val num">${A.sessions}</div>
            <div class="dlt">vs ${P.sessions} last week</div></div></div>
-       <div class="stat g"><div class="lab">${svg('run')} Activities</div>
+       <div class="stat g"><div class="lab">${svg('shoe')} Activities</div>
          <div><div class="val num">${A.acts}</div>
            <div class="dlt">${A.sport} ${esc(sportLC())}</div></div></div>
      </div>
@@ -12978,10 +13176,9 @@ function settingsBody(v){
         place:placeOf(P), open:!!SETGEAR_OPEN})}</div>
      <div class="field" style="margin-top:12px"><label>Anything else</label>
        <input class="inp" id="sEqNote" value="${esc(P.equipNote||'')}" placeholder="e.g. TRX, rowing machine"></div>
-     <div style="margin-top:6px"><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
-       <input type="checkbox" id="sBest" ${P.preferBest!==false?'checked':''} style="width:22px;height:22px;accent-color:var(--accent)">
-       Use the best exercise my equipment allows</label>
-       <div class="hint">On: the best variation your kit allows. Off: always the base exercise.</div></div>
+     <div style="margin-top:6px">${toggleRow({id:'sBest', on:P.preferBest!==false,
+       label:'Use the best exercise my equipment allows',
+       hint:'On, a session picks the strongest variation your kit allows. Off, it always gives you the base exercise.'})}</div>
      
    </div>
 
@@ -13135,35 +13332,36 @@ function settingsBody(v){
        <div class="hint">Currently <b>week ${currentPhase().absWeek}</b> — ${esc(currentPhase().name)}.</div></div>
      <button class="btn ghost block" id="sSched">${svg('edit')} Edit weekly targets</button>
      
-     <div style="margin-top:12px"><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
-       <input type="checkbox" id="sAuto" ${S.autoAdjust?'checked':''} style="width:22px;height:22px;accent-color:var(--accent)">
-       Let readiness reduce session volume</label>
-       <div class="hint">Off: the chosen session always comes at full volume.</div></div>
+     <div style="margin-top:12px">${toggleRow({id:'sAuto', on:!!S.autoAdjust,
+       label:'Let readiness reduce session volume',
+       hint:'On, a low-readiness morning cuts sets rather than the session. Off, the chosen session always comes at full volume.'})}</div>
    </div>
 
    <div class="card spane alerts">
      <div class="card-t accent" style="margin-bottom:12px">While you train</div>
-     <div><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
-       <input type="checkbox" id="sRest" ${S.restTimerOn?'checked':''} style="width:22px;height:22px;accent-color:var(--accent)">
-       Rest timer between sets</label>
-       <div class="hint">Counts down in the card for the set you just finished.</div></div>
-     <div style="margin-top:14px"><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
-       <input type="checkbox" id="sSound" ${S.sound!==false?'checked':''} style="width:22px;height:22px;accent-color:var(--accent)">
-       Sound</label>
-       <div class="hint">Three ticks as a rest runs out, a chime when it ends, a click
-         when a set goes in. The app makes the tones itself — nothing is downloaded
-         and they work offline.</div></div>
+     ${toggleRow({id:'sRest', on:!!S.restTimerOn,
+       label:'Rest timer between sets',
+       hint:'Starts counting down in the card as soon as you log a set, so you do not have to time your own rest.'})}
+     ${toggleRow({id:'sSound', on:S.sound!==false,
+       label:'Sound',
+       hint:'Three ticks as a rest runs out, a chime when it ends, a click when a set '
+           +'goes in. The app makes the tones itself &mdash; nothing is downloaded, and '
+           +'they work with no signal.'})}
    </div>
 
    <div class="card spane alerts">
      <div class="card-t accent" style="margin-bottom:12px">When the screen is off</div>
-     <div><label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
-       <input type="checkbox" id="sNotify" ${S.notify?'checked':''} ${notifyState()==='unsupported'?'disabled':''} style="width:22px;height:22px;accent-color:var(--accent)">
-       Alert me when a rest timer finishes</label>
-       <div class="hint" id="sNotifyH">${
-         notifyState()==='unsupported' ? 'This browser cannot show alerts.'
-         : notifyState()==='denied' ? 'Your browser has blocked alerts for this app. Turn them back on in its site settings, then try again.'
-         : 'Lets you put the phone down mid-session. Your browser will ask permission the first time.'}</div></div>
+     ${''/* The switch alone could not say what was going on. "On" with the
+              browser blocking notifications means a silent phone, and the old
+              copy explained the feature rather than the state, so there was no
+              way to tell a working switch from a blocked one. */}
+     ${toggleRow({id:'sNotify', on:!!S.notify,
+       disabled:notifyState()==='unsupported',
+       label:'Notify me when a rest is over',
+       hint:'Baseline shows a notification the moment a rest timer ends, so you can '
+           +'put the phone down between sets.',
+       state:notifyText(), stateCls:notifyCls()})}
+     <div class="hint" id="sNotifyH" style="margin-top:2px">${notifyNext()}</div>
      <div class="note acc" style="margin-top:12px">
        This is a <b>local</b> alert: your own device raising a notification for a
        timer your own device is running. It is not a push notification — there is
@@ -13477,22 +13675,28 @@ function settingsBody(v){
      checkbox is put back if the browser says no */
   (function(){
     const e=$('#sNotify'); if(!e) return;
+    /* The row says what is actually happening, so it has to be rewritten
+       whenever the answer changes - including when the browser refuses, which
+       is the case where the switch on its own would be misleading. */
+    const repaint=()=>{
+      const tag=e.parentNode.querySelector('.tg-s'), h=$('#sNotifyH');
+      if(tag){ tag.textContent=notifyText(); tag.className='tg-s '+notifyCls(); }
+      if(h) h.innerHTML=notifyNext();
+    };
     e.addEventListener('change',()=>{
-      const h=$('#sNotifyH');
-      if(!e.checked){ DB.settings.notify=false; save(); toast('Alerts off','ok'); return; }
+      if(!e.checked){ DB.settings.notify=false; save(); repaint(); toast('Notifications off','ok'); return; }
       if(notifyState()==='granted'){
-        DB.settings.notify=true; save(); toast('Alerts on','ok');
-        notify('Alerts are on','Baseline will tell you when a rest timer finishes.');
+        DB.settings.notify=true; save(); repaint(); toast('Notifications on','ok');
+        notify('Notifications are on','Baseline will tell you when a rest is over.');
         return;
       }
       notifyAsk(p=>{
         if(p==='granted'){
-          DB.settings.notify=true; save(); toast('Alerts on','ok');
-          notify('Alerts are on','Baseline will tell you when a rest timer finishes.');
+          DB.settings.notify=true; save(); repaint(); toast('Notifications on','ok');
+          notify('Notifications are on','Baseline will tell you when a rest is over.');
         } else {
-          e.checked=false; DB.settings.notify=false; save();
-          if(h) h.textContent='Your browser blocked alerts for this app. Turn them back on in its site settings, then try again.';
-          toast('Your browser blocked alerts','err');
+          e.checked=false; DB.settings.notify=false; save(); repaint();
+          toast('Your browser blocked notifications','err');
         }
       });
     });
@@ -14524,8 +14728,11 @@ function drawActivityFinish(){
     <div style="text-align:center;padding:14px 0 6px">
       <div style="width:64px;height:64px;border-radius:20px;background:var(--accent);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" style="width:32px;height:32px">${ICON.check}</svg></div>
-      <div style="font-size:27px;font-weight:850;letter-spacing:-.9px">${esc(T.name)} done</div>
-      <div style="font-size:13px;color:var(--text-3);margin-top:5px;font-weight:600">${hms(cardElapsedSec(en))} from start to finish</div>
+      ${''/* The activity is the title; "done" is what happened to it. "Tennis
+            done" read as the name of a thing rather than as a statement. */}
+      <div id="afWhat" style="font-size:27px;font-weight:850;letter-spacing:-.9px">${esc(T.name)}</div>
+      <div id="afDone" style="font-size:13px;color:var(--text-3);margin-top:5px;font-weight:600">Done · ${
+        hms(cardElapsedSec(en))} from start to finish</div>
     </div>
     <div class="stats c4">
       ${statTile('Time',mins,'m','a')}
@@ -14533,13 +14740,12 @@ function drawActivityFinish(){
       ${statTile('Effort','RPE '+rpe,'','c')}
       ${statTile('Laps',laps||'—','','')}
     </div>
-    <div class="field"><label>How long was it really?</label>
-      <div class="fine">
-        <input class="inp num" type="number" inputmode="numeric" id="afMin" value="${mins}">
-        <span class="hint" style="margin:0">minutes</span>
-      </div>
-      <div class="hint">Taken from the clock. Change it if it ran on after you stopped.</div>
-    </div>
+    ${''/* No duration field. The clock ran from the Start you pressed to the
+          Finish you pressed, so asking for the number it just measured - and
+          offering plus and minus buttons to nudge it - is asking the user to
+          check the app's arithmetic. The figure is shown in the Time tile
+          above; if it is wrong, the activity can be edited after saving, which
+          is the rare case rather than the default one. */}
     ${T.dist?`<div class="field"><label>How far? <span style="font-weight:600;color:var(--text-3)">optional</span></label>
       <div class="fine">
         <input class="inp num" type="number" inputmode="decimal" step="0.1" id="afDist" placeholder="—">
@@ -14571,12 +14777,12 @@ function drawActivityFinish(){
   const curStrain=()=>{
     const e=$('#afStrain');
     if(STSET && e && e.value.trim()!=='') return clamp(+e.value,0,21);
-    const m=Math.max(1,+($('#afMin')||{}).value||mins);
+    const m=mins;   /* the clock measured it; there is nothing to override */
     const iB=$('#afInt button.on');
     return rnd(liveStrain(W.actType, m, effortRpe(iB?iB.dataset.v:W.intensity, null)),1);
   };
   const paint=()=>{
-    const m=Math.max(1,+($('#afMin')||{}).value||mins);
+    const m=mins;   /* the clock measured it; there is nothing to override */
     const dEl=$('#afDist');
     const dist=dEl&&dEl.value!==''? (+dEl.value||null) : null;
     const st=curStrain();
@@ -14590,7 +14796,7 @@ function drawActivityFinish(){
       min:m, dist:dist, strain:st}) + weekContext(ACT_CAT(W.actType), m);
   };
   paint();
-  ['afMin','afDist'].forEach(id=>{ const e=$('#'+id); if(e) e.addEventListener('input',paint); });
+  ['afDist'].forEach(id=>{ const e=$('#'+id); if(e) e.addEventListener('input',paint); });
   (function(){ const e=$('#afStrain'); if(e) e.addEventListener('input',()=>{
     STSET = e.value.trim()!==''; paint(); }); })();
   $$('#afInt button').forEach(b=>b.onclick=()=>{
@@ -14598,7 +14804,7 @@ function drawActivityFinish(){
     b.classList.add('on'); W.intensity=b.dataset.v; haptic(); paint(); });
 
   $('#afSave').onclick=()=>{
-    const m=Math.max(1,+($('#afMin')||{}).value||mins);
+    const m=mins;   /* the clock measured it; there is nothing to override */
     const dEl=$('#afDist');
     const dist=dEl&&dEl.value!==''? (+dEl.value||null) : null;
     const iB=$('#afInt button.on');
@@ -14918,19 +15124,11 @@ function preStartSheet(type){
         <div class="ps-n">${esc(T.name)}</div>
         <button class="tert" id="psChange">Choose something else</button>
       </div>
-      <div class="ruled" style="display:flex;align-items:center;gap:12px">
-        <div style="flex:1">
-          <div style="font-size:13px;font-weight:700">Strain target</div>
-          <div style="font-size:11.5px;color:var(--text-3);margin-top:2px">${
-            target!=null? 'You will be told when you reach it.'
+      <div class="ruled">${toggleRow({id:'psOn', on:target!=null,
+        label:'Strain target',
+        hint: target!=null? 'You will be told when you reach it.'
             : prev? 'Last time this came to '+rnd(prev.strain,1)+'.'
-            : 'Optional. Nothing is set.'}</div>
-        </div>
-        <label style="display:flex;align-items:center;gap:8px">
-          <input type="checkbox" id="psOn" ${target!=null?'checked':''}
-                 style="width:22px;height:22px;accent-color:var(--accent)">
-        </label>
-      </div>
+            : 'Optional. Nothing is set.'})}</div>
       ${target!=null?`<div class="field">
         <div class="fine">
           <input class="inp num" type="number" inputmode="decimal" step="0.1"
