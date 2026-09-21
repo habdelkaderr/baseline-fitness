@@ -3825,11 +3825,12 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   ok('and the card says where the data is kept',
      !!document.querySelector('.set-store'),
      document.querySelector('.set-store') ? document.querySelector('.set-store').textContent.trim() : '(none)');
-  ['Training preferences','Workout display','Wearables','Data','Privacy','Appearance','About Baseline']
+  ['Training preferences','Workout experience','Wearables','Data','Privacy','Appearance',
+   'Help & feedback','About Baseline']
     .forEach(function(n){
       ok('Settings offers "'+n+'"', rows && rows.textContent.indexOf(n)>=0);
     });
-  ['Appearance','Training','Health & data','Support'].forEach(function(s){
+  ['App experience','Training','Health & data','Support'].forEach(function(s){
     ok('and groups them under "'+s+'"',
        document.getElementById('view').textContent.indexOf(s)>=0);
   });
@@ -4089,18 +4090,18 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   var headsOf=function(){
     return Array.prototype.slice.call(document.querySelectorAll('#view .sec-t'))
              .map(function(e){return e.textContent.trim();}); };
-  ok('the week section is not titled with a week that can change',
-     headsOf().indexOf('This week')<0, headsOf().join(' | '));
+  /* "This week" while it IS this week; the dates once the arrows move it, so
+     the heading is never a period the strip is not showing. */
+  ok('the week heading reads plainly while it is this week',
+     headsOf().indexOf('This week')>=0, headsOf().join(' | '));
   /* The heading names the period the strip is SHOWING and moves with it. An
      earlier pass had it name no period at all, which was the safe answer to
      "This week" being wrong once you pressed the arrow; naming the actual
      range is the better one, as long as the two cannot disagree. */
-  var headText=function(){ return headsOf().filter(function(h){ return /^Training/.test(h); })[0]||''; };
-  ok('the week section is still labelled', /^Training/.test(headText()), headsOf().join(' | '));
-  ok('and its heading names the period on screen',
-     headText().indexOf(weekRangeLabel(weekStartOf(todayISO()),
-                                       addDays(weekStartOf(todayISO()),6)))>=0,
-     headText());
+  ok('the week section is still labelled', headsOf().indexOf('This week')>=0,
+     headsOf().join(' | '));
+  ok('and recent activity has a heading of its own',
+     headsOf().indexOf('Recent activity')>=0, headsOf().join(' | '));
   var lbl=document.querySelector('#view .wk-l');
   ok('the strip is what names the week', lbl && /This week/.test(lbl.textContent),
      lbl?lbl.textContent:'(no strip)');
@@ -4115,11 +4116,11 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
     ok('stepping back names the exact period',
        lbl2 && /[0-9]{1,2}.*[0-9]{1,2} [A-Z][a-z][a-z]/.test(lbl2.textContent) && !/week/i.test(lbl2.textContent),
        lbl2?lbl2.textContent:'(no strip)');
-    ok('and the heading moved with it',
-       headText().indexOf(lbl2.textContent.trim())>=0
-       || headText().indexOf(weekRangeLabel(addDays(weekStartOf(todayISO()),-7),
-                                            addDays(weekStartOf(todayISO()),-1)))>=0,
-       headText()+'  vs strip  '+lbl2.textContent.trim());
+    ok('and the heading moved with it, rather than still saying "this week"',
+       headsOf().indexOf('This week')<0
+       && headsOf().indexOf(weekRangeLabel(addDays(weekStartOf(todayISO()),-7),
+                                           addDays(weekStartOf(todayISO()),-1)))>=0,
+       headsOf().join(' | ')+'  vs strip  '+lbl2.textContent.trim());
   }
   WEEKOFF=0; SELDAY=null;
 
@@ -4147,8 +4148,13 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   ok('sleep never claims more than its own weight', sp.weight===18 && sp.maxGain<18,
      sp.weight+'/'+sp.maxGain);
   resetStack(); TAB='today'; render();
-  var sr=document.getElementById('ringSleep');
-  ok('the sleep ring is tappable', !!sr);
+  /* Home carries the sleep tile, and the readiness screen carries a second
+     door to the same detail - deliberately, because that screen is where the
+     figure is explained. */
+  ok('Home carries a sleep tile', !!document.getElementById('ringSleep'));
+  pushPage({build:pageReadiness(T)});
+  var sr=document.getElementById('rdSleep');
+  ok('the readiness screen opens the sleep detail', !!sr);
   if(sr){
     sr.click();
     var stxt=document.getElementById('view').textContent;
@@ -5492,10 +5498,18 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   var keepP=JSON.parse(JSON.stringify(DB.profile)), keepW=DB.whoop;
   var ids=function(){ return tabs().map(function(t){return t.id;}); };
 
-  ok('the nav has exactly four tabs', ids().length===4, ids().join(','));
-  ['today','workouts','progress','settings'].forEach(function(id){
+  /* Four destinations and one action. Logging is the thing people do most
+     often that is not training, and it was a row buried on Home; it gets the
+     middle of the bar and a shape of its own so it does not read as a fifth
+     place to go. */
+  ok('the nav has four destinations and one action', ids().length===5, ids().join(','));
+  ['today','workouts','log','progress','settings'].forEach(function(id){
     ok('tab "'+id+'" is present', ids().indexOf(id)>=0, ids().join(','));
   });
+  ok('Log sits in the middle', ids()[2]==='log', ids().join(','));
+  ok('and only Log is marked as the action',
+     tabs().filter(function(t){return t.mid;}).map(function(t){return t.id;}).join(',')==='log',
+     tabs().filter(function(t){return t.mid;}).map(function(t){return t.id;}).join(','));
   ok('Activity is no longer a tab', ids().indexOf('tennis')<0, ids().join(','));
   ok('Metrics is not a tab', ids().indexOf('whoop')<0, ids().join(','));
 
@@ -6088,27 +6102,35 @@ ok('a stopped timer stays stopped', !restActive());
   DB.checkins[T]={date:T,recovery:74,hrv:86,rhr:52,sleepMin:455,energy:7,
                   soreness:3,stress:3,motivation:8,pain:'None'};
 
-  // 1 · it asks even when nothing has been logged, which is exactly when a
-  //     mis-tap on the X is most likely
+  /* 1 · With nothing logged there is nothing to lose, so leaving just leaves.
+     This used to ask every time, on the reasoning that a mis-tap on the X is
+     most likely before anything is logged - which had it backwards: with
+     nothing logged a mis-tap costs nothing, so the dialogue guarded the cheap
+     mistake and charged for it on every exit, including the common one of
+     opening a session, reading the overview and backing out. */
   startWorkout('w_lowerA','full',T);
   W.phase='main'; W.step=0; drawWM();
   document.getElementById('wmX').click();
-  ok('the exit button always asks', document.getElementById('sheet').classList.contains('on'));
+  ok('leaving with nothing logged just leaves',
+     !document.getElementById('sheet').classList.contains('on') && !W,
+     document.getElementById('sheet').classList.contains('on')?'asked':'left');
+  ok('and keeps no live session behind', !Store.pref('live'));
+
+  // 2 · one logged set is progress, and progress is worth asking about
+  startWorkout('w_lowerA','full',T);
+  W.phase='main'; W.step=0; drawWM();
+  document.querySelector('#wmBody [data-log]').click();
+  stopRest();
+  document.getElementById('wmX').click();
+  ok('once a set is logged it does ask', document.getElementById('sheet').classList.contains('on'));
   ok('it offers pause', !!document.getElementById('wmPause'));
   ok('it offers cancel', !!document.getElementById('wmKeep'));
   ok('it offers discard', !!document.getElementById('wmDrop'));
-  ok('and says nothing is logged yet',
-     /Nothing is logged yet/.test(document.getElementById('sheetBody').innerHTML),
-     document.getElementById('sheetBody').innerHTML.slice(0,160));
 
-  // 2 · cancel keeps you training
+  // 3 · cancel keeps you training, and the sheet says how much is at stake
   document.getElementById('wmKeep').click();
   ok('cancel closes the sheet', !document.getElementById('sheet').classList.contains('on'));
   ok('and the workout is still running', !!W && document.getElementById('wmode').classList.contains('on'));
-
-  // 3 · with sets logged it says so
-  document.querySelector('#wmBody [data-log]').click();
-  cancelAuto();
   document.getElementById('wmX').click();
   ok('with sets logged it says how many',
      /1 set logged so far/.test(document.getElementById('sheetBody').innerHTML),
@@ -7223,9 +7245,10 @@ ok('a stopped timer stays stopped', !restActive());
                   if(open) closeSheet();
                   return open; })());
   resetStack(); TAB='today'; render();
-  ok('and the sleep ring is what opens it',
-     (function(){ document.getElementById('ringSleep').click();
-                  return STACK.length===1; })(), STACK.length);
+  ok('and the readiness screen is what opens it',
+     (function(){ pushPage({build:pageReadiness(T)});
+                  document.getElementById('rdSleep').click();
+                  return STACK.length===2; })(), STACK.length);
   resetStack(); render();
 
   DB.checkins=keepC; resetStack(); render();
@@ -7234,7 +7257,7 @@ ok('a stopped timer stays stopped', !restActive());
 // ---------- FOUR DESTINATIONS, AND SETTINGS IS ONE OF THEM ----------
 (function(){
   var ids=tabs().map(function(t){ return t.id; });
-  ok('there are four tabs', ids.length===4, ids.join(','));
+  ok('there are four destinations plus Log', ids.length===5, ids.join(','));
   ok('and Activity is no longer one of them', ids.indexOf('tennis')<0, ids.join(','));
   ok('Settings is', ids.indexOf('settings')>=0, ids.join(','));
   ok('and it is last, which puts it bottom right',
@@ -7242,7 +7265,9 @@ ok('a stopped timer stays stopped', !restActive());
 
   renderNav();
   var btns=document.querySelectorAll('#nav button');
-  ok('the bar renders one button per tab', btns.length===4, btns.length);
+  ok('the bar renders one button per tab', btns.length===5, btns.length);
+  ok('and the middle one is drawn as an action, not a destination',
+     !!document.querySelector('#nav button.mid .nav-fab'));
   ok('the last one is Settings',
      btns[btns.length-1].dataset.tab==='settings',
      btns[btns.length-1].dataset.tab);
