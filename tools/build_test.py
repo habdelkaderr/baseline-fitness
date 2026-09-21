@@ -4382,6 +4382,198 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   ok('no illustration introduces unsupported equipment',
      Object.keys(props).every(function(t){ return allowed[t]; }), Object.keys(props).join(', '));
 
+  /* ---------------------------------------------------------------------
+     SWITCHES YOU CAN SEE
+     Every boolean was a bare checkbox, and appearance:none in the stylesheet
+     left it an invisible 22px square: it toggled, it saved, and the screen
+     showed nothing, so the settings looked broken. A control that changes a
+     setting has to be visible and its states have to differ.
+     ------------------------------------------------------------------ */
+  (function(){
+    DB.profile.onboarded=true;
+    resetStack(); TAB='settings'; render();
+    pushPage({build:function(c){ SETTAB='alerts'; settingsBody(c); }});
+
+    var rows=document.querySelectorAll('#view .spane.on .tglr');
+    ok('the workout experience pane is built from switch rows', rows.length>=3,
+       rows.length+' rows');
+
+    var bad=[];
+    Array.prototype.forEach.call(rows, function(r){
+      var inp=r.querySelector('input[type=checkbox]');
+      var trk=r.querySelector('.tgl');
+      var lbl=(r.querySelector('.tg-t')||{}).textContent||'?';
+      if(!inp){ bad.push(lbl+': no checkbox'); return; }
+      if(!trk){ bad.push(lbl+': no track drawn'); return; }
+      var tb=trk.getBoundingClientRect();
+      /* the part the eye sees, not the input, which is deliberately clear */
+      if(tb.width<28 || tb.height<18)
+        bad.push(lbl+': track is '+Math.round(tb.width)+'x'+Math.round(tb.height));
+      var cs=getComputedStyle(trk);
+      if(cs.display==='none' || cs.visibility==='hidden')
+        bad.push(lbl+': track is '+cs.display+'/'+cs.visibility);
+      /* transparent on transparent is the fault that started this */
+      if(cs.backgroundColor==='rgba(0, 0, 0, 0)' && parseFloat(cs.borderTopWidth)<1)
+        bad.push(lbl+': track has neither fill nor edge');
+      /* the whole row is the hit area, so the invisible input has to cover it */
+      var rb=r.getBoundingClientRect(), ib=inp.getBoundingClientRect();
+      if(ib.width < rb.width-1 || ib.height < rb.height-1)
+        bad.push(lbl+': hit area '+Math.round(ib.width)+'x'+Math.round(ib.height)
+          +' inside a row of '+Math.round(rb.width)+'x'+Math.round(rb.height));
+    });
+    ok('every switch draws a track you can see and can hit', bad.length===0,
+       bad.join(' | '));
+
+    /* On and off have to look different. Compare the same control in both
+       positions rather than trusting the rule that is supposed to do it. */
+    (function(){
+      /* Rendered, not scripted: setting .checked in script does not flush a
+         style recalc, so reading the computed style straight afterwards gives
+         the old answer and the test passes or fails on its own timing. Two
+         rows in two states, drawn together, is what the eye compares. */
+      var keepR=DB.settings.restTimerOn, keepS=DB.settings.sound;
+      DB.settings.restTimerOn=true; DB.settings.sound=false;
+      resetStack(); TAB='settings'; render();
+      pushPage({build:function(c){ SETTAB='alerts'; settingsBody(c); }});
+      var on =document.getElementById('sRest').parentNode.querySelector('.tgl');
+      var off=document.getElementById('sSound').parentNode.querySelector('.tgl');
+      var onC=getComputedStyle(on), offC=getComputedStyle(off);
+      var onBg=onC.backgroundColor, offBg=offC.backgroundColor;
+      var onKnob=getComputedStyle(on,'::after').transform;
+      var offKnob=getComputedStyle(off,'::after').transform;
+      ok('a switch that is on is not the same colour as one that is off',
+         onBg!==offBg, offBg+' -> '+onBg);
+      ok('and its knob is not in the same place',
+         onKnob!==offKnob, offKnob+' -> '+onKnob);
+      /* the on colour is the accent, so it reads as on rather than as some
+         other shade of grey */
+      ok('the on state uses the accent colour',
+         onBg===getComputedStyle(document.body).getPropertyValue('--accent').trim()
+         || /rgb/.test(onBg) && onBg!==offBg, onBg);
+      DB.settings.restTimerOn=keepR; DB.settings.sound=keepS;
+      resetStack(); TAB='settings'; render();
+      pushPage({build:function(c){ SETTAB='alerts'; settingsBody(c); }});
+    })();
+
+    /* And it still does what it did: the tap changes the stored setting. */
+    (function(){
+      var before=DB.settings.restTimerOn;
+      document.getElementById('sRest').click();
+      ok('tapping a switch changes the setting it names',
+         DB.settings.restTimerOn===!before, before+' -> '+DB.settings.restTimerOn);
+      document.getElementById('sRest').click();
+      ok('and tapping it back restores it', DB.settings.restTimerOn===before);
+    })();
+
+    /* The notification row has a state the switch cannot show: on, with the
+       browser refusing. That has to be said in words. */
+    (function(){
+      var row=document.getElementById('sNotify').parentNode;
+      ok('the notification row says what it is doing, not just what it is for',
+         !!row.querySelector('.tg-s'));
+      var h=document.getElementById('sNotifyH');
+      ok('and says what to do next', !!h && h.textContent.trim().length>20,
+         h? h.textContent.trim().slice(0,70) : '(missing)');
+      /* the wording has to name the thing rather than describe a feature */
+      var lbl=(row.querySelector('.tg-t')||{}).textContent||'';
+      ok('the label is about the rest being over', /rest is over/i.test(lbl), lbl);
+      /* never claimed as on without the permission that makes it mean
+         something - the check that stops a silent phone reading as working */
+      DB.settings.notify=true;
+      ok('notifyOn() still requires the browser to have allowed it',
+         notifyOn()===(notifyState()==='granted'),
+         notifyState()+' / '+notifyOn());
+      DB.settings.notify=false;
+    })();
+
+    /* Nothing is left drawing itself the old way. */
+    (function(){
+      var naked=[];
+      document.querySelectorAll('#view input[type=checkbox]').forEach(function(i){
+        if(!i.closest('.tglr')) naked.push(i.id||'(no id)');
+      });
+      ok('no checkbox is left outside a switch row', naked.length===0, naked.join(', '));
+    })();
+
+    resetStack(); TAB='today'; render();
+  })();
+
+  /* ---------------------------------------------------------------------
+     THE ICON SET: ONE DRAWING PER THING
+     A shared glyph is invisible in a diff and obvious on screen. The log grid
+     drew running, walking and hiking with one runner and put the flame on
+     seven more sports, and the core session carried the upload arrow - which
+     is the share glyph on every phone. These check the drawings, not the
+     names of the drawings.
+     ------------------------------------------------------------------ */
+  (function(){
+    var aud=iconAudit();
+    ok('no two icon names are the same drawing', aud.dup.length===0,
+       aud.dup.join(', ') || aud.total+' distinct');
+
+    /* Every activity the engine knows about is named in the table, so a new
+       sport cannot silently fall through to the generic mark. */
+    var unnamed=Object.keys(ACT_TYPES).filter(function(k){ return !ACT_ICONS[k]; });
+    ok('every activity type has its own entry', unnamed.length===0, unnamed.join(', '));
+
+    /* And every entry points at a drawing that exists. */
+    var broken=Object.keys(ACT_ICONS).filter(function(k){ return !ICON[ACT_ICONS[k]]; });
+    ok('and every entry names a drawing that exists', broken.length===0, broken.join(', '));
+
+    /* The grid is the screen that shows them together, which is where the
+       repetition was seen. Compare the rendered SVG bodies. */
+    resetStack(); TAB='log'; LOGQ=''; render();
+    var tiles=document.querySelectorAll('#lgGrid button');
+    ok('the log grid offers every activity', tiles.length>=Object.keys(ACT_TYPES).length-1,
+       tiles.length+' tiles');
+    var byGlyph={}, repeated=[];
+    Array.prototype.forEach.call(tiles, function(b){
+      var i=b.querySelector('i svg'), nm=(b.querySelector('span')||{}).textContent||'?';
+      if(!i){ repeated.push(nm+' has no icon'); return; }
+      var g=i.innerHTML.replace(/[^!-~]+/g,'');
+      if(byGlyph[g]) repeated.push(byGlyph[g]+' = '+nm); else byGlyph[g]=nm;
+    });
+    ok('and no two of them are drawn the same', repeated.length===0, repeated.join(' | '));
+
+    /* Running, walking and hiking specifically - the three the user named. */
+    ok('running, walking and hiking are three different drawings',
+       ICON[ACT_ICON('running')]!==ICON[ACT_ICON('walking')] &&
+       ICON[ACT_ICON('walking')]!==ICON[ACT_ICON('hiking')] &&
+       ICON[ACT_ICON('running')]!==ICON[ACT_ICON('hiking')],
+       [ACT_ICON('running'),ACT_ICON('walking'),ACT_ICON('hiking')].join('/'));
+
+    /* The core session's mark is not the upload arrow, and is not any other
+       mark the app already uses for an action. */
+    var coreIcon=planIcon({id:'core'});
+    ok('the core session has a mark of its own', coreIcon==='core', coreIcon);
+    ok('and it is not the upload arrow', ICON[coreIcon]!==ICON.ul);
+    ok('nor anything else in the set',
+       Object.keys(ICON).filter(function(k){ return ICON[k]===ICON[coreIcon]; }).length===1);
+
+    /* Each session type the engine can prescribe gets its own mark, checked
+       across the whole plan vocabulary rather than one id at a time. */
+    var ids=['lower','upper','power','core','run_e','run_q','run_int','bike',
+             'mobility','rest','prep'];
+    var seen={}, clash=[];
+    ids.forEach(function(id){
+      var g=ICON[planIcon({id:id})];
+      if(!g){ clash.push(id+' has no drawing'); return; }
+      if(seen[g]) clash.push(seen[g]+' = '+id); else seen[g]=id;
+    });
+    ok('no two session types share a mark', clash.length===0, clash.join(' | '));
+
+    /* The wearable metric list shows many marks together too. */
+    var mseen={}, mclash=[];
+    Object.keys(DATA_FIELDS||{}).forEach(function(k){
+      var g=ICON[DATA_FIELDS[k].icon];
+      if(!g){ mclash.push(k+' has no drawing'); return; }
+      if(mseen[g]) mclash.push(mseen[g]+' = '+k); else mseen[g]=k;
+    });
+    ok('no two metrics share a mark', mclash.length===0, mclash.join(' | '));
+
+    resetStack(); TAB='today'; render();
+  })();
+
   /* Coverage, stated rather than assumed: this is a starter library and the
      test says how far it reaches so it cannot quietly stall. */
   var cov=illusCoverage();
@@ -7106,8 +7298,17 @@ ok('a stopped timer stays stopped', !restActive());
   nextStep();
   ok('the finish screen is the activity one', !!document.getElementById('afSave'),
      document.getElementById('wmBody').innerHTML.slice(0,200));
-  ok('it reports the time from start to finish',
-     /75/.test(document.getElementById('afMin').value), document.getElementById('afMin').value);
+  ok('it reports the time from start to finish, in the Time tile',
+     /75/.test(document.querySelector('#wmBody .stats').textContent),
+     document.querySelector('#wmBody .stats').textContent.replace(/[^!-~]+/g,' '));
+  ok('and does not ask the user to retype what the clock just measured',
+     !document.getElementById('afMin'));
+  ok('the heading is the activity, not a sentence about it',
+     document.getElementById('afWhat').textContent.trim()==='Tennis',
+     document.getElementById('afWhat').textContent);
+  ok('with done said underneath instead',
+     /^Done /.test(document.getElementById('afDone').textContent.trim()),
+     document.getElementById('afDone').textContent);
   ok('and the strain it came to',
      /Strain/.test(document.getElementById('wmBody').textContent));
   ok('tennis is not asked for a distance', !document.getElementById('afDist'));
