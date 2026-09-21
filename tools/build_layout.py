@@ -653,12 +653,18 @@ function SETUP_AT(id){
 
   // a day other than today SELECTED in the calendar, with something on it
   var keepA=DB.activities, keepSel=SELDAY;
+  /* A day three days back, and the strip moved to whichever week that lands
+     in. Early in a week - on the Monday it broke - T-3 sits in the PREVIOUS
+     ISO week, so the strip drew no selected cell because the selected day was
+     not on screen. Clamping it into this week was worse: it made the "past
+     day" today, and today legitimately offers a clock. */
   var d=addDays(T,-3);
+  var wkOffFix = d>=weekStartOf(T) ? 0 : -1;
   DB.activities=(DB.activities||[]).concat([
     {id:'wk1',date:d,type:'football',min:95,time:'19:00',endTime:'20:35',
      intensity:'Hard',rpe:8}
   ]);
-  WEEKOFF=0; SELDAY=d;
+  WEEKOFF=wkOffFix; SELDAY=d;
   resetStack(); TAB='today'; render();
   (function(){
     var issues=[];

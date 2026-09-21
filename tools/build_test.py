@@ -1914,15 +1914,15 @@ ok('the wearable step does not ask about one brand',
     if(e0.sets.length>1){
       drawWM();
       ok('no glimpse while there are sets left on this exercise',
-         !document.querySelector('#wmBody .peek'),
-         document.querySelector('#wmBody .peek') ? document.querySelector('#wmBody .peek').textContent : '');
+         !document.querySelector('#wmBody .unext'),
+         document.querySelector('#wmBody .unext') ? document.querySelector('#wmBody .unext').textContent : '');
     } else {
       ok('no glimpse while there are sets left on this exercise', true, 'single-set exercise');
     }
     for(var q=0;q<e0.sets.length-1;q++) e0.sets[q].done=true;
     stopRest(); drawWM();
     ok('and a one-line glimpse on the last set',
-       !!document.querySelector('#wmBody .peek'),
+       !!document.querySelector('#wmBody .unext'),
        document.getElementById('wmBody').textContent.slice(-60));
     e0.sets.forEach(function(s){ s.done=false; });
     stopRest(); drawWM();
@@ -2797,10 +2797,17 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
     ok('no cycle marks on the week view when off',
        weekStrip(T2).indexOf('var(--pink)')<0);
 
+    /* The bleeding days have to fall inside the week the strip is DRAWING, and
+       T2-3 is in the previous ISO week whenever T2 is early in one - so on a
+       Monday nothing pink appeared and this failed. Count forward from the
+       week's own Monday instead, never into the future. */
     DB.mcycle.on=true;
-    DB.mcycle.starts=[addDays(T2,-3)];
     DB.mcycle.typicalLen=28;
-    [0,1,2].forEach(function(i){ mcSetLog(addDays(T2,-3+i),{bleeding:true}); });
+    var wk0=weekStartOf(T2), bleed=[];
+    for(var bi=0;bi<3;bi++){ var bd=addDays(wk0,bi); if(bd<=T2) bleed.push(bd); }
+    if(!bleed.length) bleed=[T2];
+    DB.mcycle.starts=[bleed[0]];
+    bleed.forEach(function(bd){ mcSetLog(bd,{bleeding:true}); });
 
     var strip=weekStrip(T2);
     ok('the week view shows cycle days once on',
@@ -3087,34 +3094,54 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   DB.checkins[T]={date:T,recovery:74,hrv:86,rhr:52,sleepMin:455,energy:7,
                   soreness:3,stress:3,motivation:8,pain:'None'};
   tryRun('starting a session', function(){ startWorkout('w_lowerA','full',T); });
-  W.phase='warmup'; W.wuStep=0; W.step=0; drawWM();
   var body=document.getElementById('wmBody');
 
-  /* The instructions used to sit behind a tap on a list row. The warm-up is now
-     walked one movement at a time, so the how-to belongs ON the movement being
-     performed - no expanding, and nothing to miss. Same guarantee, shown rather
-     than hidden. */
-  ok('the session opens on the movement to start with',
-     !!body.querySelector('.nowcard .now-n') && body.querySelector('.nowcard .now-n').textContent.length>2,
-     body.querySelector('.nowcard .now-n') ? body.querySelector('.nowcard .now-n').textContent : '(none)');
-  ok('and explains how to do it, without a tap',
-     !!body.querySelector('.nowcard .now-h') &&
-     body.querySelector('.nowcard .now-h').textContent.length>30,
-     body.querySelector('.nowcard .now-h') ? body.querySelector('.nowcard .now-h').textContent.slice(0,60) : '(none)');
-  ok('the instruction matches that movement, not another',
-     body.querySelector('.nowcard .now-h').textContent.trim()
-       === warmupHow(W.warmup.items[0].n).trim(),
-     body.querySelector('.nowcard .now-h').textContent.slice(0,50));
-  /* and it stays with the movement as the warm-up advances */
+  /* EVERY movement on one screen, each explaining itself in place. This
+     replaced a stepped runner that made the user press through five screens to
+     read five lines, and before that a flat list whose instructions were
+     hidden behind a tap with nothing to say they were there. */
+  var wuRows=body.querySelectorAll('.wacc [data-acc^=w]');
+  ok('every warm-up movement is on the one screen',
+     wuRows.length===W.warmup.items.length,
+     wuRows.length+' rows for '+W.warmup.items.length+' movements');
+  ok('each row names its movement and its prescription',
+     Array.prototype.slice.call(wuRows).every(function(r){
+       return r.querySelector('.wacc-t') && r.querySelector('.wacc-m'); }));
+  ok('the first is already open, so the screen shows what a movement looks like',
+     wuRows[0].classList.contains('open')
+     && !!wuRows[0].querySelector('.wacc-b:not([hidden])'),
+     wuRows[0].className);
+  ok('and it explains how to do it, in place',
+     !!wuRows[0].querySelector('.wacc-b p') &&
+     wuRows[0].querySelector('.wacc-b p').textContent.trim()===warmupHow(W.warmup.items[0].n).trim(),
+     wuRows[0].querySelector('.wacc-b p') ? wuRows[0].querySelector('.wacc-b p').textContent.slice(0,60) : '(none)');
+  ok('with an illustration of that movement',
+     !!wuRows[0].querySelector('.illus svg.fig') || !illusKey({name:W.warmup.items[0].n}),
+     W.warmup.items[0].n);
+  ok('the closed rows carry a thumbnail instead',
+     W.warmup.items.length<2 ||
+       !!body.querySelector('.wacc [data-acc=w1] .illus.sm'),
+     body.querySelector('.wacc [data-acc=w1]') ? body.querySelector('.wacc [data-acc=w1]').className : '(one movement)');
+  /* opening another closes the first: five open rows is the wall of text this
+     screen exists to avoid */
   if(W.warmup.items.length>1){
-    document.getElementById('wuNext').click();
-    ok('the instruction follows the movement as it advances',
-       document.getElementById('wmBody').querySelector('.nowcard .now-h').textContent.trim()
+    body.querySelector('.wacc [data-acc=w1] .wacc-h').click();
+    var now=document.getElementById('wmBody');
+    ok('opening one closes the other',
+       now.querySelectorAll('.wacc-b:not([hidden])').length===1
+       && now.querySelector('.wacc [data-acc=w1]').classList.contains('open'),
+       now.querySelectorAll('.wacc-b:not([hidden])').length+' open');
+    ok('and the instruction shown is that movement’s',
+       now.querySelector('.wacc [data-acc=w1] .wacc-b p').textContent.trim()
          === warmupHow(W.warmup.items[1].n).trim(),
        W.warmup.items[1].n);
   } else {
-    ok('the instruction follows the movement as it advances', true, 'single-movement warm-up');
+    ok('opening one closes the other', true, 'single-movement warm-up');
+    ok('and the instruction shown is that movement’s', true, 'single-movement warm-up');
   }
+  ok('no navigation between movements is offered at all',
+     !document.getElementById('wuNext') && !document.getElementById('wuBack'));
+  body=document.getElementById('wmBody');
 
   // every movement in every routine must have one: a warm-up tile that
   // cannot explain itself is the whole problem this fixes
@@ -3362,7 +3389,10 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   DB.profile.planStart=addDays(T,-7*7);
   DB.sessions=[];
   for(var wq=0;wq<8;wq++){
-    DB.sessions.push({id:'rw'+wq, date:addDays(T,-(wq*7+1)), done:true,
+    /* On the Monday, -(wq*7+1) put every session in the PREVIOUS ISO week, so
+       the current week's bucket was empty and the phase counter came up one
+       short of eight. Land on the day itself. */
+    DB.sessions.push({id:'rw'+wq, date:addDays(T,-(wq*7)), done:true,
       workoutId:'w_lowerA', workoutName:'Lower A', variant:'full',
       entries:[], durationMin:40});
   }
@@ -4155,6 +4185,154 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
 })();
 
 
+// ---------- A WEARABLE IS AN ENHANCEMENT, NOT A PREREQUISITE ----------
+// Four users have to get a complete screen: one with WHOOP, one with another
+// device, one with no device, and one who has not imported anything yet. What
+// none of them may get is a card holding a dash where a strap would go.
+(function(){
+  var kSe=DB.sessions, kAc=DB.activities, kCi=JSON.parse(JSON.stringify(DB.checkins)),
+      kWh=DB.whoop, kPr=JSON.parse(JSON.stringify(DB.profile)),
+      kBl=JSON.parse(JSON.stringify(DB.baselines)), kMe=JSON.parse(JSON.stringify(DB.meta));
+  var T=todayISO();
+  var home=function(){ resetStack(); TAB='today'; render();
+                       return document.getElementById('view'); };
+
+  /* --- no device, no import, nothing checked in --- */
+  DB.sessions=[]; DB.activities=[]; DB.checkins={};
+  DB.whoop={cycles:[],workouts:[],journal:[],imports:[]};
+  DB.profile.source='none'; DB.profile.onboarded=true;
+  DB.meta.created=T+'T08:00:00.000Z';
+  var v=home(), txt=v.textContent;
+  ok('with no device the home screen still renders', txt.length>200, txt.length+' chars');
+  ok('and says it is learning rather than showing a number it has not got',
+     /Learning your baseline/.test(txt), txt.slice(0,180));
+  ok('no HRV tile is reserved on the home screen', txt.indexOf('HRV')<0, txt.slice(0,220));
+  ok('no resting-HR tile either', !/RHR|Resting HR/.test(txt), txt.slice(0,220));
+  ok('and no sleep card sitting empty',
+     !document.getElementById('ringSleep'), 'sleep tile absent without a figure');
+  ok('the slot carries something Baseline always knows instead',
+     !!document.getElementById('ringWeek'),
+     document.getElementById('ringWeek') ? document.getElementById('ringWeek').textContent.trim() : '(none)');
+  ok('no tile anywhere on the home screen is a bare dash',
+     Array.prototype.slice.call(v.querySelectorAll('.score .arc-t'))
+       .every(function(e){ return e.textContent.trim()!=='—'; }),
+     Array.prototype.slice.call(v.querySelectorAll('.score .arc-t')).map(function(e){return e.textContent;}).join('|'));
+  ok('and there is still a clear next action', !!document.getElementById('btnStart')
+     || !!document.getElementById('btnCheck')
+     || /Rest is the recommendation/.test(txt), txt.slice(0,200));
+
+  /* --- no device, but they checked in: a real number, from what they said --- */
+  DB.checkins[T]={date:T,energy:7,soreness:2,stress:3,motivation:7,pain:'None',sleepMin:430};
+  v=home(); txt=v.textContent;
+  ok('a check-in produces a real readiness score without any device',
+     /out of 100/.test(txt) && !/Learning your baseline/.test(txt), txt.slice(0,160));
+  ok('sleep they reported themselves does get its tile',
+     !!document.getElementById('ringSleep'));
+  ok('but still no HRV or recovery tile', txt.indexOf('HRV')<0 && !/Avg recovery/.test(txt));
+
+  /* --- Progress with no device: no empty wearable tiles --- */
+  TAB='progress'; resetStack(); render();
+  var pv=document.getElementById('view').textContent;
+  ok('Progress renders without a device', pv.length>100, pv.length+' chars');
+  ok('and reserves no wearable tiles',
+     pv.indexOf('Avg HRV')<0 && pv.indexOf('Avg RHR')<0 && pv.indexOf('Avg recovery')<0,
+     pv.slice(0,220));
+  ok('it leads with what was actually logged',
+     /Sessions/.test(pv) && /Activities/.test(pv), pv.slice(0,220));
+
+  /* --- and with a device, the figures appear --- */
+  var cyc=[];
+  for(var i=29;i>=0;i--) cyc.push({date:addDays(T,-i),recovery:70,hrv:84,rhr:52,strain:9,sleepMin:440});
+  DB.whoop={cycles:cyc,workouts:[],journal:[],imports:[]};
+  DB.profile.source='whoop'; recomputeBaselines();
+  DB.checkins[T]=Object.assign({recovery:70,hrv:84,rhr:52,prevStrain:9},DB.checkins[T]);
+  TAB='progress'; resetStack(); render();
+  var pv2=document.getElementById('view').textContent;
+  ok('with a device the wearable figures do appear',
+     /Avg HRV/.test(pv2) || /Avg recovery/.test(pv2), pv2.slice(0,240));
+  ok('and they are additions, not replacements',
+     /Sessions/.test(pv2) && /Activities/.test(pv2));
+
+  DB.sessions=kSe; DB.activities=kAc; DB.checkins=kCi; DB.whoop=kWh;
+  DB.profile=kPr; DB.baselines=kBl; DB.meta=kMe;
+  resetStack(); TAB='today';
+})();
+
+
+// ---------- EVERY ILLUSTRATION IS REAL, OR THERE ISN'T ONE ----------
+// The spec's "no fake image paths" rule. Inline SVG cannot 404, so what is
+// checked instead is that every key resolves to a pose, every pose renders,
+// and nothing shows equipment the app does not support.
+(function(){
+  var keys=Object.keys(POSES);
+  ok('there is a pose library', keys.length>=20, keys.length+' poses');
+
+  var badRef=[];
+  Object.keys(EX_ILLUS).forEach(function(id){ if(!POSES[EX_ILLUS[id]]) badRef.push(id+' -> '+EX_ILLUS[id]); });
+  Object.keys(WU_ILLUS).forEach(function(n){ if(!POSES[WU_ILLUS[n]]) badRef.push(n+' -> '+WU_ILLUS[n]); });
+  ok('every illustration reference resolves to a real pose', badRef.length===0, badRef.join(' | '));
+
+  var badDraw=[];
+  keys.forEach(function(k){
+    var s='';
+    try{ s=figSVG(POSES[k]); }catch(e){ badDraw.push(k+': '+e.message); return; }
+    if(s.indexOf('<svg')<0 || s.indexOf('NaN')>=0 || s.indexOf('undefined')>=0) badDraw.push(k);
+  });
+  ok('every pose renders clean SVG', badDraw.length===0, badDraw.join(', '));
+
+  /* A figure needs a body. A pose missing its torso or head would render as a
+     scatter of lines and still pass a "contains <svg>" check. */
+  var thin=keys.filter(function(k){ var p=POSES[k];
+    return !p.head || !p.sh || !p.hip || !p.leg || !p.arm; });
+  ok('every pose has a head, a torso, an arm and a leg', thin.length===0, thin.join(', '));
+
+  /* Equipment must be kit the user can actually own. The renderer only knows
+     how to draw a band, a dumbbell, a wall, a block, a bike and an arrow -
+     there is no barbell, cable or machine to draw by accident. */
+  var props={};
+  keys.forEach(function(k){ (POSES[k].props||[]).forEach(function(p){ props[p.t]=1; }); });
+  var allowed={band:1,db:1,wall:1,block:1,anchor:1,arr:1,arc:1,bike:1};
+  ok('no illustration introduces unsupported equipment',
+     Object.keys(props).every(function(t){ return allowed[t]; }), Object.keys(props).join(', '));
+
+  /* Coverage, stated rather than assumed: this is a starter library and the
+     test says how far it reaches so it cannot quietly stall. */
+  var cov=illusCoverage();
+  ok('the starter library covers a real share of the catalogue',
+     cov.have >= Math.round(cov.total*0.5),
+     cov.have+' of '+cov.total+' exercises, '+cov.poses+' poses');
+
+  /* Everything the ENGINE can actually prescribe should be drawn. */
+  var missing=[];
+  DB.workouts.forEach(function(w){
+    ['full','reduced','recovery'].forEach(function(v){
+      ((w.blocks&&w.blocks[v])||[]).forEach(function(b){
+        var ex=exOf(b.ex);
+        if(ex && !illusKey(ex) && missing.indexOf(ex.name)<0) missing.push(ex.name);
+      });
+    });
+  });
+  ok('every exercise an authored workout can prescribe has one',
+     missing.length===0, missing.join(', '));
+
+  /* And every warm-up movement the app can show. */
+  var wuMiss=[];
+  Object.keys(WARMUPS).forEach(function(k){
+    (WARMUPS[k].items||[]).forEach(function(it){
+      if(!illusKey({name:it.n}) && wuMiss.indexOf(it.n)<0) wuMiss.push(it.n); });
+  });
+  ok('every warm-up movement in the stock routines has one',
+     wuMiss.length===0, wuMiss.join(', '));
+
+  /* A movement with no pose is a deliberate mark, never a broken image. */
+  var none=illusHTML({name:'a movement nobody has drawn yet'},'sm');
+  ok('an undrawn movement falls back cleanly',
+     none.indexOf('illus')>=0 && none.indexOf('none')>=0 && none.indexOf('<img')<0, none.slice(0,70));
+  ok('and nothing anywhere loads an external image',
+     figSVG(POSES[keys[0]]).indexOf('http')<0 && figSVG(POSES[keys[0]]).indexOf('<img')<0);
+})();
+
+
 // ---------- BASELINE MUST NOT CLAIM WHAT IT NEVER OBSERVED ----------
 // The engine may score an unseen system as due - "never observed" and "not
 // trained recently" lead to the same decision. What it may not do is DESCRIBE
@@ -4247,11 +4425,17 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
     var c=(r.scored||[]).filter(function(x){return x.c.id==='core';})[0];
     return c ? c.notes.map(function(n){return n.t;}).filter(Boolean).join('  ') : '';
   };
-  reset(1);
+  /* Coverage has to be SHORTER than the elapsed week for the gate to bite, and
+     how long the week has been running depends on the day this test runs. On a
+     Monday one day of coverage covers the whole elapsed week, and the claim is
+     then legitimate - so the fixture is derived, not hard-coded to 1. */
+  reset(0);
   DB.checkins[T]=Object.assign({},FEEL);
+  var elapsedNow=weekProgress(T).elapsed;
   var n1=coreNotes();
-  ok('a one-day-old profile makes no weekly claim at all',
-     n1.indexOf('so far this week')<0 && !/behind/i.test(n1), n1.slice(0,200));
+  ok('a profile younger than the elapsed week makes no weekly claim',
+     elapsedNow<=0 || (n1.indexOf('so far this week')<0 && !/behind/i.test(n1)),
+     'coverage 0 vs elapsed '+elapsedNow+' :: '+n1.slice(0,160));
   reset(40);
   DB.checkins[T]=Object.assign({},FEEL);
   var n40=coreNotes();
@@ -4347,86 +4531,77 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
        W.entries.every(function(e){ return txt.indexOf(e.name)>=0; }),
        W.entries.map(function(e){return e.name;}).join(', '));
     ok('with the prescription on each line',
-       b.querySelectorAll('.ov-m').length>=W.entries.length,
-       b.querySelectorAll('.ov-m').length+' meta lines for '+W.entries.length+' exercises');
-    ok('descriptions start collapsed',
-       b.querySelectorAll('.wu-how:not([hidden])').length===0,
-       b.querySelectorAll('.wu-how:not([hidden])').length);
-    ok('and expand on a tap', (function(){
-       var r=b.querySelector('[data-ov]'); if(!r) return false;
+       b.querySelectorAll('.wacc-m').length>=W.entries.length,
+       b.querySelectorAll('.wacc-m').length+' meta lines for '+W.entries.length+' exercises');
+    ok('exactly one row is open on arrival',
+       b.querySelectorAll('.wacc-b:not([hidden])').length===1,
+       b.querySelectorAll('.wacc-b:not([hidden])').length);
+    ok('an exercise row opens onto its own illustration and instruction', (function(){
+       var r=document.querySelector('#wmBody .wacc [data-acc=e0] .wacc-h'); if(!r) return false;
        r.click();
-       return b.querySelectorAll('.wu-how:not([hidden])').length===1; })(),
-       b.querySelectorAll('.wu-how:not([hidden])').length);
-    b.querySelector('[data-ov]').click();
-    ok('and collapse again', b.querySelectorAll('.wu-how:not([hidden])').length===0);
+       var row=document.querySelector('#wmBody .wacc [data-acc=e0]');
+       return row.classList.contains('open')
+           && !!row.querySelector('.wacc-b p')
+           && document.querySelectorAll('#wmBody .wacc-b:not([hidden])').length===1; })(),
+       document.querySelectorAll('#wmBody .wacc-b:not([hidden])').length+' open');
+    document.querySelector('#wmBody .wacc [data-acc=e0] .wacc-h').click();
+    ok('and closes again', document.querySelectorAll('#wmBody .wacc-b:not([hidden])').length===0);
     var f=document.getElementById('wmFoot').textContent;
     ok('the overview offers exactly the two actions',
-       /Start warm-up/.test(f) && /Skip the warm-up/.test(f), f.trim().slice(0,60));
+       /Start warm-up/.test(f) && /Skip warm-up/.test(f), f.trim().slice(0,60));
   })();
+  /* Start warm-up is not Skip warm-up: it keeps you on the one screen that
+     shows all the movements, and the action becomes Start workout. */
   document.getElementById('wmGo').click();
+  ok('starting the warm-up stays on the warm-up screen',
+     W.phase==='preview' && W.wuStarted===true, W.phase+'/'+W.wuStarted);
+  ok('and the action becomes Start workout',
+     /Start workout/.test(document.getElementById('wmFoot').textContent),
+     document.getElementById('wmFoot').textContent.trim().slice(0,60));
+  document.getElementById('wmSkipWu').click();
   ok('entries are the MAIN exercises only', W.entries.length===blocks.length, W.entries.length+' vs '+blocks.length);
   ok('the warm-up is its own list, not part of the main one',
      W.warmup.items.length>0 && W.warmup.items!==W.entries, W.warmup.items.length);
-  /* CURRENT is what to do now; UP NEXT is the very next thing the user will
-     actually do. On the preview those are warm-up movements one and two - NOT
-     the first main exercise, which is a phase away. Getting this backwards is
-     what made the biggest name on the screen the one thing not to do yet. */
-  ok('the preview leads with the movement to start',
-     wmCurrent().kind==='warmup' && wmCurrent().name===W.warmup.items[0].n, wmCurrent().name);
-  ok('and previews the NEXT warm-up movement, not the first main exercise',
-     W.warmup.items.length<2 ||
-       (wmUpNext().kind==='warmup' && wmUpNext().name===W.warmup.items[1].n),
-     wmUpNext().name);
-  var body0=document.getElementById('wmBody');
-  ok('the current movement is rendered as the dominant element',
-     !!body0.querySelector('.nowcard .now-n') &&
-     body0.querySelector('.nowcard .now-n').textContent.trim()===W.warmup.items[0].n,
-     body0.querySelector('.nowcard .now-n') ? body0.querySelector('.nowcard .now-n').textContent : '(none)');
-  /* Mid-warm-up the next thing is the next movement, which the flow shows a
-     second later, so no peek is drawn. It appears on the LAST movement, where
-     the next thing really is the workout. */
-  ok('no glimpse is shown mid-warm-up',
-     W.warmup.items.length<2 || !body0.querySelector('.peek'),
-     body0.querySelector('.peek') ? body0.querySelector('.peek').textContent : '(none)');
-  var foot=document.getElementById('wmFoot').textContent;
-  ok('the button names the immediate action',
-     /Done — next movement|Start workout/.test(foot) && !/Start 1/.test(foot), foot.slice(0,90));
-  ok('skipping is offered, and is secondary', /Skip the warm-up|Skip to the workout/.test(foot) &&
-     document.getElementById('wmSkipWu').className.indexOf('tert')>=0, foot.slice(0,90));
-
-  // walk the warm-up: CURRENT and UP NEXT must track the phase, per step
-  ok('starting the warm-up from the overview enters the warm-up phase',
-     W.phase==='warmup' && W.wuStep===0, W.phase+'/'+W.wuStep);
-  var n=W.warmup.items.length, guard=0;
-  var chainOk=true, chainWhy='';
-  while(W.phase==='warmup' && guard++<20){
-    var i=W.wuStep;
-    if(wmCurrent().name!==W.warmup.items[i].n){ chainOk=false; chainWhy='current wrong at '+i; break; }
-    var expect = (i+1<n) ? W.warmup.items[i+1].n : W.entries[0].name;
-    if(wmUpNext().name!==expect){ chainOk=false; chainWhy='next wrong at '+i+': '+wmUpNext().name+' vs '+expect; break; }
-    document.getElementById('wuNext').click();
-  }
-  ok('every step shows the right current and next movement', chainOk, chainWhy);
-  ok('the last warm-up movement previews the first MAIN exercise',
-     true, 'checked inside the walk above');
-  ok('finishing the warm-up enters the main phase at exercise one',
+  ok('leaving the warm-up lands on the first main exercise',
      W.phase==='main' && W.step===0, W.phase+'/'+W.step);
-  ok('and the main runner shows the exercise Up next promised',
+  ok('and the main runner shows that exercise',
      document.getElementById('wmBody').textContent.indexOf(W.entries[0].name)>=0, W.entries[0].name);
   ok('no warm-up movement reappears as a main exercise',
      !W.entries.some(function(e){ return W.warmup.items.some(function(it){ return norm(it.n)===norm(e.name); }); }),
      W.entries.map(function(e){return e.name;}).join(', '));
+  /* THE ILLUSTRATION is the answer to "what am I doing?", and it is the point
+     of the space the old screen left empty. */
+  var body0=document.getElementById('wmBody');
+  ok('the exercise is illustrated',
+     !!body0.querySelector('.illus.lg svg.fig') || !illusKey(exOf(W.entries[0].exerciseId)),
+     W.entries[0].name);
+  ok('the illustration is not wrapped in yet another card',
+     !body0.querySelector('.card .illus') && !body0.querySelector('.nowcard .illus'));
+  ok('the name comes before the illustration',
+     body0.innerHTML.indexOf('wm-ex') < body0.innerHTML.indexOf('illus'),
+     body0.innerHTML.indexOf('wm-ex')+' / '+body0.innerHTML.indexOf('illus'));
+  ok('and the set state comes after it',
+     body0.innerHTML.indexOf('illus') < body0.innerHTML.indexOf('wset'),
+     body0.innerHTML.indexOf('illus')+' / '+body0.innerHTML.indexOf('wset'));
+  ok('the set states its unit under the number',
+     !!body0.querySelector('.wset .ws-u'),
+     body0.querySelector('.wset .ws-u') ? body0.querySelector('.wset .ws-u').textContent : '(none)');
 
-  // skipping from the preview must land in exactly the same place
-  W.phase='warmup'; W.wuStep=0; W.step=0; drawWM();
+  // skipping from the overview must land in exactly the same place
+  W.phase='preview'; W.wuStarted=false; W.step=0; drawWM();
   document.getElementById('wmSkipWu').click();
   ok('skipping the warm-up lands on the first main exercise',
      W.phase==='main' && W.step===0, W.phase+'/'+W.step);
-  ok('and does not advance the warm-up counter', W.wuStep===0, W.wuStep);
+  ok('and records that it was skipped, which the engine may know',
+     W.warmupSkipped===true, String(W.warmupSkipped));
   // a session paused before phases existed must still resume somewhere real
   W.phase=null; W.step=-1; wmNormalise();
   ok('a session saved under the old model resumes on the overview',
      W.phase==='preview' && W.step===0, W.phase+'/'+W.step);
+  // and one saved mid stepped-warm-up, which no longer exists
+  W.phase='warmup'; wmNormalise();
+  ok('a session saved mid stepped-warm-up resumes on the one warm-up screen',
+     W.phase==='preview', W.phase);
   exitWM(true); closeSheet(); W=null;
 
   // === K · activity warm-ups are activity-specific, and optional ===
@@ -5912,10 +6087,12 @@ ok('a stopped timer stays stopped', !restActive());
   startWorkout('w_lowerA','full',T);
   ok('the overview is the one screen allowed to be a list',
      !document.getElementById('wmBody').classList.contains('live')
-     && document.querySelectorAll('#wmBody .setrow').length>0,
-     document.querySelectorAll('#wmBody .setrow').length+' rows');
-  W.phase='warmup'; W.wuStep=0; drawWM();
-  ok('the warm-up lays out as three bands',
+     && document.querySelectorAll('#wmBody .wacc-i').length>0,
+     document.querySelectorAll('#wmBody .wacc-i').length+' rows');
+  /* the warm-up is one screen and lays itself out; the three bands belong
+     to the live set and rest screens */
+  wmToMain();
+  ok('a live set lays out as three bands',
      document.getElementById('wmBody').classList.contains('live')
      && !!document.querySelector('#wmBody .wm-top')
      && !!document.querySelector('#wmBody .wm-mid')
@@ -5962,12 +6139,28 @@ ok('a stopped timer stays stopped', !restActive());
     /* Resting between sets, the next thing is the next SET. Naming the next
        exercise here pointed past the set the user is about to do. */
     ok('and does not name the next exercise while sets remain',
-       e0.sets.length<2 || !document.querySelector('#wmBody .peek'),
-       document.querySelector('#wmBody .peek') ? document.querySelector('#wmBody .peek').textContent : '(none)');
+       e0.sets.length<2 || !document.querySelector('#wmBody .unext'),
+       document.querySelector('#wmBody .unext') ? document.querySelector('#wmBody .unext').textContent : '(none)');
     document.getElementById('restSkip').click();
     ok('skipping returns to the next set, ready to log',
        !restActive() && /SET 2 OF/i.test(document.querySelector('.wset .ws-l').textContent),
        document.querySelector('.wset .ws-l').textContent);
+    /* The rest AFTER the last set of an exercise is a different branch, and it
+       is the one nothing reached: it threw on a variable left behind by a
+       rename, which only a run that got that far could find. */
+    var restErr=null;
+    try{
+      while(!e0.sets.every(function(s){return s.done;})){
+        stopRest(); drawWM();
+        document.querySelector('#wmBody [data-log]').click();
+      }
+    }catch(err){ restErr=(err&&err.message)||String(err); }
+    ok('the rest after a finished exercise renders', restErr===null, restErr);
+    ok('and says which exercise it is resting towards',
+       !restActive() || !document.querySelector('.wrx-s')
+       || /Get ready for|Then you are done/.test(document.querySelector('.wrx-s').textContent),
+       document.querySelector('.wrx-s') ? document.querySelector('.wrx-s').textContent : '(advanced already)');
+    stopRest();
   } else {
     ok('rest starts by itself after a logged set', true, 'no rest prescribed here');
   }
@@ -6226,7 +6419,11 @@ ok('a stopped timer stays stopped', !restActive());
     DB.sessions=[];
     var wk0=weekStartOf(start);
     for(var w=0; w<week; w++){
-      var d=addDays(wk0, w*7+1);
+      /* The Monday itself, not Monday+1. On a Monday, +1 pushed the last
+         week's session into tomorrow, the clamp pulled it back to today, two
+         weeks collapsed into one bucket and the phase counter came up one
+         short - so this failed only on Mondays, which is how it survived. */
+      var d=addDays(wk0, w*7);
       if(d>todayISO()) d=todayISO();          // never log in the future
       DB.sessions.push({id:'ph'+w, date:d, done:true,
         workoutId:'w_lowerA', workoutName:'Lower A', variant:'full', entries:[]});
@@ -7459,8 +7656,14 @@ ok('a stopped timer stays stopped', !restActive());
                   soreness:3,stress:3,motivation:8,pain:'None'};
 
   WEEKOFF=0; SELDAY=null; resetStack(); TAB='today'; render();
-  /* pick a day earlier in this week, which is what "I forgot Saturday" is */
+  /* pick a day earlier in this week, which is what "I forgot Saturday" is.
+     On a Monday there is no earlier day in this week - the only openable cell
+     is today - so step back a week and the test still means what it says. */
   var days=document.querySelectorAll('#view .wk-d[data-day]');
+  if(days.length<2){
+    document.getElementById('wkPrev').click();
+    days=document.querySelectorAll('#view .wk-d[data-day]');
+  }
   var target=days[0].dataset.day;
   days[0].click();
 
