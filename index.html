@@ -257,6 +257,15 @@ a{color:var(--accent);text-decoration:none}
 .nav button.on{color:var(--accent)}
 .nav button.on svg{stroke-width:2.3}
 .nav button:active{background:var(--press)}
+/* The middle of the bar is an action, not a destination, so it is shaped like
+   one: a filled disc that sits slightly above the row. */
+.nav button.mid{gap:4px}
+.nav button.mid .nav-fab{display:flex;align-items:center;justify-content:center;
+  width:40px;height:40px;border-radius:50%;background:var(--accent);color:var(--accent-ink);
+  margin-top:-12px;box-shadow:0 4px 12px rgba(0,0,0,.16)}
+.nav button.mid .nav-fab svg{width:22px;height:22px;stroke-width:2.6}
+.nav button.mid.on{color:var(--accent)}
+.nav button.mid:active .nav-fab{transform:scale(.94)}
 
 /* ---------- Cards ---------- */
 .card{
@@ -1164,6 +1173,49 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .wm-plain{font-size:12.5px;color:var(--text-2);font-weight:600;
   margin-top:7px;line-height:1.5}
 
+/* ---------- The Log tab: a grid, a search, and what you did lately ---------- */
+.lg-find{display:flex;align-items:center;gap:9px;padding:0 13px;border-radius:13px;
+  background:var(--surface-2);border:1px solid var(--border-soft);margin-bottom:var(--sp-2)}
+.lg-find svg{width:17px;height:17px;color:var(--text-3);flex:0 0 auto}
+.lg-find .inp{border:0;background:none;padding:12px 0;min-height:0}
+.lgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.lgrid button{display:flex;align-items:center;gap:11px;padding:14px 13px;border-radius:14px;
+  background:var(--surface);border:1px solid var(--border-soft);font-family:inherit;
+  color:var(--text);text-align:left;cursor:pointer;min-height:56px}
+.lgrid button:active{background:var(--surface-2);transform:scale(.99)}
+.lgrid button i{flex:0 0 auto;display:flex;color:var(--accent)}
+.lgrid button i svg{width:20px;height:20px}
+.lgrid button span{font-size:14px;font-weight:700;letter-spacing:-.2px;
+  overflow-wrap:anywhere}
+@media (max-width:340px){ .lgrid{grid-template-columns:1fr} }
+/* the form: three questions, each with room to answer */
+.lgf-h{display:flex;flex-direction:column;align-items:center;gap:10px;
+  padding:6px 0 18px;text-align:center}
+.lgf-h i{display:flex;align-items:center;justify-content:center;width:54px;height:54px;
+  border-radius:50%;background:var(--accent-wash);border:1px solid var(--accent-line);
+  color:var(--accent)}
+.lgf-h i svg{width:26px;height:26px}
+.lgf-t{font-size:21px;font-weight:850;letter-spacing:-.6px}
+.lgf-dur{display:flex;align-items:center;gap:12px}
+.lgf-sb{flex:0 0 auto;width:46px;height:46px;border-radius:50%;background:var(--surface-2);
+  border:1px solid var(--border-soft);display:flex;align-items:center;justify-content:center;
+  color:var(--text);cursor:pointer}
+.lgf-sb svg{width:19px;height:19px}
+.lgf-sb:active{background:var(--surface-3)}
+.lgf-v{flex:1;text-align:center;font-size:26px;font-weight:750;letter-spacing:-.6px;
+  color:var(--text-3);font-variant-numeric:tabular-nums}
+.lgf-v b{font-size:30px;font-weight:850;color:var(--text)}
+/* five faces, and the one you picked is unmistakable */
+.faces{display:flex;gap:7px}
+.faces button{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;
+  padding:9px 2px;border-radius:12px;background:none;border:1px solid transparent;
+  font-family:inherit;color:var(--text-3);cursor:pointer}
+.faces button i{display:flex}
+.faces button i svg{width:26px;height:26px}
+.faces button span{font-size:9.5px;font-weight:700;line-height:1.2;text-align:center}
+.faces button.on{background:var(--accent-wash);border-color:var(--accent);color:var(--accent)}
+.faces button.on i svg{stroke-width:2.2}
+
 /* ---------- Progress: a period, four views, then the week ---------- */
 .pperiod{display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border-radius:999px;
   background:var(--surface);border:1px solid var(--border);font-family:inherit;
@@ -1787,6 +1839,9 @@ const ICON = {
   cal:'<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8.5 3v4M15.5 3v4"/>',
   db:'<ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6"/><path d="M4.5 12v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6"/>',
   shield:'<path d="M12 3l7.5 3v5.5c0 4.6-3.1 8-7.5 9.5-4.4-1.5-7.5-4.9-7.5-9.5V6z"/>',
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4"/>',
+  sliders2:'<path d="M5 4v6M5 14v6M12 4v9M12 17v3M19 4v3M19 11v9"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="15" r="2"/><circle cx="19" cy="9" r="2"/>',
+  help:'<circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .9-1 1.6v.3M12 17h.01"/>',
   /* the open readiness ring — the app's own mark, and sport-neutral */
   ring:'<path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5"/>',
   /* device types — enough to tell a ring from a band from a watch */
@@ -1917,7 +1972,7 @@ const SCHEMA_VERSION=2;             // bump to transform stored records
 /* A date, plus a letter when more than one build ships in a day. Without the
    letter there was no way to tell a second same-day deploy from the cached
    copy of the first, which is exactly the question "did my upload work?". */
-const APP_BUILD='2026-09-21c';
+const APP_BUILD='2026-09-21d';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */
@@ -8774,8 +8829,12 @@ function bindInputs(root){
    appears and disappears is a worse answer than reaching it from the
    readiness row on Today, where the number it explains already is. */
 function tabs(){ return [
-  {id:'today',   label:'Today',    icon:'home'},
-  {id:'workouts',label:'Train',    icon:'dumbbell'},
+  {id:'today',   label:'Home',     icon:'home'},
+  {id:'workouts',label:'Training', icon:'dumbbell'},
+  /* Logging is not a place, it is the thing you do most often that is not
+     training - so it gets the middle of the bar and a shape of its own rather
+     than being a row buried inside Home. */
+  {id:'log',     label:'Log',      icon:'plus', mid:true},
   {id:'progress',label:'Progress', icon:'chart'},
   /* Settings was a gear in the top-right corner - the only destination
      reachable by a different gesture from every other one, in the hardest
@@ -8824,7 +8883,9 @@ function renderNav(){
   $('#nav').innerHTML=
     `<div class="nav-brand"><i>${svg('ring')}</i><div>Baseline<span>Adaptive training</span></div></div>`+
     tabs().map(t=>
-      `<button data-tab="${t.id}" class="${TAB===t.id?'on':''}" aria-current="${TAB===t.id?'page':'false'}">${svg(t.icon)}<span>${esc(t.label)}</span></button>`).join('')+
+      `<button data-tab="${t.id}" class="${t.mid?'mid ':''}${TAB===t.id?'on':''}"
+         aria-current="${TAB===t.id?'page':'false'}"
+         >${t.mid?`<i class="nav-fab">${svg(t.icon)}</i>`:svg(t.icon)}<span>${esc(t.label)}</span></button>`).join('')+
     `<div class="nav-foot">All data stays on this device.<br>No account, no server, no tracking.</div>`;
   $$('#nav button').forEach(b=>b.onclick=()=>{ haptic(); go(b.dataset.tab); });
 }
@@ -8851,6 +8912,7 @@ function render(){
     v.innerHTML=''; pg.build(v); bindInputs(v); return;
   }
   ({today:viewToday, workouts:viewWorkouts,
+    log:viewLog,
     progress:viewProgress, settings:viewSettings}[TAB]||viewToday)(v);
   bindInputs(v);
 }
@@ -9233,7 +9295,7 @@ function viewToday(v){
   `
   :`
   <div class="rec">
-    <div class="rec-l">Today</div>
+    <div class="rec-l">Today's recommendation</div>
     ${''/* The session gets its own mark and a line of tags, so the card says
           what KIND of work it is without a sentence about it. */}
     <div class="rec-hd">
@@ -9280,6 +9342,9 @@ function viewToday(v){
     <div class="hint" style="margin-top:10px">Based on ${esc(rd.sources.label)}.</div>
   </div>
 
+  ${''/* No "Log activity" card here: logging has the middle of the nav now,
+        and a card repeating it would be a second door to the same room -
+        which is the thing this screen has spent several passes removing. */}
   <div class="rows" style="margin-top:10px"><button id="btnSwap">
     <i class="rw-i">${svg('swap')}</i>
     <span class="rw-x"><span class="rw-t">Change today's plan</span></span>
@@ -9304,13 +9369,17 @@ function viewToday(v){
   ${''/* The heading names the period the strip is SHOWING, so it stays true
           when the arrows move it, and offers the way through to the full
           history rather than making the strip carry everything. */}
-  <div class="sec-hd">
-    <div class="sec-t" style="margin:0">Training · ${esc(weekRangeLabel(
+  ${''/* "This week" while it IS this week, and the dates once the arrows have
+          moved it - so the heading is never a period the strip is not showing,
+          and reads as plainly as possible in the common case. */}
+  <div class="sec-t">${WEEKOFF===0 ? 'This week' : esc(weekRangeLabel(
       addDays(weekStartOf(d), WEEKOFF*7), addDays(weekStartOf(d), WEEKOFF*7+6)))}</div>
-    <button class="sec-more" id="tdAllTrain">View all ${svg('chev')}</button>
-  </div>
   ${weekStrip(d)}
 
+  <div class="sec-hd">
+    <div class="sec-t" style="margin:0">Recent activity</div>
+    <button class="sec-more" id="tdAllTrain">View all ${svg('chev')}</button>
+  </div>
   ${activitiesCard(selDay())}
   ${activityRowsHTML()}`;
 
@@ -9348,6 +9417,14 @@ function ringHTML(o){
     </svg>
   </span>`;
 }
+
+/* Home carries readiness, strain and sleep.
+   Readiness is built from the other two among other things, so there is an
+   argument for showing it alone - but in practice strain and sleep are the two
+   figures people check without wanting an explanation, and making them a tap
+   away costs more than the tidiness is worth. They stay, sized as context
+   rather than as equals. */
+const HOME_TILES=true;
 
 /* The three numbers that describe a day - but not as three equals. Readiness
    is what this app is built around, so it leads at full width with its band
@@ -9398,10 +9475,14 @@ function ringRow(d){
       </span>
       <i class="rw-c">${svg('chev')}</i>
     </button>
-    <div class="score-pair">
-      ${''/* Strain and sleep are context for the number above, not two more
-            rings competing with it. An icon, the figure, and a bar that shows
-            how far along it is - readable in the half-second this row gets. */}
+    ${''/* Strain and sleep moved off Home.
+          Readiness already answers "how am I today", and it is BUILT from
+          those two among other things - so showing them beside it asked the
+          user to reconcile three numbers about the same question. They live on
+          the readiness screen, one tap in, where they explain the score
+          instead of competing with it. */}
+    ${HOME_TILES?`<div class="score-pair">
+      ${''/* an icon, the figure, and a bar: readable in half a second */}
       <button class="mtile" id="ringStrain" aria-label="Strain today ${rnd(load,1)} of 21. See the day">
         <span class="mt-h"><i class="mt-i cyan">${svg('shoe')}</i><span class="mt-l">Strain</span></span>
         <span class="mt-v">${load? rnd(load,1) : '0'} <small>of 21</small></span>
@@ -9430,7 +9511,7 @@ function ringRow(d){
             <span class="mt-b"><i style="width:${Math.min(100, n/tgt*100)}%;background:var(--accent)"></i></span>
           </button>`;
       })()}
-    </div>
+    </div>`:''}
   </div>`;
 }
 function wireRings(d){
@@ -9560,11 +9641,22 @@ function pageReadiness(d){
       ${ci.pain&&ci.pain!=='None'?`<div class="kv"><span class="k">Pain</span><span class="v">${esc(ci.pain)}</span></div>`:''}
     </div>
 
+    ${''/* Sleep's own screen used to be reached from a tile on Home. Home no
+          longer carries that tile - readiness is built from sleep, so the two
+          sat there asking to be reconciled - so the door is here, beside the
+          figure it explains. */}
+    <div class="rows"><button id="rdSleep">
+      <i class="rw-i">${svg('moon')}</i>
+      <span class="rw-x"><span class="rw-t">Sleep</span>
+        <span class="rw-s">Your target, and what tonight is worth</span></span>
+      <i class="rw-c">${svg('chev')}</i></button></div>
+
     <button class="btn ghost block" id="rdEdit">Edit check-in</button>
     ${(usesDevice()||DB.whoop.cycles.length)
       ? `<button class="btn ghost block" id="rdMetrics">Wearable metrics and trends</button>`
       : ''}`;
     const e=$('#rdEdit'); if(e) e.onclick=()=>openCheckin(d);
+    const sl=$('#rdSleep'); if(sl) sl.onclick=()=>pushPage({build:pageSleep(d)});
     const m=$('#rdMetrics'); if(m) m.onclick=()=>{ HTAB='trends'; openMetrics(); };
   };
 }
@@ -9810,10 +9902,12 @@ function wireToday(d){
   });
   on('btnPreview',()=>{ const p=todayPlan(d); previewWorkout(p.workoutId,p.variant,p); });
   on('btnSwap',()=>changePlan(d));
-  /* the avatar goes where the profile lives, which is Settings */
-  on('tdProfile',()=>{ go('settings'); });
+  /* Straight to the profile, not to Settings. An avatar means "me", so landing
+     on a list of preferences with the profile one more tap away is a door that
+     does not open onto the room it is labelled with. */
+  on('tdProfile',()=>pushPage({build:c=>{ SETTAB='profile'; settingsBody(c); }}));
   /* and the heading's way through to the whole history */
-  on('tdAllTrain',()=>{ resetStack(); openPane('Training','Everything you have logged', paneHistory); });
+  on('tdAllTrain',()=>{ resetStack(); openPane('Recent activity','Everything you have logged', paneHistory); });
   on('btnPrep',()=>previewWorkout('w_prep','full'));
   wireRings(d);
   wireWeekStrip(d);
@@ -10982,6 +11076,90 @@ function ACT_ICON(k){
   if(/yoga|mobility|stretch/.test(k)) return 'heart';
   if(k==='rowing') return 'pulse';
   return 'flame';
+}
+
+/* =========================================================================
+   THE LOG TAB
+   Logging is the thing people do most often that is not training, so it has
+   the middle of the nav and a screen of its own rather than being a row
+   somewhere on Home. A grid of activities, a search for the long tail, and
+   what you logged recently - which is usually what you are about to log.
+   ====================================================================== */
+let LOGQ='';
+/* the order the grid is offered in: what this profile actually does first */
+function logGridTypes(){
+  const seen={}, out=[];
+  const add=k=>{ if(ACT_TYPES[k] && !seen[k]){ seen[k]=1; out.push(k); } };
+  recentActTypes(4).forEach(add);
+  mainSportActs().forEach(add);
+  ['running','cycling','walking','strength','football','swimming','basketball',
+   'hiking','yoga','tennis','padel','squash','volleyball','martial','rowing',
+   'climbing','skiing','golf'].forEach(add);
+  add('other');
+  return out;
+}
+function viewLog(v){
+  appbar('Log activity','Keep Baseline up to date',
+    `<button class="icon-btn" id="lgX" aria-label="Close">${svg('x')}</button>`);
+  const q=LOGQ.trim().toLowerCase();
+  const types=logGridTypes().filter(k=>
+    !q || (ACT_TYPES[k].name||'').toLowerCase().indexOf(q)>=0 || k.indexOf(q)>=0);
+  const recent=(DB.activities||[]).slice()
+    .sort((a,b)=>(a.date===b.date? 0 : (a.date<b.date?1:-1))).slice(0,4);
+  v.innerHTML=`
+    <div class="lg-find">${svg('target')}
+      <input class="inp" id="lgQ" type="search" placeholder="Search activities…"
+             value="${esc(LOGQ)}" autocomplete="off"></div>
+    ${types.length?`<div class="lgrid" id="lgGrid">${types.map(k=>
+      `<button data-k="${esc(k)}"><i>${svg(ACT_ICON(k))}</i><span>${esc(ACT_TYPES[k].name)}</span></button>`
+      ).join('')}</div>`
+     :`<div class="hint" style="margin-top:14px">Nothing matches “${esc(LOGQ)}”. Log it as
+        <b>Other</b> and give it a name.</div>
+       <div class="lgrid"><button data-k="other"><i>${svg('flame')}</i><span>Other activity</span></button></div>`}
+    ${recent.length?`<div class="sec-t">Recent</div>
+      <div class="rows" id="lgRecent">${recent.map((a,i)=>{
+        const T=ACT_TYPES[a.type]||ACT_TYPES.other;
+        return `<button data-r="${i}">
+          <i class="rw-i">${svg(ACT_ICON(a.type))}</i>
+          <span class="rw-x"><span class="rw-t">${esc(T.name)}</span>
+            <span class="rw-s">${esc(fmtMin(a.min))}${a.intensity?' · '+esc(a.intensity):''} · ${
+              a.date===todayISO()?'Today':esc(fmtDate(a.date))}</span></span>
+          <i class="rw-c">${svg('chev')}</i></button>`;}).join('')}</div>`:''}`;
+  const x=$('#lgX'); if(x) x.onclick=()=>go('today');
+  const qi=$('#lgQ');
+  if(qi) qi.addEventListener('input',()=>{
+    LOGQ=qi.value;
+    const at=qi.selectionStart;
+    viewLog(v);
+    const n=$('#lgQ'); if(n){ n.focus(); try{ n.setSelectionRange(at,at); }catch(e){} }
+  });
+  $$('#lgGrid button').forEach(b=>b.onclick=()=>{ haptic(); logChoose(b.dataset.k); });
+  $$('#lgRecent button').forEach(b=>b.onclick=()=>activityView(recent[+b.dataset.r].id));
+  bindInputs(v);
+}
+
+/* The grid REPLACES the picker sheet, and nothing else.
+   Both logging paths are unchanged behind it: an activity that has already
+   happened goes to activitySheet, one about to happen goes to preStartSheet
+   with its warm-up choice. Picking the type first means neither path has to
+   open a search sheet the user has just used. */
+function logChoose(type){
+  const T=ACT_TYPES[type]||ACT_TYPES.other;
+  const today=todayISO(), d=selDay();
+  const rows=[
+    {t:'Log it as done', s:'Something you have already finished',
+     icon:'check', run:()=>activitySheet(null, d, type)},
+    /* a clock can only start now, so it is offered only on today */
+    d===today ? {t:'Start it now', s:'Time and strain count from the moment you start',
+     icon:'timer', run:()=>preStartSheet(type)} : null
+  ].filter(Boolean);
+  if(rows.length===1){ rows[0].run(); return; }
+  openSheet(T.name, navRows('lgWhich',rows));
+  $$('#lgWhich button').forEach(b=>b.onclick=()=>{
+    const act=rows[+b.dataset.r];
+    closeSheet();
+    setTimeout(()=>{ if(act&&act.run) act.run(); },200);
+  });
 }
 
 /* What you have actually been doing, newest first. A profile that names
@@ -12553,12 +12731,12 @@ const SET_PANES=[
      opened to answer. */
   {id:'profile',   name:'Profile',    icon:'user',    sec:null,
    s:'Name, age, height, weight'},
-  {id:'appearance',name:'Appearance', icon:'moon',    sec:'appearance',
-   s:'Light, dark or follow system'},
-  {id:'training',  name:'Training preferences', icon:'dumbbell', sec:'training',
+  {id:'appearance',name:'Appearance', icon:'sun',     sec:'app',
+   s:'Light, dark or system'},
+  {id:'training',  name:'Training preferences', icon:'sliders', sec:'training',
    s:'Equipment, goals, schedule, injuries'},
-  {id:'alerts',    name:'Workout display', icon:'sliders', sec:'training',
-   s:'Sets, timers, sounds and alerts'},
+  {id:'alerts',    name:'Workout experience', icon:'sliders2', sec:'training',
+   s:'Sets, timers, sounds and display'},
   /* Under health rather than training: a cycle is not a training preference,
      and this is where somebody would look for it. It stays listed even when
      off, because otherwise there would be no way to turn it on. */
@@ -12570,11 +12748,13 @@ const SET_PANES=[
    s:'Backup, restore, export or erase'},
   {id:'privacy',   name:'Privacy',    icon:'shield',  sec:'health',
    s:'Your data stays on this device'},
+  {id:'help',      name:'Help & feedback', icon:'help', sec:'support',
+   s:'Get help or send feedback'},
   {id:'about',     name:'About Baseline', icon:'info', sec:'support',
    s:'Version, acknowledgements and links'}
 ];
 const SET_SECTIONS=[
-  {id:'appearance', t:'Appearance'},
+  {id:'app',        t:'App experience'},
   {id:'training',   t:'Training'},
   {id:'health',     t:'Health & data'},
   {id:'support',    t:'Support'}
@@ -12723,7 +12903,7 @@ function profileWire(){
 }
 
 function viewSettings(v){
-  appbar('Settings');
+  appbar('Settings','Personalize your experience');
   const open=id=>pushPage({build:c=>{ SETTAB=id; settingsBody(c); }});
   const rows=SET_PANES.filter(g=>g.sec).map(g=>({
     t:g.name, s:g.s, icon:g.icon, go:()=>open(g.id)
@@ -12740,11 +12920,15 @@ function viewSettings(v){
       <span class="set-av">${who? esc(who.trim().charAt(0).toUpperCase()) : svg('user')}</span>
       <span class="set-mx">
         <span class="set-who">${who?esc(who):'Baseline'}</span>
-        <span class="set-sub">${
-          [c.sessions+' session'+(c.sessions===1?'':'s'),
-           c.activities+' activit'+(c.activities===1?'y':'ies'),
-           c.cycles? c.cycles+' imported day'+(c.cycles===1?'':'s') : null
-          ].filter(Boolean).join(' · ')}</span>
+        <span class="set-sub">${(()=>{
+          /* how long this copy has been going, which is the third thing the
+             card is asked - and the honest measure of how much it knows */
+          const cov=dataCoverage(todayISO());
+          return [c.sessions+' session'+(c.sessions===1?'':'s'),
+                  c.activities+' activit'+(c.activities===1?'y':'ies'),
+                  cov.selfDays? cov.selfDays+' day'+(cov.selfDays===1?'':'s') : null
+                 ].filter(Boolean).join(' · ');
+        })()}</span>
       </span>
       <i class="rw-c">${svg('chev')}</i>
     </button>
@@ -13063,9 +13247,21 @@ function settingsBody(v){
         ((window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)||window.navigator.standalone===true)
           ? 'Installed app' : 'Browser tab'}</span></div>
      <div class="hint" style="margin-top:8px">Quote the build number in any bug report.</div>
+   </div>
+
+   ${''/* Getting help is its own errand, so it gets its own door rather than
+          sitting at the bottom of the version screen. */}
+   <div class="card spane help">
+     <div class="card-t" style="margin-bottom:10px">Getting help</div>
+     <p style="font-size:13px;line-height:1.6;color:var(--text-2)">There is no account and no
+       server, so nobody can look at your data to help you — which means a good report has to
+       carry its own context. The build number is most of the diagnosis.</p>
      <button class="btn ghost block" id="sTour">${svg('info')} How Baseline works</button>
      <button class="btn ghost block" id="sDiag">${svg('copy')} Copy diagnostics</button>
-     <div class="hint" style="margin-top:8px">Device, browser, storage and how much you have logged. <b>Counts only</b>, never what you entered.</div>
+     <div class="hint" style="margin-top:8px">Device, browser, storage and how much you have logged.
+       <b>Counts only</b>, never what you entered. Paste it into your report.</div>
+     <div class="kv" style="margin-top:12px"><span class="k">Build</span>
+       <span class="v num">${esc(APP_BUILD)}</span></div>
    </div>
    <div class="card spane data">
      <div class="card-t" style="margin-bottom:10px;color:var(--red)">Danger zone</div>
@@ -13434,10 +13630,21 @@ function exitWM(discard){
                   W=null; render(); };
   if(discard){ try{ Store.pref('live',null); }catch(e){} return fin(); }
 
-  /* Always ask. This used to leave silently whenever nothing had been logged
-     yet, which is exactly when a mis-tap on a 44px button is most likely, and
-     it never offered the third answer people actually want: pause. */
   const logged=W? sum(W.entries.map(e=>e.sets.filter(s=>s.done).length)) : 0;
+  /* Ask only when there is something to lose.
+     This used to ask every time, on the reasoning that a mis-tap on the close
+     button is most likely before anything is logged. That was backwards: with
+     nothing logged a mis-tap costs nothing, so the dialogue protected against
+     the cheap mistake and charged for it on every single exit - including the
+     common one of opening a session, reading the overview and backing out.
+     A running clock counts as progress even with no sets: a cardio session IS
+     its elapsed time. */
+  const clockRun = !!(W && (W.kind==='activity'
+    || (W.entries||[]).some(e=>e.cardio && cardElapsedSec(e)>20)));
+  if(!logged && !clockRun){
+    try{ Store.pref('live',null); }catch(e){}
+    return fin();
+  }
   openSheet('Leave this workout?',
     `<p class="lede">${logged
       ? logged+' set'+(logged===1?'':'s')+' logged so far. Pausing keeps all of it and offers the session back on Today.'
