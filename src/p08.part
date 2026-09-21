@@ -5,17 +5,55 @@
    its numbers to the top of Training. What was left duplicated Today's target
    bars and the Metrics trends.
    ====================================================================== */
-let PTAB='training';
-/* Progress leads with how the week actually went - the verdict and the load
-   chart - and keeps the deeper questions as rows. */
+/* Which of the four views is showing, and which week it is showing. Both are
+   view state, so neither is saved: arriving at Progress should mean arriving at
+   the overview of this week, not wherever you were a fortnight ago. */
+let PTAB='overview', POFF=0;
+const PTABS=[{id:'overview',t:'Overview'},{id:'training',t:'Training'},
+             {id:'activities',t:'Activities'},{id:'trends',t:'Trends'}];
+const pPeriodLabel=off=> off===0 ? 'This week'
+  : off===-1 ? 'Last week'
+  : weekRangeLabel(addDays(weekStartOf(todayISO()),off*7), addDays(weekStartOf(todayISO()),off*7+6));
+
+/* Progress leads with how the week actually went - the load, what was logged,
+   where the work went - and keeps the deeper questions behind the other tabs. */
 function viewProgress(v){
-  appbar('Progress');
-  const R=weekReview();
+  /* A tab id from an older build - or from anywhere else that has ever written
+     this variable - would leave no tab marked and nothing rendered. */
+  if(!PTABS.some(t=>t.id===PTAB)) PTAB='overview';
+  appbar('Progress', null,
+    `<button class="pperiod" id="pPeriod">${esc(pPeriodLabel(POFF))} ${svg('down')}</button>`);
+  const R=weekReview(POFF);
+  v.innerHTML=`<div class="seg" id="pSeg">${PTABS.map(t=>
+      `<button data-p="${t.id}" class="${PTAB===t.id?'on':''}">${esc(t.t)}</button>`).join('')}</div>
+    <div id="pBody"></div>`;
+  $$('#pSeg button').forEach(b=>b.onclick=()=>{ haptic(); PTAB=b.dataset.p; viewProgress(v); });
+  const pp=$('#pPeriod');
+  if(pp) pp.onclick=()=>{
+    const opts=[0,-1,-2,-3].map(o=>({t:pPeriodLabel(o), s:o===0?'so far':'the whole week',
+      icon:'cal', run:o}));
+    openSheet('Which week', navRows('pPerRows',opts));
+    $$('#pPerRows button').forEach((b,i)=>b.onclick=()=>{
+      POFF=opts[+b.dataset.r].run; closeSheet(); setTimeout(()=>render(),180);
+    });
+  };
+  const body=$('#pBody');
+  if(PTAB==='overview')   progOverview(body,R);
+  else if(PTAB==='training')   openInline(body,paneStrength);
+  else if(PTAB==='activities') openInline(body,paneActs);
+  else                         openInline(body,paneLinks);
+  bindInputs(v);
+}
+/* the deeper panes, rendered in place rather than pushed - the tab IS the
+   navigation, so pushing a page on top of it would be two of them */
+function openInline(host,fn){ try{ fn(host); }catch(e){ host.innerHTML=''; } }
+
+/* the activities tab: what you actually did, which p07 already renders */
+function paneActs(c){ c.innerHTML=activityRowsHTML(); wireActivityRows(); }
+
+function progOverview(v,R){
   const nT=(DB.tests||[]).length, nP=(DB.physique||[]).length;
   const nS=(DB.sessions||[]).filter(s=>s.done).length;
-  const verdict = R.attn.length ? R.attn.length+' thing'+(R.attn.length>1?'s':'')+' to watch'
-                : R.good.length ? 'Going well so far'
-                : 'Not enough logged yet to judge';
   const rows=[
     {t:'Strength', icon:'dumbbell',
      s: nS? `${nS} session${nS===1?'':'s'} of history` : 'No sessions yet',
@@ -30,18 +68,123 @@ function viewProgress(v){
      s:'What your data does and does not show',
      go:()=>openPane('Patterns','Correlations only, never causes', paneLinks)}
   ];
+  const A=R.A, P=R.P;
+  /* the load, as a figure with its direction and the week beside it */
+  const dLoad = (A.load!=null&&P.load!=null) ? rnd(A.load-P.load,1) : null;
+  const bars=R.wk.map(d=>{ const dd=dayDemand(d);
+    return {v:dd.load, t:DOW_NAME[dowOf(d)][0],
+            color: dd.load>=12?'var(--orange)': dd.load>0?'var(--accent)':'var(--surface-3)'}; });
+  const focus=(()=>{
+    /* where the work actually went, as a share of the week's load */
+    const keys=[['Upper body','upper','var(--blue)'],['Lower body','lower','var(--accent)'],
+                ['Core','core','var(--orange)']];
+    const tot={upper:0,lower:0,core:0};
+    R.wk.forEach(d=>{
+      DB.sessions.filter(s=>s.done&&s.date===d).forEach(s=>{
+        const cat=s.category||catOfWorkout(DB.workouts.find(w=>w.id===s.workoutId));
+        const L=sessionLoad(s).load;
+        if(cat==='upper') tot.upper+=L; else if(cat==='core') tot.core+=L; else tot.lower+=L;
+      });
+      DB.activities.filter(a=>a.date===d).forEach(a=>{ tot.lower+=activityDemand(a).lower*0.5; });
+    });
+    const sum3=tot.upper+tot.lower+tot.core;
+    if(!sum3) return null;
+    return keys.map(k=>({t:k[0], pct:Math.round(tot[k[1]]/sum3*100), color:k[2]}));
+  })();
+  const recent=(()=>{
+    const out=[];
+    DB.sessions.filter(s=>s.done).forEach(s=>out.push({d:s.date,kind:'s',o:s}));
+    DB.activities.forEach(a=>out.push({d:a.date,kind:'a',o:a}));
+    out.sort((x,y)=>x.d<y.d?1:x.d>y.d?-1:0);
+    return out.slice(0,4);
+  })();
+
   v.innerHTML=
-    `<div class="rec" style="margin-top:0">
-       <div class="rec-l">This week</div>
-       <div class="rec-t" style="font-size:22px">${esc(verdict)}</div>
-     </div>`
-    + weekNumbers(R)
-    + `<button class="tert" id="pFull">Full week review ${svg('chev')}</button>`
-    + '<div class="sec-t">Go deeper</div>' + navRows('pRows',rows);
-  const f=$('#pFull');
-  if(f) f.onclick=()=>openPane('This week','How the week went', paneWeek);
+    `<div class="card">
+       <div class="card-t" style="margin-bottom:8px">Training load</div>
+       <div class="pload">
+         <div class="pl-x">
+           <div class="pl-v">${A.load!=null?rnd(A.load,0):'0'}</div>
+           ${dLoad!=null&&dLoad!==0?`<div class="pl-d ${dLoad>0?'up':'down'}">${
+             dLoad>0?'▲':'▼'} ${Math.abs(dLoad)}</div>`:''}
+           <div class="pl-s">vs ${R.off===0?'last week':'the week before'}</div>
+         </div>
+         <div class="pl-c">${barChart(bars,{h:78,axis:true})}</div>
+       </div>
+     </div>
+
+     <div class="stats c2" style="margin-top:10px">
+       <div class="stat a"><div class="lab">${svg('shoe')} Sessions</div>
+         <div><div class="val num">${A.sessions}</div>
+           <div class="dlt">vs ${P.sessions} last week</div></div></div>
+       <div class="stat g"><div class="lab">${svg('run')} Activities</div>
+         <div><div class="val num">${A.acts}</div>
+           <div class="dlt">${A.sport} ${esc(sportLC())}</div></div></div>
+     </div>
+
+     ${''/* Wearable figures, still conditional: present when a device reported
+            them, absent rather than dashed when it did not. They sit below
+            what the app always knows, because that is their standing. */}
+     ${(()=>{
+        const tiles=[
+          A.rec!=null  ? statTile('Avg recovery',rnd(A.rec,0),'%',A.rec>=67?'g':A.rec>=34?'y':'r',R.dl(A.rec,P.rec)) : '',
+          A.hrv!=null  ? statTile('Avg HRV',rnd(A.hrv,0),'ms','c',R.dl(A.hrv,P.hrv)) : '',
+          A.rhr!=null  ? statTile('Avg RHR',rnd(A.rhr,1),'bpm','',R.dl(A.rhr,P.rhr,1)) : '',
+          A.sleep!=null? statTile('Avg sleep',fmtMin(A.sleep),'',A.sleep>=R.sleepNeed-60?'g':'o',R.dl(A.sleep,P.sleep)) : ''
+        ].filter(Boolean);
+        return tiles.length
+          ? `<div class="stats${tiles.length>2?' c2':''}" id="wearWk" style="margin-top:10px">${tiles.join('')}</div>`
+          : '';
+     })()}
+
+     ${focus?`<button class="card pfocus" id="pFocus">
+       <div class="sec-hd" style="margin:0 0 10px">
+         <div class="card-t" style="margin:0">Focus areas</div>
+         <i style="color:var(--text-3);display:flex">${svg('chev')}</i>
+       </div>
+       ${focus.map(f=>`<div class="fbar">
+         <span class="fb-l">${esc(f.t)}</span>
+         <span class="fb-t"><i style="width:${f.pct}%;background:${f.color}"></i></span>
+         <span class="fb-p">${f.pct}%</span></div>`).join('')}
+     </button>`:''}
+
+     ${R.attn.length?`<button class="whyc" id="pWatch" style="align-items:flex-start">
+       <i class="whyc-i">${svg('chart')}</i>
+       <span class="whyc-x">
+         <span class="whyc-t">One thing to watch</span>
+         <span class="whyc-s">${esc(stripTags(R.attn[0]))}</span>
+       </span>
+       <i class="whyc-c">${svg('chev')}</i>
+     </button>`:''}
+
+     <div class="sec-hd">
+       <div class="sec-t" style="margin:0">Recent sessions</div>
+       <button class="sec-more" id="pAll">View all ${svg('chev')}</button>
+     </div>
+     ${recent.length?`<div class="rows" id="pRecent">${recent.map((r,i)=>{
+       const isS=r.kind==='s';
+       const nm=isS ? (r.o.workoutName||'Session')
+                    : ((ACT_TYPES[r.o.type]||ACT_TYPES.other).name);
+       const sub=isS ? `${r.o.durationMin||0} min${r.o.setsDone?' · '+r.o.setsDone+' sets':''}`
+                     : `${fmtMin(r.o.min)}${r.o.strain!=null?' · '+rnd(r.o.strain,1)+' strain':''}`;
+       return `<button data-r="${i}">
+         <span class="pr-d">${esc(fmtDate(r.d).replace(/^\\w+\\s/,''))}</span>
+         <i class="rw-i">${svg(isS?planIcon({id:r.o.category}):ACT_ICON(r.o.type))}</i>
+         <span class="rw-x"><span class="rw-t">${esc(nm)}</span>
+           <span class="rw-s">${esc(sub)}</span></span>
+         <i class="rw-c">${svg('chev')}</i></button>`;}).join('')}</div>`
+      : '<div class="hint">Nothing logged in this period yet.</div>'}
+
+     <div class="sec-t">Go deeper</div>` + navRows('pRows',rows);
+
+  const fo=$('#pFocus'); if(fo) fo.onclick=()=>openPane('Strength','What is moving, and what is not', paneStrength);
+  const wa=$('#pWatch'); if(wa) wa.onclick=()=>openPane(pPeriodLabel(POFF),'How the week went', paneWeek);
+  const al=$('#pAll');   if(al) al.onclick=()=>openPane('History','Completed sessions', paneHistory);
+  $$('#pRecent button').forEach(b=>b.onclick=()=>{
+    const r=recent[+b.dataset.r];
+    if(r.kind==='s') sessionDetail(r.o.id); else activityView(r.o.id);
+  });
   wireRows('pRows',rows);
-  bindInputs(v);
 }
 
 /* "How did my week go" - the numbers and the narrative together, which is
@@ -53,11 +196,17 @@ function paneWeek(c){
 }
 
 /* ------------------------------------------------------------- WEEK */
-function weekReview(){
-
-  const today=todayISO(), start=addDays(today,-dowOf(today)), prevStart=addDays(start,-7);
+/* `off` is a week offset: 0 is this week, -1 the one before. The screen's
+   period selector passes it, so "vs last week" always compares the week on
+   screen with the one before it rather than being pinned to today. */
+function weekReview(off){
+  off=off||0;
+  const today=todayISO();
+  const thisStart=weekStartOf(today);
+  const start=addDays(thisStart, off*7), prevStart=addDays(start,-7);
+  const end=off<0 ? addDays(start,6) : today;   // a past week is whole
   const range=(s,e)=>{ const o=[]; let d=s; while(d<=e){o.push(d);d=addDays(d,1);} return o; };
-  const wk=range(start,today), pv=range(prevStart,addDays(start,-1));
+  const wk=range(start,end), pv=range(prevStart,addDays(start,-1));
   const stat=(days)=>{
     const cy=days.map(cycleByDate).filter(Boolean);
     const ci=days.map(d=>DB.checkins[d]).filter(Boolean);
@@ -115,7 +264,7 @@ function weekReview(){
   if(A.expl>=20) next.push('Cut one plyometric block next week and keep the jump quality high rather than the volume.');
   if(!next.length) next.push('Hold this pattern. It is working — repeat it before adding anything.');
 
-  return {A, P, dl, wk, pv, good, attn, next,
+  return {A, P, dl, wk, pv, good, attn, next, off, start, end,
           tgtDone, tgtTotal, compl, missed, strTgt, sleepNeed, genericSleep};
 }
 

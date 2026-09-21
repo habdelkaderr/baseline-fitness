@@ -537,28 +537,36 @@ function openSetup(auto){
    groups appear in, so anything addressing a group by position sees no
    change - and nothing should be addressing them by position anyway. */
 const SET_PANES=[
-  {id:'profile',   name:'Profile',    icon:'today',   sec:'you',
+  /* Profile is not a row: it is the card at the top, because "whose copy is
+     this and where does the data live" is what a settings screen is most often
+     opened to answer. */
+  {id:'profile',   name:'Profile',    icon:'user',    sec:null,
    s:'Name, age, height, weight'},
-  {id:'appearance',name:'Appearance', icon:'moon',    sec:'you',
-   s:'Light, dark or follow the system'},
-  {id:'training',  name:'Training',   icon:'dumbbell',sec:'training',
-   s:'Equipment, sport, goals, schedule, injuries'},
-  {id:'alerts',    name:'Sound & alerts', icon:'timer', sec:'training',
-   s:'Rest timer, tones, and being told when it ends'},
-  {id:'cycle',     name:'Cycle',      icon:'drop',    sec:'training',
+  {id:'appearance',name:'Appearance', icon:'moon',    sec:'appearance',
+   s:'Light, dark or follow system'},
+  {id:'training',  name:'Training preferences', icon:'dumbbell', sec:'training',
+   s:'Equipment, goals, schedule, injuries'},
+  {id:'alerts',    name:'Workout display', icon:'sliders', sec:'training',
+   s:'Sets, timers, sounds and alerts'},
+  /* Under health rather than training: a cycle is not a training preference,
+     and this is where somebody would look for it. It stays listed even when
+     off, because otherwise there would be no way to turn it on. */
+  {id:'cycle',     name:'Cycle',      icon:'drop',    sec:'health',
    s:'Optional menstrual cycle tracking'},
-  {id:'wearables', name:'Wearables',  icon:'watch',   sec:'data',
+  {id:'wearables', name:'Wearables',  icon:'watch',   sec:'health',
    s:'Your device and what it provides'},
-  {id:'data',      name:'Data',       icon:'dl',      sec:'data',
-   s:'Backup, restore, erase'},
-  {id:'about',     name:'About',      icon:'info',    sec:'about',
-   s:'Version, diagnostics, install, privacy'}
+  {id:'data',      name:'Data',       icon:'db',      sec:'health',
+   s:'Backup, restore, export or erase'},
+  {id:'privacy',   name:'Privacy',    icon:'shield',  sec:'health',
+   s:'Your data stays on this device'},
+  {id:'about',     name:'About Baseline', icon:'info', sec:'support',
+   s:'Version, acknowledgements and links'}
 ];
 const SET_SECTIONS=[
-  {id:'you',      t:'You'},
-  {id:'training', t:'Training'},
-  {id:'data',     t:'Your data'},
-  {id:'about',    t:null}
+  {id:'appearance', t:'Appearance'},
+  {id:'training',   t:'Training'},
+  {id:'health',     t:'Health & data'},
+  {id:'support',    t:'Support'}
 ];
 let SETTAB='profile';
 /* Whether the gym's "something missing?" list is expanded. It lives out here
@@ -705,23 +713,31 @@ function profileWire(){
 
 function viewSettings(v){
   appbar('Settings');
-  const rows=SET_PANES.map(g=>({
-    t:g.name, s:g.s, icon:g.icon,
-    go:()=>pushPage({build:c=>{ SETTAB=g.id; settingsBody(c); }})
+  const open=id=>pushPage({build:c=>{ SETTAB=id; settingsBody(c); }});
+  const rows=SET_PANES.filter(g=>g.sec).map(g=>({
+    t:g.name, s:g.s, icon:g.icon, go:()=>open(g.id)
   }));
   /* the build, where somebody looking for "what version am I on" looks */
   /* Who this copy belongs to, and where its data actually lives: the two
      questions a settings screen is most often opened to answer. */
   const who=(DB.profile.name||'').trim();
   const c=Store.counts();
-  const head=`<div class="set-head">
-    <div class="set-who">${who?esc(who):'Baseline'}</div>
-    <div class="set-sub">${
-      [c.sessions+' session'+(c.sessions===1?'':'s'),
-       c.activities+' activit'+(c.activities===1?'y':'ies'),
-       c.cycles? c.cycles+' imported day'+(c.cycles===1?'':'s') : null
-      ].filter(Boolean).join(' · ')}</div>
-    <div class="set-store">${svg(Store.durable?'check':'x')}
+  /* One card: who this copy belongs to, what is in it, and where it is kept -
+     with a way into the profile rather than a row further down repeating it. */
+  const head=`<div class="card set-card">
+    <button class="set-me" id="setProfile" aria-label="Your profile">
+      <span class="set-av">${who? esc(who.trim().charAt(0).toUpperCase()) : svg('user')}</span>
+      <span class="set-mx">
+        <span class="set-who">${who?esc(who):'Baseline'}</span>
+        <span class="set-sub">${
+          [c.sessions+' session'+(c.sessions===1?'':'s'),
+           c.activities+' activit'+(c.activities===1?'y':'ies'),
+           c.cycles? c.cycles+' imported day'+(c.cycles===1?'':'s') : null
+          ].filter(Boolean).join(' · ')}</span>
+      </span>
+      <i class="rw-c">${svg('chev')}</i>
+    </button>
+    <div class="set-store${Store.durable?' ok':' bad'}">${svg(Store.durable?'checkc':'x')}
       <span>${Store.durable
         ? 'Stored on this device · '+esc(Store.mode)
         : 'Not storing — this browser is blocking storage'}</span></div>
@@ -750,6 +766,7 @@ function viewSettings(v){
     const mine=rows.filter(r=>(SET_PANES.find(g=>g.name===r.t)||{}).sec===sec.id);
     if(mine.length) wireRows('setRows_'+sec.id, mine);
   });
+  const pb=$('#setProfile'); if(pb) pb.onclick=()=>{ haptic(); open('profile'); };
   bindInputs(v);
 }
 
@@ -1013,8 +1030,11 @@ function settingsBody(v){
      <div class="hint" style="margin-top:6px">That is a one-time snapshot. Changes made afterwards on either device will not appear on the other.</div>
    </div>
 
-   <div class="card spane about">
-     <div class="card-t" style="margin-bottom:10px">Privacy</div>
+   ${''/* Its own pane, not a card buried in About: "where does my data go" is
+          a question people come looking for, and it should have a door with
+          that name on it. */}
+   <div class="card spane privacy">
+     <div class="card-t" style="margin-bottom:10px">Your data stays on this device</div>
      <ul class="why" style="border:none;padding:0;margin:0">
        <li class="pos"><span class="dot"></span><span>No analytics, no tracking, no advertising, no external services.</span></li>
        <li class="pos"><span class="dot"></span><span>No network requests of any kind — the app works fully offline.</span></li>

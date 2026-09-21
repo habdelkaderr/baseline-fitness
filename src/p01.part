@@ -1164,6 +1164,122 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .wm-plain{font-size:12.5px;color:var(--text-2);font-weight:600;
   margin-top:7px;line-height:1.5}
 
+/* ---------- Progress: a period, four views, then the week ---------- */
+.pperiod{display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border-radius:999px;
+  background:var(--surface);border:1px solid var(--border);font-family:inherit;
+  font-size:13px;font-weight:750;color:var(--text);cursor:pointer;white-space:nowrap}
+.pperiod svg{width:14px;height:14px;color:var(--text-3)}
+/* the four views, as one control rather than four rows */
+.seg{display:flex;gap:4px;padding:4px;border-radius:999px;background:var(--surface-2);
+  margin-bottom:var(--sp-2);overflow-x:auto;scrollbar-width:none}
+.seg::-webkit-scrollbar{display:none}
+.seg button{flex:1 0 auto;padding:8px 14px;border-radius:999px;border:0;background:none;
+  font-family:inherit;font-size:13px;font-weight:750;color:var(--text-3);cursor:pointer;
+  white-space:nowrap}
+.seg button.on{background:var(--accent);color:var(--accent-ink)}
+/* the load: a figure, its direction, and the week beside it */
+.pload{display:flex;align-items:flex-start;gap:14px}
+.pload .pl-x{flex:0 0 auto;min-width:88px}
+.pload .pl-v{font-size:34px;font-weight:850;letter-spacing:-1.2px;line-height:1}
+.pload .pl-d{font-size:13px;font-weight:800;margin-top:4px}
+.pload .pl-d.up{color:var(--accent)} .pload .pl-d.down{color:var(--orange)}
+.pload .pl-s{font-size:11.5px;font-weight:650;color:var(--text-3);margin-top:3px;line-height:1.35}
+.pload .pl-c{flex:1;min-width:0}
+/* where the work went */
+.pfocus{display:block;width:100%;text-align:left;font-family:inherit;color:var(--text);
+  cursor:pointer;margin-top:10px}
+.fbar{display:flex;align-items:center;gap:10px;margin-top:9px}
+.fbar .fb-l{flex:0 0 78px;font-size:12.5px;font-weight:650;color:var(--text-2)}
+.fbar .fb-t{flex:1;height:8px;border-radius:4px;background:var(--surface-3);overflow:hidden}
+.fbar .fb-t i{display:block;height:100%;border-radius:4px}
+.fbar .fb-p{flex:0 0 34px;text-align:right;font-size:12px;font-weight:750;
+  font-variant-numeric:tabular-nums;color:var(--text-2)}
+/* the date column on a recent-session row */
+.rows .pr-d{flex:0 0 62px;font-size:11.5px;font-weight:700;color:var(--text-3);line-height:1.3}
+.stat .lab svg{width:14px;height:14px;vertical-align:-2px;margin-right:4px;color:var(--text-3)}
+
+/* ---------- Settings: one card for you, then grouped rows ---------- */
+.set-card{padding:0;overflow:hidden}
+.set-me{display:flex;align-items:center;gap:13px;width:100%;padding:15px 16px 14px;
+  background:none;border:0;font-family:inherit;color:var(--text);text-align:left;cursor:pointer}
+.set-me:active{background:var(--surface-2)}
+.set-av{flex:0 0 auto;width:44px;height:44px;border-radius:50%;background:var(--surface-2);
+  display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;
+  color:var(--text-2)}
+.set-av svg{width:22px;height:22px}
+.set-mx{flex:1;min-width:0}
+.set-who{display:block;font-size:18px;font-weight:800;letter-spacing:-.4px}
+.set-sub{display:block;font-size:13px;font-weight:600;color:var(--text-3);margin-top:2px}
+.set-store{display:flex;align-items:center;gap:8px;padding:11px 16px 13px;
+  border-top:1px solid var(--border-soft);font-size:12.5px;font-weight:650;color:var(--text-2)}
+.set-store svg{width:16px;height:16px;flex:0 0 auto}
+.set-store.ok svg{color:var(--green)}
+.set-store.bad svg{color:var(--red)}
+
+/* ---------- Today: the header, the tiles, the card ----------
+   The date sits above the greeting so the greeting can be the largest thing on
+   the screen, and the avatar gives the profile a door that is not a menu. */
+.ab-txt .pre{font-size:12px;font-weight:650;color:var(--text-3);margin-bottom:2px}
+.icon-btn.av{background:var(--surface-2);border-radius:50%;width:38px;height:38px;
+  display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.icon-btn.av svg{width:20px;height:20px}
+
+/* Strain and sleep: context for readiness, not two more rings competing with
+   it. Icon, figure, bar - legible in the half-second this row gets. */
+.mtile{display:flex;flex-direction:column;gap:7px;width:100%;padding:12px 13px 13px;
+  border-radius:var(--r-lg);background:var(--surface);border:1px solid var(--border-soft);
+  font-family:inherit;color:var(--text);text-align:left;cursor:pointer}
+.mtile:active{background:var(--surface-2)}
+.mtile .mt-h{display:flex;align-items:center;gap:8px}
+.mtile .mt-i{flex:0 0 auto;display:flex;color:var(--text-3)}
+.mtile .mt-i svg{width:17px;height:17px}
+.mtile .mt-i.cyan{color:var(--cyan)} .mtile .mt-i.violet{color:var(--violet)}
+.mtile .mt-l{font-size:12.5px;font-weight:700;color:var(--text-2)}
+.mtile .mt-v{font-size:22px;font-weight:850;letter-spacing:-.6px;line-height:1}
+.mtile .mt-v small{font-size:12.5px;font-weight:650;color:var(--text-3);letter-spacing:0}
+.mtile .mt-b{display:block;height:5px;border-radius:3px;background:var(--surface-3);overflow:hidden}
+.mtile .mt-b i{display:block;height:100%;border-radius:3px;transition:width .4s ease}
+
+/* the recommendation's own mark, and the tags that say what kind of work */
+.rec-hd{display:flex;align-items:flex-start;gap:12px;margin-top:7px}
+.rec-i{flex:0 0 auto;width:34px;height:34px;border-radius:10px;background:var(--surface-2);
+  display:flex;align-items:center;justify-content:center;color:var(--text-2);margin-top:2px}
+.rec-i svg{width:19px;height:19px}
+.rec-hd .rec-t{margin-top:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}
+.chip{font-size:11.5px;font-weight:700;padding:4px 9px;border-radius:999px;
+  background:var(--accent-wash);border:1px solid var(--accent-line);color:var(--text-2)}
+
+/* Why this?, as a card that already answers a little */
+.whyc{display:flex;align-items:flex-start;gap:11px;width:100%;margin-top:11px;
+  padding:12px 13px;border-radius:var(--r-lg);background:var(--accent-wash);
+  border:1px solid var(--accent-line);font-family:inherit;color:var(--text);
+  text-align:left;cursor:pointer}
+.whyc .whyc-i{flex:0 0 auto;display:flex;color:var(--accent);margin-top:1px}
+.whyc .whyc-i svg{width:17px;height:17px}
+.whyc .whyc-x{flex:1;min-width:0}
+.whyc .whyc-t{display:block;font-size:14px;font-weight:800}
+.whyc .whyc-s{display:block;font-size:12.5px;font-weight:600;color:var(--text-2);
+  margin-top:3px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;
+  -webkit-box-orient:vertical;overflow:hidden}
+.whyc .whyc-c{flex:0 0 auto;display:flex;color:var(--text-3);margin-top:2px}
+.whyc .whyc-c svg{width:16px;height:16px}
+.whyc[aria-expanded="true"] .whyc-c{transform:rotate(90deg)}
+
+/* the kind of day, as a mark rather than an abbreviation */
+.wk-ic{min-height:20px;margin-top:5px;display:flex;align-items:center;justify-content:center;
+  color:var(--text-3)}
+.wk-ic svg{width:15px;height:15px}
+.wk-d.sel .wk-ic{color:var(--accent)}
+
+/* a section heading with a way through to the whole of it */
+.sec-hd{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+  margin:var(--sp-2) 0 9px}
+.sec-more{display:inline-flex;align-items:center;gap:3px;background:none;border:0;
+  font-family:inherit;font-size:12.5px;font-weight:750;color:var(--accent);
+  cursor:pointer;padding:2px 0}
+.sec-more svg{width:14px;height:14px}
+
 /* ---------- Exercise illustrations ----------
    One figure system, themed through tokens so it reads in both schemes. The
    figure is instructional, so the body is the strongest line, equipment takes

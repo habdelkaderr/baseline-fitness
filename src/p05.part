@@ -63,7 +63,18 @@ function barChart(pts,opts){
     g+=`<rect x="${x.toFixed(1)}" y="${(H-P.b-h).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${Math.min(3,w/2).toFixed(1)}" fill="${p.color||opts.color||'var(--accent)'}" opacity="${p.dim?.35:1}"/>`;
     if(p.t) g+=`<text x="${(x+w/2).toFixed(1)}" y="${H-5}" fill="var(--text-3)" font-size="8.5" text-anchor="middle" font-weight="600">${esc(p.t)}</text>`;
   });
-  if(P.l>8) g+=`<text x="${P.l-5}" y="${P.t+7}" fill="var(--text-3)" font-size="8.5" text-anchor="end" font-weight="600">${rnd(hi,0)}</text>`;
+  /* `axis` draws a few labelled gridlines instead of only the top value, so a
+     bar can be read as a number rather than just as taller than its neighbour */
+  if(opts.axis){
+    const step = hi<=12?4 : hi<=30?10 : hi<=60?20 : 50;
+    for(let gv=0; gv<=hi; gv+=step){
+      const y=P.t+(1-gv/hi)*(H-P.t-P.b);
+      if(gv>0) g+=`<line x1="${P.l}" y1="${y.toFixed(1)}" x2="${W-P.r}" y2="${y.toFixed(1)}"
+        stroke="var(--border-soft)" stroke-dasharray="2 4"/>`;
+      g+=`<text x="${P.l-5}" y="${(y+3).toFixed(1)}" fill="var(--text-3)" font-size="8.5"
+        text-anchor="end" font-weight="600">${gv}</text>`;
+    }
+  } else if(P.l>8) g+=`<text x="${P.l-5}" y="${P.t+7}" fill="var(--text-3)" font-size="8.5" text-anchor="end" font-weight="600">${rnd(hi,0)}</text>`;
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="height:${H}px">${g}</svg>`;
 }
 function ringSvg(pct,color,size){
@@ -265,7 +276,7 @@ function bindInputs(root){
    appears and disappears is a worse answer than reaching it from the
    readiness row on Today, where the number it explains already is. */
 function tabs(){ return [
-  {id:'today',   label:'Today',    icon:'today'},
+  {id:'today',   label:'Today',    icon:'home'},
   {id:'workouts',label:'Train',    icon:'dumbbell'},
   {id:'progress',label:'Progress', icon:'chart'},
   /* Settings was a gear in the top-right corner - the only destination
@@ -351,11 +362,15 @@ function render(){
    It used to carry a settings gear, which was a second way into a screen the
    tab bar now offers directly - and put it in the corner of the phone that is
    hardest to reach. */
-function appbar(title,sub,actions){
+/* `pre` is a small line ABOVE the title. Today uses it for the date, so the
+   greeting can be the biggest thing on the screen without the date competing
+   with it or being pushed into a subtitle that says something else. */
+function appbar(title,sub,actions,pre){
   const onPage=STACK.length>0;
   $('#appbar').innerHTML=
     (onPage?`<button class="icon-btn ab-back" id="abBack" aria-label="Back">${svg('left')}</button>`:'')+
-    `<div class="ab-txt"><div class="ttl">${title}</div>${sub?`<div class="sub">${sub}</div>`:''}</div>`+
+    `<div class="ab-txt">${pre?`<div class="pre">${pre}</div>`:''}<div class="ttl">${title}</div>${
+      sub?`<div class="sub">${sub}</div>`:''}</div>`+
     `<div class="appbar-actions">${actions||''}</div>`;
   const bk=$('#abBack'); if(bk) bk.onclick=()=>{ haptic(); popPage(); };
 }
@@ -398,6 +413,38 @@ function wireRows(id,items){
    VIEW: TODAY
    ====================================================================== */
 function greeting(){ const h=new Date().getHours(); return h<5?'Good night':h<12?'Good morning':h<18?'Good afternoon':'Good evening'; }
+/* The mark for a recommendation, and the tags that say what kind of work it
+   is. Both read the plan rather than being written per screen, so the card and
+   the history rows cannot describe the same session differently. */
+function planIcon(pl){
+  const m={lower:'barbell',upper:'dumbbell',power:'flame',core:'ul',
+           run_e:'run',run_q:'run',run_int:'run',bike:'bike',
+           mobility:'heart',rest:'moon',prep:'tennis'};
+  return m[(pl&&pl.id)||'']||'dumbbell';
+}
+function planTags(pl,wk){
+  const out=[];
+  const byId={lower:'Lower body',upper:'Upper body',power:'Power',core:'Core',
+              run_e:'Easy run',run_q:'Tempo',run_int:'Intervals',bike:'Zone 2',
+              mobility:'Mobility',rest:'Rest'};
+  if(byId[(pl&&pl.id)||'']) out.push(byId[pl.id]);
+  /* The workout's own subtitle, which is where its patterns are already
+     written: "Upper B — Pull, Posture & Arms" gives "Pull · Posture". The
+     `focus` field was the wrong source - it is a sentence about intent, and
+     its first clause ("Anti-extension") reads as jargon on a chip. */
+  if(wk&&wk.name && wk.name.indexOf('—')>=0){
+    const sub=wk.name.split('—')[1]||'';
+    const parts=sub.split(/[,&]/).map(s=>s.trim()).filter(s=>s&&s.length<=12);
+    if(parts.length) out.push(parts.slice(0,2).join(' · '));
+  }
+  const ty=wk&&wk.type;
+  const tyName={strength:'Strength',power:'Power',core:'Core',cardio:'Cardio',
+                mobility:'Mobility',tennis:'Sport prep'}[ty];
+  if(tyName && out.indexOf(tyName)<0) out.push(tyName);
+  return out.slice(0,3);
+}
+/* the one-line version of a reason, for a card that has no room for markup */
+function stripTags(s){ return String(s||'').replace(/<[^>]*>/g,''); }
 
 /* =========================================================================
    AWAY MODE
@@ -650,7 +697,12 @@ function sinceText(n, span){
 function viewToday(v){
   const d=todayISO(), ci=DB.checkins[d];
   const first=(DB.profile.name||'').trim().split(/\s+/)[0];
-  appbar(greeting()+(first?', '+esc(first):''), fmtDate(d));
+  /* Date, greeting, and one line that says what the screen is for. The date
+     used to be the subtitle, which left nowhere to say anything. */
+  appbar(greeting()+(first?', '+esc(first):''),
+    'Ready to move forward?',
+    `<button class="icon-btn av" id="tdProfile" aria-label="Your profile and data">${svg('user')}</button>`,
+    fmtDate(d));
 
   /* No check-in yet: the screen has exactly one thing to offer. */
   if(!ci){ v.innerHTML=setupPrompt()+todayNoCheckin(d); wireToday(d); return; }
@@ -684,14 +736,23 @@ function viewToday(v){
   :`
   <div class="rec">
     <div class="rec-l">Today</div>
-    <div class="rec-t">${esc(pl.label)}${pl.addCore?' + Core':''}</div>
-    <div class="rec-m">${pl.est?`~${pl.est} min`:''}${pl.est&&pl.intensity?' · ':''}${esc(pl.intensity||'')}</div>
-    ${pl.overridden?'<div class="rec-m" style="color:var(--violet)">Your choice</div>':''}
-    ${hasLimits(d)?`<div class="rec-m" style="color:var(--orange)">Working around ${esc(limitsText(d))}</div>`:''}
+    ${''/* The session gets its own mark and a line of tags, so the card says
+          what KIND of work it is without a sentence about it. */}
+    <div class="rec-hd">
+      <i class="rec-i">${svg(planIcon(pl))}</i>
+      <div style="flex:1;min-width:0">
+        <div class="rec-t">${esc(pl.label)}${pl.addCore?' + Core':''}</div>
+        <div class="rec-m">${pl.est?`~${pl.est} min`:''}${pl.est&&pl.intensity?' · ':''}${esc(pl.intensity||'')}</div>
+      </div>
+    </div>
+    ${(()=>{ const t=planTags(pl,wk);
+       return t.length?`<div class="chips">${t.map(x=>`<span class="chip">${esc(x)}</span>`).join('')}</div>`:''; })()}
+    ${pl.overridden?'<div class="rec-m" style="color:var(--violet);margin-top:8px">Your choice</div>':''}
+    ${hasLimits(d)?`<div class="rec-m" style="color:var(--orange);margin-top:8px">Working around ${esc(limitsText(d))}</div>`:''}
     ${(()=>{ const lv=pausedWorkout();
        if(!lv || lv.workoutId!==pl.workoutId) return '';
        const k=sum(lv.entries.map(e=>e.sets.filter(s=>s.done).length));
-       return `<div class="rec-m" style="color:var(--accent)">Started · ${
+       return `<div class="rec-m" style="color:var(--accent);margin-top:8px">Started · ${
          k? k+' set'+(k===1?'':'s')+' logged' : 'nothing logged yet'}</div>`; })()}
   </div>
 
@@ -700,7 +761,17 @@ function viewToday(v){
                return (lv && lv.workoutId===pl.workoutId) ? 'Resume session' : 'Start session'; })()}</button>`
       :`<div class="hint" style="margin-top:13px;text-align:center">Rest is the recommendation today, not the absence of one.</div>`}
 
-  <button class="tert" id="whyT" aria-expanded="false" aria-controls="whyB">Why this? ${svg('down')}</button>
+  ${''/* Why this? leads with its own answer rather than being a bare toggle.
+        The first reason, in one line, is usually the whole explanation; the
+        rest opens under it. */}
+  <button class="whyc" id="whyT" aria-expanded="false" aria-controls="whyB">
+    <i class="whyc-i">${svg('bulb')}</i>
+    <span class="whyc-x">
+      <span class="whyc-t">Why this?</span>
+      <span class="whyc-s">${(pl.why[0]&&pl.why[0].t)? stripTags(pl.why[0].t) : 'What went into today’s call.'}</span>
+    </span>
+    <i class="whyc-c">${svg('chev')}</i>
+  </button>
   <div class="whybox" id="whyB" hidden>
     <ul class="whyl">${pl.why.map(w=>`<li class="${w.k}"><span class="dot"></span><span>${w.t}</span></li>`).join('')}</ul>
     ${(pl.ruledOut&&pl.ruledOut.length)?`<div class="ruled">
@@ -711,7 +782,10 @@ function viewToday(v){
     <div class="hint" style="margin-top:10px">Based on ${esc(rd.sources.label)}.</div>
   </div>
 
-  <button class="btn ghost block" id="btnSwap">Change today's plan</button>`}
+  <div class="rows" style="margin-top:10px"><button id="btnSwap">
+    <i class="rw-i">${svg('swap')}</i>
+    <span class="rw-x"><span class="rw-t">Change today's plan</span></span>
+    <i class="rw-c">${svg('chev')}</i></button></div>`}
 
   ${(pl.prep&&!done)?`
   <div class="rows" id="prepRows">
@@ -729,7 +803,14 @@ function viewToday(v){
           the strip navigates, so any period in the heading is wrong as soon as
           the user presses the arrow. Which week is on screen is the strip's
           job, and it says so in one place. */}
-  <div class="sec-t">Training</div>
+  ${''/* The heading names the period the strip is SHOWING, so it stays true
+          when the arrows move it, and offers the way through to the full
+          history rather than making the strip carry everything. */}
+  <div class="sec-hd">
+    <div class="sec-t" style="margin:0">Training · ${esc(weekRangeLabel(
+      addDays(weekStartOf(d), WEEKOFF*7), addDays(weekStartOf(d), WEEKOFF*7+6)))}</div>
+    <button class="sec-more" id="tdAllTrain">View all ${svg('chev')}</button>
+  </div>
   ${weekStrip(d)}
 
   ${activitiesCard(selDay())}
@@ -801,8 +882,14 @@ function ringRow(d){
              on whether Baseline has been running long enough to have a normal
              for this person at all. Neither case invents a figure, and neither
              leaves a dash sitting in a card. */
+          /* One short line, not the band's full prescription - that belongs on
+             the readiness screen, and at this size it wrapped to three lines
+             beside the ring. */
           if(rd) return `<span class="score-w" style="color:${B.color}">${esc(B.label)}</span>
-            <span class="score-s">out of 100</span>`;
+            <span class="score-s">${esc({green:'Good to train today.',
+              yellow:'Train, but keep it moderate.',
+              orange:'Keep it light today.',
+              red:'Rest is the better call.'}[rd.band]||'')}</span>`;
           const lvl=dataCoverage(d).level;
           return lvl==='learning'
             ? `<span class="score-w">Learning your baseline</span>
@@ -814,13 +901,13 @@ function ringRow(d){
       <i class="rw-c">${svg('chev')}</i>
     </button>
     <div class="score-pair">
-      <button class="score" id="ringStrain" aria-label="Strain today ${rnd(load,1)} of 21. See the day">
-        ${''/* Strain is computed from what you logged, not read off a strap:
-              nothing logged is a real zero, not an unknown. */}
-        ${ringHTML({pct: load? Math.min(100, load/21*100) : null,
-                    value: load? rnd(load,1) : '0', color:'var(--cyan)'})}
-        <span class="score-x"><span class="score-l">Strain</span>
-          <span class="score-s">of 21 today</span></span>
+      ${''/* Strain and sleep are context for the number above, not two more
+            rings competing with it. An icon, the figure, and a bar that shows
+            how far along it is - readable in the half-second this row gets. */}
+      <button class="mtile" id="ringStrain" aria-label="Strain today ${rnd(load,1)} of 21. See the day">
+        <span class="mt-h"><i class="mt-i cyan">${svg('shoe')}</i><span class="mt-l">Strain</span></span>
+        <span class="mt-v">${load? rnd(load,1) : '0'} <small>of 21</small></span>
+        <span class="mt-b"><i style="width:${Math.min(100, (load||0)/21*100)}%;background:var(--cyan)"></i></span>
       </button>
       ${(()=>{
         /* Sleep is a wearable-or-check-in figure, and it is NOT always there.
@@ -830,21 +917,19 @@ function ringRow(d){
            than a coach. When there is no figure, the slot carries something
            Baseline always knows: the training it has actually seen this week. */
         if(slept!=null) return `
-          <button class="score" id="ringSleep" aria-label="Slept ${fmtMin(slept)}">
-            ${ringHTML({pct: Math.min(100, slept/need*100),
-                        value:(Math.round(slept/60*10)/10)+'h', color:'var(--violet)'})}
-            <span class="score-x"><span class="score-l">Sleep</span>
-              <span class="score-s">of ${Math.round(need/60)}h needed</span></span>
+          <button class="mtile" id="ringSleep" aria-label="Slept ${fmtMin(slept)} of ${Math.round(need/60)} hours needed">
+            <span class="mt-h"><i class="mt-i violet">${svg('moon')}</i><span class="mt-l">Sleep</span></span>
+            <span class="mt-v">${(Math.round(slept/60*10)/10)}h <small>of ${Math.round(need/60)}h</small></span>
+            <span class="mt-b"><i style="width:${Math.min(100, slept/need*100)}%;background:var(--violet)"></i></span>
           </button>`;
-        const wp=weekProgress(d);
         const n=(DB.sessions||[]).filter(s=>s.done && s.date>=weekStartOf(d) && s.date<=d).length
               + (DB.activities||[]).filter(a=>a.date>=weekStartOf(d) && a.date<=d).length;
+        const tgt=Math.max(3,(DB.targets&&DB.targets.sessions)||4);
         return `
-          <button class="score" id="ringWeek" aria-label="${n} logged this week. See your training">
-            ${ringHTML({pct: n? Math.min(100, n/Math.max(3,(DB.targets&&DB.targets.sessions)||4)*100) : null,
-                        value: String(n), color:'var(--accent)'})}
-            <span class="score-x"><span class="score-l">This week</span>
-              <span class="score-s">${n===1?'session logged':'sessions logged'}</span></span>
+          <button class="mtile" id="ringWeek" aria-label="${n} logged this week. See your training">
+            <span class="mt-h"><i class="mt-i">${svg('today')}</i><span class="mt-l">This week</span></span>
+            <span class="mt-v">${n} <small>logged</small></span>
+            <span class="mt-b"><i style="width:${Math.min(100, n/tgt*100)}%;background:var(--accent)"></i></span>
           </button>`;
       })()}
     </div>
@@ -1056,7 +1141,16 @@ function weekStrip(d){
       <div style="font-size:9.5px;font-weight:800;color:${isT?'var(--accent)':'var(--text-3)'};letter-spacing:.5px">${DOW_NAME[dow].toUpperCase()}</div>
       <div style="font-size:14px;font-weight:750;margin:3px 0 6px;color:${isSel||isT?'var(--text)':'var(--text-2)'}">${new Date(day+'T12:00:00').getDate()}</div>
       <div style="width:7px;height:7px;border-radius:50%;background:${col};margin:0 auto"></div>
-      <div style="font-size:9.5px;color:var(--text-3);margin-top:5px;font-weight:700;line-height:1.2;min-height:20px">${esc(tag)}</div>
+      ${''/* The kind of day as a mark, not an abbreviation. "Bball" and "Mob"
+            were three letters the user had to decode; a racquet and a pair of
+            legs are read at a glance, which is all this cell gets. */}
+      <div class="wk-ic">${(()=>{
+        if(ten){ const t=(acts.find(a=>isMainSportAct(a.type))||{}).type;
+                 return svg(ACT_ICON(t)); }
+        if(sess) return svg(planIcon({id:sess.category||catOfWorkout(DB.workouts.find(w=>w.id===sess.workoutId))}));
+        if(acts.length) return svg(ACT_ICON(acts[0].type));
+        return '';
+      })()}</div>
       ${(()=>{
         /* Readiness, not the wearable's raw recovery. The ring at the top of
            this same screen shows readiness; two different numbers answering
@@ -1218,6 +1312,10 @@ function wireToday(d){
   });
   on('btnPreview',()=>{ const p=todayPlan(d); previewWorkout(p.workoutId,p.variant,p); });
   on('btnSwap',()=>changePlan(d));
+  /* the avatar goes where the profile lives, which is Settings */
+  on('tdProfile',()=>{ go('settings'); });
+  /* and the heading's way through to the whole history */
+  on('tdAllTrain',()=>{ resetStack(); openPane('Training','Everything you have logged', paneHistory); });
   on('btnPrep',()=>previewWorkout('w_prep','full'));
   wireRings(d);
   wireWeekStrip(d);
