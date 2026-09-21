@@ -70,7 +70,10 @@ function chooseAct(type){
    screen while still passing. */
 function openSetGroup(id){
   resetStack(); TAB='today'; openSettings();
-  var i=SET_PANES.map(function(x){return x.id;}).indexOf(id);
+  /* Profile is the card at the top rather than a row in the list, so it has
+     its own door; everything else is indexed among the rendered rows. */
+  if(id==='profile'){ document.getElementById('setProfile').click(); return; }
+  var i=SET_PANES.filter(function(x){return x.sec;}).map(function(x){return x.id;}).indexOf(id);
   if(i<0) throw new Error('no settings group: '+id);
   document.getElementById('setRows').querySelectorAll('button')[i].click();
 }
@@ -1235,7 +1238,10 @@ closeSheet();
   DB.activities=[{id:'r1',date:T,type:'cycling',min:45,rpe:6}];
   resetStack(); TAB='today'; render();
 
-  ok('there are three scores', document.querySelectorAll('.scores .score').length===3,
+  /* Readiness leads as a score with its arc; strain and sleep are metric
+     tiles below it - an icon, a figure and a bar. Three identical rings said
+     all three weighed the same, which in this app they do not. */
+  ok('readiness leads alone', document.querySelectorAll('.scores .score').length===1,
      document.querySelectorAll('.scores .score').length);
   /* readiness is not one of three equals: it leads, at full width, with its
      band in words */
@@ -1243,8 +1249,13 @@ closeSheet();
   ok('and says its band in words',
      document.querySelector('#rdRow .score-w').textContent.length>2,
      document.querySelector('#rdRow .score-w').textContent);
-  ok('the other two sit below it as a pair',
-     document.querySelectorAll('.score-pair .score').length===2);
+  ok('the other two sit below it as a pair of tiles',
+     document.querySelectorAll('.score-pair .mtile').length===2,
+     document.querySelectorAll('.score-pair .mtile').length);
+  ok('and each tile carries an icon, a figure and a bar',
+     Array.prototype.slice.call(document.querySelectorAll('.score-pair .mtile'))
+       .every(function(t){ return t.querySelector('.mt-i svg') && t.querySelector('.mt-v')
+                                  && t.querySelector('.mt-b i'); }));
   /* an open arc, not a closed ring: three quarters of the circle, which is
      the shape of the app's own mark */
   ok('the arc is open, not a closed ring', (function(){
@@ -2042,7 +2053,7 @@ ok('the wearable step does not ask about one brand',
 
   // the button lives with backup and restore, not under the program reset
   TAB='today'; resetStack(); openSettings();
-  var di=SET_PANES.map(function(x){return x.id;}).indexOf('data');
+  var di=SET_PANES.filter(function(x){return x.sec;}).map(function(x){return x.id;}).indexOf('data');
   document.getElementById('setRows').querySelectorAll('button')[di].click();
   var html=document.getElementById('view').innerHTML;
   ok('there is an erase-all control', !!document.getElementById('rsAll'));
@@ -2834,7 +2845,7 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
     reset();
     var openCycleSettings=function(){
       resetStack(); TAB='today'; openSettings();
-      var i=SET_PANES.map(function(x){return x.id;}).indexOf('cycle');
+      var i=SET_PANES.filter(function(x){return x.sec;}).map(function(x){return x.id;}).indexOf('cycle');
       document.getElementById('setRows').querySelectorAll('button')[i].click();
     };
 
@@ -2901,7 +2912,7 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
     reset();
     DB.mcycle.on=true;
     resetStack(); TAB='today'; openSettings();
-    var i=SET_PANES.map(function(x){return x.id;}).indexOf('cycle');
+    var i=SET_PANES.filter(function(x){return x.sec;}).map(function(x){return x.id;}).indexOf('cycle');
     document.getElementById('setRows').querySelectorAll('button')[i].click();
 
     var inp=document.getElementById('sMcStart');
@@ -3625,9 +3636,10 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
     resetStack(); TAB=tab; renderNav(); render(); scan(tab);
   });
   resetStack(); openSettings(); scan('settings');
-  SET_PANES.forEach(function(g,i){
+  /* every pane, including the one reached from the card rather than a row */
+  SET_PANES.forEach(function(g){
     resetStack(); openSettings();
-    document.getElementById('setRows').querySelectorAll('button')[i].click();
+    openSetGroup(g.id);
     scan('settings/'+g.id);
   });
   resetStack(); TAB='today'; render();
@@ -3686,11 +3698,8 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   DB.profile.sex='Male'; DB.profile.units='metric';
   PROF_EDIT=false; PROF_DRAFT=null;
 
-  var open=function(){
-    resetStack(); TAB='today'; openSettings();
-    var i=SET_PANES.map(function(x){return x.id;}).indexOf('profile');
-    document.getElementById('setRows').querySelectorAll('button')[i].click();
-  };
+  /* the profile is reached from the card at the top of Settings, not a row */
+  var open=function(){ openSetGroup('profile'); };
 
   // ---- read mode ----
   open();
@@ -3765,9 +3774,7 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
 
   // and the editor offers the right fields for the chosen unit
   PROF_EDIT=false; PROF_DRAFT=null;
-  resetStack(); TAB='today'; openSettings();
-  var i=SET_PANES.map(function(x){return x.id;}).indexOf('profile');
-  document.getElementById('setRows').querySelectorAll('button')[i].click();
+  openSetGroup('profile');
   document.getElementById('profEdit').click();
   ok('imperial editing asks for feet and inches',
      !!document.getElementById('sHtFt') && !!document.getElementById('sHtIn'));
@@ -3807,20 +3814,36 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   var rows=document.getElementById('setRows');
   ok('Settings opens as a row list', !!rows);
   ok('Settings has no segment bar', !document.getElementById('setSeg'));
-  ok('one row per group', rows && rows.querySelectorAll('button').length===SET_PANES.length,
-     rows?rows.querySelectorAll('button').length+'/'+SET_PANES.length:'none');
-  ['Profile','Training','Wearables','Data','Appearance','About'].forEach(function(n){
-    ok('Settings offers "'+n+'"', rows && rows.textContent.indexOf(n)>=0);
+  /* One row per pane that IS a row. Profile is the card at the top - the two
+     questions a settings screen is opened to answer are whose copy this is and
+     where the data lives, so those lead rather than sitting in the list. */
+  var listed=SET_PANES.filter(function(x){ return x.sec; }).length;
+  ok('one row per group', rows && rows.querySelectorAll('button').length===listed,
+     rows?rows.querySelectorAll('button').length+'/'+listed:'none');
+  ok('the profile is the card at the top, with its own way in',
+     !!document.getElementById('setProfile'));
+  ok('and the card says where the data is kept',
+     !!document.querySelector('.set-store'),
+     document.querySelector('.set-store') ? document.querySelector('.set-store').textContent.trim() : '(none)');
+  ['Training preferences','Workout display','Wearables','Data','Privacy','Appearance','About Baseline']
+    .forEach(function(n){
+      ok('Settings offers "'+n+'"', rows && rows.textContent.indexOf(n)>=0);
+    });
+  ['Appearance','Training','Health & data','Support'].forEach(function(s){
+    ok('and groups them under "'+s+'"',
+       document.getElementById('view').textContent.indexOf(s)>=0);
   });
   ok('every group row says what is in it',
-     rows && rows.querySelectorAll('.rw-s').length===SET_PANES.length);
+     rows && rows.querySelectorAll('.rw-s').length===listed,
+     rows?rows.querySelectorAll('.rw-s').length+'/'+listed:'none');
+  ok('and carries its own mark',
+     rows && rows.querySelectorAll('.rw-i svg').length===listed,
+     rows?rows.querySelectorAll('.rw-i svg').length+'/'+listed:'none');
 
   // each group opens, and none of them is empty
   SET_PANES.forEach(function(g){
     resetStack(); TAB='today'; openSettings();
-    var b=document.getElementById('setRows')
-            .querySelectorAll('button')[SET_PANES.indexOf(g)];
-    b.click();
+    openSetGroup(g.id);
     /* depth 1: Settings is a destination now, so only the row pushes. Back
        goes group -> the Settings index, which is the tab itself. */
     ok('group "'+g.id+'" pushes a page', STACK.length===1, STACK.length);
@@ -4068,9 +4091,16 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
              .map(function(e){return e.textContent.trim();}); };
   ok('the week section is not titled with a week that can change',
      headsOf().indexOf('This week')<0, headsOf().join(' | '));
-  ok('the week section is still labelled', headsOf().indexOf('Training')>=0, headsOf().join(' | '));
-  ok('and its heading names no period at all',
-     !headsOf().some(function(h){ return /week|Sep|Oct/.test(h); }), headsOf().join(' | '));
+  /* The heading names the period the strip is SHOWING and moves with it. An
+     earlier pass had it name no period at all, which was the safe answer to
+     "This week" being wrong once you pressed the arrow; naming the actual
+     range is the better one, as long as the two cannot disagree. */
+  var headText=function(){ return headsOf().filter(function(h){ return /^Training/.test(h); })[0]||''; };
+  ok('the week section is still labelled', /^Training/.test(headText()), headsOf().join(' | '));
+  ok('and its heading names the period on screen',
+     headText().indexOf(weekRangeLabel(weekStartOf(todayISO()),
+                                       addDays(weekStartOf(todayISO()),6)))>=0,
+     headText());
   var lbl=document.querySelector('#view .wk-l');
   ok('the strip is what names the week', lbl && /This week/.test(lbl.textContent),
      lbl?lbl.textContent:'(no strip)');
@@ -4085,8 +4115,11 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
     ok('stepping back names the exact period',
        lbl2 && /[0-9]{1,2}.*[0-9]{1,2} [A-Z][a-z][a-z]/.test(lbl2.textContent) && !/week/i.test(lbl2.textContent),
        lbl2?lbl2.textContent:'(no strip)');
-    ok('and no heading now disagrees with it',
-       headsOf().indexOf('This week')<0, headsOf().join(' | '));
+    ok('and the heading moved with it',
+       headText().indexOf(lbl2.textContent.trim())>=0
+       || headText().indexOf(weekRangeLabel(addDays(weekStartOf(todayISO()),-7),
+                                            addDays(weekStartOf(todayISO()),-1)))>=0,
+       headText()+'  vs strip  '+lbl2.textContent.trim());
   }
   WEEKOFF=0; SELDAY=null;
 
@@ -4225,7 +4258,9 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   DB.checkins[T]={date:T,energy:7,soreness:2,stress:3,motivation:7,pain:'None',sleepMin:430};
   v=home(); txt=v.textContent;
   ok('a check-in produces a real readiness score without any device',
-     /out of 100/.test(txt) && !/Learning your baseline/.test(txt), txt.slice(0,160));
+     !/Learning your baseline/.test(txt)
+     && /^[0-9]+$/.test((document.querySelector('#rdRow .arc-t')||{textContent:''}).textContent.trim()),
+     (document.querySelector('#rdRow .arc-t')||{textContent:'(none)'}).textContent);
   ok('sleep they reported themselves does get its tile',
      !!document.getElementById('ringSleep'));
   ok('but still no HRV or recovery tile', txt.indexOf('HRV')<0 && !/Avg recovery/.test(txt));
@@ -5387,7 +5422,7 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   var start = posOf('id="btnStart"');
   var why   = posOf('id="whyT"');
   var swap  = posOf('id="btnSwap"');
-  var week  = posOf('Training</div>');
+  var week  = posOf('class="sec-hd"');
   var log   = posOf('id="actsCard"');
 
   [['readiness row',rdrow],['recommendation',rec],['start button',start],
@@ -5627,19 +5662,37 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
      /Week [0-9]/.test(document.getElementById('appbar').textContent),
      document.getElementById('appbar').textContent);
 
-  // PROGRESS: the verdict, not a menu
-  resetStack(); TAB='progress'; render();
+  // PROGRESS: four views over one period
+  resetStack(); TAB='progress'; PTAB='overview'; POFF=0; render();
   var pv=document.getElementById('view');
-  ok('Progress leads with a verdict', !!pv.querySelector('.rec-t'));
-  ok('Progress shows the load chart without a tap', /Daily load/.test(pv.innerHTML));
-  ok('Progress puts the week above the rows',
-     pv.innerHTML.indexOf('Daily load') < pv.innerHTML.indexOf('pRows'),
-     pv.innerHTML.indexOf('Daily load')+' / '+pv.innerHTML.indexOf('pRows'));
-  ok('Progress still offers the full review', !!document.getElementById('pFull'));
-  ok('the full review pushes a page', (function(){
-    document.getElementById('pFull').click();
-    var ok2=STACK.length===1 && /What went well/.test(document.getElementById('view').innerHTML);
-    resetStack(); return ok2; })());
+  /* Progress is four views over one period, and the overview leads with the
+     load rather than a verdict sentence: the number and its direction say more
+     in less room than "Going well so far" did. */
+  ok('Progress offers its four views', !!document.getElementById('pSeg')
+     && document.querySelectorAll('#pSeg button').length===4,
+     document.querySelectorAll('#pSeg button').length);
+  ok('and opens on the overview',
+     document.querySelector('#pSeg button.on').textContent.trim()==='Overview',
+     document.querySelector('#pSeg button.on').textContent);
+  ok('the period is named and changeable', !!document.getElementById('pPeriod')
+     && /This week/.test(document.getElementById('pPeriod').textContent),
+     document.getElementById('pPeriod') ? document.getElementById('pPeriod').textContent.trim() : '(none)');
+  ok('Progress leads with the training load',
+     /Training load/.test(pv.innerHTML) && !!pv.querySelector('.pload .pl-v'),
+     pv.querySelector('.pload .pl-v') ? pv.querySelector('.pload .pl-v').textContent : '(none)');
+  ok('with the week charted beside it', !!pv.querySelector('.pload .pl-c svg.chart'));
+  ok('and sessions and activities as their own tiles',
+     pv.querySelectorAll('.stats .stat').length>=2 && /Sessions/.test(pv.innerHTML)
+     && /Activities/.test(pv.innerHTML));
+  ok('the load sits above the deeper rows',
+     pv.innerHTML.indexOf('Training load') < pv.innerHTML.indexOf('pRows'),
+     pv.innerHTML.indexOf('Training load')+' / '+pv.innerHTML.indexOf('pRows'));
+  ok('switching view keeps you on the tab, not a pushed page', (function(){
+    var b=document.querySelectorAll('#pSeg button')[1];
+    b.click();
+    var still=STACK.length===0 && document.querySelector('#pSeg button.on').textContent.trim()==='Training';
+    document.querySelectorAll('#pSeg button')[0].click();
+    return still; })(), 'STACK '+STACK.length);
 
   // and the four tabs must not all be the same shape - the actual complaint
   var shapes={};
@@ -5650,7 +5703,8 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
       v.querySelector('.rec')?'lead':'-',                 // a dominant block
       v.querySelector('.rows')?'rows':'-',                // navigation
       v.querySelector('.btn.primary.big')?'action':'-',   // a primary action
-      v.querySelector('.card')?'card':'-'
+      v.querySelector('.card')?'card':'-',
+      v.querySelector('.seg')?'views':'-'                 // several views of one thing
     ].join('/');
   });
   var distinct={}; var n=0;
@@ -5699,13 +5753,19 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
     }
   });
 
-  // no section keeps a horizontal sub-tab bar
-  ['workouts','tennis','progress'].forEach(function(tab){
+  /* Train keeps no sub-tab bar - its screen is a list of questions. Progress
+     does have one, because it genuinely holds four views of the same period
+     and a row list made you leave and come back to compare them. */
+  ['workouts','tennis'].forEach(function(tab){
     resetStack(); TAB=tab; render();
     ok(tab+' has no segment bar',
        !document.getElementById('wSeg') && !document.getElementById('aSeg')
-       && !document.getElementById('pSeg') && !document.getElementById('hSeg'));
+       && !document.getElementById('hSeg'));
   });
+  resetStack(); TAB='progress'; render();
+  ok('progress does have one, and only one',
+     document.querySelectorAll('#view .seg').length===1,
+     document.querySelectorAll('#view .seg').length);
 
   // Activity leads with logging, because that is what it is for
   resetStack(); TAB='today'; render();
@@ -5808,7 +5868,7 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
 
   // --- and it stays reachable from Settings forever ---
   resetStack(); openSettings();
-  var ai=SET_PANES.map(function(x){return x.id;}).indexOf('about');
+  var ai=SET_PANES.filter(function(x){return x.sec;}).map(function(x){return x.id;}).indexOf('about');
   document.getElementById('setRows').querySelectorAll('button')[ai].click();
   ok('Settings > About can reopen the walkthrough', !!document.getElementById('sTour'));
   document.getElementById('sTour').click();
@@ -5846,12 +5906,12 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   if(h){ h.click(); ok('it opens', document.getElementById('accWk').classList.contains('open'));
          ok('and holds the narrative', /What needs attention/.test(v.innerHTML)); }
 
-  // Progress is a list of questions, each with its answer on the row
-  resetStack(); TAB='progress'; render();
-  ok('Progress has no segment bar', !document.getElementById('pSeg'));
+  // Progress: four views of one period, the overview leading with the load
+  resetStack(); TAB='progress'; PTAB='overview'; POFF=0; render();
+  ok('Progress names its four views', document.querySelectorAll('#pSeg button').length===4);
   ok('Progress leads with the week before any row', (function(){
     var v=document.getElementById('view');
-    return v.innerHTML.indexOf('This week') < v.innerHTML.indexOf('pRows'); })());
+    return v.innerHTML.indexOf('Training load') < v.innerHTML.indexOf('pRows'); })());
 
   // "how did my week go" now owns the numbers AND the narrative
   resetStack(); openPane('This week',null,paneWeek);
@@ -7390,7 +7450,7 @@ ok('a stopped timer stays stopped', !restActive());
   try{ localStorage.setItem(KEY, JSON.stringify({whoop:DB.whoop})); }catch(e){}
 
   resetStack(); TAB='today'; openSettings();
-  var di=SET_PANES.map(function(x){return x.id;}).indexOf('data');
+  var di=SET_PANES.filter(function(x){return x.sec;}).map(function(x){return x.id;}).indexOf('data');
   document.getElementById('setRows').querySelectorAll('button')[di].click();
   var del=document.getElementById('sDelWhoop');
   /* it confirms first, and the confirmation says what is about to go */
