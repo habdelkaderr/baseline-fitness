@@ -779,13 +779,69 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
    rather than a calm one. */
 .wm-b.live{display:flex;flex-direction:column;gap:8px}
 .wm-b.live .wm-top{flex:0 0 auto}
-.wm-b.live .wm-mid{flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;
-  min-height:0}
+/* THE OVERLAP BUG.
+   This was `justify-content:center` with the default `overflow:visible`. A
+   flex container that centres content taller than itself spills it out of
+   BOTH ends, and nothing clips it - so on a 375x667 phone the middle band
+   measured 210px against 344px of content and pushed 134px of that outside
+   its own box: the illustration painted over the exercise name above, and the
+   set card landed on top of the Log set button below. Measured, not guessed:
+   .wset ran 377..495 while the button ran 365..421.
+
+   Auto margins centre the same way when there is room and collapse to zero
+   when there is not, so overflow scrolls inside the band instead of escaping
+   it. The button below can then never be covered. */
+.wm-b.live .wm-mid{flex:1 1 auto;display:flex;flex-direction:column;
+  min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;justify-content:flex-start}
+.wm-b.live .wm-mid > :first-child{margin-top:auto}
+.wm-b.live .wm-mid > :last-child{margin-bottom:auto}
+/* THE ILLUSTRATION YIELDS, THE INSTRUCTION DOES NOT.
+   With a fixed max-height the drawing took every pixel it was allowed and
+   the one line of instruction under it was the part that got scrolled out of
+   sight - which is the opposite of the priority. §17 wants the illustration
+   to have real presence; it does not want it to push the sentence off the
+   screen. So the drawing shrinks to whatever is left and the cue keeps its
+   own height. */
+.wm-b.live .wm-mid .illus{flex:1 1 auto;min-height:0}
+.wm-b.live .wm-mid .illus svg.fig{max-height:100%;height:100%;
+  object-fit:contain;width:100%}
+.wm-b.live .wm-mid .cue,
+.wm-b.live .wm-mid .wm-swap{flex:0 0 auto}
+/* The action band: the set card and the button. It never shrinks and never
+   scrolls, so the thing being tapped is always whole and always in place. */
 .wm-b.live .wm-bot{flex:0 0 auto}
 .wm-b.live .wm-bot .btn{margin-bottom:0}
+.wm-b.live .wm-bot .wset,.wm-b.live .wm-bot .hold{margin-bottom:10px}
+.wm-b.live .wm-bot .wrestx{margin-bottom:10px}
 .wm-b.live .wm-bot .peek{margin-top:12px}
 /* short phones: the middle band gives way rather than pushing the action off */
 @media (max-height:700px){ .wm-b.live{gap:4px} .wm-b.live .nowcard{padding:12px 14px} }
+/* Very short, which in practice means a small phone in landscape or a 320x568
+   in portrait with browser chrome. There is not room for a drawing AND a
+   sentence AND the set, so the drawing goes: the set and the button are what
+   the user is touching, and the sentence is what tells them what to do. A
+   squeezed illustration with a clipped instruction under it serves neither. */
+@media (max-height:520px){
+  .wm-b.live .wm-mid .illus{display:none}
+  .wm-b.live .wm-mid .wm-swap{display:none}
+  .wm-b.live .wm-mid .cue{margin-top:0}
+}
+/* Paused. Three lines and two buttons, because somebody who has just paused a
+   workout is dealing with whatever interrupted them, not reading. */
+.wpause{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;min-height:min(46vh,340px);gap:4px}
+.wpause .wp-i{width:62px;height:62px;border-radius:20px;background:var(--surface-2);
+  border:1px solid var(--border);display:flex;align-items:center;justify-content:center;
+  color:var(--text-2);margin-bottom:14px}
+.wpause .wp-i svg{width:28px;height:28px}
+.wpause .wp-t{font-size:27px;font-weight:850;letter-spacing:-.9px}
+.wpause .wp-s{font-size:13px;color:var(--text-3);font-weight:600}
+.wpause .wp-n{font-size:13.5px;color:var(--text-2);margin-top:14px;
+  padding:9px 14px;border-radius:11px;background:var(--surface-2);
+  border:1px solid var(--border)}
+.wpause .wp-n b{font-weight:750;color:var(--text)}
+
 .wm-f{
   padding:12px var(--gut-r) calc(14px + var(--sa-b)) var(--gut-l);
   border-top:1px solid var(--border-soft);background:var(--bg-elev);flex:0 0 auto;
@@ -1407,9 +1463,20 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 /* a list thumbnail */
 .illus.sm{width:56px;height:40px;flex:0 0 auto;background:var(--surface-2);
   border-radius:8px;padding:2px}
-.illus.none{display:flex;align-items:center;justify-content:center;color:var(--text-3)}
-.illus.none svg{width:26px;height:26px}
-.illus.sm.none{width:56px;height:40px}
+/* No verified drawing for this movement.
+   This has to read as an absence. It used to be the dumbbell icon, which on a
+   training screen looks like the illustration rather than the lack of one -
+   a silent claim about a movement nothing had checked. */
+.illus.none{display:flex;align-items:center;justify-content:center;color:var(--text-3);
+  border:1.5px dashed var(--border);border-radius:14px;min-height:96px;
+  background:var(--surface-2)}
+.illus.none svg{width:22px;height:22px}
+.illus.none .il-n{display:flex;flex-direction:column;align-items:center;gap:7px;
+  font-size:11.5px;font-weight:650;letter-spacing:.01em;padding:10px}
+.illus.lg.none{min-height:min(22vh,150px)}
+.illus.sm.none{width:56px;height:40px;min-height:0;border-radius:10px;padding:0}
+.illus.sm.none .il-n{gap:0;padding:0}
+.illus.sm.none svg{width:18px;height:18px}
 
 /* ---------- The warm-up sheet: every movement on one screen ----------
    An accordion, not a runner. Five movements are five lines; the one you are
@@ -1439,6 +1506,32 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .cue i{flex:0 0 auto;color:var(--accent);display:flex}
 .cue i svg{width:16px;height:16px}
 .cue span{font-size:12.5px;font-weight:650;color:var(--text-2);line-height:1.45}
+/* the cue is now a button - it opens the full instructions, which used to be
+   a second block of prose sitting under it */
+button.cue{width:100%;text-align:left;font-family:inherit;cursor:pointer}
+button.cue:active{background:var(--accent-line)}
+/* "this stands in for X", as one glance rather than a warning paragraph */
+.wm-swap{display:flex;align-items:center;gap:8px;margin-top:9px;
+  font-size:11.5px;font-weight:650;color:var(--text-3);line-height:1.35}
+.wm-swap svg{width:14px;height:14px;flex:0 0 auto;color:var(--text-3)}
+
+/* The check-in streak. One small mark on the date line: motivation to come
+   back, not a score, so it must never be the loudest thing on the screen. */
+.stk{display:inline-flex;align-items:center;gap:3px;margin-left:7px;
+  padding:1px 6px 1px 4px;border-radius:7px;background:var(--surface-2);
+  border:1px solid var(--border-soft);color:var(--text-3);
+  font-size:10.5px;font-weight:800;vertical-align:middle}
+.stk svg{width:11px;height:11px}
+
+/* A target the current equipment cannot reach. Deliberately quiet: it is not
+   a warning, it is a note that nothing was lost. */
+.tg-held{margin-top:12px;padding:11px 13px;border-radius:12px;
+  background:var(--surface-2);border:1px solid var(--border-soft)}
+.tg-held .tgh-t{display:flex;align-items:center;gap:7px;font-size:11.5px;
+  font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--text-3)}
+.tg-held .tgh-t svg{width:14px;height:14px}
+.tg-held .tgh-r{margin-top:8px;font-size:12.5px;line-height:1.5;color:var(--text-3)}
+.tg-held .tgh-r b{display:block;font-weight:750;color:var(--text-2);font-size:13.5px}
 
 /* ---------- Up next, as a row you can read at a glance ---------- */
 .unext{display:flex;align-items:center;gap:11px;width:100%;margin-top:12px;

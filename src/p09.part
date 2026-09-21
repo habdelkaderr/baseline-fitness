@@ -955,6 +955,15 @@ function settingsBody(v){
      ${toggleRow({id:'sRest', on:!!S.restTimerOn,
        label:'Rest timer between sets',
        hint:'Starts counting down in the card as soon as you log a set, so you do not have to time your own rest.'})}
+     ${''/* §12: opt-in, and the copy says what it will NOT do. The thing
+              people dislike about streaks is being punished for resting, so
+              the row promises the opposite before they turn it on. */}
+     ${toggleRow({id:'sStreak', on:S.streak===true,
+       label:'Show a check-in streak',
+       hint:'Counts days in a row you opened Baseline and checked in, logged '
+           +'something, or trained. A rest day, a recovery day or a day the '
+           +'engine tells you to rest <b>never</b> breaks it &mdash; it is not '
+           +'a train-every-day streak.'})}
      ${toggleRow({id:'sSound', on:S.sound!==false,
        label:'Sound',
        hint:'Three ticks as a rest runs out, a chime when it ends, a click when a set '
@@ -1275,6 +1284,7 @@ function settingsBody(v){
     S.autoAdjust=ck('sAuto',true);
     S.restTimerOn=ck('sRest',true);
     S.sound=ck('sSound',true);
+    S.streak=ck('sStreak',false);
     /* never left true without the permission that makes it mean anything */
     S.notify=ck('sNotify',false) && notifyState()==='granted';
     if(reDerive) applyGoalTargets(); else pruneTargets();
@@ -1314,7 +1324,7 @@ function settingsBody(v){
       });
     });
   })();
-  ['sAuto','sRest','sSound'].forEach(id=>{ const e=$('#'+id); if(!e)return;
+  ['sAuto','sRest','sSound','sStreak'].forEach(id=>{ const e=$('#'+id); if(!e)return;
     e.addEventListener('change',()=>{
       const on=e.checked;
       if(id==='sSound'&&on) SOUND.set();      // hear what you just turned on
@@ -1322,6 +1332,8 @@ function settingsBody(v){
         ? (on?'Readiness will adjust your session volume':'Sessions will always come at full volume')
         : id==='sSound'
         ? (on?'Sound on':'Sound off')
+        : id==='sStreak'
+        ? (on?'Streak on — rest days will not break it':'Streak off')
         : (on?'Rest timer on':'Rest timer off'),'ok');
     });
   });

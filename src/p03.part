@@ -568,6 +568,9 @@ function freshDB(){
     settings:{
       bands:{green:72,yellow:56,orange:42},
       autoAdjust:true, hardStrain:14, restTimerOn:true,
+      /* §12: off until asked for. A streak is motivation for some people
+         and pressure for others, and the app cannot tell which. */
+      streak:false,
       /* sound is on because it belongs to a timer the user started; alerts
          are off because they need a permission nobody has granted yet */
       sound:true, notify:false

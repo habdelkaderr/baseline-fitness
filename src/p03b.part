@@ -466,7 +466,19 @@ const TARGET_ORDER=['lower','upper','power','core','run','bike','mobility'];
 const TARGET_BAR={lower:'a',upper:'c',power:'o',core:'v',run:'g',bike:'c',mobility:'g'};
 /* slider bounds for the target editor */
 const TARGET_MAX={lower:5,upper:5,power:3,core:6,run:5,bike:6,mobility:7};
+/* The week's targets AS THEY CAN BE TRAINED TODAY.
+   Reads targetsNow(), which masks anything the current equipment cannot
+   reach without touching the stored intent - so a target hidden because the
+   bike is in the shed comes straight back when the bike does. */
 function targetKeys(){
+  const T=(typeof targetsNow==='function') ? targetsNow() : ((DB&&DB.targets)||{});
+  const inOrder=TARGET_ORDER.filter(k=>T[k]>0);
+  Object.keys(T).forEach(k=>{ if(T[k]>0&&inOrder.indexOf(k)<0) inOrder.push(k); });
+  return inOrder;
+}
+/* Every target the user has asked for, reachable or not. The editor and the
+   "why is this missing" line need the intent, not the mask. */
+function targetKeysIntent(){
   const T=(DB&&DB.targets)||{};
   const inOrder=TARGET_ORDER.filter(k=>T[k]>0);
   Object.keys(T).forEach(k=>{ if(T[k]>0&&inOrder.indexOf(k)<0) inOrder.push(k); });
@@ -1804,7 +1816,18 @@ function resolveOne(exId){
   const alt=DB.exercises
     .filter(x=>x.pat===e.pat && x.id!==e.id && canDo(x) && !blocked(x.pat) && notTaken(x))
     .sort((a,b)=>(b.tier||0)-(a.tier||0))[0];
-  return alt||fallbackFor(e)||e;
+  if(alt) return alt;
+  const fb=fallbackFor(e);
+  if(fb) return fb;
+  /* §8: EQUIPMENT IS A HARD CONSTRAINT.
+     This line used to be `|| e` - hand back the exercise the user cannot do.
+     The library always contains bodyweight work, so the branch was rare, and
+     rare is exactly how a prescription for kit somebody does not own reaches
+     a screen without anyone noticing. Anything needing nothing at all is a
+     worse session and an honest one. */
+  return DB.exercises.find(x=>(!x.needs||!x.needs.length) && x.id!==e.id && notTaken(x))
+      || DB.exercises.find(x=>(!x.needs||!x.needs.length) && x.id!==e.id)
+      || null;
 }
 /* graceful degradation when a whole pattern is unavailable — e.g. no space to
    run means sprint work becomes the nearest doable explosive/leg option */

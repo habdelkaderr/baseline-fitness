@@ -90,6 +90,9 @@ const ICON = {
   copy:'<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>',
   trash:'<path d="M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2M19 6l-1 14a1 1 0 01-1 1H7a1 1 0 01-1-1L5 6"/>',
   play:'<path d="M6 4l14 8-14 8z"/>', up:'<path d="M18 15l-6-6-6 6"/>',
+  /* pause, which the set had no glyph for - so the control that stops a
+     workout was wearing the stopwatch that means a rest timer */
+  pause:'<path d="M9 5v14M15 5v14"/>',
   dl:'<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
   ul:'<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>',
   flame:'<path d="M12 2s4 4.5 4 8a4 4 0 01-8 0c0-1 .5-2 .5-2S7 10 6 12a6 6 0 1012 0c0-5-6-10-6-10z"/>',
@@ -371,14 +374,16 @@ function haptic(){ try{ if(navigator.vibrate) navigator.vibrate(8);}catch(e){} }
    ====================================================================== */
 const DB_NAME='baseline';
 const DB_VERSION=2;                 // bump to add/alter object stores
-const SCHEMA_VERSION=2;             // bump to transform stored records
+const SCHEMA_VERSION=3;             // bump to transform stored records
+/* v3: equipment stopped being allowed to delete a training target. See
+   the migration in p10 - it restores the ones the old prune zeroed. */
 /* A readable build stamp. Without one, a tester reporting "it's broken" cannot
    tell you whether they are on today's build or a cached copy from last week,
    which is most of the diagnosis. Bump this on every deploy. */
 /* A date, plus a letter when more than one build ships in a day. Without the
    letter there was no way to tell a second same-day deploy from the cached
    copy of the first, which is exactly the question "did my upload work?". */
-const APP_BUILD='2026-09-21e';
+const APP_BUILD='2026-09-21f';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */
@@ -769,9 +774,13 @@ const whoopMode = ()=> !!(DB&&DB.profile&&DB.profile.source&&DB.profile.source!=
      4. Adding one is a pose object of six coordinate pairs, which is what
         "easy to expand" has to mean for this to keep up with 173 exercises.
 
-   Equipment drawn here is only what the app actually supports: bodyweight, a
-   pair of dumbbells, a band, a wall, the floor, a bike. No racks, no cables,
-   no machines - an illustration must never show kit the user has not got.
+   Equipment drawn here is only what the app actually supports as equipment:
+   bodyweight, dumbbells, a band, a kettlebell, a medicine ball, a pull-up or
+   fixed bar, a barbell, a bench/step/block, a wall, the floor, a bike. No
+   cables and no machines, because the app has no such tier - and an
+   illustration must never show kit the user has not got. A gym-only prop
+   (barbell, bar) is only ever reached from a gym-only exercise, which the
+   equipment gate has already filtered before the drawing is asked for.
 
    Coordinates: x 0..120, y 0..84, y downwards. Ground line at y=76.
    ====================================================================== */
@@ -810,6 +819,33 @@ function figProp(p){
     return `<path d="M${n(x-r)} ${n(y)} A${r} ${r} 0 1 1 ${n(x+r)} ${n(y)}" class="fg-a"
       fill="none" stroke-width="2"/>`;
   }
+  /* A fixed bar overhead: a pull-up bar. Drawn as equipment rather than
+     structure, because it is a thing the user has to own. */
+  if(p.t==='bar') return `<line x1="${n(p.x1)}" y1="${n(p.y)}" x2="${n(p.x2)}" y2="${n(p.y)}"
+      class="fg-e" stroke-width="3.2"/>`;
+  /* The edge of a table or a step, to row or press under. Structure, like the
+     wall and the ground, because "a sturdy table" is not equipment and must
+     not read as a bar somebody needs to buy. */
+  if(p.t==='edge') return `<path d="M${n(p.x1)} ${n(p.y)} H${n(p.x2)} V${n(p.y+4)}"
+      class="fg-g" fill="none" stroke-width="3"/>`;
+  if(p.t==='kb'){
+    /* bell with a handle - the handle is what tells it from a dumbbell */
+    const x=p.at[0], y=p.at[1];
+    return `<g class="fg-e"><path d="M${n(x-3.4)} ${n(y-3)} a3.4 3.4 0 0 1 6.8 0"
+        fill="none" stroke-width="2"/>
+      <circle cx="${n(x)}" cy="${n(y+2.4)}" r="4.2" class="fg-ef"/></g>`;
+  }
+  if(p.t==='ball') return `<circle cx="${n(p.at[0])}" cy="${n(p.at[1])}" r="5.2"
+      class="fg-e" fill="none" stroke-width="2.4"/>`;
+  if(p.t==='bb'){
+    /* a long bar with a collar at each end. Only ever drawn for exercises the
+       barbell tier actually unlocks, so it cannot appear for someone who has
+       told the app they train at home with a band. */
+    const x=p.at[0], y=p.at[1], w=p.w||24;
+    return `<g class="fg-e"><line x1="${n(x-w)}" y1="${n(y)}" x2="${n(x+w)}" y2="${n(y)}" stroke-width="2.4"/>
+      <line x1="${n(x-w+2.5)}" y1="${n(y-4.2)}" x2="${n(x-w+2.5)}" y2="${n(y+4.2)}" stroke-width="2.8"/>
+      <line x1="${n(x+w-2.5)}" y1="${n(y-4.2)}" x2="${n(x+w-2.5)}" y2="${n(y+4.2)}" stroke-width="2.8"/></g>`;
+  }
   if(p.t==='bike'){
     const x=p.at[0], y=p.at[1];
     return `<g class="fg-e"><circle cx="${n(x-13)}" cy="${n(y)}" r="9" fill="none" stroke-width="2.2"/>
@@ -835,13 +871,13 @@ function figSVG(p, o){
          class="fg-t" fill="none" stroke-width="6.4"/>`
     : seg(p.sh,p.hip,6.4,'fg-t');
   return `<svg viewBox="0 0 ${FIG_W} ${FIG_H}" class="fig" role="img" aria-hidden="true">
-    ${(p.props||[]).filter(x=>x.t==='wall'||x.t==='block').map(figProp).join('')}
+    ${(p.props||[]).filter(x=>x.t==='wall'||x.t==='block'||x.t==='edge').map(figProp).join('')}
     ${p.ground!==false?`<line x1="6" y1="${FIG_GND}" x2="${FIG_W-6}" y2="${FIG_GND}" class="fg-g" stroke-width="2.4"/>`:''}
     ${limb(p.hip,p.leg2,'fg-f')}${limb(p.sh,p.arm2,'fg-f')}
     ${spine}
     ${limb(p.hip,p.leg,'fg-l')}${limb(p.sh,p.arm,'fg-l')}
     <circle cx="${n(p.head[0])}" cy="${n(p.head[1])}" r="6.6" class="fg-h"/>
-    ${(p.props||[]).filter(x=>x.t!=='wall'&&x.t!=='block').map(figProp).join('')}
+    ${(p.props||[]).filter(x=>x.t!=='wall'&&x.t!=='block'&&x.t!=='edge').map(figProp).join('')}
   </svg>`;
 }
 
@@ -1066,6 +1102,304 @@ const POSES={
     arm:[[34,74],[24,76]], arm2:[[36,74],[26,76]],
     leg:[[82,56],[80,74]], leg2:[[76,58],[74,74]],
     props:[{t:'arr',a:[96,58],b:[86,58]},{t:'arr',a:[62,58],b:[72,58]}]},
+  /* ======================================================================
+     ADDED IN THE ILLUSTRATION AUDIT
+     Every pose below replaces a borrow that was wrong in a way a user would
+     see: a bench press drawn on the floor, a box jump with no box, a
+     suitcase carry with two weights, a single-leg squat drawn on two legs, a
+     hamstring bridge-curl drawn as a biceps curl. The rule applied was: if
+     the body position, the moving limb, the direction of travel and the
+     implement are not all right, it is not the same drawing.
+     ================================================================== */
+
+  /* ---- pressing on a bench ---------------------------------------------
+     floor-press was standing in for both of these. On the floor the upper
+     arm stops at the ground, which is the whole difference between a floor
+     press and a bench press, so it cannot show either bench variant. */
+  'db-bench-press':{head:[26,54],sh:[40,54],hip:[70,54],
+    arm:[[40,42],[40,30]], arm2:[[42,44],[42,32]],
+    leg:[[84,60],[84,74]], leg2:[[82,62],[82,76]],
+    props:[{t:'block',x:22,y:58,w:62},{t:'db',at:[40,29]},{t:'arr',a:[56,38],b:[56,26]}]},
+  'db-incline-press':{head:[88,30],sh:[76,40],hip:[48,58],
+    arm:[[76,28],[76,14]], arm2:[[74,30],[74,16]],
+    leg:[[34,66],[20,74]], leg2:[[32,68],[18,76]],
+    props:[{t:'block',x:44,y:58,w:46},{t:'db',at:[76,13]},{t:'arr',a:[96,26],b:[96,14]}]},
+
+  /* ---- the barbell lifts ----------------------------------------------
+     These were drawing a pair of dumbbells for a bar, which is the one
+     mistake a lifter spots instantly. */
+  'bb-squat':{head:[62,26],sh:[56,38],hip:[48,56],
+    arm:[[64,40],[74,36]], arm2:[[64,42],[74,38]],
+    leg:[[70,58],[62,76]], leg2:[[68,60],[60,76]],
+    props:[{t:'bb',at:[58,34],w:26},{t:'arr',a:[30,46],b:[30,62]}]},
+  'bb-hinge':{head:[32,34],sh:[44,38],hip:[66,44],
+    arm:[[44,50],[44,62]], leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]],
+    props:[{t:'bb',at:[44,64],w:22},{t:'arr',a:[22,54],b:[22,42]}]},
+  'bb-bench':{head:[26,54],sh:[40,54],hip:[70,54],
+    arm:[[40,42],[40,30]], arm2:[[42,44],[42,32]],
+    leg:[[84,60],[84,74]], leg2:[[82,62],[82,76]],
+    props:[{t:'block',x:22,y:58,w:62},{t:'bb',at:[41,28],w:20},{t:'arr',a:[58,38],b:[58,26]}]},
+  'bb-ohp':{head:[60,20],sh:[60,34],hip:[60,52],
+    arm:[[46,26],[44,12]], arm2:[[74,26],[76,12]],
+    leg:[[54,64],[52,76]], leg2:[[66,64],[68,76]],
+    props:[{t:'bb',at:[60,11],w:26},{t:'arr',a:[60,20],b:[60,6]}]},
+  'bb-row':{head:[30,36],sh:[44,40],hip:[66,46],
+    arm:[[46,52],[50,42]], arm2:[[44,54],[48,44]],
+    leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]],
+    props:[{t:'bb',at:[49,62],w:22},{t:'arr',a:[68,66],b:[68,52]}]},
+  'bb-hip-thrust':{head:[22,66],sh:[34,66],hip:[60,54],
+    arm:[[32,72],[24,76]], arm2:[[34,72],[26,76]],
+    leg:[[84,60],[84,76]], leg2:[[82,62],[82,76]],
+    props:[{t:'block',x:8,y:66,w:26},{t:'bb',at:[60,48],w:18},{t:'arr',a:[60,40],b:[60,46]}]},
+
+  /* ---- hanging from a bar --------------------------------------------
+     These three had no drawing at all, which was at least honest. */
+  'pull-up':{head:[60,26],sh:[60,38],hip:[60,58],
+    arm:[[52,28],[50,16]], arm2:[[68,28],[70,16]],
+    leg:[[58,70],[48,78]], leg2:[[62,70],[52,80]],
+    props:[{t:'bar',x1:24,x2:96,y:14},{t:'arr',a:[88,42],b:[88,28]}], ground:false},
+  'hang-leg-raise':{head:[54,26],sh:[54,38],hip:[54,58],
+    arm:[[48,28],[46,16]], arm2:[[60,28],[62,16]],
+    leg:[[72,58],[88,56]], leg2:[[70,60],[86,58]],
+    props:[{t:'bar',x1:20,x2:90,y:14},{t:'arr',a:[102,74],b:[102,58]}], ground:false},
+  /* under a table or a step, which is what the library's inverted row uses */
+  'inverted-row':{head:[28,62],sh:[42,60],hip:[72,64],
+    arm:[[42,48],[44,36]], arm2:[[44,50],[46,38]],
+    leg:[[86,66],[100,70]], leg2:[[84,68],[98,72]],
+    props:[{t:'edge',x1:20,x2:62,y:32},{t:'arr',a:[60,54],b:[60,42]}]},
+
+  /* ---- the kettlebell ------------------------------------------------ */
+  'kb-swing':{head:[32,34],sh:[44,38],hip:[66,44],
+    arm:[[46,50],[48,62]], leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]],
+    props:[{t:'kb',at:[48,64]},{t:'arr',a:[30,60],b:[16,46]}]},
+  'kb-front-squat':{head:[62,26],sh:[56,38],hip:[48,56],
+    arm:[[62,40],[60,34]], arm2:[[64,42],[62,36]],
+    leg:[[70,58],[62,76]], leg2:[[68,60],[60,76]],
+    props:[{t:'kb',at:[61,31]}]},
+
+  /* ---- the medicine ball --------------------------------------------
+     A rotational THROW was drawn as a band Pallof press, which is an
+     isometric hold: opposite intent, opposite implement. */
+  'ball-throw':{head:[50,18],sh:[50,32],hip:[52,50],
+    arm:[[62,32],[74,28]], arm2:[[60,34],[72,30]],
+    leg:[[44,62],[38,76]], leg2:[[62,62],[68,76]],
+    props:[{t:'wall',x:110},{t:'ball',at:[79,27]},{t:'arr',a:[88,40],b:[102,36]}]},
+
+  /* ---- stepping onto and down from something ------------------------
+     Both were drawn as a lunge, which has no step in it. */
+  'step-up':{head:[42,16],sh:[42,30],hip:[44,50],
+    arm:[[46,40],[48,52]], arm2:[[38,40],[36,52]],
+    leg:[[60,54],[76,58]], leg2:[[40,64],[36,76]],
+    props:[{t:'block',x:74,y:58,w:32},{t:'arr',a:[22,58],b:[22,44]}]},
+  'step-down':{head:[72,14],sh:[72,28],hip:[72,48],
+    arm:[[76,38],[78,50]], arm2:[[68,38],[66,50]],
+    leg:[[74,60],[76,70]], leg2:[[58,58],[42,66]],
+    props:[{t:'block',x:64,y:70,w:42},{t:'arr',a:[26,52],b:[26,68]}]},
+  'box-jump':{head:[38,28],sh:[32,40],hip:[24,56],
+    arm:[[42,44],[54,38]], arm2:[[40,46],[52,42]],
+    leg:[[46,60],[38,76]], leg2:[[44,62],[36,76]],
+    props:[{t:'block',x:76,y:50,w:34},{t:'arr',a:[54,52],b:[76,40]}]},
+
+  /* ---- carrying one weight, not two -------------------------------- */
+  'suitcase-carry':{head:[60,14],sh:[58,28],hip:[56,48],
+    arm:[[62,38],[64,50]], arm2:[[50,38],[46,48]],
+    leg:[[68,60],[74,76]], leg2:[[46,62],[40,76]],
+    props:[{t:'db',at:[64,52]}]},
+  'suitcase-march':{head:[60,14],sh:[58,28],hip:[56,48],
+    arm:[[62,38],[64,50]], arm2:[[50,38],[46,48]],
+    leg:[[58,62],[58,76]], leg2:[[72,52],[86,58]],
+    props:[{t:'db',at:[64,52]},{t:'arr',a:[96,62],b:[96,50]}]},
+
+  /* ---- one leg, drawn on one leg ----------------------------------- */
+  'sl-squat':{head:[62,28],sh:[56,40],hip:[48,58],
+    arm:[[62,44],[74,40]], arm2:[[62,46],[74,44]],
+    leg:[[66,62],[58,76]], leg2:[[62,52],[80,48]],
+    props:[{t:'arr',a:[30,48],b:[30,62]}]},
+  'sl-hinge':{head:[30,36],sh:[42,40],hip:[64,44],
+    arm:[[44,34],[56,26]], arm2:[[44,48],[46,60]],
+    leg:[[64,58],[64,76]], leg2:[[82,42],[98,38]]},
+  /* One leg bent and loaded, the other straight, and the torso over the bent
+     one. Drawn symmetric it read as a wide squat, which is a different
+     exercise with a different point. */
+  'lateral-lunge':{head:[42,22],sh:[44,34],hip:[52,52],
+    arm:[[40,44],[34,54]], arm2:[[50,44],[56,54]],
+    leg:[[34,64],[32,76]], leg2:[[74,64],[100,74]],
+    props:[{t:'arr',a:[16,48],b:[16,64]}]},
+
+  /* ---- on the back: hamstrings and hips ----------------------------
+     x17 Single-Leg Bridge Curl was drawing a DUMBBELL BICEPS CURL, because
+     its name contains the word curl. That one mistake is why the whole
+     resolution moved from name rules to an explicit table. */
+  'sliding-leg-curl':{head:[24,70],sh:[36,70],hip:[60,56],
+    arm:[[32,74],[22,76]], arm2:[[34,74],[24,76]],
+    leg:[[82,62],[96,72]], leg2:[[80,64],[94,74]],
+    props:[{t:'arr',a:[100,58],b:[112,66]}]},
+  'sl-bridge-curl':{head:[24,70],sh:[36,70],hip:[60,56],
+    arm:[[32,74],[22,76]],
+    leg:[[82,62],[96,72]], leg2:[[76,48],[92,42]],
+    props:[{t:'arr',a:[100,58],b:[112,66]}]},
+  'band-leg-curl':{head:[96,62],sh:[84,66],hip:[50,70],
+    arm:[[86,58],[98,52]], arm2:[[84,60],[96,54]],
+    leg:[[36,66],[44,52]], leg2:[[34,70],[20,72]],
+    props:[{t:'wall',x:10},{t:'anchor',at:[10,70]},
+           {t:'band',a:[10,70],b:[44,52],c:[24,66]},{t:'arr',a:[56,48],b:[48,38]}]},
+  'hip-thrust-march':{head:[26,70],sh:[36,70],hip:[62,54],
+    arm:[[32,74],[24,76]], arm2:[[34,74],[26,76]],
+    leg:[[84,60],[84,76]], leg2:[[78,46],[76,34]],
+    props:[{t:'arr',a:[96,44],b:[96,32]}]},
+  'bridge-walkout':{head:[20,70],sh:[32,70],hip:[58,58],
+    arm:[[28,74],[18,76]], arm2:[[30,74],[20,76]],
+    leg:[[86,64],[104,74]], leg2:[[84,66],[102,76]],
+    props:[{t:'arr',a:[106,60],b:[116,68]}]},
+  'frog-pump':{head:[26,70],sh:[38,70],hip:[62,58],
+    arm:[[34,74],[24,76]], arm2:[[36,74],[26,76]],
+    leg:[[86,52],[94,68]], leg2:[[82,64],[92,70]],
+    props:[{t:'arr',a:[62,48],b:[62,54]}]},
+  'reverse-crunch':{head:[26,70],sh:[38,70],hip:[64,64],
+    arm:[[34,74],[24,76]], arm2:[[36,74],[26,76]],
+    leg:[[70,50],[56,46]], leg2:[[68,52],[54,48]],
+    props:[{t:'arr',a:[88,58],b:[76,48]}]},
+  'windshield-wiper':{head:[26,70],sh:[38,70],hip:[66,70],
+    arm:[[36,62],[22,58]], arm2:[[38,74],[24,76]],
+    leg:[[74,56],[86,44]], leg2:[[72,58],[84,46]],
+    props:[{t:'arc',at:[86,42],r:9}]},
+  'adductor-slide':{head:[26,70],sh:[38,70],hip:[64,66],
+    arm:[[34,74],[24,76]], arm2:[[36,74],[26,76]],
+    leg:[[82,56],[80,74]], leg2:[[76,58],[74,74]],
+    props:[{t:'arr',a:[70,58],b:[58,58]},{t:'arr',a:[88,58],b:[100,58]}]},
+  'side-lying-adductor':{head:[96,64],sh:[86,66],hip:[56,70],
+    arm:[[86,58],[86,46]], arm2:[[84,72],[76,76]],
+    leg:[[40,64],[24,58]], leg2:[[42,74],[26,76]],
+    props:[{t:'arr',a:[14,70],b:[14,56]}]},
+
+  /* ---- front support variants ------------------------------------- */
+  'bear-hold':{head:[30,50],sh:[44,46],hip:[80,46],
+    arm:[[44,60],[44,76]], arm2:[[42,60],[42,76]],
+    leg:[[80,60],[90,70]], leg2:[[78,60],[88,72]]},
+  'mountain-climber':{head:[86,48],sh:[74,52],hip:[48,56],
+    arm:[[74,64],[80,76]], arm2:[[72,64],[78,76]],
+    leg:[[30,62],[18,74]], leg2:[[56,58],[68,62]],
+    props:[{t:'arr',a:[38,50],b:[56,50]}]},
+  'feet-elev-push-up':{head:[92,62],sh:[80,62],hip:[54,56],
+    arm:[[90,70],[86,76]], arm2:[[88,70],[84,76]],
+    leg:[[36,50],[22,46]], leg2:[[34,52],[20,48]],
+    props:[{t:'block',x:8,y:46,w:26},{t:'arr',a:[66,48],b:[66,58]}]},
+  'archer-push-up':{head:[88,56],sh:[76,60],hip:[50,60],
+    arm:[[86,68],[80,76]], arm2:[[60,66],[42,74]],
+    leg:[[32,64],[18,74]], leg2:[[30,66],[16,76]],
+    props:[{t:'arr',a:[64,44],b:[64,54]}]},
+  'diamond-push-up':{head:[88,56],sh:[76,60],hip:[50,60],
+    arm:[[80,68],[72,76]], arm2:[[78,68],[70,76]],
+    leg:[[32,64],[18,74]], leg2:[[30,66],[16,76]],
+    props:[{t:'arr',a:[62,44],b:[62,54]}]},
+  'prone-lat-pull':{head:[94,60],sh:[82,66],hip:[46,70],
+    arm:[[88,56],[100,50]], arm2:[[78,60],[70,52]],
+    leg:[[30,70],[16,72]], leg2:[[28,72],[14,74]],
+    props:[{t:'arr',a:[106,46],b:[92,42]}]},
+
+  /* ---- standing, band ---------------------------------------------- */
+  'band-curl':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[48,40],[50,26]], arm2:[[72,40],[74,52]],
+    leg:[[54,62],[52,76]], leg2:[[66,62],[68,76]],
+    props:[{t:'band',a:[52,76],b:[50,26],c:[36,52]},{t:'arr',a:[34,44],b:[34,30]}]},
+  'band-pull-through':{head:[32,34],sh:[44,38],hip:[66,44],
+    arm:[[46,52],[50,64]], leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]],
+    props:[{t:'wall',x:112},{t:'anchor',at:[112,72]},
+           {t:'band',a:[112,72],b:[50,64]},{t:'arr',a:[26,52],b:[14,44]}]},
+  'band-good-morning':{head:[32,34],sh:[44,38],hip:[66,44],
+    arm:[[46,34],[50,30]], leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]],
+    props:[{t:'band',a:[44,36],b:[66,76],c:[46,58]},{t:'arr',a:[26,52],b:[26,40]}]},
+
+  /* ---- running drills ---------------------------------------------- */
+  'wall-drill':{head:[46,18],sh:[48,32],hip:[52,50],
+    arm:[[38,28],[26,22]], arm2:[[40,30],[28,24]],
+    leg:[[54,64],[58,76]], leg2:[[66,52],[80,56]],
+    props:[{t:'wall',x:20},{t:'arr',a:[94,60],b:[94,46]}]},
+  'resisted-sprint':{head:[62,14],sh:[60,28],hip:[56,48],
+    arm:[[70,34],[78,26]], arm2:[[46,36],[38,44]],
+    leg:[[74,54],[86,64]], leg2:[[42,60],[28,56]],
+    props:[{t:'anchor',at:[8,48]},{t:'band',a:[8,48],b:[56,48],c:[32,56]},
+           {t:'arr',a:[96,40],b:[110,40]}]},
+  'toe-walk':{head:[60,14],sh:[58,28],hip:[56,48],
+    arm:[[64,38],[68,48]], arm2:[[50,38],[46,48]],
+    leg:[[68,58],[74,70]], leg2:[[46,60],[40,70]],
+    props:[{t:'arr',a:[94,64],b:[94,52]}]},
+  'heel-lower':{head:[58,14],sh:[58,28],hip:[58,48],
+    arm:[[58,38],[58,48]], leg:[[58,60],[58,72]],
+    leg2:[[46,58],[48,46]],
+    props:[{t:'arr',a:[76,38],b:[76,54]},{t:'wall',x:98}]},
+
+  /* ---- named by the validator: prescribed by a workout, needs only home kit ---- */
+  'hamstring-flow':{head:[24,70],sh:[36,70],hip:[64,70],
+    arm:[[46,62],[58,56]], arm2:[[42,72],[30,76]],
+    leg:[[76,56],[86,40]], leg2:[[84,72],[100,74]],
+    props:[{t:'arr',a:[98,52],b:[98,40]}]},
+  'wall-iso-raise':{head:[52,16],sh:[52,30],hip:[52,50],
+    arm:[[66,30],[80,30]], arm2:[[46,40],[44,52]],
+    leg:[[48,62],[46,76]], leg2:[[56,62],[58,76]],
+    props:[{t:'wall',x:88},{t:'arr',a:[72,44],b:[72,34]}]},
+  /* both hands meet: one arm curls, the other resists it. No dumbbell, which
+     is the whole point - this exercise is what you do when you have none. */
+  'self-resisted-curl':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[48,40],[52,26]], arm2:[[72,38],[56,26]],
+    leg:[[54,62],[52,76]], leg2:[[66,62],[68,76]],
+    props:[{t:'arr',a:[36,44],b:[36,30]}]},
+
+  /* ---- one limb, drawn on one limb -------------------------------------
+     §1 asks whether the drawing says unilateral or bilateral. These three
+     were saying bilateral for unilateral work. */
+  'sl-hop':{head:[62,24],sh:[56,36],hip:[48,54],
+    arm:[[66,40],[78,34]], arm2:[[64,42],[76,38]],
+    leg:[[70,58],[62,76]], leg2:[[62,50],[78,44]],
+    props:[{t:'arr',a:[34,52],b:[34,26]}]},
+  'row-single':{head:[30,36],sh:[44,40],hip:[66,46],
+    arm:[[48,52],[54,42]], arm2:[[42,50],[36,58]],
+    leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]],
+    props:[{t:'arr',a:[56,64],b:[56,48]}]},
+
+  /* ---- travelling, not rising ----------------------------------------
+     A broad jump with an upward arrow is an instruction to do a vertical
+     jump. The whole exercise is the horizontal distance. */
+  'broad-jump':{head:[62,24],sh:[56,36],hip:[48,54],
+    arm:[[66,40],[80,36]], arm2:[[64,42],[78,38]],
+    leg:[[70,58],[62,76]], leg2:[[68,60],[60,76]],
+    props:[{t:'arr',a:[86,50],b:[112,44]}]},
+  'split-jump':{head:[58,22],sh:[56,34],hip:[54,52],
+    arm:[[64,40],[74,32]], arm2:[[46,42],[36,36]],
+    leg:[[72,56],[84,64]], leg2:[[40,58],[26,66]],
+    props:[{t:'arr',a:[14,48],b:[14,26]}]},
+
+  /* ---- the load that was missing -------------------------------------- */
+  'band-raise':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[44,28],[30,28]], arm2:[[76,28],[90,28]],
+    leg:[[54,62],[52,76]], leg2:[[66,62],[68,76]],
+    props:[{t:'band',a:[30,28],b:[52,76],c:[34,54]},
+           {t:'band',a:[90,28],b:[68,76],c:[86,54]},
+           {t:'arr',a:[30,42],b:[30,31]}]},
+  'db-hip-thrust':{head:[26,70],sh:[36,70],hip:[62,54],
+    arm:[[32,68],[46,56]], arm2:[[34,70],[48,58]],
+    leg:[[84,60],[84,76]], leg2:[[82,62],[82,76]],
+    props:[{t:'db',at:[54,50]},{t:'arr',a:[62,44],b:[62,50]}]},
+  'band-glute-bridge':{head:[26,70],sh:[36,70],hip:[62,54],
+    arm:[[32,74],[24,76]], arm2:[[34,74],[26,76]],
+    leg:[[84,60],[84,76]], leg2:[[82,62],[82,76]],
+    props:[{t:'band',a:[48,52],b:[78,54],c:[62,44]},{t:'arr',a:[62,40],b:[62,48]}]},
+
+  /* landing on one leg, which is the exercise and the risk both */
+  'sl-landing':{head:[54,18],sh:[56,32],hip:[62,50],
+    arm:[[48,38],[38,32]], arm2:[[66,40],[74,34]],
+    leg:[[78,60],[84,76]], leg2:[[58,54],[44,48]],
+    props:[{t:'arr',a:[100,44],b:[86,44]}]},
+
+  /* ---- hips on the floor ------------------------------------------- */
+  pigeon:{head:[40,38],sh:[44,50],hip:[54,66],
+    arm:[[58,60],[70,64]], arm2:[[56,62],[68,66]],
+    leg:[[46,72],[28,70]], leg2:[[72,70],[92,72]]},
+  'adductor-rock':{head:[30,52],sh:[44,48],hip:[80,48],
+    arm:[[44,60],[44,76]], arm2:[[42,60],[42,76]],
+    leg:[[80,62],[92,74]], leg2:[[86,58],[106,62]],
+    props:[{t:'arr',a:[62,36],b:[46,36]}]},
+
   'worlds-greatest':{head:[46,26],sh:[48,38],hip:[44,56],
     arm:[[54,30],[60,18]], arm2:[[46,52],[44,70]],
     leg:[[70,58],[74,76]], leg2:[[30,66],[18,74]],
@@ -1076,7 +1410,20 @@ const POSES={
     props:[{t:'wall',x:112},{t:'anchor',at:[112,20]},{t:'band',a:[112,20],b:[64,22],c:[88,18]}]}
 };
 
-/* WHICH POSE AN EXERCISE USES.
+/* RETIRED: name rules.
+   These decided every exercise's drawing until the illustration audit. They
+   are kept only because WU_ILLUS below is the same idea applied to warm-up
+   movement names, which genuinely have no id - and because the list is the
+   record of which names were ambiguous. NOTHING READS POSE_RULES ANY MORE;
+   illusKey() goes to EX_ILLUS. If you are adding an exercise, add a line to
+   EX_ILLUS, look at the drawing, and leave it null if it is not right.
+
+   What went wrong with rules, concretely: order decided meaning. "Sliding Leg
+   Curl" had to be caught by the hamstring rule before the biceps rule saw
+   "curl", "Step-Up" fell into the lunge rule because no step existed to draw,
+   and a name nobody had written a rule for silently got the nearest match
+   instead of nothing.
+
    Derived from the name, by rules, in order - not from a table of ids.
 
    The first version WAS a table of ids, written by reading the id ranges and
@@ -1178,18 +1525,36 @@ const POSE_RULES=[
   [/\bbounds?\b/,                          'jump']
 ];
 
-/* Exceptions only. Anything in here is a movement whose name does not describe
-   its shape; it is deliberately short, and a growing one is a sign a rule
-   should be added instead. */
+/* RETIRED with POSE_RULES. Every one of these is now a line in EX_ILLUS,
+   which is where an exception and a rule look the same - because to the
+   reader of a table they are the same. */
 const EX_ILLUS_OVERRIDE={
   mo12:'legs-up-wall',     /* "Hamstring Flow" is a supine flow, not a hinge */
   sp01:'decel',            /* "Split-Step Reaction Drill" is a braking step */
   sp07:'lateral-bound'     /* "Crossover Step Start" moves sideways first */
 };
 
-/* Warm-up movements whose names the rules cannot reach - mostly swings and
-   circles, which describe a motion rather than a shape. */
+/* WARM-UP MOVEMENTS, BY NAME.
+   A warm-up item is a line of text inside a workout - "Pogo hops", "12 reps"
+   - not a library row, so it has no id to look up and a name is all there
+   is. This is now the ONLY place a name decides a drawing, and it is a
+   closed table: a warm-up name that is not here gets the placeholder, not
+   the nearest match.
+
+   Keys are lower-cased, because illusKey() lower-cases before looking up. */
 const WU_ILLUS={
+  /* the stock routines, every movement they prescribe */
+  'ankle dorsiflexion rock':'ankle-rock', 'bodyweight squats':'squat',
+  'glute bridge':'glute-bridge', 'walking lunge':'lunge',
+  'pogo hops':'pogo-hops', 'band pull-apart':'band-pull-apart',
+  'wall slides':'wall-slides', 'shoulder cars':'shoulder-cars',
+  'scapular push-ups':'scap-pushup', 'incline push-ups':'incline-push-up',
+  'band face pull':'band-face-pull', "world's greatest stretch":'worlds-greatest',
+  'a-skips':'run', 'high knees':'run', 'butt kicks':'run',
+  'lateral shuffle':'lateral-bound', 'split squat':'split-squat',
+  '90/90 hip switch':'hip-90-90', 'cat-cow':'cat-cow',
+  'dead bug':'dead-bug', 'bird dog':'bird-dog',
+  /* motions rather than shapes, which is why they are named here at all */
   'arm circles':'arm-circles', 'arm circles + leg swings':'arm-circles',
   'leg swings front/back':'stand', 'leg swings lateral':'stand',
   'leg swings all directions':'stand', 'hip circles + leg swings':'stand',
@@ -1203,46 +1568,316 @@ const WU_ILLUS={
   'build-up runs':'run', 'build-up sprints':'run',
   'countermovement jumps':'jump', 'drop and stick':'decel',
   'lateral shuffle + crossover':'lateral-bound',
-  'split step + first step':'decel', 'adductor rock':'hip-90-90'
+  'split step + first step':'decel', 'adductor rock':'adductor-rock'
 };
 
-/* The one lookup everything else uses. Returns a pose key or null - never a
-   guess, because a wrong illustration is worse than none. */
+/* =========================================================================
+   EXERCISE -> ILLUSTRATION, EXPLICITLY
+   ------------------------------------------------------------------------
+   One line per exercise id. The pose named here was compared against the
+   rendered drawing, checking body position, which limb moves, the direction
+   of travel, the implement in the hands, whether it is one limb or two, and
+   whether the arrow says what actually happens. `null` means no drawing has
+   been verified for it, and null renders a placeholder rather than the
+   nearest-looking thing.
+
+   This replaces name-pattern matching. Patterns are how a hamstring bridge
+   curl came to be drawn as a biceps curl: the name contained "curl", the
+   rule fired, and nothing downstream could tell that the picture was of a
+   different exercise entirely. A table makes a wrong drawing a visible line
+   in a diff instead of an emergent property of rule order.
+
+   Where two exercises share a pose it is because the drawing is true of
+   both - Chin-Up and Pull-Up differ only in grip, which a stick figure
+   cannot show and which no drawing here pretends to show.
+   ====================================================================== */
+const EX_ILLUS = {
+  /* ---- cardio ---- */
+  cd01:'run',              // Zone 2 Run
+  cd02:'bike',             // Zone 2 Bike
+  cd03:'run',              // Tennis Interval Run
+  cd04:'run',              // Hill Sprints
+  cd05:'bike',             // Recovery Spin
+  cd06:'walk',             // Easy Walk
+  cd07:'bike',             // Bike Intervals
+  cd08:'run',              // Tempo Run
+
+  /* ---- core ---- */
+  co01:'plank',            // RKC Plank
+  co02:'plank',            // Long-Lever Plank
+  co03:'side-plank',       // Side Plank
+  co04:'side-plank',       // Side Plank Hip Dip
+  co05:'dead-bug',         // Dead Bug
+  co06:'bird-dog',         // Bird Dog
+  co07:'hollow-hold',      // Hollow Body Hold
+  co08:'bear-hold',        // Bear Hold / Bear Crawl - knees off the floor, not a plank
+  co09:'band-pallof',      // Band Pallof Press
+  co10:'band-pallof',      // Band Anti-Rotation Hold
+  co11:'band-pallof',      // Half-Kneeling Band Chop
+  co12:'band-pallof',      // Band Rotational Press
+  co13:'suitcase-carry',   // Suitcase Carry - ONE weight
+  co14:'suitcase-march',   // Suitcase March - one weight, knee up
+  co15:'mountain-climber', // Mountain Climbers - was a static plank
+  co16:'reverse-crunch',   // Reverse Crunch - was a hollow hold
+  co17:'hollow-hold',      // Hollow Rock
+
+  /* ---- gym library ---- */
+  g01:'bb-squat',          // Barbell Back Squat - was a bodyweight squat
+  g02:'bb-hinge',          // Barbell Romanian Deadlift - was an unloaded hinge
+  g03:'bb-hip-thrust',     // Barbell Hip Thrust - was a floor glute bridge
+  g04:null,                // Leg Press - a machine, and machines are not drawn
+  g05:null,                // Seated Leg Curl - a machine; was drawn as a Nordic curl
+  g06:'calf-raise',        // Standing Calf Raise (machine) - the movement is the same
+  g07:'lunge',             // Walking Lunge (loaded)
+  g08:'bb-bench',          // Barbell Bench Press - had no drawing at all
+  g09:'db-bench-press',    // DB Bench Press - was drawn on the floor
+  g10:'bb-ohp',            // Overhead Press (barbell) - was two dumbbells
+  g11:null,                // Cable Lateral Raise - a cable stack is not drawn
+  g12:'pull-up',           // Pull-Up
+  g13:null,                // Lat Pulldown - a machine; was drawn as a band
+  g14:'bb-row',            // Barbell Row - was an unloaded bent-over row
+  g15:null,                // Seated Cable Row - a machine
+  g16:null,                // Cable Face Pull - a cable stack
+  g17:'band-pallof',       // Cable Pallof Press - same position and direction
+  g18:null,                // Cable Woodchop - a cable stack
+  g19:'hang-leg-raise',    // Hanging Leg Raise - had no drawing
+  g20:null,                // Trap Bar Jump - a trap bar is not drawn
+  g21:'db-incline-press',  // Incline DB Press - was drawn flat on the floor
+  g22:'row',               // Chest-Supported DB Row
+  g23:'split-squat',       // Bulgarian Split Squat (loaded)
+  g24:'nordic',            // Nordic Curl (anchored)
+  g25:'carry',             // Farmer Carry - two weights, which is right here
+  g26:'box-jump',          // Box Jump - was a jump with no box
+  g27:'ball-throw',        // Med Ball Rotational Throw - was a band Pallof press
+  g28:null,                // Treadmill / Rower Intervals - no one machine to draw
+
+  /* ---- lower body ---- */
+  lx01:'goblet-squat',     // Tempo Goblet Squat
+  lx02:'split-squat',      // Bulgarian Split Squat
+  lx03:'split-squat',      // Split Squat
+  lx04:'lunge',            // Reverse Lunge
+  lx05:'lateral-lunge',    // Lateral Lunge - was a forward lunge
+  lx06:'lateral-lunge',    // Cossack Squat - a deep SIDE lunge, not a split squat
+  lx07:'sl-squat',         // Skater Squat - one leg, with the other trailing
+  lx08:'step-up',          // Step-Up - was a lunge, with no step in it
+  lx09:'sl-rdl',           // Single-Leg RDL
+  lx10:'hinge',            // DB Romanian Deadlift
+  lx11:'nordic',           // Nordic Curl Eccentric
+  lx12:'sliding-leg-curl', // Sliding Leg Curl - was a kneeling Nordic curl
+  lx13:'sl-glute-bridge',  // Single-Leg Glute Bridge
+  lx14:'db-hip-thrust',    // Floor Hip Thrust - it is loaded, so show the load
+  lx15:'wall-sit',         // Wall Sit
+  lx16:'calf-raise',       // Standing Calf Raise
+  lx17:'sl-calf-raise',    // Single-Leg Calf Raise
+  lx18:'tibialis-raise',   // Tibialis Raise
+  lx19:'copenhagen',       // Copenhagen Plank
+  lx20:'adductor-squeeze', // Adductor Squeeze
+
+  /* ---- mobility ---- */
+  mo01:'hip-90-90',        // 90/90 Hip Switch
+  mo02:'worlds-greatest',  // World's Greatest Stretch
+  mo03:'couch-stretch',    // Couch Stretch
+  mo04:'ankle-rock',       // Ankle Dorsiflexion Rock
+  mo05:'open-book',        // Thoracic Rotation (Open Book)
+  mo06:'cat-cow',          // Cat-Cow
+  mo07:'wall-slides',      // Wall Slides
+  mo08:'shoulder-cars',    // Shoulder CARs
+  mo09:'adductor-rock',    // Adductor Rock - was a seated 90/90
+  mo10:'pigeon',           // Pigeon Stretch - was a seated 90/90
+  mo11:'calf-stretch',     // Calf Stretch
+  mo12:'hamstring-flow',   // Hamstring Flow
+  mo13:'band-overhead',    // Band Shoulder Dislocates
+
+  /* ---- plyometrics ---- */
+  pl01:'pogo-hops',        // Pogo Hops
+  pl02:'jump',             // Countermovement Jump
+  pl03:'jump',             // Squat Jump (paused)
+  pl04:'lateral-bound',    // Lateral Bound (Skater)
+  pl05:'broad-jump',       // Broad Jump - the arrow pointed up, not forward
+  pl06:'decel',            // Depth Drop & Stick
+  pl07:'split-jump',       // Split Jump - it lands in a split stance
+  pl08:'sl-hop',           // Single-Leg Hop & Stick - was drawn on two legs
+  pl09:'jump',             // Serve-Jump Simulation
+  pl10:'pogo-hops',        // Ankle Stiffness Hops
+
+  /* ---- speed ---- */
+  sp01:'decel',            // Split-Step Reaction Drill
+  sp02:'run',              // Acceleration Sprints
+  sp03:'decel',            // 5-10-5 Pro Agility
+  sp04:'lateral-bound',    // Lateral Shuffle
+  sp05:'lateral-bound',    // Spider / Star Drill
+  sp06:'decel',            // Deceleration Drill
+  sp07:'lateral-bound',    // Crossover Step Start
+
+  /* ---- upper body: pull ---- */
+  ul01:'row',              // Band Row
+  ul02:'row-single',       // Band Single-Arm Row - one arm
+  ul03:'row',              // DB Bent-Over Row
+  ul04:'row-single',       // DB Single-Arm Row - one arm
+  ul05:'inverted-row',     // Inverted Row - was a bent-over row, the opposite way up
+  ul06:'lat-pull',         // Band Lat Pulldown
+  ul07:'lat-pull',         // Band Straight-Arm Pulldown
+  ul08:'band-pull-apart',  // Band Pull-Apart
+  ul09:'band-face-pull',   // Band Face Pull
+  ul10:'prone-ytw',        // Prone Y-T-W
+  ul11:'band-pull-apart',  // Band Reverse Fly
+  ul12:'db-curl',          // DB Bicep Curl
+  ul13:'db-curl',          // DB Hammer Curl
+  ul14:'band-curl',        // Band Curl - was drawn holding dumbbells
+  ul15:'superman',         // Superman
+
+  /* ---- upper body: push ---- */
+  up01:'push-up',          // Push-Up
+  up02:'feet-elev-push-up',// Feet-Elevated Push-Up - the elevation is the exercise
+  up03:'archer-push-up',   // Archer Push-Up - one arm out is the exercise
+  up04:'diamond-push-up',  // Diamond Push-Up - hand position is the exercise
+  up05:'pike-push-up',     // Pike Push-Up
+  up06:'pike-push-up',     // Elevated Pike Push-Up
+  up07:'floor-press',      // DB Floor Press
+  up08:'db-press-oh',      // DB Overhead Press
+  up09:'db-press-oh',      // DB Arnold Press
+  up10:'db-raise',         // DB Lateral Raise
+  up11:'band-raise',       // Band Lateral Raise - was drawn holding dumbbells
+  up12:'db-raise',         // DB Front Raise
+  up13:'band-overhead',    // Band Overhead Press
+  up14:'band-pushdown',    // Band Triceps Pushdown
+  up15:'db-overhead-tri',  // DB Overhead Triceps Extension
+
+  /* ---- the extended library ---- */
+  x01:'squat',             // Prisoner Squat
+  x02:'squat',             // 1.5-Rep Squat
+  x03:'goblet-squat',      // Heels-Elevated Goblet Squat
+  x04:'kb-front-squat',    // Kettlebell Front Squat - was an empty-handed squat
+  x05:'sl-hinge',          // Single-Leg Hip Hinge - was drawn on two legs
+  x06:'band-pull-through', // Band Pull-Through - was an unloaded hinge
+  x07:'band-good-morning', // Banded Good Morning - was an unloaded hinge
+  x08:'kb-swing',          // Kettlebell Swing - had no drawing
+  x09:'step-down',         // Step-Down (Eccentric) - was a lunge
+  x10:'sl-squat',          // Shrimp Squat - was drawn on two legs
+  x11:'sl-squat',          // Pistol Squat Progression - was drawn on two legs
+  x12:'frog-pump',         // Frog Pump
+  x13:'band-glute-bridge', // Banded Glute Bridge - the band was not shown
+  x14:'hip-thrust-march',  // Hip Thrust March - was a standing dumbbell carry
+  x15:'band-leg-curl',     // Band Leg Curl - was a kneeling Nordic curl
+  x16:'bridge-walkout',    // Long-Lever Bridge Walkout - was a walking figure
+  x17:'sl-bridge-curl',    // Single-Leg Bridge Curl - was a DUMBBELL BICEPS CURL
+  x18:'calf-raise',        // Bent-Knee Calf Raise
+  x19:'heel-lower',        // Eccentric Heel Lower - the arrow now points down
+  x20:'toe-walk',          // Toe Walk - was a flat-footed walk
+  x21:'tibialis-raise',    // Tibialis Wall Raise
+  x22:'side-lying-adductor',// Side-Lying Adductor Raise - was a Copenhagen plank
+  x23:'adductor-slide',    // Adductor Slide-Out - arrows now point out, not in
+  x24:'pull-up',           // Chin-Up - grip differs from a pull-up; a figure cannot show grip
+  x25:'pull-up',           // Negative Pull-Up
+  x26:'lat-pull',          // Band Kneeling Lat Pull - the pose is kneeling, which is right
+  x27:'band-pallof',       // Half-Kneeling Band Rotation
+  x28:'band-pallof',       // Standing Band Woodchop
+  x29:'decel',             // Snap-Down
+  x30:'sl-landing',        // Single-Leg Drop Landing - was landing on two feet
+  x31:'decel',             // Lateral Drop & Stick
+  x32:'lateral-bound',     // Continuous Skater Bounds
+  x33:'broad-jump',        // Standing Triple Jump - travels forward
+  x34:'wall-drill',        // Wall Acceleration Drill - was a free run, with no wall
+  x35:'run',               // Flying Sprints
+  x36:'resisted-sprint',   // Resisted Sprint Starts - the band was missing
+  x37:'broad-jump',        // Hill Bounds - travel, not height
+  x38:'wall-iso-raise',    // Wall Isometric Lateral Raise - was drawn holding dumbbells
+  x39:'self-resisted-curl',// Self-Resisted Curl - was drawn holding dumbbells
+  x40:'windshield-wiper',  // Lying Windshield Wiper - was a side-lying open book
+  x41:'prone-lat-pull'     // Prone Sliding Lat Pull - was a kneeling band pulldown
+};
+
+/* The one lookup everything else uses. Returns a verified pose key, or null.
+   Never a guess: an illustration of the wrong exercise is worse than no
+   illustration, because the user cannot tell that it is wrong.
+
+   Resolution order, and why:
+     1. `ex.illus`   - a row that states its own pose, for user-added
+                       exercises. Checked against POSES so a stale key
+                       cannot render nothing.
+     2. EX_ILLUS[id] - the verified table. AUTHORITATIVE, including when the
+                       answer is null. An id that is in the table never falls
+                       through to a name rule, which is what stopped
+                       "Single-Leg Bridge Curl" being drawn as a biceps curl.
+     3. WU_ILLUS     - warm-up movement names. These are free text inside a
+                       workout, not library rows, so they have no id to look
+                       up and a name is all there is.
+     4. nothing      - and nothing is a real answer. */
 function illusKey(ex){
   if(!ex) return null;
   if(ex.illus && POSES[ex.illus]) return ex.illus;
-  if(ex.id && EX_ILLUS_OVERRIDE[ex.id] && POSES[EX_ILLUS_OVERRIDE[ex.id]]) return EX_ILLUS_OVERRIDE[ex.id];
+  if(ex.id && Object.prototype.hasOwnProperty.call(EX_ILLUS, ex.id)){
+    const k=EX_ILLUS[ex.id];
+    return (k && POSES[k]) ? k : null;
+  }
   const nm=String(ex.name||'').trim().toLowerCase();
   if(!nm) return null;
   if(WU_ILLUS[nm] && POSES[WU_ILLUS[nm]]) return WU_ILLUS[nm];
-  for(let i=0;i<POSE_RULES.length;i++){
-    if(POSE_RULES[i][0].test(nm)){
-      const k=POSE_RULES[i][1];
-      return POSES[k] ? k : null;
-    }
-  }
   return null;
 }
-/* Which rule answered, for the validator's error messages. */
+/* Where the answer came from, for the validator's messages and for the
+   "why this drawing" line in the library. */
 function illusWhy(ex){
-  const nm=String((ex&&ex.name)||'').trim().toLowerCase();
-  for(let i=0;i<POSE_RULES.length;i++) if(POSE_RULES[i][0].test(nm)) return String(POSE_RULES[i][0]);
-  return '(no rule)';
+  if(!ex) return 'no exercise';
+  if(ex.illus && POSES[ex.illus]) return 'declared on the exercise';
+  if(ex.id && Object.prototype.hasOwnProperty.call(EX_ILLUS, ex.id))
+    return EX_ILLUS[ex.id] ? 'verified table' : 'table: none verified';
+  const nm=String(ex.name||'').trim().toLowerCase();
+  if(WU_ILLUS[nm]) return 'warm-up name';
+  return 'not in the table';
 }
-/* `size` is 'lg' on the training screen, 'sm' for a list thumbnail. A movement
-   with no pose yet gets a deliberate mark, not a broken image. */
+/* `size` is 'lg' on the training screen, 'sm' for a list thumbnail.
+
+   A movement with no verified drawing gets a PLACEHOLDER, and the
+   placeholder has to look like a placeholder. It used to be the dumbbell
+   icon, which on a training screen reads as "here is your exercise" - a
+   silent claim about a movement nothing had checked. A dashed frame with a
+   line of text reads as an absence, which is what it is. */
 function illusHTML(ex, size){
   const k=illusKey(ex);
-  const cls='illus '+(size||'lg')+(k?'':' none');
-  if(!k) return `<div class="${cls}" aria-hidden="true">${svg('dumbbell')}</div>`;
-  return `<div class="${cls}">${figSVG(POSES[k])}</div>`;
+  const sz=size||'lg';
+  if(!k) return `<div class="illus ${sz} none" role="img"
+      aria-label="No illustration for this movement yet">
+      <span class="il-n">${svg('help')}${sz==='sm'?'':'<b>No illustration yet</b>'}</span>
+    </div>`;
+  return `<div class="illus ${sz}">${figSVG(POSES[k])}</div>`;
 }
-/* coverage, for the validator and the About screen */
+/* Coverage and correctness, for the validator and the About screen.
+   `unverified` is named rather than counted, because the point of the number
+   is to be worked through. */
 function illusCoverage(){
   const all=(DB&&DB.exercises)||[];
-  let n=0;
-  all.forEach(e=>{ if(illusKey(e)) n++; });
-  return {have:n, total:all.length, poses:Object.keys(POSES).length};
+  const unverified=[], missing=[];
+  all.forEach(e=>{
+    if(illusKey(e)) return;
+    if(e.id && Object.prototype.hasOwnProperty.call(EX_ILLUS, e.id)) unverified.push(e.id);
+    else missing.push(e.id||e.name);
+  });
+  return {have:all.length-unverified.length-missing.length, total:all.length,
+          poses:Object.keys(POSES).length,
+          unverified:unverified, missing:missing};
+}
+/* Every pose named by the table must exist, and every exercise must be in
+   the table. Returned rather than thrown so a test can name the rows. */
+function illusAudit(){
+  const all=(DB&&DB.exercises)||[];
+  const notInTable=[], deadPose=[], unusedPose=[];
+  const used={};
+  all.forEach(e=>{
+    if(!e.id || !Object.prototype.hasOwnProperty.call(EX_ILLUS, e.id)) notInTable.push(e.id||e.name);
+  });
+  Object.keys(EX_ILLUS).forEach(id=>{
+    const k=EX_ILLUS[id];
+    if(k==null) return;
+    if(!POSES[k]) deadPose.push(id+' -> '+k); else used[k]=1;
+  });
+  Object.keys(WU_ILLUS).forEach(n=>{
+    const k=WU_ILLUS[n];
+    if(!POSES[k]) deadPose.push('warm-up "'+n+'" -> '+k); else used[k]=1;
+  });
+  Object.keys(POSES).forEach(k=>{ if(!used[k]) unusedPose.push(k); });
+  return {notInTable:notInTable, deadPose:deadPose, unusedPose:unusedPose,
+          rows:Object.keys(EX_ILLUS).length};
 }
 
 /* =========================================================================

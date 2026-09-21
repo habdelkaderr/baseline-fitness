@@ -122,8 +122,11 @@ function exitWM(discard){
      thing meant a pause was not on disk until a quarter of a second later,
      which is exactly the window in which a phone gets locked or killed. */
   $('#wmPause').onclick=()=>{
+    /* From the exit sheet, "pause and finish later" means LEAVE with the
+       session kept - the user is already on their way out. The footer's
+       Pause is the other thing, and holds the screen. */
     if(W){ W.pausedAt=Date.now(); W.endedAt=Date.now(); saveLive(); }
-    closeSheet(); setTimeout(pauseWM,240);
+    closeSheet(); setTimeout(leavePausedWM,240);
   };
   $('#wmDrop').onclick=()=>{
     closeSheet();
@@ -296,6 +299,9 @@ function peekHTML(n){
 
 function drawWM(){
   if(!W)return;
+  /* A paused session owns the screen until it is resumed. Without this, any
+     stray tick or save redrew the exercise underneath the pause. */
+  if(W.pausedAt) return drawPaused();
   wmNormalise();
   /* Re-rendering the body threw the user back to the top of the exercise on
      every single tick, which on a four-set list meant scrolling down again
@@ -330,7 +336,8 @@ function drawWM(){
     </div>
     ${W.phase==='preview'
       ? `<span class="icon-btn" aria-hidden="true"></span>`
-      : `<button class="icon-btn" id="wmPauseTop" aria-label="Pause">${svg('timer')}</button>`}`;
+      : `<button class="icon-btn" id="wmPauseTop" aria-label="Pause workout"
+             title="Pause workout">${svg('pause')}</button>`}`;
   $('#wmX').onclick=()=>exitWM();
   const pt=$('#wmPauseTop'); if(pt) pt.onclick=()=>pauseWM();
 
@@ -392,15 +399,74 @@ function wmAdvance(){
   saveLive(); drawWM();
   const b=$('#wmBody'); if(b) b.scrollTop=0;
 }
-/* Pause, from the footer control or from the exit sheet. One behaviour, so the
-   two cannot drift. */
+/* PAUSE HOLDS THE SESSION OPEN.
+   It used to tear workout mode down, null out W and drop the user on Today,
+   which is an exit that keeps your place rather than a pause - and it was
+   reached from a stopwatch icon, so the control that ended the session looked
+   like the one that timed a rest. Now the screen stays, the clock stops, and
+   Resume is one tap. Leaving is a separate, named choice.
+
+   The state is written to disk BEFORE anything is drawn, because the reason
+   people pause is that something else needs them, and the phone may be locked
+   or the tab evicted a second later. */
 function pauseWM(){
-  if(W){ W.pausedAt=Date.now(); W.endedAt=Date.now(); saveLive(); }
+  if(!W) return;
+  W.pausedAt=Date.now();
+  /* rest and holds stop with the session; the workout clock is derived from
+     pausedAt, so nothing keeps counting behind the overlay */
   cancelAuto(); stopRest(); clearHold();
   clearInterval(cardTimer); cardTimer=null;
+  saveLive();
+  haptic();
+  drawPaused();
+}
+/* Leave the session, from the paused screen. This is the old pauseWM: the
+   session stays on disk and Today offers it back. */
+function leavePausedWM(){
+  if(W){ W.endedAt=Date.now(); saveLive(); }
   $('#wmode').classList.remove('on'); document.body.style.overflow='';
   W=null; toast('Paused — pick it up from Today','ok'); render();
 }
+/* Back to training. The clock resumes from where it stopped rather than
+   pretending the paused minutes were training. */
+function resumePausedWM(){
+  if(!W) return;
+  const held = W.pausedAt ? (Date.now()-W.pausedAt) : 0;
+  if(held>0 && W.startedAt) W.startedAt += held;   // paused time is not training time
+  W.pausedAt=null;
+  saveLive(); haptic();
+  const b=$('#wmBody'); if(b) b.classList.remove('paused');
+  drawWM();
+}
+/* The paused screen. Deliberately three lines and two buttons: somebody who
+   paused is not reading, they are dealing with whatever interrupted them. */
+function drawPaused(){
+  const total=W.entries.length;
+  const doneSets=sum(W.entries.map(e=>e.sets.filter(s=>s.done).length));
+  const allSets=sum(W.entries.map(e=>e.plannedSets));
+  const mins=Math.max(0, Math.round(((W.pausedAt||Date.now())-W.startedAt)/60000));
+  const body=$('#wmBody');
+  body.classList.remove('live');
+  body.innerHTML=`
+    <div class="wpause">
+      <div class="wp-i">${svg('pause')}</div>
+      <div class="wp-t">Paused</div>
+      <div class="wp-s">${doneSets} of ${allSets} set${allSets===1?'':'s'} logged
+        &middot; ${mins} min so far</div>
+      ${''/* What you were doing, so resuming needs no re-orientation. */}
+      ${W.step<total?`<div class="wp-n">Next: <b>${esc(W.entries[W.step].name)}</b></div>`:''}
+    </div>`;
+  $('#wmFoot').innerHTML=`
+    <button class="btn primary big block" id="wpResume">${svg('play')} Resume workout</button>
+    <button class="btn ghost block" id="wpEnd">End workout</button>`;
+  $('#wpResume').onclick=()=>resumePausedWM();
+  /* Ending goes through the same sheet as the close button, so there is one
+     answer to "what happens to what I logged". */
+  $('#wpEnd').onclick=()=>exitWM();
+}
+/* Is the live session paused? Read by the rest-timer code, which must never
+   be the thing that paused it. */
+function wmPaused(){ return !!(W && W.pausedAt); }
 
 /* ---- the jump that lands on the first MAIN exercise, from anywhere ---- */
 function wmToMain(){
@@ -627,13 +693,26 @@ function drawExercise(en,i,total){
     </div>
     <div class="wm-mid">
       ${restActive()?'':illusHTML(e||{name:en.name},'lg')}
-      ${(()=>{ const h=briefHow(e);
-         return h?`<button class="wm-how" id="wmHowLine">${esc(h)} <i>More</i></button>`:''; })()}
-      ${en.cue?`<div class="cue"><i>${svg('bulb')}</i><span>${esc(en.cue)}</span></div>`:''}
-      ${en.blockNote?`<div class="note warn">${esc(en.blockNote)}</div>`:''}
-      ${restCard}${setCard}
+      ${''/* ONE line of instruction, and it is the cue - the thing a coach
+             would say out loud while you are moving. The `how` paragraph that
+             used to sit here as a truncated line with a More affordance is
+             reference reading, and it is already in More under "How to do
+             it". Two blocks of prose above the set card is what pushed the
+             set card onto the Log button. */}
+      ${(en.cue||briefHow(e))?`<button class="cue" id="wmHowLine"
+          aria-label="Show full instructions">
+          <i>${svg('bulb')}</i><span>${esc(en.cue||briefHow(e))}</span>
+        </button>`:''}
+      ${''/* That this exercise is standing in for another is worth a glance,
+             not a paragraph. It was a full-width warning note. */}
+      ${en.blockNote?`<div class="wm-swap">${svg('swap')}<span>${esc(en.blockNote)}</span></div>`:''}
     </div>
-    <div class="wm-bot">${primary}${peek}</div>`;
+    ${''/* The set card moved down here from the middle band. It is the thing
+           being touched, so it belongs with the button and not with the
+           reference material - and in the middle band it was the last child,
+           which on a 320-tall phone meant the rep count was clipped in half
+           by the band's own scroller. This band does not shrink. */}
+    <div class="wm-bot">${restCard}${setCard}${primary}${peek}</div>`;
 
   /* Two controls, both secondary, neither part of the training loop. */
   $('#wmFoot').innerHTML=`<div class="wm-row">
@@ -1763,6 +1842,35 @@ function migrate(d){
   out.profile.tier=tierOf(out.profile.gear);
   out.profile.equipment=equipmentList(out.profile.gear,out.profile.equipNote,out.profile.dbKg);
   out.profile.physique=out.profile.physiques[0]||null;
+  /* ---- v3: equipment no longer deletes a goal -------------------------
+     Until v3, pruneTargets() wrote zeros into DB.targets whenever the kit
+     for a target went missing, and putting the kit back could not undo it.
+     A stored zero on an equipment-gated target, on a device that STILL has
+     no such kit, is that bug's fingerprint: the prune is the only thing that
+     wrote it. Restore the intent the goals imply, and leave every other zero
+     exactly as the user left it.
+
+     Additive: nothing is removed, no history is touched, and a target the
+     user genuinely set to zero while owning the kit stays at zero. */
+  if(from<3 && out.targets && typeof out.targets==='object'){
+    const gear=out.profile.gear||[], sports=out.profile.sports||[];
+    const restored=[];
+    const wants={bike:{gear:'bike',sport:'cycling'}, run:{gear:'run',sport:'running'}};
+    Object.keys(wants).forEach(k=>{
+      if(out.targets[k]) return;                       // already has one
+      const w=wants[k];
+      if(gear.indexOf(w.gear)>=0) return;              // kit is present, so the
+                                                       // zero was a choice
+      /* only where the goals actually call for it, so this cannot invent a
+         target for somebody who never wanted one */
+      const asked = sports.indexOf(w.sport)>=0
+        || (k==='bike' && (out.profile.goals||[]).indexOf('lean')>=0);
+      if(!asked) return;
+      out.targets[k]=1;
+      restored.push(k);
+    });
+    if(restored.length) out.meta.targetsRestored=restored.join(',');
+  }
   out.meta.schema=SCHEMA_VERSION;
   // legacy: fold old separate tennis/cardio logs into the unified activity log
   if(Array.isArray(d.tennis)) d.tennis.forEach(t=>out.activities.push({
@@ -2445,17 +2553,68 @@ function applyGoalTargets(){
   DB.targets=T;
   return T;
 }
-/* Remove targets the user can no longer do. Deliberately one-directional:
-   losing a bike drops the bike target, but buying one does not silently add
-   sessions to your week — "Rebuild from my setup" does that on request. */
-function pruneTargets(){
-  const gear=(DB.profile&&DB.profile.gear)||[], T=DB.targets||{};
+/* ==========================================================================
+   TARGETS ARE INTENT. FEASIBILITY IS DERIVED.
+   -------------------------------------------------------------------------
+   This used to be pruneTargets(), which wrote zeros into DB.targets whenever
+   the equipment for a target went missing. Its own comment called the
+   behaviour deliberate and one-directional. It was the bug: taking the bike
+   off the equipment list DELETED the intent to ride, and putting the bike
+   back could not restore it, because by then nothing remembered that riding
+   had ever been wanted. Equipment is a fact about this week. A goal is not.
+
+   So DB.targets is the user's intent and nothing derived from equipment ever
+   writes to it. What is possible right now is computed on read:
+
+     targetBlocks()  what is currently out of reach, and why, in words
+     targetsNow()    intent with the unreachable masked to 0, for progress
+                     and for anything that draws a list of this week's work
+
+   Putting the bicycle back therefore restores cycling by arithmetic. There
+   is nothing to remember to undo.
+   ====================================================================== */
+
+/* What a target needs, and whether the user has it. One table, so a new
+   equipment-dependent target cannot be added without saying what gates it. */
+const TARGET_NEEDS={
+  bike:{gear:'bike', sport:'cycling',
+        why:'No bicycle on your equipment list'},
+  run: {gear:'run',  sport:'running', impactOk:true,
+        why:'Nowhere to run on your equipment list'}
+};
+/* Which targets cannot be met with the equipment on the list today, and why.
+   Derived every time: it is a question about now, not a stored fact. */
+function targetBlocks(){
+  const gear=(DB&&DB.profile&&DB.profile.gear)||[];
   const sp=sportsOf();
-  if(T.bike && gear.indexOf('bike')<0 && sp.indexOf('cycling')<0) T.bike=0;
-  if(T.run  && gear.indexOf('run')<0  && sp.indexOf('running')<0
-     && !sp.some(id=>(SPORT_PROFILES[id]||{}).impact==='high')) T.run=0;
+  const out={};
+  Object.keys(TARGET_NEEDS).forEach(k=>{
+    const n=TARGET_NEEDS[k];
+    if(gear.indexOf(n.gear)>=0) return;            // owns the kit
+    if(sp.indexOf(n.sport)>=0) return;             // plays the sport, so does it anyway
+    /* a sport that supplies the same work counts as having it */
+    if(n.impactOk && sp.some(id=>(SPORT_PROFILES[id]||{}).impact==='high')) return;
+    out[k]=n.why;
+  });
+  return out;
+}
+/* The week as it can actually be trained today: intent, with anything the
+   equipment cannot reach masked to zero. THE MASK IS NOT SAVED. */
+function targetsNow(){
+  const T=Object.assign({}, (DB&&DB.targets)||{});
+  const blocked=targetBlocks();
+  Object.keys(blocked).forEach(k=>{ if(T[k]) T[k]=0; });
   return T;
 }
+/* Kept as a name because several places call it, but it no longer prunes
+   anything - it reports. Writing to DB.targets from here is what §9 forbids. */
+function pruneTargets(){ return targetsNow(); }
+/* Is this target reachable right now? */
+function targetFeasible(k){ return !targetBlocks()[k]; }
+/* The user's intent for a target, whatever this week's equipment says. Used
+   by the target editor, which must show what you asked for rather than what
+   you can reach today. */
+function targetIntent(k){ return ((DB&&DB.targets)||{})[k]||0; }
 /* labels + rationale for whatever targets exist, written from the user's setup */
 function targetMeta(){
   const sp=SPORT_LABEL(), q=sportProf().qualities;

@@ -709,10 +709,17 @@ function viewToday(v){
   const first=(DB.profile.name||'').trim().split(/\s+/)[0];
   /* Date, greeting, and one line that says what the screen is for. The date
      used to be the subtitle, which left nowhere to say anything. */
+  /* §12: the streak, if the user asked for one. It sits on the date line
+     rather than anywhere prominent - it is motivation to come back, not a
+     score, and it must never be the loudest thing on the screen. */
+  const stk=streakInfo(d);
   appbar(greeting()+(first?', '+esc(first):''),
     'Ready to move forward?',
     `<button class="icon-btn av" id="tdProfile" aria-label="Your profile and data">${svg('user')}</button>`,
-    fmtDate(d));
+    fmtDate(d)+(stk.show
+      ? ` <span class="stk" title="Days in a row you have checked in. Rest days never break it.">${
+          svg('flame')}${stk.days}</span>`
+      : ''));
 
   /* No check-in yet: the screen has exactly one thing to offer. */
   if(!ci){ v.innerHTML=setupPrompt()+todayNoCheckin(d); wireToday(d); return; }

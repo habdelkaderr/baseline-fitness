@@ -37,10 +37,18 @@ function viewWorkouts(v){
 function targetsCard(){
   const P=weekProgress(todayISO()), T=DB.targets;
   const M=targetMeta(), ks=targetKeys();
+  /* Anything the user asked for that this week's equipment cannot reach. It
+     is listed rather than dropped: a target that silently disappears is the
+     same experience as the bug where equipment deleted it, and the whole
+     point of separating intent from feasibility is that the user can see
+     which one is which. */
+  const blocks=targetBlocks();
+  const held=targetKeysIntent().filter(k=>blocks[k]);
   return `<div class="card">
     <div class="card-h"><div class="card-t accent">This week's targets</div>
       <button class="btn xs ghost" id="edSched">${svg('edit')} Edit</button></div>
-    ${!ks.length ? '<div class="hint">No targets yet — they are built from the sports, goals, days and equipment you enter in setup.</div>'
+    ${!ks.length && !held.length
+      ? '<div class="hint">No targets yet — they are built from the sports, goals, days and equipment you enter in setup.</div>'
       : ks.map(k=>{
         const meta=M[k]||[k,''];
         const done=P[k]||0, t=T[k]||0;
@@ -48,6 +56,15 @@ function targetsCard(){
           <div class="rt"><div class="rn">${esc(meta[0])}</div><div class="rs">${esc(meta[1])}</div></div>
           <div class="rv" style="text-align:right"><span style="color:${done>=t?'var(--green)':'var(--text-2)'}">${done}</span>
             <span style="color:var(--text-3)"> / ${t}</span></div></div>`;}).join('')}
+    ${held.length?`<div class="tg-held" id="tgHeld">
+      <div class="tgh-t">${svg('info')} On hold, not lost</div>
+      ${held.map(k=>{
+        const meta=M[k]||[k,''];
+        return `<div class="tgh-r"><b>${esc(meta[0])}</b>
+          <span>${esc(blocks[k])}. Your target of ${targetIntent(k)} a week is
+          kept — it comes back on its own when the equipment does.</span></div>`;
+      }).join('')}
+    </div>`:''}
     <div class="hint" style="margin-top:8px">Guidelines, not quotas. The engine still chooses each day.</div>
   </div>`;
 }

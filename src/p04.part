@@ -851,16 +851,161 @@ const ACT_CAT = t =>
   : t==='yoga' ? 'mobility' : t==='strength' ? 'strength'
   : isMainSportAct(t) ? 'sport' : 'otherSport';
 
+/* ==========================================================================
+   THE CHECK-IN STREAK
+   -------------------------------------------------------------------------
+   Deliberately NOT a training streak. Tennis is unpredictable, recovery days
+   are prescribed, and a streak that breaks because the engine said rest is a
+   streak that teaches people to ignore the engine. This counts days the user
+   came back to Baseline at all.
+
+   Nothing here is stored: the streak is computed from the check-ins,
+   activities and sessions that already exist, so it cannot drift out of step
+   with them and there is no counter to reset.
+   ====================================================================== */
+
+/* Did the user show up on this day? Any meaningful interaction counts. */
+function streakDay(d){
+  const ci=DB.checkins[d];
+  if(ci){
+    /* a check-in with any real field in it - not an empty record */
+    if(ci.recovery!=null||ci.energy!=null||ci.soreness!=null||ci.stress!=null
+       ||ci.motivation!=null||ci.sleepMin!=null||ci.hrv!=null||ci.rhr!=null
+       ||ci.pain!=null) return true;
+  }
+  if((DB.activities||[]).some(a=>a.date===d)) return true;
+  if((DB.sessions||[]).some(s=>s.date===d && (s.done||sessionCompletion(s)>0))) return true;
+  return false;
+}
+/* A day that cannot break the streak.
+   Rest the engine recommended, and days the user said they were away. This
+   is the part that makes the streak safe to show: it never punishes taking
+   the advice. */
+function streakExcused(d){
+  const u=(DB.profile&&DB.profile.awayUntil)||null;
+  if(u && d<=u) return true;
+  /* the plan for that day, if one was recorded */
+  const pl=(DB.plans&&DB.plans[d])||null;
+  if(pl && (pl.id==='rest'||pl==='rest')) return true;
+  /* a day the engine would call rest on the evidence it has */
+  try{
+    const r=recommend(d, DB.checkins[d]);
+    if(r && r.id==='rest') return true;
+  }catch(e){}
+  return false;
+}
+/* Days in a row, counting back from today. Today itself does not have to be
+   done yet - a streak that reads 0 until you check in would nag. */
+function checkinStreak(date){
+  const today=date||todayISO();
+  let n=0, d=today, guard=0;
+  /* today counts if it happened; if not, start from yesterday so the number
+     is "days you have kept going", not "have you done it yet today" */
+  if(!streakDay(today)) d=addDays(today,-1);
+  while(guard++ < 400){
+    if(streakDay(d)){ n++; d=addDays(d,-1); continue; }
+    if(streakExcused(d)){ d=addDays(d,-1); continue; }   // does not count, does not break
+    break;
+  }
+  return n;
+}
+/* Everything a screen needs, including whether to say anything at all. */
+function streakInfo(date){
+  const on=(DB.settings&&DB.settings.streak)===true;
+  const n=on ? checkinStreak(date) : 0;
+  return {
+    on:on, days:n,
+    /* Under three days is not a streak, it is a number. Saying "1-day
+       streak" to somebody on their first day is the kind of gamification
+       that makes an app feel like it is managing you. */
+    show: on && n>=3,
+    text: n+'-day check-in streak',
+    todayDone: streakDay(date||todayISO())
+  };
+}
+
+/* ==========================================================================
+   HOW MUCH OF A SESSION ACTUALLY HAPPENED
+   -------------------------------------------------------------------------
+   A saved session used to carry one fact - done:true - and every consumer
+   treated that as a whole session. Logging two exercises out of seven and
+   walking out scored the same as finishing. These five states and one
+   fraction are derived from the sets, so sessions saved before this existed
+   report correctly too.
+   ====================================================================== */
+const SESSION_COMPLETE=0.75;   /* at or above this, it counts as done */
+
+/* Planned sets and logged sets for a stored session. */
+function sessionSets(s){
+  const ent=(s&&s.entries)||[];
+  let planned=0, logged=0, skipped=0;
+  ent.forEach(e=>{
+    if(e.skipped){ skipped++; planned+=(e.plannedSets||(e.sets||[]).length||0); return; }
+    planned += (e.plannedSets || (e.sets||[]).length || 0);
+    logged  += (e.sets||[]).filter(x=>x.done).length;
+  });
+  /* A cardio block is one "set" that is its elapsed time, so a session with
+     no strength sets still reports honestly rather than as 0 of 0. */
+  if(!planned && ent.length){ planned=ent.length; logged=ent.filter(e=>
+    (e.sets||[]).some(x=>x.done)).length; }
+  return {planned:planned, logged:logged, skippedExercises:skipped};
+}
+/* 0..1. How much of what was planned was actually done. */
+function sessionCompletion(s){
+  const n=sessionSets(s);
+  if(!n.planned) return s&&s.done?1:0;
+  return Math.max(0, Math.min(1, n.logged/n.planned));
+}
+/* One of: planned, started, partial, completed, skipped. */
+function sessionState(s){
+  if(!s) return 'planned';
+  if(s.skipped===true) return 'skipped';
+  const c=sessionCompletion(s);
+  if(c<=0) return s.done ? 'skipped' : 'started';
+  if(c>=SESSION_COMPLETE) return 'completed';
+  return 'partial';
+}
+/* The credit a session contributes to a weekly target: 1 for a completed
+   session, the actual fraction for a partial one, 0 for a skipped one.
+   Partial credit rather than none, because two-thirds of a leg session IS
+   two-thirds of a leg session - and rather than 1, because it is not one. */
+function sessionCredit(s){
+  const st=sessionState(s);
+  if(st==='completed') return 1;
+  if(st==='partial') return rnd(sessionCompletion(s),2);
+  return 0;
+}
+/* Said in words, for a history row. */
+function sessionStateText(s){
+  const st=sessionState(s);
+  if(st==='completed') return 'Completed';
+  if(st==='partial') return Math.round(sessionCompletion(s)*100)+'% completed';
+  if(st==='skipped') return 'Skipped';
+  if(st==='started') return 'Started, nothing logged';
+  return 'Planned';
+}
+
 function weekProgress(date){
   const start=weekStartOf(date), days=[];
   for(let i=0;i<7;i++){ const d=addDays(start,i); if(d<=date) days.push(d); }
   const p={lower:0,upper:0,power:0,core:0,run:0,bike:0,mobility:0,sport:0,otherSport:0,strength:0,
            runMin:0,bikeMin:0,sportMin:0,load:0,start,days,elapsed:days.length};
+  /* CREDIT, NOT A TICK.
+     This counted every done session as a whole one, so a workout abandoned
+     after two of seven exercises filled a weekly target as completely as one
+     finished. sessionCredit() is 1 for a completed session and the actual
+     fraction for a partial one - see §13. `full` is kept alongside so
+     anything that wants a count of finished sessions still has one. */
+  p.credit={lower:0,upper:0,power:0,core:0,run:0,bike:0,mobility:0,strength:0};
+  p.full=0; p.partial=0; p.skipped=0;
   DB.sessions.filter(s=>s.done&&days.indexOf(s.date)>=0).forEach(s=>{
     const cat=s.category||catOfWorkout(DB.workouts.find(w=>w.id===s.workoutId));
-    if(p[cat]!=null) p[cat]++;
-    if(cat==='lower'||cat==='upper'||cat==='strength') p.strength++;
-    if(s.addCore) p.core++;
+    const cr=sessionCredit(s), st=sessionState(s);
+    if(st==='completed') p.full++; else if(st==='partial') p.partial++; else p.skipped++;
+    if(p[cat]!=null) p[cat]+=cr;
+    if(p.credit[cat]!=null) p.credit[cat]+=cr;
+    if(cat==='lower'||cat==='upper'||cat==='strength') p.strength+=cr;
+    if(s.addCore) p.core+=cr;
     if(cat==='run') p.runMin+=s.durationMin||0;
     if(cat==='bike') p.bikeMin+=s.durationMin||0;
   });
@@ -875,6 +1020,11 @@ function weekProgress(date){
   });
   days.forEach(d=>{ p.load+=dayDemand(d).load; });
   p.load=rnd(p.load,1);
+  /* Credit is fractional, and "1.67 lower-body sessions" is not a thing to
+     put on a screen. Rounded for reading; the fraction stays in p.credit for
+     anything that wants to reason with it. */
+  ['lower','upper','power','core','run','bike','mobility','sport','otherSport','strength']
+    .forEach(k=>{ if(typeof p[k]==='number') p[k]=Math.round(p[k]*100)/100; });
   return p;
 }
 
@@ -1060,10 +1210,76 @@ const BAND_RANK={red:0,orange:1,yellow:2,green:3};
 /* =========================================================================
    THE ENGINE
    ====================================================================== */
+/* ==========================================================================
+   WHAT THE RECOMMENDATION DEPENDS ON
+   -------------------------------------------------------------------------
+   recommend() is a pure function of the arguments below plus stored state,
+   and it is called fresh on every render - nothing is memoised, so there is
+   no cache that can go stale. This names the inputs anyway, for two reasons:
+   a test can change one and assert the answer moved, and a reader can see
+   the list without reading the scoring.
+
+   Every field here is read by recommend() or by something recommend() calls.
+   If you add an input to the engine, add it here, and the test that asserts
+   the two lists agree will tell you if you forget.
+   ====================================================================== */
+function recInputs(date){
+  date=date||todayISO();
+  const ci=DB.checkins[date]||{};
+  const rd=readiness(date,ci);
+  const td=dayDemand(date), yd=dayDemand(addDays(date,-1));
+  const P=DB.profile||{};
+  return {
+    /* --- today's state, as reported --- */
+    readiness:rd.score, band:rd.band,
+    recovery:ci.recovery!=null?ci.recovery:null,
+    hrv:ci.hrv!=null?ci.hrv:null, rhr:ci.rhr!=null?ci.rhr:null,
+    sleepMin:ci.sleepMin!=null?ci.sleepMin:null,
+    soreness:ci.soreness!=null?ci.soreness:null,
+    energy:ci.energy!=null?ci.energy:null,
+    stress:ci.stress!=null?ci.stress:null,
+    motivation:ci.motivation!=null?ci.motivation:null,
+    pain:ci.pain||null,
+    /* --- what the user has to work with --- */
+    availTime:ci.availTime||sessMin(),
+    gear:(P.gear||[]).slice().sort().join(','),
+    place:placeOf(P)||null,
+    /* --- goals, and the targets they produced --- */
+    sports:(P.sports||[]).slice().sort().join(','),
+    goals:(P.goals||[]).slice().sort().join(','),
+    targets:JSON.stringify(targetsNow()),
+    blocked:JSON.stringify(targetBlocks()),
+    phase:currentPhase().absWeek,
+    /* --- today, already: the thing the engine used to be blind to --- */
+    todayLoad:td.load, todayLower:td.lower, todayUpper:td.upper,
+    todayExpl:td.expl, todayImpact:td.impact, todayCount:td.n,
+    sportDone:DB.activities.some(a=>a.date===date&&isMainSportAct(a.type)),
+    sportAhead:(ci.sportToday===true||ci.tennisToday===true)
+               && !DB.activities.some(a=>a.date===date&&isMainSportAct(a.type)),
+    /* --- yesterday, and the week behind it --- */
+    yesterdayLoad:yd.load, yesterdayLower:yd.lower,
+    since:JSON.stringify(systemHistory(date).since),
+    weekDone:JSON.stringify(weekProgress(date)),
+    /* --- standing limitations, which outrank everything above --- */
+    limits:(activeLimits(date)||[]).map(l=>l.area+':'+l.severity).sort().join(','),
+    /* --- how much the engine is allowed to claim --- */
+    coverage:dataCoverage(date).band
+  };
+}
+/* One string for the whole input set, so a test can assert that a change
+   in any listed input changes what the engine is looking at. */
+function recFingerprint(date){
+  const i=recInputs(date);
+  return Object.keys(i).sort().map(k=>k+'='+i[k]).join('|');
+}
+
 function recommend(date, ci, rd){
   ci = ci || DB.checkins[date] || {};
   rd = rd || readiness(date, ci);
-  const H=systemHistory(date), P=weekProgress(date), T=DB.targets, ph=currentPhase();
+  /* targetsNow(), not DB.targets: the week as it can be trained today. The
+     stored value is the user's intent and keeps a cycling target through a
+     week without a bicycle - the engine must not chase it meanwhile. */
+  const H=systemHistory(date), P=weekProgress(date), T=targetsNow(), ph=currentPhase();
   const cov=dataCoverage(date);
   const band=rd.band, rank=BAND_RANK[band];
   const sore=ci.soreness!=null?ci.soreness:3;
