@@ -235,7 +235,7 @@ const SCHEMA_VERSION=2;             // bump to transform stored records
 /* A date, plus a letter when more than one build ships in a day. Without the
    letter there was no way to tell a second same-day deploy from the cached
    copy of the first, which is exactly the question "did my upload work?". */
-const APP_BUILD='2026-09-21';
+const APP_BUILD='2026-09-21b';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */
@@ -865,6 +865,42 @@ const POSES={
   'prone-ytw':{head:[92,58],sh:[80,64],hip:[46,68],
     arm:[[86,52],[98,44]], arm2:[[84,54],[96,46]],
     leg:[[30,70],[16,72]], leg2:[[28,72],[14,74]]},
+  /* pulling, which the first pass had no drawing for at all - so every row
+     and pulldown borrowed a hinge or a pull-apart and looked wrong */
+  'lat-pull':{head:[52,22],sh:[52,34],hip:[52,52],
+    arm:[[64,26],[58,34]], arm2:[[62,28],[56,36]],
+    leg:[[52,66],[66,72]], leg2:[[50,66],[64,74]],
+    props:[{t:'wall',x:110},{t:'anchor',at:[110,14]},{t:'band',a:[110,14],b:[58,34],c:[86,20]}]},
+  row:{head:[30,36],sh:[44,40],hip:[66,46],
+    arm:[[48,52],[54,42]], arm2:[[46,54],[52,44]],
+    leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]],
+    props:[{t:'arr',a:[54,64],b:[54,48]}]},
+  'db-press-oh':{head:[60,20],sh:[60,34],hip:[60,52],
+    arm:[[44,26],[42,12]], arm2:[[76,26],[78,12]],
+    leg:[[54,64],[52,76]], leg2:[[66,64],[68,76]],
+    props:[{t:'db',at:[42,11]},{t:'db',at:[78,11]},{t:'arr',a:[60,16],b:[60,6]}]},
+  'floor-press':{head:[28,68],sh:[42,68],hip:[72,68],
+    arm:[[42,56],[42,44]], arm2:[[44,58],[44,46]],
+    leg:[[86,58],[86,74]], leg2:[[84,60],[84,76]],
+    props:[{t:'db',at:[42,43]},{t:'arr',a:[56,50],b:[56,38]}]},
+  'band-pushdown':{head:[58,16],sh:[58,30],hip:[58,50],
+    arm:[[62,40],[62,52]], arm2:[[60,40],[60,52]],
+    leg:[[54,64],[52,76]], leg2:[[64,64],[66,76]],
+    props:[{t:'wall',x:108},{t:'anchor',at:[108,10]},{t:'band',a:[108,10],b:[62,52],c:[88,30]},
+           {t:'arr',a:[78,44],b:[78,58]}]},
+  nordic:{head:[26,44],sh:[38,48],hip:[58,56],
+    arm:[[34,58],[30,70]], arm2:[[36,58],[32,70]],
+    leg:[[58,70],[74,74]], leg2:[[56,70],[72,74]],
+    props:[{t:'arr',a:[18,56],b:[14,68]}]},
+  carry:{head:[60,14],sh:[58,28],hip:[56,48],
+    arm:[[62,38],[64,50]], arm2:[[50,38],[48,50]],
+    leg:[[68,60],[74,76]], leg2:[[46,62],[40,76]],
+    props:[{t:'db',at:[64,52]},{t:'db',at:[48,52]}]},
+  'wall-sit':{head:[46,26],sh:[46,40],hip:[52,56],
+    arm:[[62,46],[74,46]], arm2:[[60,48],[72,48]],
+    leg:[[74,56],[74,76]], leg2:[[72,58],[72,76]],
+    props:[{t:'wall',x:38}]},
+
   /* added after the validator named them: every exercise an authored workout
      can prescribe has to be drawn, and these five were not */
   'db-overhead-tri':{head:[58,16],sh:[58,30],hip:[58,50],
@@ -897,74 +933,134 @@ const POSES={
     props:[{t:'wall',x:112},{t:'anchor',at:[112,20]},{t:'band',a:[112,20],b:[64,22],c:[88,18]}]}
 };
 
-/* Which pose an exercise uses. The library owns this - an exercise record may
-   also carry its own `illus` and that wins, but keeping the index in one place
-   means a pose can be reassigned across fifty exercises in one edit. */
-const EX_ILLUS={
-  /* lower */
-  lx01:'goblet-squat', lx02:'squat', lx03:'split-squat', lx04:'lunge', lx05:'squat',
-  lx06:'split-squat', lx07:'hinge', lx08:'hinge', lx09:'sl-rdl', lx10:'glute-bridge',
-  lx11:'lunge', lx12:'squat', lx13:'sl-glute-bridge', lx14:'glute-bridge',
-  lx15:'calf-raise', lx16:'calf-raise', lx17:'sl-calf-raise', lx18:'tibialis-raise',
-  lx19:'copenhagen', lx20:'adductor-squeeze', lx21:'squat', lx22:'lunge',
-  /* upper push */
-  up01:'push-up', up02:'push-up', up03:'incline-push-up', up04:'push-up',
-  up05:'pike-push-up', up06:'push-up', up07:'db-raise', up08:'db-raise',
-  up09:'db-raise', up10:'db-raise', up11:'db-raise', up12:'push-up',
-  up13:'push-up', up14:'db-raise', up15:'db-overhead-tri', up16:'push-up',
-  /* upper pull */
-  ul01:'hinge', ul02:'hinge', ul03:'hinge', ul04:'band-pull-apart', ul05:'band-pull-apart',
-  ul06:'band-pull-apart', ul07:'band-pull-apart', ul08:'band-pull-apart',
-  ul09:'band-face-pull', ul10:'prone-ytw', ul11:'prone-ytw', ul12:'band-overhead',
-  ul13:'db-curl', ul14:'db-curl', ul15:'superman', ul16:'prone-ytw',
-  /* core */
-  co01:'plank', co02:'plank', co03:'side-plank', co04:'side-plank', co05:'dead-bug',
-  co06:'bird-dog', co07:'hollow-hold', co08:'hollow-hold', co09:'band-pallof',
-  co10:'band-pallof', co11:'plank', co12:'dead-bug', co13:'side-plank',
-  /* plyometric */
-  pl01:'pogo-hops', pl02:'jump', pl03:'jump', pl04:'lateral-bound', pl05:'jump',
-  pl06:'lateral-bound', pl07:'jump', pl08:'jump', pl09:'jump', pl10:'decel',
+/* WHICH POSE AN EXERCISE USES.
+   Derived from the name, by rules, in order - not from a table of ids.
+
+   The first version WAS a table of ids, written by reading the id ranges and
+   assuming they ran in category order. They do not: "DB Bicep Curl" is ul12
+   and got a band held overhead, and "Band Kneeling Lat Pull" lives in a second
+   library in p03b so it was never in the table and got nothing at all. A
+   longer hand-written table would have the same failure mode with more places
+   to hide. What a movement IS sits in its name, so that is what is read.
+
+   Ordered, first match wins, specific before general - "Sliding Leg Curl" has
+   to be caught by the hamstring rule before the bicep-curl rule sees "curl".
+   Anything genuinely irregular goes in EX_ILLUS_OVERRIDE below. */
+const POSE_RULES=[
+  /* hamstrings first: these contain "curl" and are not arm work */
+  [/nordic|leg curl/,                      'nordic'],
+  /* pulling */
+  [/pallof|anti-rotation|rotational press|band chop/, 'band-pallof'],
+  [/face pull/,                            'band-face-pull'],
+  [/pull-?apart|reverse fly/,              'band-pull-apart'],
+  [/lat pull|pulldown|straight-arm/,       'lat-pull'],
+  [/\brow\b/,                              'row'],
+  [/superman/,                             'superman'],
+  [/y-t-w|prone y/,                        'prone-ytw'],
+  [/shrug/,                                'carry'],
+  /* pressing and arms */
+  [/triceps pushdown|pushdown/,            'band-pushdown'],
+  [/triceps extension|overhead triceps/,   'db-overhead-tri'],
+  [/floor press/,                          'floor-press'],
+  [/overhead press|arnold/,                'db-press-oh'],
+  [/lateral raise|front raise/,            'db-raise'],
+  [/\bcurl\b/,                             'db-curl'],
+  /* push-ups, most specific first */
+  [/scapular push/,                        'scap-pushup'],
+  [/pike push/,                            'pike-push-up'],
+  [/incline push/,                         'incline-push-up'],
+  [/push-?up/,                             'push-up'],
+  /* trunk */
+  [/copenhagen/,                           'copenhagen'],
+  [/side plank/,                           'side-plank'],
+  [/suitcase|farmer|carry|march/,          'carry'],
+  [/bear (hold|crawl)|mountain climber/,   'plank'],
+  [/plank/,                                'plank'],
+  [/hollow|reverse crunch/,                'hollow-hold'],
+  [/bird dog/,                             'bird-dog'],
+  [/dead bug/,                             'dead-bug'],
+  /* hips and legs */
+  [/single-leg glute bridge|single leg glute bridge/, 'sl-glute-bridge'],
+  [/glute bridge|hip thrust/,              'glute-bridge'],
+  [/adductor squeeze/,                     'adductor-squeeze'],
+  [/single-leg rdl|single leg rdl/,        'sl-rdl'],
+  [/rdl|romanian|good morning|hinge/,      'hinge'],
+  [/wall sit/,                             'wall-sit'],
+  [/tibialis/,                             'tibialis-raise'],
+  [/single-leg calf|single leg calf/,      'sl-calf-raise'],
+  [/calf raise/,                           'calf-raise'],
+  [/calf stretch/,                         'calf-stretch'],
+  [/couch stretch/,                        'couch-stretch'],
+  [/ankle dorsiflexion|ankle rock/,        'ankle-rock'],
+  [/goblet/,                               'goblet-squat'],
+  [/split squat|cossack|skater squat/,     'split-squat'],
+  [/lunge/,                                'lunge'],
+  /* plyometrics and sprint work, before the plain squat rule */
+  [/pogo|ankle stiffness/,                 'pogo-hops'],
+  [/lateral bound|skater|lateral shuffle|star drill|spider/, 'lateral-bound'],
+  [/depth drop|drop & stick|drop and stick|deceleration|5-10-5|agility|split-?step/, 'decel'],
+  [/jump|\bhop\b|hops\b|broad jump/,       'jump'],
+  [/squat/,                                'squat'],
   /* mobility */
-  mo01:'hip-90-90', mo02:'couch-stretch', mo03:'couch-stretch', mo04:'ankle-rock',
-  mo05:'open-book', mo06:'cat-cow', mo07:'open-book', mo08:'cat-cow',
-  mo09:'hip-90-90', mo10:'legs-up-wall', mo11:'calf-stretch', mo12:'wall-slides',
-  mo13:'band-overhead', mo14:'breathe', mo15:'legs-up-wall',
-  /* conditioning and sport */
-  cd01:'run', cd02:'run', cd03:'run', cd04:'bike', cd05:'bike', cd06:'walk',
-  cd07:'run', cd08:'walk',
-  sp01:'run', sp02:'lateral-bound', sp03:'decel', sp04:'run', sp05:'lateral-bound',
-  sp06:'decel', sp07:'jump', sp08:'run'
+  [/wall slide/,                           'wall-slides'],
+  [/shoulder car/,                         'shoulder-cars'],
+  [/dislocate/,                            'band-overhead'],
+  [/open book|thoracic rotation/,          'open-book'],
+  [/cat-?cow/,                             'cat-cow'],
+  [/90\/90|hip switch|adductor rock|pigeon/, 'hip-90-90'],
+  [/legs up|hamstring flow/,               'legs-up-wall'],
+  [/breath/,                               'breathe'],
+  [/world's greatest|worlds greatest/,     'worlds-greatest'],
+  /* conditioning */
+  [/bike|spin|cycl/,                       'bike'],
+  [/\bwalk/,                               'walk'],
+  [/sprint|run|jog|knees|butt kick|a-skip/,'run'],
+  /* whatever is left that clearly involves a band overhead */
+  [/band overhead/,                        'band-overhead'],
+  /* added when the whole-library check named them: these need only kit the app
+     already draws, so falling back would have been laziness rather than a
+     limit. What is left undrawn needs a rack, a cable stack or a bar. */
+  [/step-?up|step-?down/,                  'lunge'],
+  [/frog pump/,                            'glute-bridge'],
+  [/pull-?through/,                        'hinge'],
+  [/rotational throw|woodchop/,            'band-pallof'],
+  [/db bench|incline db press/,            'floor-press'],
+  [/heel lower|heel drop/,                 'sl-calf-raise'],
+  [/side-?lying adductor|adductor raise/,  'copenhagen'],
+  [/adductor slide|slide-?out/,            'adductor-squeeze'],
+  [/band rotation/,                        'band-pallof'],
+  [/snap-?down|drop landing|\blanding\b/,  'decel'],
+  [/acceleration/,                         'run'],
+  [/windshield/,                           'open-book'],
+  [/\bbounds?\b/,                          'jump']
+];
+
+/* Exceptions only. Anything in here is a movement whose name does not describe
+   its shape; it is deliberately short, and a growing one is a sign a rule
+   should be added instead. */
+const EX_ILLUS_OVERRIDE={
+  mo12:'legs-up-wall',     /* "Hamstring Flow" is a supine flow, not a hinge */
+  sp01:'decel',            /* "Split-Step Reaction Drill" is a braking step */
+  sp07:'lateral-bound'     /* "Crossover Step Start" moves sideways first */
 };
 
-/* Warm-up movements are named, not keyed, so they match on their name. Same
-   pose table - a warm-up arm circle and an exercise arm circle are one
-   drawing, which is the point of keying on the movement. */
+/* Warm-up movements whose names the rules cannot reach - mostly swings and
+   circles, which describe a motion rather than a shape. */
 const WU_ILLUS={
   'arm circles':'arm-circles', 'arm circles + leg swings':'arm-circles',
-  'shoulder cars':'shoulder-cars', 'band pull-apart':'band-pull-apart',
-  'band face pull':'band-face-pull', 'band shoulder dislocates':'band-overhead',
-  'wall slides':'wall-slides', 'scapular push-ups':'scap-pushup',
-  'incline push-ups':'incline-push-up', 'cat-cow':'cat-cow', 'dead bug':'dead-bug',
-  'bird dog':'bird-dog', 'glute bridge':'glute-bridge',
-  'bodyweight squats':'squat', 'split squat':'split-squat', 'walking lunge':'lunge',
-  'single-leg rdl (bodyweight)':'sl-rdl', 'calf raises':'calf-raise',
-  'calf stretch (straight + bent knee)':'calf-stretch', 'couch stretch':'couch-stretch',
-  'ankle dorsiflexion rock':'ankle-rock', '90/90 hip switch':'hip-90-90',
-  'thoracic rotation (open book)':'open-book', 'pigeon stretch':'hip-90-90',
-  'adductor rock':'hip-90-90', 'legs up the wall':'legs-up-wall',
-  'slow nasal breathing':'breathe', 'gentle full-body stretch':'breathe',
-  'pogo hops':'pogo-hops', 'countermovement jumps':'jump', 'drop and stick':'decel',
-  'high knees':'run', 'butt kicks':'run', 'a-skips':'run',
-  'build-up runs':'run', 'build-up sprints':'run', 'lateral shuffle':'lateral-bound',
-  'lateral shuffle + crossover':'lateral-bound', 'split step + first step':'decel',
-  'easy jog or bike':'run', 'easy jog around the court':'run', 'easy jog or walk':'run',
-  'easy jog, spin or brisk walk':'run', 'easy bike or brisk walk':'bike',
-  'easy walk or spin':'walk', 'leg swings front/back':'stand',
-  'leg swings lateral':'stand', 'leg swings all directions':'stand',
-  'hip circles + leg swings':'stand', 'leg swings + hip circles':'stand',
+  'leg swings front/back':'stand', 'leg swings lateral':'stand',
+  'leg swings all directions':'stand', 'hip circles + leg swings':'stand',
+  'leg swings + hip circles':'stand',
   'doorway chest stretch':'wall-slides', 'serve shadow swings':'band-overhead',
-  "world's greatest stretch":'worlds-greatest',
-  'shadow swings / rotational throws':'band-pallof'
+  'shadow swings / rotational throws':'band-pallof',
+  'gentle full-body stretch':'breathe', 'slow nasal breathing':'breathe',
+  'easy bike or brisk walk':'bike', 'easy walk or spin':'walk',
+  'easy jog, spin or brisk walk':'run', 'easy jog or bike':'run',
+  'easy jog around the court':'run', 'easy jog or walk':'run',
+  'build-up runs':'run', 'build-up sprints':'run',
+  'countermovement jumps':'jump', 'drop and stick':'decel',
+  'lateral shuffle + crossover':'lateral-bound',
+  'split step + first step':'decel', 'adductor rock':'hip-90-90'
 };
 
 /* The one lookup everything else uses. Returns a pose key or null - never a
@@ -972,10 +1068,23 @@ const WU_ILLUS={
 function illusKey(ex){
   if(!ex) return null;
   if(ex.illus && POSES[ex.illus]) return ex.illus;
-  if(ex.id && EX_ILLUS[ex.id] && POSES[EX_ILLUS[ex.id]]) return EX_ILLUS[ex.id];
+  if(ex.id && EX_ILLUS_OVERRIDE[ex.id] && POSES[EX_ILLUS_OVERRIDE[ex.id]]) return EX_ILLUS_OVERRIDE[ex.id];
   const nm=String(ex.name||'').trim().toLowerCase();
-  if(nm && WU_ILLUS[nm] && POSES[WU_ILLUS[nm]]) return WU_ILLUS[nm];
+  if(!nm) return null;
+  if(WU_ILLUS[nm] && POSES[WU_ILLUS[nm]]) return WU_ILLUS[nm];
+  for(let i=0;i<POSE_RULES.length;i++){
+    if(POSE_RULES[i][0].test(nm)){
+      const k=POSE_RULES[i][1];
+      return POSES[k] ? k : null;
+    }
+  }
   return null;
+}
+/* Which rule answered, for the validator's error messages. */
+function illusWhy(ex){
+  const nm=String((ex&&ex.name)||'').trim().toLowerCase();
+  for(let i=0;i<POSE_RULES.length;i++) if(POSE_RULES[i][0].test(nm)) return String(POSE_RULES[i][0]);
+  return '(no rule)';
 }
 /* `size` is 'lg' on the training screen, 'sm' for a list thumbnail. A movement
    with no pose yet gets a deliberate mark, not a broken image. */
