@@ -1164,6 +1164,77 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .wm-plain{font-size:12.5px;color:var(--text-2);font-weight:600;
   margin-top:7px;line-height:1.5}
 
+/* ---------- Exercise illustrations ----------
+   One figure system, themed through tokens so it reads in both schemes. The
+   figure is instructional, so the body is the strongest line, equipment takes
+   the accent, and the ground and any wall recede. */
+.illus{display:block;width:100%}
+.illus svg.fig{display:block;width:100%;height:auto}
+.illus .fg-t,.illus .fg-l{stroke:var(--text);fill:none;stroke-linecap:round}
+.illus .fg-f{stroke:var(--text-3);fill:none;stroke-linecap:round}
+.illus .fg-h{fill:var(--text)}
+.illus .fg-e{stroke:var(--accent);fill:none;stroke-linecap:round}
+.illus .fg-ef{fill:var(--accent);stroke:none}
+.illus .fg-g{stroke:var(--border);fill:none;stroke-linecap:round}
+.illus .fg-gf{fill:var(--surface-3);stroke:none}
+.illus .fg-a{stroke:var(--accent);fill:none;stroke-linecap:round}
+.illus .fg-af{fill:var(--accent);stroke:none}
+/* on the training screen it is the biggest thing on the page, and it sits on
+   the page rather than inside a card - see the "no nested cards" rule */
+/* Big, but never so big that it pushes the button off the screen: the whole
+   point is that you can see the movement AND log the set without scrolling. */
+.illus.lg{max-width:420px;margin:0 auto;max-height:min(32vh,210px)}
+.illus.lg svg.fig{max-height:min(32vh,210px)}
+@media (min-width:700px){ .illus.lg,.illus.lg svg.fig{max-height:260px} }
+/* expanded inside a warm-up row: a quiet panel, so the row still reads as a row */
+.illus.md{background:var(--surface-2);border-radius:12px;padding:10px 6px;margin:10px 0}
+/* a list thumbnail */
+.illus.sm{width:56px;height:40px;flex:0 0 auto;background:var(--surface-2);
+  border-radius:8px;padding:2px}
+.illus.none{display:flex;align-items:center;justify-content:center;color:var(--text-3)}
+.illus.none svg{width:26px;height:26px}
+.illus.sm.none{width:56px;height:40px}
+
+/* ---------- The warm-up sheet: every movement on one screen ----------
+   An accordion, not a runner. Five movements are five lines; the one you are
+   unsure about opens where it stands. */
+.wuh{font-size:26px;font-weight:850;letter-spacing:-.9px;line-height:1.15}
+.wuh-s{font-size:13.5px;color:var(--text-2);font-weight:600;margin:7px 0 14px;line-height:1.5}
+.wacc{display:flex;flex-direction:column;gap:8px}
+.wacc-i{border:1px solid var(--border-soft);border-radius:14px;background:var(--surface);
+  overflow:hidden}
+.wacc-i.open{border-color:var(--accent-line);background:var(--surface)}
+.wacc-h{display:flex;align-items:center;gap:12px;width:100%;padding:11px 13px;
+  background:none;border:0;font-family:inherit;color:var(--text);cursor:pointer;text-align:left}
+.wacc-n{flex:0 0 auto;width:30px;height:30px;border-radius:9px;background:var(--surface-2);
+  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;
+  color:var(--text-2);font-variant-numeric:tabular-nums}
+.wacc-i.open .wacc-n{background:var(--accent);color:var(--accent-ink)}
+.wacc-x{flex:1;min-width:0}
+.wacc-t{font-size:15.5px;font-weight:750;letter-spacing:-.2px}
+.wacc-m{font-size:12.5px;color:var(--text-3);font-weight:650;margin-top:2px}
+.wacc-c{flex:0 0 auto;color:var(--text-3);display:flex;align-items:center}
+.wacc-c svg{width:18px;height:18px}
+.wacc-b{padding:0 13px 13px 13px}
+.wacc-b p{font-size:13.5px;color:var(--text-2);line-height:1.55;margin:0}
+/* the coaching cue: one tinted line with a bulb, never a wall of text */
+.cue{display:flex;gap:9px;align-items:flex-start;margin-top:11px;padding:10px 12px;
+  border-radius:11px;background:var(--accent-wash);border:1px solid var(--accent-line)}
+.cue i{flex:0 0 auto;color:var(--accent);display:flex}
+.cue i svg{width:16px;height:16px}
+.cue span{font-size:12.5px;font-weight:650;color:var(--text-2);line-height:1.45}
+
+/* ---------- Up next, as a row you can read at a glance ---------- */
+.unext{display:flex;align-items:center;gap:11px;width:100%;margin-top:12px;
+  padding:9px 11px;border-radius:13px;background:none;border:1px solid var(--border-soft);
+  font-family:inherit;color:var(--text);text-align:left;cursor:default}
+.unext .un-x{flex:1;min-width:0}
+.unext .un-l{font-size:10px;font-weight:750;letter-spacing:.5px;text-transform:uppercase;
+  color:var(--text-3)}
+.unext .un-t{font-size:14.5px;font-weight:750;letter-spacing:-.2px;margin-top:1px}
+.unext .un-m{font-size:12px;font-weight:650;color:var(--text-3);margin-top:1px;
+  font-variant-numeric:tabular-nums}
+
 /* ---------- The overview: the one dense screen, on purpose ----------
    Everything after it shows a single thing at a time, so this is where the
    whole session is allowed to be read at once. */
@@ -1178,14 +1249,16 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
    Not a card per set, and no list of what has already been logged. During a
    workout the phone is glanced at with sweaty hands from a metre away, so the
    screen carries the exercise, the set it is on, and one button. */
-.wset{margin:16px 0 14px;text-align:center}
+.wset{margin:14px 0 0;text-align:center;background:var(--surface-2);
+  border-radius:16px;padding:13px 14px 15px}
 .wset .ws-l{font-size:11.5px;font-weight:750;letter-spacing:.6px;
   text-transform:uppercase;color:var(--text-3)}
-.wset .ws-v{display:block;width:100%;margin-top:6px;padding:4px 0;background:none;
+.wset .ws-v{display:block;width:100%;margin-top:4px;padding:2px 0;background:none;
   border:0;font-family:inherit;color:var(--text);cursor:pointer;
-  font-size:44px;font-weight:850;letter-spacing:-1.6px;line-height:1.05}
+  font-size:42px;font-weight:850;letter-spacing:-1.6px;line-height:1.05}
 .wset .ws-v:active{opacity:.6}
 .wset .ws-kg{font-size:22px;font-weight:800;color:var(--text-3);letter-spacing:-.6px}
+.wset .ws-u{font-size:14px;font-weight:700;color:var(--text-3);margin-top:1px}
 /* the number to beat. One muted line, because it is a reference and not a
    control - but it stays, because standing in front of the bar is exactly when
    you want it. */
@@ -1279,6 +1352,9 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
   padding:2px var(--sp) 8px;margin:0 calc(-1 * var(--sp));scrollbar-width:none}
 .swipe::-webkit-scrollbar{display:none}
 .swipe>*{flex:0 0 auto}
+/* The original disclosure used elsewhere in the app. Left under its own
+   names: the warm-up accordion is a different component with a different
+   shape, so it is .wacc-* rather than a variant of this. */
 .acc-h{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;cursor:pointer}
 .acc-b{padding:0 16px 16px;display:none}
 .acc.open .acc-b{display:block}
@@ -1578,6 +1654,8 @@ const ICON = {
   target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
   ruler:'<path d="M3.5 9.5h17a1 1 0 011 1v3a1 1 0 01-1 1h-17a1 1 0 01-1-1v-3a1 1 0 011-1z"/><path d="M7 9.5v2M11 9.5v3M15 9.5v2M19 9.5v3"/>',
   info:'<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/>',
+  /* a coaching cue — the one thing a coach would say out loud */
+  bulb:'<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z"/>',
   /* the open readiness ring — the app's own mark, and sport-neutral */
   ring:'<path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5"/>',
   /* device types — enough to tell a ring from a band from a watch */
@@ -1708,7 +1786,7 @@ const SCHEMA_VERSION=2;             // bump to transform stored records
 /* A date, plus a letter when more than one build ships in a day. Without the
    letter there was no way to tell a second same-day deploy from the cached
    copy of the first, which is exactly the question "did my upload work?". */
-const APP_BUILD='2026-09-20f';
+const APP_BUILD='2026-09-21';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */
@@ -2073,6 +2151,398 @@ const SEED_BASE = {
 /* does THIS device actually hold WHOOP data? */
 const hasWhoop  = ()=> !!(DB&&DB.whoop&&DB.whoop.cycles&&DB.whoop.cycles.length>=7);
 const whoopMode = ()=> !!(DB&&DB.profile&&DB.profile.source&&DB.profile.source!=='none');
+
+/* =========================================================================
+   EXERCISE ILLUSTRATIONS
+   ------------------------------------------------------------------------
+   One figure, posed. Every illustration is the same skeleton - head, torso,
+   two arms, two legs - with different joint coordinates and optional props,
+   rendered to inline SVG in a 120x84 box.
+
+   WHY NOT assets/exercises/*.svg, which is the obvious answer:
+
+     1. Baseline ships as ONE html file with no requests of any kind. A
+        hundred-odd separate SVGs would be a hundred-odd requests, and every
+        one of them would need an entry in the service worker's shell list or
+        the illustrations would simply vanish offline - which is the failure
+        mode hardest to notice and worst to hit mid-session in a basement gym.
+     2. A path that does not exist cannot be drawn. Inline, there is no path,
+        so the "no fake image paths" rule holds by construction rather than by
+        a validator catching it afterwards. The validator still exists, and
+        checks that every exercise's key resolves to a real pose.
+     3. Consistency is the hard part of an exercise library, and it is the
+        part a shared skeleton gives for free: same body, same line weight,
+        same perspective conventions, same equipment shapes, every time. Forty
+        hand-drawn files drift by the tenth.
+     4. Adding one is a pose object of six coordinate pairs, which is what
+        "easy to expand" has to mean for this to keep up with 173 exercises.
+
+   Equipment drawn here is only what the app actually supports: bodyweight, a
+   pair of dumbbells, a band, a wall, the floor, a bike. No racks, no cables,
+   no machines - an illustration must never show kit the user has not got.
+
+   Coordinates: x 0..120, y 0..84, y downwards. Ground line at y=76.
+   ====================================================================== */
+const FIG_W=120, FIG_H=84, FIG_GND=76;
+
+/* Props, drawn over the figure. Each is a small shape, deliberately schematic:
+   the figure is the instruction, the prop only says what is in the hands. */
+function figProp(p){
+  const n=v=>Math.round(v*10)/10;
+  if(p.t==='band'){
+    /* a band sags; the curve is what makes it read as elastic rather than a stick */
+    const c=p.c||[(p.a[0]+p.b[0])/2,(p.a[1]+p.b[1])/2+8];
+    return `<path d="M${n(p.a[0])} ${n(p.a[1])} Q${n(c[0])} ${n(c[1])} ${n(p.b[0])} ${n(p.b[1])}"
+      class="fg-e" fill="none" stroke-width="2.4"/>`;
+  }
+  if(p.t==='db'){
+    const x=p.at[0], y=p.at[1];
+    return `<g class="fg-e"><line x1="${n(x-4)}" y1="${n(y)}" x2="${n(x+4)}" y2="${n(y)}" stroke-width="2.4"/>
+      <circle cx="${n(x-5)}" cy="${n(y)}" r="2.6" class="fg-ef"/>
+      <circle cx="${n(x+5)}" cy="${n(y)}" r="2.6" class="fg-ef"/></g>`;
+  }
+  if(p.t==='wall') return `<line x1="${n(p.x)}" y1="4" x2="${n(p.x)}" y2="${FIG_GND}" class="fg-g" stroke-width="3"/>`;
+  if(p.t==='block') return `<rect x="${n(p.x)}" y="${n(p.y)}" width="${n(p.w||22)}" height="${n(FIG_GND-p.y)}"
+      rx="2" class="fg-gf"/>`;
+  if(p.t==='anchor') return `<circle cx="${n(p.at[0])}" cy="${n(p.at[1])}" r="3" class="fg-ef"/>`;
+  if(p.t==='arr'){
+    /* one motion arrow, only where the pose alone cannot say which way */
+    const a=p.a,b=p.b, dx=b[0]-a[0], dy=b[1]-a[1];
+    const L=Math.sqrt(dx*dx+dy*dy)||1, ux=dx/L, uy=dy/L;
+    const hx=b[0]-ux*5, hy=b[1]-uy*5, px=-uy*3.2, py=ux*3.2;
+    return `<g class="fg-a"><line x1="${n(a[0])}" y1="${n(a[1])}" x2="${n(hx)}" y2="${n(hy)}" stroke-width="2.2"/>
+      <polygon points="${n(b[0])},${n(b[1])} ${n(hx+px)},${n(hy+py)} ${n(hx-px)},${n(hy-py)}" class="fg-af"/></g>`;
+  }
+  if(p.t==='arc'){
+    const r=p.r||7, x=p.at[0], y=p.at[1];
+    return `<path d="M${n(x-r)} ${n(y)} A${r} ${r} 0 1 1 ${n(x+r)} ${n(y)}" class="fg-a"
+      fill="none" stroke-width="2"/>`;
+  }
+  if(p.t==='bike'){
+    const x=p.at[0], y=p.at[1];
+    return `<g class="fg-e"><circle cx="${n(x-13)}" cy="${n(y)}" r="9" fill="none" stroke-width="2.2"/>
+      <circle cx="${n(x+13)}" cy="${n(y)}" r="9" fill="none" stroke-width="2.2"/>
+      <path d="M${n(x-13)} ${n(y)} L${n(x-1)} ${n(y-14)} L${n(x+13)} ${n(y)} M${n(x-1)} ${n(y-14)} L${n(x+7)} ${n(y-18)}"
+        fill="none" stroke-width="2.2"/></g>`;
+  }
+  return '';
+}
+
+/* The skeleton. Far-side limbs are drawn first and faded, which is the whole
+   of the perspective convention - it is what lets a side view read as a body
+   rather than a diagram. */
+function figSVG(p, o){
+  o=o||{};
+  const n=v=>Math.round(v*10)/10;
+  const seg=(a,b,w,cls)=>(a&&b)
+    ? `<line x1="${n(a[0])}" y1="${n(a[1])}" x2="${n(b[0])}" y2="${n(b[1])}" class="${cls}" stroke-width="${w}"/>`
+    : '';
+  const limb=(from,j,cls)=> j ? seg(from,j[0],4.6,cls)+seg(j[0],j[1],4.2,cls) : '';
+  const spine = p.spine
+    ? `<path d="M${n(p.sh[0])} ${n(p.sh[1])} Q${n(p.spine[0])} ${n(p.spine[1])} ${n(p.hip[0])} ${n(p.hip[1])}"
+         class="fg-t" fill="none" stroke-width="6.4"/>`
+    : seg(p.sh,p.hip,6.4,'fg-t');
+  return `<svg viewBox="0 0 ${FIG_W} ${FIG_H}" class="fig" role="img" aria-hidden="true">
+    ${(p.props||[]).filter(x=>x.t==='wall'||x.t==='block').map(figProp).join('')}
+    ${p.ground!==false?`<line x1="6" y1="${FIG_GND}" x2="${FIG_W-6}" y2="${FIG_GND}" class="fg-g" stroke-width="2.4"/>`:''}
+    ${limb(p.hip,p.leg2,'fg-f')}${limb(p.sh,p.arm2,'fg-f')}
+    ${spine}
+    ${limb(p.hip,p.leg,'fg-l')}${limb(p.sh,p.arm,'fg-l')}
+    <circle cx="${n(p.head[0])}" cy="${n(p.head[1])}" r="6.6" class="fg-h"/>
+    ${(p.props||[]).filter(x=>x.t!=='wall'&&x.t!=='block').map(figProp).join('')}
+  </svg>`;
+}
+
+/* ---- the poses ----
+   Named by movement, not by exercise, so several exercises can share one and
+   a new exercise usually needs no new drawing at all. */
+const POSES={
+  /* ---------- standing, front ---------- */
+  'arm-circles':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[44,28],[28,28]], arm2:[[76,28],[92,28]],
+    leg:[[54,62],[52,76]], leg2:[[66,62],[68,76]],
+    props:[{t:'arc',at:[28,26],r:7},{t:'arc',at:[92,26],r:7}]},
+  'band-pull-apart':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[46,30],[32,27]], arm2:[[74,30],[88,27]],
+    leg:[[54,62],[52,76]], leg2:[[66,62],[68,76]],
+    props:[{t:'band',a:[32,27],b:[88,27],c:[60,36]}]},
+  'band-overhead':{head:[60,20],sh:[60,32],hip:[60,50],
+    arm:[[42,20],[28,12]], arm2:[[78,20],[92,12]],
+    leg:[[54,63],[52,76]], leg2:[[66,63],[68,76]],
+    props:[{t:'band',a:[28,12],b:[92,12],c:[60,4]}]},
+  'db-raise':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[44,28],[30,28]], arm2:[[76,28],[90,28]],
+    leg:[[54,62],[52,76]], leg2:[[66,62],[68,76]],
+    props:[{t:'db',at:[30,28]},{t:'db',at:[90,28]},{t:'arr',a:[30,40],b:[30,31]}]},
+  'wall-slides':{head:[60,18],sh:[60,32],hip:[60,52],
+    arm:[[44,26],[42,12]], arm2:[[76,26],[78,12]],
+    leg:[[54,64],[52,76]], leg2:[[66,64],[68,76]],
+    props:[{t:'block',x:8,y:6,w:6},{t:'arr',a:[42,22],b:[42,10]}]},
+  'shoulder-cars':{head:[60,16],sh:[60,30],hip:[60,50],
+    arm:[[48,20],[42,8]], arm2:[[72,38],[74,50]],
+    leg:[[54,63],[52,76]], leg2:[[66,63],[68,76]],
+    props:[{t:'arc',at:[42,10],r:8}]},
+  'band-pallof':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[54,34],[58,30]], arm2:[[66,34],[62,30]],
+    leg:[[50,62],[48,76]], leg2:[[70,62],[72,76]],
+    props:[{t:'wall',x:112},{t:'anchor',at:[112,34]},{t:'band',a:[112,34],b:[62,30],c:[88,36]}]},
+  'lateral-bound':{head:[54,16],sh:[54,30],hip:[56,50],
+    arm:[[42,36],[34,28]], arm2:[[68,38],[76,32]],
+    leg:[[62,62],[60,76]], leg2:[[44,58],[34,66]],
+    props:[{t:'arr',a:[86,50],b:[104,50]}]},
+  'side-plank':{head:[96,30],sh:[86,38],hip:[56,54],
+    arm:[[86,52],[80,74]], arm2:[[86,26],[86,12]],
+    leg:[[36,64],[22,74]], leg2:[[36,66],[24,76]], ground:true},
+
+  /* ---------- standing, side (facing right) ---------- */
+  stand:{head:[58,14],sh:[58,28],hip:[58,48],
+    arm:[[58,38],[58,48]], leg:[[58,62],[58,76]], leg2:[[56,62],[56,76]]},
+  squat:{head:[62,26],sh:[56,38],hip:[48,56],
+    arm:[[64,42],[76,40]], arm2:[[64,44],[74,44]],
+    leg:[[70,58],[62,76]], leg2:[[68,60],[60,76]],
+    props:[{t:'arr',a:[36,46],b:[36,62]}]},
+  'goblet-squat':{head:[62,26],sh:[56,38],hip:[48,56],
+    arm:[[62,40],[60,34]], arm2:[[64,42],[62,36]],
+    leg:[[70,58],[62,76]], leg2:[[68,60],[60,76]],
+    props:[{t:'db',at:[62,33]}]},
+  lunge:{head:[58,16],sh:[58,30],hip:[58,50],
+    arm:[[58,40],[56,52]], arm2:[[60,40],[62,52]],
+    leg:[[78,58],[82,76]], leg2:[[44,64],[34,74]]},
+  'split-squat':{head:[56,18],sh:[56,32],hip:[56,52],
+    arm:[[58,42],[58,54]], leg:[[76,60],[80,76]], leg2:[[42,66],[32,76]],
+    props:[{t:'db',at:[52,54]}]},
+  'sl-rdl':{head:[30,36],sh:[42,40],hip:[64,44],
+    arm:[[40,50],[38,62]], leg:[[64,58],[64,76]],
+    leg2:[[82,42],[98,38]], props:[{t:'db',at:[38,63]}]},
+  hinge:{head:[32,34],sh:[44,38],hip:[66,44],
+    arm:[[44,50],[44,62]], leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]]},
+  'calf-raise':{head:[58,14],sh:[58,28],hip:[58,48],
+    arm:[[58,38],[58,48]], leg:[[58,60],[58,70]], leg2:[[56,60],[56,70]],
+    props:[{t:'arr',a:[76,52],b:[76,38]},{t:'wall',x:98}]},
+  'sl-calf-raise':{head:[58,14],sh:[58,28],hip:[58,48],
+    arm:[[58,38],[58,48]], leg:[[58,60],[58,70]],
+    leg2:[[46,58],[48,46]], props:[{t:'arr',a:[76,52],b:[76,38]},{t:'wall',x:98}]},
+  'tibialis-raise':{head:[52,16],sh:[52,30],hip:[52,50],
+    arm:[[54,40],[54,52]], leg:[[56,62],[58,76]], leg2:[[54,62],[56,76]],
+    props:[{t:'wall',x:40},{t:'arr',a:[74,74],b:[74,64]}]},
+  'calf-stretch':{head:[74,24],sh:[64,32],hip:[46,44],
+    arm:[[80,28],[94,26]], arm2:[[80,32],[94,30]],
+    leg:[[38,58],[30,76]], leg2:[[52,60],[58,76]],
+    props:[{t:'wall',x:98}]},
+  'couch-stretch':{head:[48,26],sh:[48,40],hip:[48,58],
+    arm:[[50,48],[50,60]], leg:[[70,62],[74,76]],
+    leg2:[[66,66],[88,52]], props:[{t:'wall',x:92}]},
+  'ankle-rock':{head:[52,22],sh:[52,36],hip:[52,56],
+    arm:[[60,44],[70,50]], leg:[[74,58],[70,76]], leg2:[[40,72],[26,74]],
+    props:[{t:'arr',a:[86,60],b:[92,70]}]},
+  run:{head:[62,14],sh:[60,28],hip:[56,48],
+    arm:[[70,34],[78,26]], arm2:[[46,36],[38,44]],
+    leg:[[74,54],[86,64]], leg2:[[42,60],[28,56]], props:[{t:'arr',a:[96,40],b:[110,40]}]},
+  walk:{head:[60,14],sh:[58,28],hip:[56,48],
+    arm:[[64,38],[68,48]], arm2:[[50,38],[46,48]],
+    leg:[[68,60],[74,76]], leg2:[[46,62],[40,76]]},
+  bike:{head:[52,22],sh:[54,34],hip:[60,48],
+    arm:[[66,40],[78,42]], arm2:[[66,42],[78,44]],
+    leg:[[74,56],[68,66]], leg2:[[72,58],[80,62]],
+    props:[{t:'bike',at:[70,64]}], ground:false},
+  'pogo-hops':{head:[58,18],sh:[58,32],hip:[58,50],
+    arm:[[58,42],[58,52]], leg:[[58,62],[58,70]], leg2:[[56,62],[56,70]],
+    props:[{t:'arr',a:[78,56],b:[78,36]},{t:'arr',a:[38,56],b:[38,36]}]},
+  jump:{head:[62,24],sh:[56,36],hip:[48,54],
+    arm:[[66,40],[78,34]], arm2:[[64,42],[76,38]],
+    leg:[[70,58],[62,76]], leg2:[[68,60],[60,76]],
+    props:[{t:'arr',a:[34,52],b:[34,26]}]},
+  decel:{head:[54,18],sh:[56,32],hip:[62,50],
+    arm:[[48,38],[38,32]], arm2:[[66,40],[74,34]],
+    leg:[[78,60],[84,76]], leg2:[[56,62],[50,76]],
+    props:[{t:'arr',a:[100,44],b:[86,44]}]},
+
+  /* ---------- hands and knees ---------- */
+  'cat-cow':{head:[30,52],sh:[44,46],hip:[80,44],spine:[62,34],
+    arm:[[44,60],[44,76]], arm2:[[42,60],[42,76]],
+    leg:[[80,60],[90,76]], leg2:[[78,60],[88,76]],
+    props:[{t:'arr',a:[62,22],b:[62,30]}]},
+  'bird-dog':{head:[30,52],sh:[44,46],hip:[80,44],
+    arm:[[44,60],[44,76]], arm2:[[30,40],[16,36]],
+    leg:[[80,60],[90,76]], leg2:[[94,42],[108,38]]},
+
+  /* ---------- on the back ---------- */
+  'dead-bug':{head:[32,66],sh:[44,68],hip:[78,68],
+    arm:[[44,56],[42,44]], arm2:[[34,72],[24,76]],
+    leg:[[80,54],[92,52]], leg2:[[92,70],[104,72]]},
+  'glute-bridge':{head:[26,70],sh:[36,70],hip:[62,54],
+    arm:[[32,74],[24,76]], arm2:[[34,74],[26,76]],
+    leg:[[84,60],[84,76]], leg2:[[82,62],[82,76]],
+    props:[{t:'arr',a:[62,44],b:[62,50]}]},
+  'sl-glute-bridge':{head:[26,70],sh:[36,70],hip:[62,54],
+    arm:[[32,74],[24,76]], leg:[[84,60],[84,76]],
+    leg2:[[80,48],[96,42]], props:[{t:'arr',a:[62,44],b:[62,50]}]},
+  'hollow-hold':{head:[42,60],sh:[52,66],hip:[70,68],
+    arm:[[34,56],[18,54]], arm2:[[36,58],[20,56]],
+    leg:[[86,60],[100,52]], leg2:[[84,62],[98,54]]},
+  'open-book':{head:[30,64],sh:[44,66],hip:[76,68],
+    arm:[[44,52],[52,40]], arm2:[[46,72],[56,74]],
+    leg:[[78,58],[92,58]], leg2:[[80,60],[94,60]],
+    props:[{t:'arc',at:[52,40],r:8}]},
+  'hip-90-90':{head:[44,44],sh:[48,56],hip:[54,70],
+    arm:[[60,62],[70,68]], leg:[[74,72],[88,66]], leg2:[[44,74],[30,70]]},
+  'legs-up-wall':{head:[26,70],sh:[38,70],hip:[70,70],
+    arm:[[34,74],[24,76]], arm2:[[36,74],[26,76]],
+    leg:[[78,56],[82,34]], leg2:[[76,58],[80,36]],
+    props:[{t:'wall',x:88}]},
+  breathe:{head:[28,68],sh:[40,70],hip:[72,70],
+    arm:[[38,74],[28,76]], arm2:[[40,74],[30,76]],
+    leg:[[88,72],[104,74]], leg2:[[86,74],[102,76]]},
+
+  /* ---------- front support ---------- */
+  plank:{head:[86,48],sh:[74,52],hip:[48,56],
+    arm:[[74,64],[80,76]], arm2:[[72,64],[78,76]],
+    leg:[[30,62],[18,74]], leg2:[[28,64],[16,76]]},
+  'scap-pushup':{head:[86,48],sh:[74,52],hip:[48,56],
+    arm:[[74,64],[80,76]], arm2:[[72,64],[78,76]],
+    leg:[[30,62],[18,74]], leg2:[[28,64],[16,76]],
+    props:[{t:'arr',a:[74,40],b:[74,48]}]},
+  'push-up':{head:[88,56],sh:[76,60],hip:[50,60],
+    arm:[[86,68],[80,76]], arm2:[[84,68],[78,76]],
+    leg:[[32,64],[18,74]], leg2:[[30,66],[16,76]],
+    props:[{t:'arr',a:[62,44],b:[62,54]}]},
+  'incline-push-up':{head:[92,40],sh:[80,46],hip:[54,56],
+    arm:[[84,52],[92,56]], arm2:[[82,54],[90,58]],
+    leg:[[34,64],[20,74]], leg2:[[32,66],[18,76]],
+    props:[{t:'block',x:86,y:56,w:26}]},
+  'pike-push-up':{head:[88,58],sh:[78,52],hip:[54,32],
+    arm:[[84,64],[88,76]], arm2:[[82,64],[86,76]],
+    leg:[[42,54],[30,74]], leg2:[[40,56],[28,76]]},
+  'prone-ytw':{head:[92,58],sh:[80,64],hip:[46,68],
+    arm:[[86,52],[98,44]], arm2:[[84,54],[96,46]],
+    leg:[[30,70],[16,72]], leg2:[[28,72],[14,74]]},
+  /* added after the validator named them: every exercise an authored workout
+     can prescribe has to be drawn, and these five were not */
+  'db-overhead-tri':{head:[58,16],sh:[58,30],hip:[58,50],
+    arm:[[56,14],[50,24]], arm2:[[62,14],[56,24]],
+    leg:[[54,64],[52,76]], leg2:[[64,64],[66,76]],
+    props:[{t:'db',at:[52,25]},{t:'arr',a:[36,26],b:[36,14]}]},
+  'db-curl':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[48,40],[50,26]], arm2:[[72,40],[74,52]],
+    leg:[[54,62],[52,76]], leg2:[[66,62],[68,76]],
+    props:[{t:'db',at:[50,25]},{t:'db',at:[74,53]},{t:'arr',a:[36,44],b:[36,30]}]},
+  superman:{head:[94,56],sh:[82,62],hip:[46,64],
+    arm:[[90,54],[104,48]], arm2:[[88,56],[102,50]],
+    leg:[[30,62],[14,56]], leg2:[[32,64],[16,58]],
+    props:[{t:'arr',a:[62,72],b:[62,64]}]},
+  copenhagen:{head:[96,34],sh:[86,42],hip:[58,56],
+    arm:[[86,56],[80,74]], arm2:[[86,30],[86,16]],
+    leg:[[42,54],[26,50]], leg2:[[44,66],[30,74]],
+    props:[{t:'block',x:8,y:50,w:24}]},
+  'adductor-squeeze':{head:[26,70],sh:[38,70],hip:[64,66],
+    arm:[[34,74],[24,76]], arm2:[[36,74],[26,76]],
+    leg:[[82,56],[80,74]], leg2:[[76,58],[74,74]],
+    props:[{t:'arr',a:[96,58],b:[86,58]},{t:'arr',a:[62,58],b:[72,58]}]},
+  'worlds-greatest':{head:[46,26],sh:[48,38],hip:[44,56],
+    arm:[[54,30],[60,18]], arm2:[[46,52],[44,70]],
+    leg:[[70,58],[74,76]], leg2:[[30,66],[18,74]],
+    props:[{t:'arc',at:[60,18],r:7}]},
+  'band-face-pull':{head:[58,16],sh:[58,30],hip:[58,50],
+    arm:[[74,26],[64,22]], arm2:[[72,30],[62,26]],
+    leg:[[54,63],[52,76]], leg2:[[64,63],[66,76]],
+    props:[{t:'wall',x:112},{t:'anchor',at:[112,20]},{t:'band',a:[112,20],b:[64,22],c:[88,18]}]}
+};
+
+/* Which pose an exercise uses. The library owns this - an exercise record may
+   also carry its own `illus` and that wins, but keeping the index in one place
+   means a pose can be reassigned across fifty exercises in one edit. */
+const EX_ILLUS={
+  /* lower */
+  lx01:'goblet-squat', lx02:'squat', lx03:'split-squat', lx04:'lunge', lx05:'squat',
+  lx06:'split-squat', lx07:'hinge', lx08:'hinge', lx09:'sl-rdl', lx10:'glute-bridge',
+  lx11:'lunge', lx12:'squat', lx13:'sl-glute-bridge', lx14:'glute-bridge',
+  lx15:'calf-raise', lx16:'calf-raise', lx17:'sl-calf-raise', lx18:'tibialis-raise',
+  lx19:'copenhagen', lx20:'adductor-squeeze', lx21:'squat', lx22:'lunge',
+  /* upper push */
+  up01:'push-up', up02:'push-up', up03:'incline-push-up', up04:'push-up',
+  up05:'pike-push-up', up06:'push-up', up07:'db-raise', up08:'db-raise',
+  up09:'db-raise', up10:'db-raise', up11:'db-raise', up12:'push-up',
+  up13:'push-up', up14:'db-raise', up15:'db-overhead-tri', up16:'push-up',
+  /* upper pull */
+  ul01:'hinge', ul02:'hinge', ul03:'hinge', ul04:'band-pull-apart', ul05:'band-pull-apart',
+  ul06:'band-pull-apart', ul07:'band-pull-apart', ul08:'band-pull-apart',
+  ul09:'band-face-pull', ul10:'prone-ytw', ul11:'prone-ytw', ul12:'band-overhead',
+  ul13:'db-curl', ul14:'db-curl', ul15:'superman', ul16:'prone-ytw',
+  /* core */
+  co01:'plank', co02:'plank', co03:'side-plank', co04:'side-plank', co05:'dead-bug',
+  co06:'bird-dog', co07:'hollow-hold', co08:'hollow-hold', co09:'band-pallof',
+  co10:'band-pallof', co11:'plank', co12:'dead-bug', co13:'side-plank',
+  /* plyometric */
+  pl01:'pogo-hops', pl02:'jump', pl03:'jump', pl04:'lateral-bound', pl05:'jump',
+  pl06:'lateral-bound', pl07:'jump', pl08:'jump', pl09:'jump', pl10:'decel',
+  /* mobility */
+  mo01:'hip-90-90', mo02:'couch-stretch', mo03:'couch-stretch', mo04:'ankle-rock',
+  mo05:'open-book', mo06:'cat-cow', mo07:'open-book', mo08:'cat-cow',
+  mo09:'hip-90-90', mo10:'legs-up-wall', mo11:'calf-stretch', mo12:'wall-slides',
+  mo13:'band-overhead', mo14:'breathe', mo15:'legs-up-wall',
+  /* conditioning and sport */
+  cd01:'run', cd02:'run', cd03:'run', cd04:'bike', cd05:'bike', cd06:'walk',
+  cd07:'run', cd08:'walk',
+  sp01:'run', sp02:'lateral-bound', sp03:'decel', sp04:'run', sp05:'lateral-bound',
+  sp06:'decel', sp07:'jump', sp08:'run'
+};
+
+/* Warm-up movements are named, not keyed, so they match on their name. Same
+   pose table - a warm-up arm circle and an exercise arm circle are one
+   drawing, which is the point of keying on the movement. */
+const WU_ILLUS={
+  'arm circles':'arm-circles', 'arm circles + leg swings':'arm-circles',
+  'shoulder cars':'shoulder-cars', 'band pull-apart':'band-pull-apart',
+  'band face pull':'band-face-pull', 'band shoulder dislocates':'band-overhead',
+  'wall slides':'wall-slides', 'scapular push-ups':'scap-pushup',
+  'incline push-ups':'incline-push-up', 'cat-cow':'cat-cow', 'dead bug':'dead-bug',
+  'bird dog':'bird-dog', 'glute bridge':'glute-bridge',
+  'bodyweight squats':'squat', 'split squat':'split-squat', 'walking lunge':'lunge',
+  'single-leg rdl (bodyweight)':'sl-rdl', 'calf raises':'calf-raise',
+  'calf stretch (straight + bent knee)':'calf-stretch', 'couch stretch':'couch-stretch',
+  'ankle dorsiflexion rock':'ankle-rock', '90/90 hip switch':'hip-90-90',
+  'thoracic rotation (open book)':'open-book', 'pigeon stretch':'hip-90-90',
+  'adductor rock':'hip-90-90', 'legs up the wall':'legs-up-wall',
+  'slow nasal breathing':'breathe', 'gentle full-body stretch':'breathe',
+  'pogo hops':'pogo-hops', 'countermovement jumps':'jump', 'drop and stick':'decel',
+  'high knees':'run', 'butt kicks':'run', 'a-skips':'run',
+  'build-up runs':'run', 'build-up sprints':'run', 'lateral shuffle':'lateral-bound',
+  'lateral shuffle + crossover':'lateral-bound', 'split step + first step':'decel',
+  'easy jog or bike':'run', 'easy jog around the court':'run', 'easy jog or walk':'run',
+  'easy jog, spin or brisk walk':'run', 'easy bike or brisk walk':'bike',
+  'easy walk or spin':'walk', 'leg swings front/back':'stand',
+  'leg swings lateral':'stand', 'leg swings all directions':'stand',
+  'hip circles + leg swings':'stand', 'leg swings + hip circles':'stand',
+  'doorway chest stretch':'wall-slides', 'serve shadow swings':'band-overhead',
+  "world's greatest stretch":'worlds-greatest',
+  'shadow swings / rotational throws':'band-pallof'
+};
+
+/* The one lookup everything else uses. Returns a pose key or null - never a
+   guess, because a wrong illustration is worse than none. */
+function illusKey(ex){
+  if(!ex) return null;
+  if(ex.illus && POSES[ex.illus]) return ex.illus;
+  if(ex.id && EX_ILLUS[ex.id] && POSES[EX_ILLUS[ex.id]]) return EX_ILLUS[ex.id];
+  const nm=String(ex.name||'').trim().toLowerCase();
+  if(nm && WU_ILLUS[nm] && POSES[WU_ILLUS[nm]]) return WU_ILLUS[nm];
+  return null;
+}
+/* `size` is 'lg' on the training screen, 'sm' for a list thumbnail. A movement
+   with no pose yet gets a deliberate mark, not a broken image. */
+function illusHTML(ex, size){
+  const k=illusKey(ex);
+  const cls='illus '+(size||'lg')+(k?'':' none');
+  if(!k) return `<div class="${cls}" aria-hidden="true">${svg('dumbbell')}</div>`;
+  return `<div class="${cls}">${figSVG(POSES[k])}</div>`;
+}
+/* coverage, for the validator and the About screen */
+function illusCoverage(){
+  const all=(DB&&DB.exercises)||[];
+  let n=0;
+  all.forEach(e=>{ if(illusKey(e)) n++; });
+  return {have:n, total:all.length, poses:Object.keys(POSES).length};
+}
 
 /* =========================================================================
    EXERCISE LIBRARY
@@ -8253,7 +8723,17 @@ function noticeRow(date){
       go:()=>{ resetStack(); openPane('Tests','Retest and compare', paneTests); }};
   }
 
-  /* 3 · the weekly digest, on the day the week turns over */
+  /* 3 · the walkthrough, while they are still new.
+     Above the digest, not below it. Somebody who has logged nothing has no
+     week of their own to review, so offering "Last week in review" on their
+     first Monday put a summary of an empty week in front of the one thing
+     that would actually help them. */
+  if(DB.profile.onboarded && !tourSeen() && loggedCount()===0){
+    return {id:'tour', icon:'info', t:'New here?',
+      s:'How Baseline works — about a minute', go:()=>openTour()};
+  }
+
+  /* 4 · the weekly digest, on the day the week turns over */
   if(dowOf(d)===1){
     const wkStart=weekStartOf(d);
     if(!(DB.ui && DB.ui.digestSeen===wkStart) && hasHistory()){
@@ -8262,12 +8742,6 @@ function noticeRow(date){
         go:()=>{ DB.ui=DB.ui||{}; DB.ui.digestSeen=wkStart; save();
                  resetStack(); openPane('Last week','How the week went', paneWeek); }};
     }
-  }
-
-  /* 4 · the walkthrough, while they are still new */
-  if(DB.profile.onboarded && !tourSeen() && loggedCount()===0){
-    return {id:'tour', icon:'info', t:'New here?',
-      s:'How Baseline works — about a minute', go:()=>openTour()};
   }
   return null;
 }
@@ -8572,29 +9046,65 @@ function ringRow(d){
   return `<div class="scores">
     <button class="score lead" id="rdRow" aria-label="Readiness ${rd?rd.score:'unknown'} of 100${
       B?', '+esc(B.label):''}. View details">
-      ${ringHTML({lead:true, pct: rd? rd.score : null, value: rd? rd.score : '—',
+      ${''/* An empty arc, not a dash. A dash in a ring reads as a broken
+              reading; an empty ring beside "Learning your baseline" reads as
+              what it is - nothing measured yet. */}
+      ${ringHTML({lead:true, pct: rd? rd.score : null, value: rd? rd.score : '',
                   color: B? B.color : null})}
       <span class="score-x">
         <span class="score-l">Readiness</span>
-        <span class="score-w" style="${B?'color:'+B.color:''}">${rd? esc(B.label) : 'Not checked in'}</span>
-        <span class="score-s">${rd? 'out of 100' : 'Check in to get today’s number'}</span>
+        ${(()=>{
+          /* No number today is not the same as no number possible. With a
+             check-in there is a real score; without one, what to say depends
+             on whether Baseline has been running long enough to have a normal
+             for this person at all. Neither case invents a figure, and neither
+             leaves a dash sitting in a card. */
+          if(rd) return `<span class="score-w" style="color:${B.color}">${esc(B.label)}</span>
+            <span class="score-s">out of 100</span>`;
+          const lvl=dataCoverage(d).level;
+          return lvl==='learning'
+            ? `<span class="score-w">Learning your baseline</span>
+               <span class="score-s">Check in and it starts from today</span>`
+            : `<span class="score-w">Not checked in</span>
+               <span class="score-s">Check in for today’s number</span>`;
+        })()}
       </span>
       <i class="rw-c">${svg('chev')}</i>
     </button>
     <div class="score-pair">
       <button class="score" id="ringStrain" aria-label="Strain today ${rnd(load,1)} of 21. See the day">
+        ${''/* Strain is computed from what you logged, not read off a strap:
+              nothing logged is a real zero, not an unknown. */}
         ${ringHTML({pct: load? Math.min(100, load/21*100) : null,
-                    value: load? rnd(load,1) : '—', color:'var(--cyan)'})}
+                    value: load? rnd(load,1) : '0', color:'var(--cyan)'})}
         <span class="score-x"><span class="score-l">Strain</span>
           <span class="score-s">of 21 today</span></span>
       </button>
-      <button class="score" id="ringSleep" aria-label="${slept!=null?'Slept '+fmtMin(slept):'Sleep not recorded'}">
-        ${ringHTML({pct: slept!=null? Math.min(100, slept/need*100) : null,
-                    value: slept!=null? (Math.round(slept/60*10)/10)+'h' : '—',
-                    color:'var(--violet)'})}
-        <span class="score-x"><span class="score-l">Sleep</span>
-          <span class="score-s">${slept!=null? 'of '+Math.round(need/60)+'h needed' : 'not recorded'}</span></span>
-      </button>
+      ${(()=>{
+        /* Sleep is a wearable-or-check-in figure, and it is NOT always there.
+           A permanent tile reading "Sleep —  not recorded" is an empty card
+           holding a space open for a device the user may not own, which is
+           exactly what makes an app look like a dashboard for hardware rather
+           than a coach. When there is no figure, the slot carries something
+           Baseline always knows: the training it has actually seen this week. */
+        if(slept!=null) return `
+          <button class="score" id="ringSleep" aria-label="Slept ${fmtMin(slept)}">
+            ${ringHTML({pct: Math.min(100, slept/need*100),
+                        value:(Math.round(slept/60*10)/10)+'h', color:'var(--violet)'})}
+            <span class="score-x"><span class="score-l">Sleep</span>
+              <span class="score-s">of ${Math.round(need/60)}h needed</span></span>
+          </button>`;
+        const wp=weekProgress(d);
+        const n=(DB.sessions||[]).filter(s=>s.done && s.date>=weekStartOf(d) && s.date<=d).length
+              + (DB.activities||[]).filter(a=>a.date>=weekStartOf(d) && a.date<=d).length;
+        return `
+          <button class="score" id="ringWeek" aria-label="${n} logged this week. See your training">
+            ${ringHTML({pct: n? Math.min(100, n/Math.max(3,(DB.targets&&DB.targets.sessions)||4)*100) : null,
+                        value: String(n), color:'var(--accent)'})}
+            <span class="score-x"><span class="score-l">This week</span>
+              <span class="score-s">${n===1?'session logged':'sessions logged'}</span></span>
+          </button>`;
+      })()}
     </div>
   </div>`;
 }
@@ -8607,6 +9117,9 @@ function wireRings(d){
   /* The sleep ring used to reopen the whole check-in, which answered a
      question nobody was asking. What you want from a sleep ring is the target
      and what tonight is worth. Editing is still one tap further in. */
+  /* the slot that replaces Sleep when there is no sleep figure */
+  const wkT=$('#ringWeek');
+  if(wkT) wkT.onclick=()=>{ const c=$('#actsCard'); if(c) c.scrollIntoView({behavior:'smooth',block:'center'}); };
   const z=$('#ringSleep');
   if(z) z.onclick=()=>pushPage({build:pageSleep(d)});
 }
@@ -8854,6 +9367,11 @@ function wireWeekStrip(d){
 function todayNoCheckin(d){
   const cy=cycleByDate(d);
   return `
+  ${''/* The same tiles as any other day. Readiness is the thing this app is
+          built around, so its slot exists before there is a number in it and
+          says what it is doing - "Learning your baseline" - rather than being
+          absent until a device or a check-in fills it. */}
+  ${ringRow(d)}
   <div class="rec">
     <div class="rec-l">Today</div>
     <div class="rec-t">How are you doing?</div>
@@ -10719,18 +11237,26 @@ function weekNarrative(R){
 /* the week's numbers, shown above the training history they summarise */
 function weekNumbers(R){
   const A=R.A, P=R.P, dl=R.dl, wk=R.wk;
+  /* WEARABLE FIGURES ARE CONDITIONAL.
+     Recovery, HRV and resting HR exist only if a device reported them. A tile
+     reading "Avg HRV —" reserves space on the screen for hardware the user may
+     not own, and four of them in a row make Baseline look like a readout for a
+     strap rather than a training system. Each one appears when there is a
+     figure to put in it and is simply absent otherwise; what the app always
+     knows - sessions, activities, load - leads regardless. */
+  const wearTiles=[
+    A.rec!=null  ? statTile('Avg recovery',rnd(A.rec,0),'%',A.rec>=67?'g':A.rec>=34?'y':'r',dl(A.rec,P.rec)) : '',
+    A.hrv!=null  ? statTile('Avg HRV',rnd(A.hrv,0),'ms','c',dl(A.hrv,P.hrv)) : '',
+    A.rhr!=null  ? statTile('Avg RHR',rnd(A.rhr,1),'bpm','',dl(A.rhr,P.rhr,1)) : '',
+    A.sleep!=null? statTile('Avg sleep',fmtMin(A.sleep),'',A.sleep>=R.sleepNeed-60?'g':'o',dl(A.sleep,P.sleep)) : ''
+  ].filter(Boolean);
   return `
-  <div class="stats c2">
-    ${statTile('Avg recovery',A.rec!=null?rnd(A.rec,0):null,'%',A.rec>=67?'g':A.rec>=34?'y':'r',dl(A.rec,P.rec))}
-    ${statTile('Avg HRV',A.hrv!=null?rnd(A.hrv,0):null,'ms','c',dl(A.hrv,P.hrv))}
-    ${statTile('Avg RHR',A.rhr!=null?rnd(A.rhr,1):null,'bpm','',dl(A.rhr,P.rhr,1))}
-    ${statTile('Avg sleep',A.sleep!=null?fmtMin(A.sleep):null,'',A.sleep>=R.sleepNeed-60?'g':'o',dl(A.sleep,P.sleep))}
-  </div>
   <div class="stats">
     ${statTile('Sessions',A.sessions,'','a',`vs ${P.sessions}`)}
     ${statTile('Activities',A.acts,'','g',`${A.sport} ${esc(sportLC())}`)}
     ${statTile('Week load',A.load,'','o',dl(A.load,P.load,1))}
   </div>
+  ${wearTiles.length?`<div class="stats${wearTiles.length>2?' c2':''}" id="wearWk">${wearTiles.join('')}</div>`:''}
   <div class="card" style="margin-top:12px">
     <div class="card-h"><div class="card-t">Daily load</div></div>
     <div class="chart-wrap">${barChart(wk.map(d=>{const dd=dayDemand(d);
@@ -12548,12 +13074,11 @@ function wmNormalise(){
   if(!W.warmup || !Array.isArray(W.warmup.items)) W.warmup={name:'',dur:0,items:[]};
   if(W.wuStep==null) W.wuStep=0;
   if(W.phase==null){ W.phase=(W.step<0?'preview':'main'); if(W.step<0) W.step=0; }
+  /* the stepped warm-up runner is gone: the warm-up is one screen, so anything
+     saved mid-warm-up resumes on that screen */
+  if(W.phase==='warmup') W.phase='preview';
   if(W.step<0) W.step=0;
   if(W.kind==='activity') W.phase='main';
-  /* an overview is still worth showing when there is no warm-up to list; only
-     the warm-up RUNNER has nothing to run */
-  if(W.phase==='warmup' && !W.warmup.items.length) W.phase='main';
-  W.wuStep=clamp(W.wuStep,0,Math.max(0,W.warmup.items.length-1));
 }
 /* CURRENT, IMMEDIATE NEXT and NEXT PHASE are three different questions, and
    conflating the first two is what put "Up next: Bird Dog" above the movement
@@ -12607,23 +13132,30 @@ function drawWM(){
   $('#wmProg').style.width=(allSets?doneSets/allSets*100:0)+'%';
   const elapsed=Math.round((Date.now()-W.startedAt)/60000);
 
+  /* The bar says where you are and nothing else. It used to also carry the
+     session variant and the elapsed minutes, which on a phone read as three
+     competing facts above the one thing that mattered. */
+  const sub = W.kind==='activity' ? esc(W.intensity||'Running')
+    : W.phase==='preview'
+      ? (W.warmup.items.length
+          ? 'Warm-up · '+W.warmup.items.length+' movement'+(W.warmup.items.length===1?'':'s')
+            +' · ~'+(W.warmup.dur||5)+' min'
+          : W.entries.length+' exercise'+(W.entries.length===1?'':'s'))
+      : 'Exercise '+(i+1)+' of '+total;
   $('#wmHead').innerHTML=`
     <button class="icon-btn" id="wmX">${svg('x')}</button>
-    <div style="flex:1;text-align:center">
-      <div style="font-size:12.5px;font-weight:750;letter-spacing:-.1px">${esc(W.workoutName)}</div>
-      <div style="font-size:10.5px;color:var(--text-3);font-weight:650;margin-top:1px">
-        ${W.kind==='activity'
-          ? esc(W.intensity||'Running')
-          : esc(VARIANT_NAME[W.variant]||'Full session')+' · '+(
-              W.phase==='preview' ? 'overview'
-            : W.phase==='warmup'  ? `warm-up ${W.wuStep+1}/${W.warmup.items.length}`
-            : `exercise ${i+1}/${total}`)} · ${elapsed} min</div>
+    <div style="flex:1;text-align:center;min-width:0">
+      <div style="font-size:12.5px;font-weight:750;letter-spacing:-.1px;overflow:hidden;
+                  text-overflow:ellipsis;white-space:nowrap">${esc(W.workoutName)}</div>
+      <div style="font-size:10.5px;color:var(--text-3);font-weight:650;margin-top:1px">${esc(sub)}</div>
     </div>
-    <div class="icon-btn" style="font-size:11px;font-weight:800;color:var(--accent)">${doneSets}/${allSets}</div>`;
+    ${W.phase==='preview'
+      ? `<span class="icon-btn" aria-hidden="true"></span>`
+      : `<button class="icon-btn" id="wmPauseTop" aria-label="Pause">${svg('timer')}</button>`}`;
   $('#wmX').onclick=()=>exitWM();
+  const pt=$('#wmPauseTop'); if(pt) pt.onclick=()=>pauseWM();
 
   if(W.phase==='preview') return drawOverview();
-  if(W.phase==='warmup')  return drawWarmupStep();
   if(i>=total) return W.saveAs==='activity' ? drawActivityFinish() : drawFinish();
   drawExercise(W.entries[i],i,total);
   if(_body && _keep) _body.scrollTop=_keep;
@@ -12698,116 +13230,102 @@ function wmToMain(){
   const b=$('#wmBody'); if(b) b.scrollTop=0;
 }
 
-/* OVERVIEW — the whole session before it starts.
-   Warm-up and work in one list, the prescription on every line, and the how-to
-   behind a tap so the page stays readable. Two actions: warm up, or go
-   straight to the work. This is deliberately the ONLY dense screen in the
-   session; everything after it shows one thing at a time. */
+/* THE WARM-UP — every movement on ONE screen.
+   An accordion, not a runner. Five movements are five lines; open the one you
+   are unsure of and its illustration, instruction and cue appear in place. The
+   first is open on arrival so the screen shows what a movement looks like
+   without anyone having to discover that the rows open at all.
+
+   This replaced a stepped runner that made the user press through five screens
+   to read five lines. Execution needs no navigation: you can see the sequence,
+   so you just do it. Below the warm-up, the session itself is listed for
+   anyone who wants to know what they are in for. */
 function drawOverview(){
   const wk=DB.workouts.find(x=>x.id===W.workoutId);
   const wu=W.warmup, hasWu=wu.items.length>0;
-  const row=(key,n,name,meta,how)=>`
-    <div class="setrow wu${how?' has-how':''}" style="align-items:flex-start"
-         ${how?`data-ov="${key}" role="button" tabindex="0" aria-expanded="false"
-         aria-label="${esc(name)}, tap for how to do it"`:''}>
-      <div class="sn">${n}</div>
-      <div style="flex:1;min-width:0">
-        <div class="ov-n">${esc(name)}</div>
-        ${meta?`<div class="ov-m">${esc(meta)}</div>`:''}
-        ${how?`<div class="wu-how" id="ovHow${key}" hidden>${esc(how)}</div>`:''}
-      </div>
-      ${how?`<i class="wu-x">${svg('down')}</i>`:''}
+  /* `undefined` means "not decided yet"; `null` means "the user closed it".
+     Testing for == null conflated the two, so closing the open row immediately
+     reopened the first one and the accordion could never be fully closed. */
+  if(W.accOpen===undefined) W.accOpen = hasWu ? 'w0' : null;
+
+  const row=(key,n,name,meta,how,cue,illEx)=>{
+    const open = W.accOpen===key;
+    const body = (how||cue||illEx) ? `
+      <div class="wacc-b"${open?'':' hidden'}>
+        ${illEx?illusHTML(illEx,'md'):''}
+        ${how?`<p>${esc(how)}</p>`:''}
+        ${cue?`<div class="cue"><i>${svg('bulb')}</i><span>${esc(cue)}</span></div>`:''}
+      </div>` : '';
+    return `<div class="wacc-i${open?' open':''}" data-acc="${key}">
+      <button class="wacc-h" aria-expanded="${open?'true':'false'}">
+        <span class="wacc-n">${n}</span>
+        <span class="wacc-x"><span class="wacc-t">${esc(name)}</span>
+          ${meta?`<span class="wacc-m">${esc(meta)}</span>`:''}</span>
+        ${(!open&&illEx)?illusHTML(illEx,'sm'):''}
+        <i class="wacc-c">${svg(open?'down':'chev')}</i>
+      </button>
+      ${body}
     </div>`;
-  const exRow=(en,n)=>{
+  };
+
+  const wuRows = wu.items.map((it,n)=>
+    row('w'+n, n+1, it.n, it.d||'', warmupHow(it.n), '', {name:it.n})).join('');
+  const exRows = W.entries.map((en,n)=>{
     const ex=exOf(en.exerciseId)||{};
     const meta = en.cardio ? (en.plannedReps||'')
       : en.timed ? en.sets.length+' × '+secsLabel(en.timed)
       : en.sets.length+' × '+(en.plannedReps||'');
-    const how=[ex.how||briefHow(ex), en.cue?('Cue: '+en.cue):''].filter(Boolean).join('\n\n');
-    return row('e'+n, n+1, en.name, meta, how);
-  };
+    return row('e'+n, n+1, en.name, meta, ex.how||briefHow(ex), en.cue||'', ex);
+  }).join('');
+
   $('#wmBody').innerHTML=`
     ${hasWu?`
-    <div class="ov-h">Warm-up</div>
-    <div class="ov-s">${esc(wu.name||'')} · about ${wu.dur||5} minutes</div>
-    <div class="setlist">${wu.items.map((it,n)=>
-      row('w'+n, n+1, it.n, it.d||'', warmupHow(it.n))).join('')}</div>`:''}
-
-    <div class="ov-h"${hasWu?' style="margin-top:20px"':''}>The workout</div>
+    <div class="wuh">${esc(wu.name||'Warm-up')}</div>
+    <div class="wuh-s">A short preparation sequence to get you ready for today's session.</div>
+    <div class="wacc">${wuRows}</div>`:''}
+    <div class="ov-h" style="margin-top:${hasWu?'22px':'0'}">The workout</div>
     <div class="ov-s">${esc(wk?wk.name:'')} · ${W.entries.length} exercise${W.entries.length===1?'':'s'}${
       W.est?' · about '+W.est+' min':''}</div>
-    <div class="setlist">${W.entries.map(exRow).join('')}</div>
-    ${wk&&wk.desc?`<div class="note acc" style="margin-top:14px">${esc(wk.desc)}</div>`:''}
-    <div class="hint" style="margin-top:10px">Tap any line to see how to do it.</div>`;
-  $('#wmFoot').innerHTML= hasWu
-    ? `<button class="btn primary big block" id="wmGo">Start warm-up</button>
-       <button class="tert block" id="wmSkipWu">Skip the warm-up</button>`
-    : `<button class="btn primary big block" id="wmSkipWu">Start workout</button>`;
-  /* Collapsed by default: somebody who knows what a dead bug is should not
-     scroll past twelve paragraphs to reach the button. */
-  $$('#wmBody [data-ov]').forEach(r=>{
-    const open=()=>{
-      const el=$('#ovHow'+r.dataset.ov); if(!el) return;
-      const now=el.hasAttribute('hidden');
-      if(now) el.removeAttribute('hidden'); else el.setAttribute('hidden','');
-      r.classList.toggle('open',now);
-      r.setAttribute('aria-expanded',now?'true':'false');
+    <div class="wacc">${exRows}</div>
+    ${wk&&wk.desc?`<div class="note" style="margin-top:14px">${esc(wk.desc)}</div>`:''}`;
+
+  /* "Start warm-up" is not the same action as "Skip warm-up", and must not be
+     wired to the same thing. Starting marks the warm-up as done and leaves you
+     on this screen - you can see all five movements, so you work down the list
+     and press on when you are through. Skipping records that it was skipped,
+     which the engine is entitled to know. */
+  $('#wmFoot').innerHTML= !hasWu
+    ? `<button class="btn primary big block" id="wmSkipWu">Start workout</button>`
+    : W.wuStarted
+      ? `<button class="btn primary big block" id="wmSkipWu">Start workout</button>
+         <div class="hint" style="text-align:center;margin:9px 0 0">Warm-up in progress — work down the list.</div>`
+      : `<button class="btn primary big block" id="wmGo">Start warm-up</button>
+         <button class="tert block" id="wmSkipWu">Skip warm-up</button>`;
+
+  /* One open at a time: an accordion that opens everything is a wall of text,
+     which is the thing this screen exists to avoid. */
+  $$('#wmBody .wacc-i').forEach(el=>{
+    const b=el.querySelector('.wacc-h'); if(!b) return;
+    b.onclick=()=>{
       haptic();
+      const k=el.dataset.acc;
+      W.accOpen = (W.accOpen===k) ? null : k;
+      const keep=$('#wmBody').scrollTop;
+      drawOverview();
+      const nb=$('#wmBody'); if(nb) nb.scrollTop=keep;
     };
-    r.onclick=open;
-    r.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); open(); } };
   });
   const go=$('#wmGo');
   if(go) go.onclick=()=>{
-    W.phase='warmup'; W.wuStep=0;
-    drawWM(); const b=$('#wmBody'); if(b) b.scrollTop=0;
+    haptic(); W.wuStarted=true; W.warmupSkipped=false;
+    saveLive(); drawOverview();
   };
-  const sk=$('#wmSkipWu'); if(sk) sk.onclick=wmToMain;
-}
-
-/* WARM-UP — one movement at a time, the same shape the main runner uses, so
-   the whole session reads as one flow rather than a list then a runner.
-   Three bands, top to bottom: what phase, what to do, what follows. The middle
-   one takes the slack, so a short movement name does not leave the bottom two
-   thirds of the screen empty. */
-function drawWarmupStep(){
-  const cur=wmCurrent(), nxt=wmUpNext();
-  const n=W.wuStep, total=W.warmup.items.length;
-  const last=n+1>=total;
-  if(!cur) return wmToMain();
-  const body=$('#wmBody');
-  body.classList.add('live');
-  /* The glimpse is only shown where it is the truth: on the LAST movement,
-     where the next thing really is the workout. In the middle of a warm-up the
-     next thing is the next movement, which the flow shows a second later. */
-  body.innerHTML=`
-    <div class="wm-top">
-      <div class="wm-ph">Warm-up · ${n+1} of ${total}</div>
-      <div class="wm-sub" style="margin-top:4px">${esc(W.warmup.name||'')}</div>
-    </div>
-    <div class="wm-mid">
-      <div class="nowcard big">
-        <div class="now-n">${esc(cur.name)}</div>
-        ${cur.detail?`<div class="now-d">${esc(cur.detail)}</div>`:''}
-        ${cur.how?`<div class="now-h">${esc(cur.how)}</div>`:''}
-      </div>
-    </div>
-    <div class="wm-bot">${last? peekHTML(nxt) : ''}</div>`;
-  $('#wmFoot').innerHTML=
-    `<button class="btn primary big block" id="wuNext">${last?'Start workout':'Done — next movement'}</button>
-     <div class="wm-row">
-       ${n>0?`<button class="tert" id="wuBack">Back</button>`:''}
-       <button class="tert" id="wmSkipWu">${last?'Skip to the workout':'Skip the warm-up'}</button>
-     </div>`;
-  $('#wuNext').onclick=()=>{
+  const sk=$('#wmSkipWu');
+  if(sk) sk.onclick=()=>{
     haptic();
-    if(last) return wmToMain();
-    W.wuStep=n+1; drawWM();
-    const b=$('#wmBody'); if(b) b.scrollTop=0;
+    if(!W.wuStarted) W.warmupSkipped=true;
+    saveLive(); wmToMain();
   };
-  const bk=$('#wuBack');
-  if(bk) bk.onclick=()=>{ haptic(); W.wuStep=Math.max(0,n-1); drawWM(); };
-  const sk=$('#wmSkipWu'); if(sk) sk.onclick=wmToMain;
 }
 
 function drawExercise(en,i,total){
@@ -12842,20 +13360,30 @@ function drawExercise(en,i,total){
   const sideTxt = /side/i.test(en.plannedReps||'') ? ' / side' : '';
   const wNow = (()=>{ const v=en.sets[curSet].weight;
                       return (v!==''&&v!=null)?String(v):prevW(curSet); })();
-  const bigVal = tm ? (en.sets[curSet].reps||tm.hi)+'s'
-                    : (en.sets[curSet].reps||planReps||'—')+sideTxt;
+  /* the number alone; the unit gets its own line under it, the way the mock
+     reads it out - "12-20" then "reps" */
+  const bigVal = tm ? mmss(+(en.sets[curSet].reps||tm.hi))
+                    : (en.sets[curSet].reps||en.plannedReps||planReps||'—').replace(/\s*\/\s*side/i,'');
 
   /* The glimpse, shown ONLY where it is the truth.
      Resting between set 1 and set 2, the next thing is set 2 - which the rest
      card already says. Naming the next EXERCISE there pointed past the set the
      user is about to do, which is the one thing they need in mind. So: on the
      last set of an exercise, and during the rest that follows it. */
-  const nextName = i<total-1 ? W.entries[i+1].name : null;
+  const nx = i<total-1 ? W.entries[i+1] : null;
   const showPeek = restActive() ? allDone : (cur===nSets-1);
+  const nxMeta = nx ? (nx.cardio ? (nx.plannedReps||'')
+                      : nx.timed ? nx.sets.length+' × '+secsLabel(nx.timed)
+                      : nx.sets.length+' × '+(nx.plannedReps||'')) : '';
   const peek = !showPeek ? ''
-    : nextName
-      ? `<div class="peek"><span class="pk-l">Up next</span><span class="pk-n">${esc(nextName)}</span></div>`
-      : `<div class="peek"><span class="pk-l">Last exercise</span><span class="pk-d">almost done</span></div>`;
+    : nx
+      ? `<div class="unext">${illusHTML(exOf(nx.exerciseId)||{name:nx.name},'sm')}
+          <span class="un-x"><span class="un-l">Up next</span>
+            <span class="un-t">${esc(nx.name)}</span>
+            ${nxMeta?`<span class="un-m">${esc(nxMeta)}</span>`:''}</span>
+          <i class="wacc-c">${svg('chev')}</i></div>`
+      : `<div class="unext"><span class="un-x"><span class="un-l">Last exercise</span>
+            <span class="un-t">Almost done</span></span></div>`;
 
   /* REST — one number, one secondary escape. It runs itself. */
   const restCard = restActive() ? `<div class="wrestx">
@@ -12864,7 +13392,7 @@ function drawExercise(en,i,total){
         REST.total? Math.max(0,Math.min(100, restRemaining()/REST.total*100)) : 0}%"></i></div>
       <div class="wrx-t">Rest</div>
       <div class="wrx-s">${allDone
-        ? (nextName? 'Get ready for '+esc(nextName) : 'Then you are done')
+        ? (nx? 'Get ready for '+esc(nx.name) : 'Then you are done')
         : 'Then set '+(cur+1)+' of '+nSets}</div>
       <div class="wm-row">
         <button class="tert" id="restAdd">+30s</button>
@@ -12890,6 +13418,7 @@ function drawExercise(en,i,total){
         <button class="ws-v" id="wsAdj" aria-label="Adjust reps${showKg?' or weight':''}">
           ${esc(bigVal)}${(showKg&&wNow!=='')?` <span class="ws-kg">${esc(wNow)} kg</span>`:''}
         </button>
+        <div class="ws-u">${tm?'hold':(sideTxt?'per side':'reps')}</div>
         ${prev?`<div class="ws-last">Last time ${esc(setsSummary(prev.sets, !!tm))}</div>`:''}
       </div>`);
 
@@ -12907,15 +13436,24 @@ function drawExercise(en,i,total){
      of them. */
   const body=$('#wmBody');
   body.classList.add('live');
+  /* NAME -> ILLUSTRATION -> PRESCRIPTION -> INSTRUCTION -> CUE -> SET -> ACTION.
+     The illustration answers "what am I doing?" before a word is read, which
+     is what the empty half of this screen was for. It sits on the page, not
+     inside a card: one more bordered box would put back the density the rest
+     of this screen spent three passes removing. */
   body.innerHTML=`
     <div class="wm-top">
       <div class="wm-ex">${esc(en.name)}</div>
       <div class="wm-sub">${nSets} × ${tm? esc(secsLabel(tm)) : esc(en.plannedReps)}</div>
+    </div>
+    <div class="wm-mid">
+      ${restActive()?'':illusHTML(e||{name:en.name},'lg')}
       ${(()=>{ const h=briefHow(e);
          return h?`<button class="wm-how" id="wmHowLine">${esc(h)} <i>More</i></button>`:''; })()}
+      ${en.cue?`<div class="cue"><i>${svg('bulb')}</i><span>${esc(en.cue)}</span></div>`:''}
       ${en.blockNote?`<div class="note warn">${esc(en.blockNote)}</div>`:''}
+      ${restCard}${setCard}
     </div>
-    <div class="wm-mid">${restCard}${setCard}</div>
     <div class="wm-bot">${primary}${peek}</div>`;
 
   /* Two controls, both secondary, neither part of the training loop. */
