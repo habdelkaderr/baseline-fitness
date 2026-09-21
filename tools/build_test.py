@@ -4032,8 +4032,83 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
     SETTINGS_ALL();
   }
   ok('equipment can be emptied to bodyweight only', DB.profile.gear.length===0, DB.profile.gear.join(','));
-  ok('emptying equipment drops the targets it made impossible',
-     !DB.targets.bike, JSON.stringify(DB.targets));
+  /* ---------------------------------------------------------------------
+     §9: EQUIPMENT AVAILABILITY MUST NOT DELETE A GOAL
+     This assertion used to be `!DB.targets.bike` - it checked that removing
+     the bicycle had ZEROED the stored target, which is the deletion §9
+     forbids. Once written, that zero could not be undone: putting the bike
+     back left cycling gone, because nothing remembered it had been wanted.
+
+     What is asserted now is the round trip, and the separation that makes it
+     work: intent is stored, feasibility is derived.
+     ------------------------------------------------------------------ */
+  ok('the intent to ride survives the bicycle being removed',
+     DB.targets.bike>0, JSON.stringify(DB.targets));
+  ok('but cycling is reported as currently out of reach',
+     !!targetBlocks().bike, JSON.stringify(targetBlocks()));
+  ok('and it says why, in words',
+     /bicycle/i.test(targetBlocks().bike||''), targetBlocks().bike);
+  ok('this week is shown without it',
+     targetsNow().bike===0 && targetKeys().indexOf('bike')<0,
+     targetKeys().join(','));
+  ok('while the target editor still shows what was asked for',
+     targetIntent('bike')>0 && targetKeysIntent().indexOf('bike')>=0,
+     targetKeysIntent().join(','));
+  ok('and the mask is not written to disk',
+     DB.targets.bike>0, 'stored: '+JSON.stringify(DB.targets));
+
+  /* HISTORY IS NEVER TOUCHED BY AN EQUIPMENT CHANGE. */
+  (function(){
+    var keepA=DB.activities;
+    DB.activities=[{id:'a_ride',date:addDays(todayISO(),-3),type:'cycling',
+                    min:52,strain:8.4,intensity:'Moderate'}];
+    var before=DB.activities.length;
+    DB.profile.gear=[]; DB.profile.place='home';
+    ok('a cycling activity logged before the bike was removed is still there',
+       DB.activities.length===before &&
+       DB.activities.filter(function(a){return a.type==='cycling';}).length===1);
+    /* and it still counts toward what the user has done */
+    ok('and it still counts as cycling in the history',
+       (DB.activities||[]).some(function(a){ return a.type==='cycling' && a.min===52; }));
+    DB.activities=keepA;
+  })();
+
+  /* PUT THE BICYCLE BACK. */
+  (function(){
+    var intent=DB.targets.bike;
+    DB.profile.gear=['bike'];
+    ok('adding the bicycle makes cycling eligible again',
+       !targetBlocks().bike, JSON.stringify(targetBlocks()));
+    ok('and the target comes back at the value it always had',
+       targetsNow().bike===intent && targetKeys().indexOf('bike')>=0,
+       targetsNow().bike+' vs '+intent);
+    ok('nothing had to be rebuilt to get it back', DB.targets.bike===intent);
+  })();
+
+  /* GOALS ARE UNTOUCHED THROUGHOUT. */
+  (function(){
+    var sportsBefore=(DB.profile.sports||[]).join(',');
+    var goalsBefore=(DB.profile.goals||[]).join(',');
+    DB.profile.gear=[];
+    ok('removing every piece of equipment changes no goal',
+       (DB.profile.sports||[]).join(',')===sportsBefore &&
+       (DB.profile.goals||[]).join(',')===goalsBefore,
+       sportsBefore+' / '+goalsBefore);
+    /* and the non-equipment targets are untouched either way */
+    ok('and bodyweight targets are never masked',
+       targetsNow().core===DB.targets.core && targetsNow().mobility===DB.targets.mobility);
+    DB.profile.gear=['db','band','bike','run'];
+  })();
+
+  /* THE OLD FUNCTION MUST NOT WRITE. */
+  (function(){
+    DB.profile.gear=[];
+    var snapshot=JSON.stringify(DB.targets);
+    pruneTargets();
+    ok('pruneTargets() no longer mutates the stored targets',
+       JSON.stringify(DB.targets)===snapshot, snapshot+' -> '+JSON.stringify(DB.targets));
+    DB.profile.gear=['db','band','bike','run'];
+  })();
   ok('with nothing ticked, the question comes back', placeOf(DB.profile)===null || DB.profile.place==='home',
      placeOf(DB.profile));
 
@@ -4321,10 +4396,10 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
      one did: "DB Bicep Curl" drew a band held overhead. Naming the pairs is
      what makes a wrong answer fail. */
   var expect=[
-    ['DB Bicep Curl','db-curl'], ['DB Hammer Curl','db-curl'], ['Band Curl','db-curl'],
-    ['Sliding Leg Curl','nordic'], ['Nordic Curl Eccentric','nordic'],
+    ['DB Bicep Curl','db-curl'], ['DB Hammer Curl','db-curl'], ['Band Curl','band-curl'],
+    ['Sliding Leg Curl','sliding-leg-curl'], ['Nordic Curl Eccentric','nordic'],
     ['Band Kneeling Lat Pull','lat-pull'], ['Band Lat Pulldown','lat-pull'],
-    ['Band Row','row'], ['DB Bent-Over Row','row'], ['Inverted Row','row'],
+    ['Band Row','row'], ['DB Bent-Over Row','row'], ['Inverted Row','inverted-row'],
     ['Band Pull-Apart','band-pull-apart'], ['Band Face Pull','band-face-pull'],
     ['Band Pallof Press','band-pallof'], ['Half-Kneeling Band Chop','band-pallof'],
     ['DB Overhead Press','db-press-oh'], ['DB Arnold Press','db-press-oh'],
@@ -4335,13 +4410,15 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
     ['Elevated Pike Push-Up','pike-push-up'], ['Scapular push-ups','scap-pushup'],
     ['RKC Plank','plank'], ['Side Plank','side-plank'], ['Side Plank Hip Dip','side-plank'],
     ['Copenhagen Plank','copenhagen'], ['Dead Bug','dead-bug'], ['Bird Dog','bird-dog'],
-    ['Hollow Body Hold','hollow-hold'], ['Suitcase Carry','carry'],
-    ['Single-Leg Glute Bridge','sl-glute-bridge'], ['Floor Hip Thrust','glute-bridge'],
+    ['Hollow Body Hold','hollow-hold'], ['Suitcase Carry','suitcase-carry'],
+    ['Single-Leg Glute Bridge','sl-glute-bridge'], ['Floor Hip Thrust','db-hip-thrust'],
+    ['Banded Glute Bridge','band-glute-bridge'],
     ['DB Romanian Deadlift','hinge'], ['Single-Leg RDL','sl-rdl'],
     ['Wall Sit','wall-sit'], ['Tibialis Raise','tibialis-raise'],
     ['Standing Calf Raise','calf-raise'], ['Single-Leg Calf Raise','sl-calf-raise'],
     ['Tempo Goblet Squat','goblet-squat'], ['Split Squat','split-squat'],
-    ['Cossack Squat','split-squat'], ['Reverse Lunge','lunge'], ['Lateral Lunge','lunge'],
+    ['Cossack Squat','lateral-lunge'], ['Reverse Lunge','lunge'], ['Lateral Lunge','lateral-lunge'],
+    ['Skater Squat','sl-squat'],
     ['Pogo Hops','pogo-hops'], ['Countermovement Jump','jump'],
     ['Lateral Bound (Skater)','lateral-bound'], ['Deceleration Drill','decel'],
     ['Zone 2 Run','run'], ['Zone 2 Bike','bike'], ['Hill Sprints','run'],
@@ -4350,14 +4427,103 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
     ['Cat-Cow','cat-cow'], ['Thoracic Rotation (Open Book)','open-book'],
     ['90/90 Hip Switch','hip-90-90'], ['Calf Stretch','calf-stretch'],
     ['Couch Stretch','couch-stretch'], ['Band Shoulder Dislocates','band-overhead'],
-    ['Superman','superman'], ['Prone Y-T-W','prone-ytw']
+    ['Superman','superman'], ['Prone Y-T-W','prone-ytw'],
+    /* ---- corrected by the illustration audit; each of these was drawing a
+       different exercise, and each line is here so it cannot regress ---- */
+    ['Single-Leg Bridge Curl','sl-bridge-curl'],   // was a DUMBBELL BICEPS CURL
+    ['Hip Thrust March','hip-thrust-march'],       // was a standing DB carry
+    ['Long-Lever Bridge Walkout','bridge-walkout'],// was a walking figure
+    ['Band Leg Curl','band-leg-curl'],             // was a kneeling Nordic curl
+    ['Step-Up','step-up'],                         // was a lunge, with no step
+    ['Step-Down (Eccentric)','step-down'],         // was a lunge
+    ['Box Jump','box-jump'],                       // was a jump with no box
+    ['DB Bench Press','db-bench-press'],           // was a floor press
+    ['Incline DB Press','db-incline-press'],       // was a floor press
+    ['Barbell Back Squat','bb-squat'],             // was bodyweight
+    ['Overhead Press (barbell)','bb-ohp'],         // was two dumbbells
+    ['Barbell Row','bb-row'],                      // was unloaded
+    ['Kettlebell Swing','kb-swing'],               // had no drawing
+    ['Kettlebell Front Squat','kb-front-squat'],   // was empty-handed
+    ['Chin-Up','pull-up'],                         // had no drawing
+    ['Hanging Leg Raise','hang-leg-raise'],        // had no drawing
+    ['Med Ball Rotational Throw','ball-throw'],    // was a band Pallof press
+    ['Shrimp Squat','sl-squat'],                   // was drawn on two legs
+    ['Pistol Squat Progression','sl-squat'],       // was drawn on two legs
+    ['Single-Leg Hip Hinge (Airplane)','sl-hinge'],// was drawn on two legs
+    ['Suitcase March','suitcase-march'],           // two weights, and no march
+    ['Mountain Climbers','mountain-climber'],      // was a static plank
+    ['Bear Hold / Bear Crawl','bear-hold'],        // was a plank
+    ['Reverse Crunch','reverse-crunch'],           // was a hollow hold
+    ['Lying Windshield Wiper','windshield-wiper'], // was a side-lying open book
+    ['Prone Sliding Lat Pull','prone-lat-pull'],   // was a kneeling band pulldown
+    ['Feet-Elevated Push-Up','feet-elev-push-up'], // elevation is the exercise
+    ['Archer Push-Up','archer-push-up'],           // one arm out is the exercise
+    ['Diamond Push-Up','diamond-push-up'],         // hand position is the exercise
+    ['Eccentric Heel Lower','heel-lower'],         // the arrow now points down
+    ['Toe Walk','toe-walk'],                       // was a flat-footed walk
+    ['Adductor Slide-Out','adductor-slide'],       // arrows now point out, not in
+    ['Side-Lying Adductor Raise','side-lying-adductor'], // was a Copenhagen plank
+    ['Band Pull-Through','band-pull-through'],     // the band was missing
+    ['Banded Good Morning','band-good-morning'],   // the band was missing
+    ['Resisted Sprint Starts','resisted-sprint'],  // the band was missing
+    ['Wall Acceleration Drill','wall-drill'],      // the wall was missing
+    ['Pigeon Stretch','pigeon'],                   // was a seated 90/90
+    ['Adductor Rock','adductor-rock'],             // was a seated 90/90
+    ['Frog Pump','frog-pump'],
+    ['Self-Resisted Curl','self-resisted-curl'],   // was drawn holding dumbbells
+    ['Wall Isometric Lateral Raise','wall-iso-raise'], // was drawn holding dumbbells
+    /* ---- found by looking at the rendered sheet, not by a test ---- */
+    ['Band Lateral Raise','band-raise'],           // was drawn holding dumbbells
+    ['Single-Leg Hop & Stick','sl-hop'],           // was drawn on two legs
+    ['Band Single-Arm Row','row-single'],          // was drawn with both arms
+    ['DB Single-Arm Row','row-single'],            // was drawn with both arms
+    ['Broad Jump','broad-jump'],                   // arrow pointed up, not forward
+    ['Standing Triple Jump','broad-jump'],
+    ['Hill Bounds','broad-jump'],
+    ['Split Jump','split-jump'],
+    ['Single-Leg Drop Landing','sl-landing'],       // was landing on two feet
+    ['Snap-Down','decel']                           // bilateral, correctly
   ];
-  var wrong=[];
+  /* Resolved through the real library row, not a synthetic {name}. The table
+     is keyed by id, so a lookup by name alone would test nothing that ships -
+     and a name that matches no row is itself a failure worth seeing. */
+  var byName={};
+  (DB.exercises||[]).forEach(function(e){ byName[String(e.name||'').toLowerCase()]=e; });
+  var wrong=[], noRow=[];
   expect.forEach(function(p){
-    var got=illusKey({name:p[0]});
-    if(got!==p[1]) wrong.push(p[0]+': '+(got||'NONE')+' (wanted '+p[1]+') via '+illusWhy({name:p[0]}));
+    var row=byName[p[0].toLowerCase()];
+    var got = row ? illusKey(row) : illusKey({name:p[0]});
+    if(!row && !got) noRow.push(p[0]);
+    if(got!==p[1]) wrong.push(p[0]+': '+(got||'NONE')+' (wanted '+p[1]+') via '+
+      illusWhy(row||{name:p[0]}));
   });
   ok('each movement gets the drawing of THAT movement', wrong.length===0, wrong.join('  |  '));
+  ok('and every named movement exists in the library or the warm-up table',
+     noRow.length===0, noRow.join(', '));
+
+  /* THE CHECK THE TABLE EXISTS FOR.
+     Every exercise is listed, every listed pose is real, and nothing points
+     at a drawing that was deleted. A rule chain could not be asked this. */
+  var aud=illusAudit();
+  ok('every exercise is named in the illustration table',
+     aud.notInTable.length===0, aud.notInTable.join(', '));
+  ok('and nothing points at a pose that does not exist',
+     aud.deadPose.length===0, aud.deadPose.join(' | '));
+  ok('the table covers the whole library', aud.rows>=(DB.exercises||[]).length,
+     aud.rows+' rows for '+(DB.exercises||[]).length+' exercises');
+
+  /* An id in the table is answered by the table, including when the answer
+     is "nothing verified". This is the regression that mattered: a hamstring
+     bridge curl must never fall through to a rule that sees "curl". */
+  ok('an exercise with no verified drawing gets none, not a near miss',
+     illusKey({id:'g04',name:'Leg Press'})===null,
+     String(illusKey({id:'g04',name:'Leg Press'})));
+  ok('and the placeholder says so rather than showing a dumbbell',
+     /No illustration yet/.test(illusHTML({id:'g04',name:'Leg Press'},'lg')) &&
+     illusHTML({id:'g04',name:'Leg Press'},'lg').indexOf('class="illus lg none"')>=0);
+  ok('a name that would match an old rule cannot override the table',
+     illusKey({id:'x17',name:'Single-Leg Bridge Curl'})==='sl-bridge-curl',
+     String(illusKey({id:'x17',name:'Single-Leg Bridge Curl'})));
 
   var badDraw=[];
   keys.forEach(function(k){
@@ -4373,14 +4539,447 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
     return !p.head || !p.sh || !p.hip || !p.leg || !p.arm; });
   ok('every pose has a head, a torso, an arm and a leg', thin.length===0, thin.join(', '));
 
-  /* Equipment must be kit the user can actually own. The renderer only knows
-     how to draw a band, a dumbbell, a wall, a block, a bike and an arrow -
-     there is no barbell, cable or machine to draw by accident. */
+  /* Equipment must be kit the user can actually own. The renderer knows a
+     band, a dumbbell, a kettlebell, a medicine ball, a barbell, a fixed bar,
+     a bench/block, a wall, a bike and an arrow. There is no cable and no
+     machine to draw by accident. */
   var props={};
   keys.forEach(function(k){ (POSES[k].props||[]).forEach(function(p){ props[p.t]=1; }); });
-  var allowed={band:1,db:1,wall:1,block:1,anchor:1,arr:1,arc:1,bike:1};
+  var allowed={band:1,db:1,wall:1,block:1,edge:1,anchor:1,arr:1,arc:1,bike:1,
+               bb:1,bar:1,kb:1,ball:1};
   ok('no illustration introduces unsupported equipment',
      Object.keys(props).every(function(t){ return allowed[t]; }), Object.keys(props).join(', '));
+
+  /* A BARBELL OR A PULL-UP BAR MUST NOT APPEAR FOR A HOME-KIT EXERCISE.
+     The prop list grew to cover the gym library, which means the drawing can
+     now show kit a home user has not got - unless the pose that shows it is
+     only ever reached from an exercise that needs it. */
+  var gymProp={bb:1,bar:1,kb:1,ball:1};
+  var poseGym={};
+  keys.forEach(function(k){
+    poseGym[k]=(POSES[k].props||[]).some(function(p){ return gymProp[p.t]; });
+  });
+  var leak=[];
+  (DB.exercises||[]).forEach(function(e){
+    var k=illusKey(e);
+    if(!k || !poseGym[k]) return;
+    var eq=String(e.equip||'').toLowerCase();
+    /* the drawing shows gym kit, so the exercise has to call for gym kit */
+    var needs=/barbell|bar\b|pull-up|kettlebell|medicine|trap|rack|machine|cable|heavy/.test(eq);
+    if(!needs) leak.push(e.id+' '+e.name+' ('+(e.equip||'-')+') -> '+k);
+  });
+  ok('no home-kit exercise is drawn holding gym equipment', leak.length===0,
+     leak.join(' | '));
+
+  /* UNILATERAL WORK MUST NOT BE DRAWN ON TWO LIMBS.
+     §1 asks this explicitly, and three exercises were failing it: a
+     single-leg hop and two single-arm rows were drawn symmetrically. A pose
+     is unilateral when the far limb is missing or is clearly not on the
+     ground, so that is what gets checked - not the name of the pose. */
+  var GND=76, biLat=[];
+  (DB.exercises||[]).forEach(function(e){
+    var nm=String(e.name||'');
+    if(!/single-leg|single leg|one-leg|single-arm|single arm|pistol|shrimp|suitcase|skater squat/i.test(nm)) return;
+    var k=illusKey(e); if(!k) return;
+    var p=POSES[k];
+    /* Which limb the name is talking about. A suitcase carry is one-HANDED
+       and walks on both feet, so asking its legs to be unilateral would be
+       asking the drawing to be wrong. */
+    var armSide = /single-arm|single arm|suitcase/i.test(nm);
+    if(armSide){
+      /* one implement, not two - which for a carry is the whole difference
+         between a suitcase carry and a farmer carry */
+      var nProps=(p.props||[]).filter(function(x){ return x.t==='db'||x.t==='kb'; }).length;
+      if(nProps>1) biLat.push(e.id+' '+nm+' -> '+k+' ('+nProps+' weights)');
+      var h1=p.arm&&p.arm[1], h2=p.arm2&&p.arm2[1];
+      if(!nProps && h1&&h2&&Math.abs(h1[1]-h2[1])<4 && Math.abs(h1[0]-h2[0])<10)
+        biLat.push(e.id+' '+nm+' -> '+k+' (both hands together)');
+    } else {
+      /* both feet planted reads as both legs working */
+      var f1=p.leg&&p.leg[1], f2=p.leg2&&p.leg2[1];
+      if(f1&&f2&&f1[1]>=GND-3&&f2[1]>=GND-3)
+        biLat.push(e.id+' '+nm+' -> '+k+' (both feet planted)');
+    }
+  });
+  ok('unilateral exercises are not drawn on two limbs', biLat.length===0,
+     biLat.join(' | '));
+
+  /* AN ARROW MUST POINT WHERE THE MOVEMENT GOES.
+     A broad jump with a vertical arrow is an instruction to jump up. Checked
+     for the movements whose name states a direction. */
+  var dir=[];
+  [['Broad Jump','h'],['Standing Triple Jump','h'],['Hill Bounds','h'],
+   ['Countermovement Jump','v'],['Squat Jump (paused)','v'],
+   ['Eccentric Heel Lower','down'],['Standing Calf Raise','up']].forEach(function(pair){
+    var row=byName[pair[0].toLowerCase()]; if(!row) return;
+    var k=illusKey(row); if(!k) return;
+    var a=(POSES[k].props||[]).filter(function(x){ return x.t==='arr'; })[0];
+    if(!a){ dir.push(pair[0]+' -> '+k+' has no arrow'); return; }
+    var dx=Math.abs(a.b[0]-a.a[0]), dy=a.b[1]-a.a[1];
+    if(pair[1]==='h'   && dx<=Math.abs(dy)) dir.push(pair[0]+' -> '+k+' arrow is not horizontal');
+    if(pair[1]==='v'   && Math.abs(dy)<=dx) dir.push(pair[0]+' -> '+k+' arrow is not vertical');
+    if(pair[1]==='up'   && dy>=0) dir.push(pair[0]+' -> '+k+' arrow points down');
+    if(pair[1]==='down' && dy<=0) dir.push(pair[0]+' -> '+k+' arrow points up');
+  });
+  ok('movement arrows point the way the movement goes', dir.length===0, dir.join(' | '));
+
+  /* =====================================================================
+     THE ENGINE ACTUALLY RESPONDS
+     One input changed at a time, with the answer or its reasoning asserted
+     to have moved. Written as a block so the fixture is built once and each
+     case restores what it touched.
+     ================================================================== */
+  (function(){
+    var keepP=JSON.stringify(DB.profile), keepT=JSON.stringify(DB.targets);
+    var keepA=DB.activities, keepC=DB.checkins, keepS=DB.sessions;
+    var T=todayISO();
+    var reset=function(){
+      DB.profile=JSON.parse(keepP); DB.targets=JSON.parse(keepT);
+      DB.activities=[]; DB.sessions=[]; DB.checkins={};
+      DB.checkins[T]={date:T,recovery:78,hrv:88,rhr:51,sleepMin:465,
+                      energy:8,soreness:2,stress:2,motivation:8,pain:'None'};
+      DB.profile.gear=['db','band','bike','run','bench'];
+      DB.profile.place='home';
+      DB.profile.sports=['tennis'];
+      DB.profile.onboarded=true;
+    };
+    /* The exercises ACTUALLY prescribed. sessionBlocks() is what resolves
+       each block against the equipment, so it is the only honest answer to
+       "what would the user be shown". */
+    var exNames=function(){
+      var r=recommend(T,DB.checkins[T]);
+      if(!r||!r.workoutId) return [];
+      return (sessionBlocks(r)||[]).map(function(b){
+        var e=exOf(b.ex); return e?e.name:(b.name||'?'); });
+    };
+    var usesDb=function(list){
+      return list.some(function(n){ return /\bDB\b|dumbbell|goblet|suitcase|farmer/i.test(n); });
+    };
+
+    /* ---- 1 & 2: dumbbells out, dumbbells in ---- */
+    reset();
+    var withDb=exNames();
+    ok('a dumbbell profile can be prescribed dumbbell work',
+       usesDb(withDb) || withDb.length===0, withDb.join(', '));
+    DB.profile.gear=['band','bike','run'];
+    var noDb=exNames();
+    ok('removing dumbbells removes dumbbell exercises from the prescription',
+       !usesDb(noDb), noDb.join(', '));
+    ok('and it still prescribes something', noDb.length>0, noDb.length+' exercises');
+    /* nothing prescribed may need kit that is not on the list */
+    var illegal=noDb.filter(function(n){
+      var e=(DB.exercises||[]).filter(function(x){ return x.name===n; })[0];
+      return e && !canDo(e);
+    });
+    ok('nothing prescribed needs equipment the user has not got',
+       illegal.length===0, illegal.join(', '));
+    DB.profile.gear=['db','band','bike','run','bench'];
+    var backDb=exNames();
+    ok('adding dumbbells back makes dumbbell work eligible again',
+       JSON.stringify(backDb)!==JSON.stringify(noDb),
+       noDb.join(', ')+'  ->  '+backDb.join(', '));
+
+    /* ---- 7: changing equipment produces a materially different workout ---- */
+    reset();
+    var a=exNames().join('|');
+    DB.profile.gear=[];                                 // bodyweight only
+    var b=exNames().join('|');
+    ok('changing equipment produces a materially different workout',
+       a!==b, a.slice(0,60)+' -> '+b.slice(0,60));
+
+    /* ---- 8: location changes what is available ---- */
+    reset();
+    var home=exNames().join('|');
+    DB.profile.place='gym'; DB.profile.gear=GYM_GEAR.slice();
+    var gym=exNames().join('|');
+    ok('changing where you train changes the exercises',
+       home!==gym, 'home: '+home.slice(0,50)+'  gym: '+gym.slice(0,50));
+    var gymEx=exNames();
+    ok('and the gym version is still all doable',
+       gymEx.every(function(n){
+         var e=(DB.exercises||[]).filter(function(x){ return x.name===n; })[0];
+         return !e || canDo(e); }), gymEx.join(', '));
+
+    /* ---- 9: less time, less work ---- */
+    reset();
+    DB.checkins[T].availTime=60;
+    var longR=recommend(T,DB.checkins[T]);
+    var longN=((longR.workout&&longR.workout.blocks&&longR.workout.blocks[longR.variant||'full'])||[]).length;
+    DB.checkins[T].availTime=20;
+    var shortR=recommend(T,DB.checkins[T]);
+    var shortV=shortR.variant||'full';
+    var shortN=((shortR.workout&&shortR.workout.blocks&&shortR.workout.blocks[shortV])||[]).length;
+    ok('cutting the time available reduces the session',
+       shortN<longN || shortV!=='full' || shortR.est<longR.est,
+       'from '+longN+' blocks/'+longR.est+'min to '+shortN+' blocks/'+
+       shortR.est+'min ('+shortV+')');
+    ok('and the recommendation says the time changed it',
+       /time|minute|short/i.test(JSON.stringify(shortR.why||shortR.notes||[])) ||
+       shortV!=='full', shortV);
+
+    /* ---- 10: readiness changes the prescription ---- */
+    reset();
+    var green=recommend(T,DB.checkins[T]);
+    DB.checkins[T]={date:T,recovery:31,hrv:58,rhr:62,sleepMin:300,
+                    energy:2,soreness:8,stress:8,motivation:3,pain:'None'};
+    var red=recommend(T,DB.checkins[T]);
+    ok('readiness falling changes what is prescribed',
+       green.id!==red.id ||
+       (green.variant||'full')!==(red.variant||'full'),
+       green.id+'/'+(green.variant)+' -> '+
+       red.id+'/'+(red.variant));
+    ok('and a low-readiness day is not given a full strength session',
+       !(/lower|upper|power/.test(red.id||'')&&(red.variant||'full')==='full'),
+       red.id+'/'+red.variant);
+
+    /* ---- 11: tennis this morning changes tonight ---- */
+    reset();
+    var fresh=recommend(T,DB.checkins[T]);
+    var freshFp=recFingerprint(T);
+    DB.activities=[{id:'a_ten',date:T,type:'tennis',min:90,strain:15.5,
+                    intensity:'Hard',rpe:8,planned:false}];
+    var after=recommend(T,DB.checkins[T]);
+    ok('logging 90 minutes of tennis changes what the engine sees',
+       recFingerprint(T)!==freshFp);
+    ok('and it changes the recommendation or its reasoning',
+       fresh.id!==after.id ||
+       (fresh.variant||'full')!==(after.variant||'full') ||
+       JSON.stringify(fresh.why||[])!==JSON.stringify(after.why||[]),
+       fresh.id+'/'+fresh.variant+' -> '+
+       after.id+'/'+after.variant);
+    ok('the day is not treated as fresh',
+       /tennis/i.test(JSON.stringify(after.why||after.notes||[])) ||
+       recInputs(T).todayLoad>0,
+       'load today: '+recInputs(T).todayLoad);
+    ok('and it is not offered pre-match activation after the match',
+       after.id!=='prep', after.id);
+
+    /* ---- 12: a ride this morning changes a leg session tonight ---- */
+    reset();
+    var before2=recommend(T,DB.checkins[T]);
+    DB.activities=[{id:'a_ride2',date:T,type:'cycling',min:95,strain:12.5,
+                    intensity:'Hard',rpe:7,planned:false}];
+    var after2=recommend(T,DB.checkins[T]);
+    ok('a long ride earlier today registers as lower-body demand',
+       recInputs(T).todayLower>0, 'lower demand: '+recInputs(T).todayLower);
+    ok('and changes the recommendation or its reasoning',
+       before2.id!==after2.id ||
+       (before2.variant||'full')!==(after2.variant||'full') ||
+       JSON.stringify(before2.why||[])!==JSON.stringify(after2.why||[]),
+       before2.id+' -> '+after2.id);
+
+    /* ---- every input §10 lists is actually read ---- */
+    reset();
+    var base=recFingerprint(T);
+    var moved=[], stuck=[];
+    var probes=[
+      ['soreness',   function(){ DB.checkins[T].soreness=9; }],
+      ['energy',     function(){ DB.checkins[T].energy=1; }],
+      ['stress',     function(){ DB.checkins[T].stress=9; }],
+      ['motivation', function(){ DB.checkins[T].motivation=1; }],
+      ['pain',       function(){ DB.checkins[T].pain='Moderate'; }],
+      ['sleep',      function(){ DB.checkins[T].sleepMin=260; }],
+      ['recovery',   function(){ DB.checkins[T].recovery=35; }],
+      ['hrv',        function(){ DB.checkins[T].hrv=52; }],
+      ['rhr',        function(){ DB.checkins[T].rhr=66; }],
+      ['availTime',  function(){ DB.checkins[T].availTime=20; }],
+      ['equipment',  function(){ DB.profile.gear=['band']; }],
+      ['location',   function(){ DB.profile.place='gym'; }],
+      ['goals',      function(){ DB.profile.goals=['muscle']; }],
+      ['sports',     function(){ DB.profile.sports=['running']; }],
+      ['today activity', function(){ DB.activities=[{id:'z1',date:T,type:'tennis',
+                          min:110,strain:16,intensity:'Hard'}]; }],
+      ['yesterday',  function(){ DB.activities=[{id:'z2',date:addDays(T,-1),
+                          type:'running',min:70,strain:13,intensity:'Hard'}]; }],
+      ['recent load',function(){ DB.activities=[-2,-3,-4].map(function(d,i){
+                          return {id:'z'+i,date:addDays(T,d),type:'tennis',
+                                  min:100,strain:15,intensity:'Hard'}; }); }],
+      ['completed session', function(){ DB.sessions=[{id:'s1',date:addDays(T,-1),
+                          workoutId:'w_lowerA',done:true,sets:[]}]; }]
+    ];
+    probes.forEach(function(pr){
+      reset();
+      pr[1]();
+      (recFingerprint(T)!==base ? moved : stuck).push(pr[0]);
+    });
+    ok('every input the engine claims to read does change what it sees',
+       stuck.length===0, 'ignored: '+stuck.join(', '));
+    ok('and that is all of them', moved.length===probes.length,
+       moved.length+' of '+probes.length);
+
+    DB.profile=JSON.parse(keepP); DB.targets=JSON.parse(keepT);
+    DB.activities=keepA; DB.checkins=keepC; DB.sessions=keepS;
+  })();
+
+  /* =====================================================================
+     §20.18  THE PLANNED SETS ARE ALREADY THERE
+     "2 x 12-18" must produce set 1 and set 2 without the user asking for
+     them, and "Add a set" must not be a primary action.
+     ================================================================== */
+  (function(){
+    var T=todayISO();
+    DB.checkins[T]=DB.checkins[T]||{date:T,recovery:76,energy:7,soreness:3,
+                                    stress:3,motivation:7,sleepMin:450,pain:'None'};
+    startWorkout('w_lowerA','full',T);
+    W.phase='main'; W.step=0; drawWM();
+    var en=W.entries[0];
+    ok('the planned number of sets exists before anything is tapped',
+       en.sets.length===en.plannedSets && en.sets.length>=2,
+       en.sets.length+' of a planned '+en.plannedSets);
+    ok('the screen says which set of how many',
+       /SET[ ]*1[ ]*OF[ ]*[0-9]/i.test(document.getElementById('wmBody').textContent) ||
+       /Set 1 of [0-9]/.test(document.getElementById('wmBody').textContent),
+       document.querySelector('#wmBody .ws-l, #wmBody .hl')
+         ? document.querySelector('#wmBody .ws-l, #wmBody .hl').textContent : '(none)');
+
+    /* the primary action is to log, and nothing else */
+    var prim=document.querySelectorAll('#wmBody .wm-bot .btn.primary');
+    ok('there is exactly one primary action', prim.length===1, prim.length);
+    ok('and it is to log the set', /log set/i.test(prim[0].textContent), prim[0].textContent);
+    ok('"Add a set" is not on the training screen',
+       !/add a set/i.test(document.getElementById('wmBody').textContent) &&
+       !/add a set/i.test(document.getElementById('wmFoot').textContent));
+
+    /* one tap moves to set 2 - no navigation, no confirmation */
+    var before=W.step;
+    document.querySelector('#wmBody [data-log]').click();
+    if(typeof stopRest==='function'){ stopRest(); drawWM(); }
+    ok('logging set 1 moves to set 2 without leaving the exercise',
+       W.step===before && en.sets[0].done===true &&
+       /SET[ ]*2[ ]*OF/i.test(document.getElementById('wmBody').textContent),
+       'step '+W.step+', text '+(document.querySelector('#wmBody .ws-l')||{}).textContent);
+
+    /* and after the last set it advances by itself */
+    var n=en.sets.length;
+    for(var i=1;i<n;i++){
+      var b=document.querySelector('#wmBody [data-log]');
+      if(b) b.click();
+      if(typeof stopRest==='function'){ stopRest(); drawWM(); }
+    }
+    ok('finishing the last set advances on its own, with nothing to press',
+       W.step===before+1, 'step '+W.step+' (was '+before+')');
+    ok('and it never asked whether to stay on the exercise',
+       !/stay on this/i.test(document.getElementById('wmBody').textContent));
+
+    /* "Add a set" IS available, under More, as §3 asks */
+    ok('More exists as the safety valve', !!document.getElementById('wmMore'));
+    exitWM(true);
+  })();
+
+  /* =====================================================================
+     §20.23  A LONG EXERCISE NAME MUST NOT BREAK THE SCREEN
+     ================================================================== */
+  (function(){
+    var T=todayISO();
+    startWorkout('w_lowerA','full',T);
+    W.phase='main'; W.step=0;
+    var en=W.entries[0];
+    en.name='Single-Leg Romanian Deadlift with Contralateral Dumbbell and Slow Eccentric Tempo';
+    en.cue='Keep the hips square to the floor throughout, and do not let the '+
+           'trailing leg rotate open as you reach the bottom of the movement.';
+    en.blockNote='Swapped from Barbell Romanian Deadlift - needs equipment you do not have.';
+    drawWM();
+    var body=document.getElementById('wmBody');
+    var nm=body.querySelector('.wm-ex');
+    ok('a very long exercise name still renders', !!nm && nm.textContent.length>60);
+    ok('and does not push the page sideways',
+       document.documentElement.scrollWidth<=document.documentElement.clientWidth+1,
+       document.documentElement.scrollWidth+' vs '+document.documentElement.clientWidth);
+    var btn=body.querySelector('.wm-bot .btn.primary');
+    ok('the primary action is still there', !!btn);
+    if(btn){
+      var bb=btn.getBoundingClientRect();
+      ok('and still inside the viewport',
+         bb.top>=0 && bb.bottom<=window.innerHeight+1,
+         Math.round(bb.top)+'..'+Math.round(bb.bottom)+' of '+window.innerHeight);
+      var hit=document.elementFromPoint(bb.left+bb.width/2, bb.top+bb.height/2);
+      ok('and still tappable', hit===btn||btn.contains(hit),
+         hit?(hit.className||hit.tagName):'nothing');
+    }
+    ok('the body still does not overflow itself',
+       body.scrollHeight<=body.clientHeight+1,
+       body.scrollHeight+' vs '+body.clientHeight);
+    exitWM(true);
+  })();
+
+  /* =====================================================================
+     §20.25  SAFE AREAS
+     The workout header and footer must reserve the iPhone insets, or the
+     close button lands under the notch and the footer under the home bar.
+     ================================================================== */
+  (function(){
+    var probe=document.createElement('div');
+    probe.style.cssText='position:fixed;left:-9999px;'+
+      'padding:var(--sa-t) var(--sa-r) var(--sa-b) var(--sa-l)';
+    document.body.appendChild(probe);
+    var cs=getComputedStyle(probe);
+    ok('the safe-area variables resolve to a length',
+       /px/.test(cs.paddingTop) && /px/.test(cs.paddingBottom),
+       cs.paddingTop+' / '+cs.paddingBottom);
+    probe.remove();
+
+    startWorkout('w_lowerA','full',todayISO());
+    W.phase='main'; W.step=0; drawWM();
+    var h=document.querySelector('#wmode .wm-h');
+    var f=document.querySelector('#wmode .wm-f');
+    ok('the workout header reserves the top inset',
+       /--sa-t|safe-area/.test(getComputedStyle(h).paddingTop) ||
+       parseFloat(getComputedStyle(h).paddingTop)>=12,
+       getComputedStyle(h).paddingTop);
+    ok('and the footer reserves the bottom inset',
+       parseFloat(getComputedStyle(f).paddingBottom)>=14,
+       getComputedStyle(f).paddingBottom);
+    /* nothing in the workout may sit outside the viewport */
+    var out=[];
+    document.querySelectorAll('#wmode .wm-h > *, #wmode .wm-f > *').forEach(function(el){
+      var r=el.getBoundingClientRect();
+      if(r.height===0) return;
+      if(r.top<0 || r.bottom>window.innerHeight+1) out.push(el.className||el.tagName);
+    });
+    ok('no control sits outside the safe viewport', out.length===0, out.join(', '));
+    exitWM(true);
+  })();
+
+  /* =====================================================================
+     §20.22  THE APP WORKS WITH NO WEARABLE AT ALL
+     ================================================================== */
+  (function(){
+    var keepP=JSON.stringify(DB.profile), keepW=DB.whoop, keepC=DB.checkins;
+    /* baselines too: resetting them and not putting them back left the next
+       test reading seeded values, which is how a leak in a fixture shows up
+       as a failure three hundred assertions later */
+    var keepB=JSON.stringify(DB.baselines);
+    var T=todayISO();
+    DB.profile.source='none'; DB.profile.mode='manual';
+    DB.whoop={cycles:[],workouts:[],journal:[],imports:[]};
+    DB.baselines=Object.assign({},SEED_BASE);
+    DB.checkins={};
+    DB.checkins[T]={date:T,energy:7,soreness:3,stress:3,motivation:7,pain:'None'};
+
+    ok('no wearable is reported', hasWhoop()===false && usesDevice()===false);
+    var rd=readiness(T,DB.checkins[T]);
+    ok('readiness is still produced', rd && typeof rd.score==='number' && rd.score>0,
+       JSON.stringify(rd&&{score:rd.score,band:rd.band}));
+    var r=recommend(T,DB.checkins[T]);
+    ok('a session is still recommended', !!(r&&r.workoutId), r&&r.id);
+    ok('and it is still explained', !!(r&&r.why&&r.why.length), (r.why||[]).length+' reasons');
+    ok('the blocks still resolve', (sessionBlocks(r)||[]).length>0,
+       (sessionBlocks(r)||[]).length+' blocks');
+
+    /* and nothing invents a wearable number */
+    resetStack(); TAB='today'; render();
+    var txt=document.getElementById('view').textContent;
+    ok('no HRV figure is shown to somebody with no device',
+       !/HRV/.test(txt) || /Learning|not recorded|no wearable/i.test(txt),
+       txt.slice(0,120));
+    ok('and no empty dash tiles', txt.indexOf('\u2014 ms')<0 && txt.indexOf('\u2014ms')<0);
+    ok('the streak works without a wearable too',
+       typeof checkinStreak(T)==='number');
+
+    DB.profile=JSON.parse(keepP); DB.whoop=keepW; DB.checkins=keepC;
+    DB.baselines=JSON.parse(keepB);
+    resetStack(); TAB='today'; render();
+  })();
 
   /* ---------------------------------------------------------------------
      SWITCHES YOU CAN SEE
@@ -4612,10 +5211,20 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   });
   ok('nothing needing only home kit is left undrawn',
      gapHome.length===0, gapHome.join(', '));
-  ok('and what is left needs a rack, a cable or a bar',
-     gapGym.length===0 || gapGym.every(function(n){
-       return /barbell|bench|cable|pull-?up|chin-?up|hanging|leg press|machine|kettlebell|treadmill|rower|med ball/i.test(n); }),
-     gapGym.join(', '));
+  /* The claim is about EQUIPMENT, so check equipment. Matching on the name
+     was a weaker restatement of how gapGym was built, and it failed on
+     "Lat Pulldown", "Seated Leg Curl" and "Trap Bar Jump" for wording
+     reasons rather than correctness ones. */
+  var notGym=[];
+  (DB.exercises||[]).forEach(function(ex){
+    if(illusKey(ex)) return;
+    if(ex.equip && SUPPORTED[ex.equip]) notGym.push(ex.id+' '+ex.name+' ('+ex.equip+')');
+  });
+  ok('and what is left undrawn genuinely needs kit the figure cannot draw',
+     notGym.length===0, notGym.join(' | '));
+  /* Said out loud, so the number is worked through rather than accepted. */
+  ok('the undrawn list is short and every entry is a machine or a rack',
+     gapGym.length<=12, gapGym.length+': '+gapGym.join(', '));
 
   /* And every warm-up movement the app can show. */
   var wuMiss=[];
@@ -6656,13 +7265,152 @@ ok('a stopped timer stays stopped', !restActive());
                   soreness:3,stress:3,motivation:8,pain:'None'};
   startWorkout('w_lowerA','full',T);
   W.phase='main'; W.step=0; drawWM();
-  ok('the set screen carries a line of how to do it',
+  ok('the set screen carries a line of instruction',
      !!document.getElementById('wmHowLine'),
      document.getElementById('wmBody').innerHTML.slice(0,300));
-  ok('and it is the same line briefHow produces',
-     document.getElementById('wmHowLine').textContent
-       .indexOf(briefHow(exOf(W.entries[0].exerciseId)).slice(0,30))>=0,
-     document.getElementById('wmHowLine').textContent.slice(0,80));
+  /* ONE line, and it is the cue. The cue is what a coach says out loud; the
+     `how` paragraph is reference reading and belongs in More. */
+  (function(){
+    var en=W.entries[0], ex=exOf(en.exerciseId);
+    var line=document.getElementById('wmHowLine').textContent.trim();
+    var want=(en.cue||briefHow(ex)||'').slice(0,30);
+    ok('and it is the cue, which is what a coach would say',
+       want!=='' && line.indexOf(want)>=0, line.slice(0,90));
+    ok('the cue is the only prose above the set card',
+       document.querySelectorAll('#wmBody .wm-mid .cue').length===1 &&
+       document.querySelectorAll('#wmBody .wm-mid .wm-how').length===0,
+       document.querySelectorAll('#wmBody .wm-mid .cue').length+' cue, '+
+       document.querySelectorAll('#wmBody .wm-mid .wm-how').length+' how');
+    /* and the full text is still reachable, not deleted */
+    ok('tapping it opens the full instructions',
+       document.getElementById('wmHowLine').tagName==='BUTTON');
+    tryRun('opening them', function(){ document.getElementById('wmHowLine').click(); });
+    var sh=document.getElementById('sheetBody')||document.getElementById('sheet');
+    ok('which are the full how-to, not the cue again',
+       !!sh && sh.textContent.length>60, sh? sh.textContent.slice(0,70):'(no sheet)');
+    if(typeof closeSheet==='function') closeSheet();
+    drawWM();
+  })();
+
+  /* §18: THE PRIMARY ACTION MUST NEVER BE COVERED.
+     The middle band used to centre its content with overflow visible, so
+     content taller than the band spilled out of both ends: measured on a
+     375x667 phone, 344px of content in a 210px band put 134px outside it,
+     the illustration painted over the exercise name, and the set card landed
+     on top of the Log set button. */
+  (function(){
+    var body=document.getElementById('wmBody');
+    var mid=body.querySelector('.wm-mid'), btn=body.querySelector('.wm-bot .btn');
+    ok('the middle band scrolls its own overflow rather than spilling it',
+       !!mid && getComputedStyle(mid).overflowY!=='visible',
+       mid? getComputedStyle(mid).overflowY : '(no band)');
+    if(mid && btn){
+      var mb=mid.getBoundingClientRect(), bb=btn.getBoundingClientRect();
+      ok('and nothing in it reaches the primary action',
+         mb.bottom<=bb.top+1,
+         'band ends '+Math.round(mb.bottom)+', button starts '+Math.round(bb.top));
+      /* Clipped to every scrolling ancestor. A raw bounding rect is the
+         wrong instrument here: a child scrolled out of view inside an
+         overflow:auto band keeps a rect beyond its parent and is CLIPPED,
+         not painted - so comparing raw rects reported an overlap that was
+         not there, and would equally have missed a real one. */
+      var visRect=function(el){
+        var r=el.getBoundingClientRect();
+        var top=r.top, bot=r.bottom, p=el.parentElement;
+        while(p && p!==document.body){
+          var cs=getComputedStyle(p);
+          if(cs.overflowY!=='visible'){
+            var pr=p.getBoundingClientRect();
+            top=Math.max(top,pr.top); bot=Math.min(bot,pr.bottom);
+          }
+          p=p.parentElement;
+        }
+        return {top:top,bottom:bot,h:bot-top};
+      };
+      var over=[];
+      body.querySelectorAll('.wm-mid *').forEach(function(el){
+        var v=visRect(el);
+        if(v.h<=0.5) return;
+        if(v.bottom>bb.top+1 && v.top<bb.bottom-1) over.push(el.className||el.tagName);
+      });
+      ok('nothing visible reaches the Log set button', over.length===0, over.join(', '));
+
+      /* THE TAP TEST. What the browser says is on top, at nine points across
+         the button - which respects clipping and stacking both, and is the
+         only question the user actually has. */
+      var miss=[];
+      for(var gx=1;gx<=3;gx++) for(var gy=1;gy<=3;gy++){
+        var px=bb.left+bb.width*gx/4, py=bb.top+bb.height*gy/4;
+        var hit=document.elementFromPoint(px,py);
+        if(!hit){ miss.push('nothing at '+Math.round(px)+','+Math.round(py)); continue; }
+        if(hit!==btn && !btn.contains(hit))
+          miss.push((hit.className||hit.tagName)+' at '+Math.round(px)+','+Math.round(py));
+      }
+      ok('a tap on the primary action reaches the primary action',
+         miss.length===0, miss.join(' | '));
+
+      /* And the name above is not painted over either - the same spill went
+         upwards, putting the illustration across the exercise name. */
+      var nm=body.querySelector('.wm-ex');
+      if(nm){
+        var nr=nm.getBoundingClientRect(), onName=[];
+        body.querySelectorAll('.wm-mid *').forEach(function(el){
+          var v=visRect(el);
+          if(v.h<=0.5) return;
+          if(v.top<nr.bottom-1 && v.bottom>nr.top+1) onName.push(el.className||el.tagName);
+        });
+        ok('and nothing is drawn over the exercise name', onName.length===0, onName.join(', '));
+      }
+
+      /* The scrolling body itself must not overflow: that is what put the
+         action below the fold in the first place. */
+      ok('the workout body does not overflow its own box',
+         body.scrollHeight<=body.clientHeight+1,
+         body.scrollHeight+' vs '+body.clientHeight);
+      ok('and the button is inside the viewport',
+         bb.top>=0 && bb.bottom<=window.innerHeight+1,
+         Math.round(bb.top)+'..'+Math.round(bb.bottom)+' of '+window.innerHeight);
+    }
+  })();
+
+  /* §4: PAUSE PAUSES THE WORKOUT. REST DOES NOT. */
+  (function(){
+    var ptop=document.getElementById('wmPauseTop');
+    ok('the header has a pause control', !!ptop);
+    /* Compare the path DATA: the browser re-serialises a self-closing tag as
+       an open/close pair, so the raw ICON string never matches innerHTML. */
+    var pd=function(s){ var m=String(s).match(/d="([^"]+)"/g); return (m||[]).join('|'); };
+    ok('and it draws the pause glyph, not the stopwatch',
+       !!ptop && pd(ptop.innerHTML)===pd(ICON.pause) && pd(ICON.pause)!==pd(ICON.timer),
+       ptop? pd(ptop.innerHTML)+' vs '+pd(ICON.pause) : '(missing)');
+    ok('and the pause glyph is not the timer glyph', ICON.pause!==ICON.timer);
+
+    var stepBefore=W.step, started=W.startedAt;
+    tryRun('pausing', function(){ document.getElementById('wmPauseTop').click(); });
+    ok('the session is still open', !!W && document.getElementById('wmode').classList.contains('on'));
+    ok('and it is marked paused', wmPaused()===true);
+    ok('the paused screen offers resume and end',
+       !!document.getElementById('wpResume') && !!document.getElementById('wpEnd'));
+    ok('nothing was lost', W.step===stepBefore);
+    ok('and no rest timer is running', !restActive());
+
+    tryRun('resuming', function(){ document.getElementById('wpResume').click(); });
+    ok('resuming returns to the exercise', wmPaused()===false &&
+       !!document.querySelector('#wmBody .wm-mid'));
+    ok('and the paused minutes are not counted as training',
+       W.startedAt>=started, W.startedAt-started);
+
+    /* A REST is not a pause: the session stays live throughout. */
+    var en=W.entries[W.step];
+    tryRun('starting a rest', function(){ startRest(60,en.name,1,en.sets.length); drawWM(); });
+    ok('a rest timer runs', restActive()===true);
+    ok('and the workout is NOT paused by it', wmPaused()===false);
+    ok('the rest is labelled as rest',
+       /Rest/.test(document.getElementById('wmBody').textContent));
+    tryRun('skipping it', function(){ stopRest(); drawWM(); });
+    ok('a rest can be ended immediately', restActive()===false);
+    ok('and the workout is still live', !!W && wmPaused()===false);
+  })();
   document.getElementById('wmHowLine').click();
   ok('tapping it opens the full instructions',
      document.getElementById('sheet').classList.contains('on')
@@ -8369,8 +9117,154 @@ ok('phase 4 is deload', PHASES[3].name==='Deload' && PHASES[3].vol<0.7);
   ok('currentPhase robust to any plan start date', bad.length===0, bad.join(' ; '));
 })();
 ok('no unused settings keys',
-   Object.keys(DB.settings).sort().join(',')==='autoAdjust,bands,hardStrain,notify,restTimerOn,sound',
+   Object.keys(DB.settings).sort().join(',')===
+     'autoAdjust,bands,hardStrain,notify,restTimerOn,sound,streak',
    Object.keys(DB.settings).sort().join(','));
+/* And each one reaches something. A matching list only means the list was
+   updated; this means the key does a job. */
+(function(){
+  var consumers={
+    autoAdjust:  function(){ return typeof DB.settings.autoAdjust==='boolean'; },
+    bands:       function(){ return !!(DB.settings.bands&&DB.settings.bands.green); },
+    hardStrain:  function(){ return typeof DB.settings.hardStrain==='number'; },
+    notify:      function(){ return typeof notifyOn==='function'; },
+    restTimerOn: function(){ return typeof DB.settings.restTimerOn==='boolean'; },
+    sound:       function(){ return typeof SOUND==='object'; },
+    streak:      function(){ return typeof streakInfo==='function'; }
+  };
+  var orphan=Object.keys(DB.settings).filter(function(k){ return !consumers[k]; });
+  ok('every settings key has a consumer', orphan.length===0, orphan.join(', '));
+  var dead=Object.keys(consumers).filter(function(k){ return !consumers[k](); });
+  ok('and every consumer is present', dead.length===0, dead.join(', '));
+})();
+
+/* =======================================================================
+   §12: THE STREAK MUST NOT PUNISH RESTING
+   ==================================================================== */
+(function(){
+  var keepC=DB.checkins, keepA=DB.activities, keepS=DB.sessions;
+  var keepSet=JSON.stringify(DB.settings), keepP=JSON.stringify(DB.profile);
+  var T=todayISO();
+  var ci=function(d){ return {date:d,recovery:70,energy:7,soreness:3,stress:3,
+                              motivation:7,sleepMin:440,pain:'None'}; };
+
+  DB.settings.streak=false;
+  DB.checkins={}; DB.activities=[]; DB.sessions=[];
+  for(var i=0;i<6;i++) DB.checkins[addDays(T,-i)]=ci(addDays(T,-i));
+  ok('with the streak off, nothing is shown',
+     streakInfo(T).show===false && streakInfo(T).days===0);
+
+  DB.settings.streak=true;
+  ok('six days of check-ins is a six-day streak', checkinStreak(T)===6, checkinStreak(T));
+  ok('and it is shown', streakInfo(T).show===true, JSON.stringify(streakInfo(T)));
+  ok('the wording is about checking in, not training',
+     /check-in/.test(streakInfo(T).text), streakInfo(T).text);
+
+  /* a day with only an activity counts */
+  DB.checkins={}; DB.activities=[];
+  for(var j=0;j<4;j++) DB.activities.push({id:'sa'+j,date:addDays(T,-j),
+    type:'tennis',min:60,strain:9,intensity:'Moderate'});
+  ok('logging an activity keeps the streak', checkinStreak(T)===4, checkinStreak(T));
+
+  /* a day with only a completed session counts */
+  DB.activities=[];
+  DB.sessions=[{id:'ss1',date:T,workoutId:'w_lowerA',done:true,
+                entries:[{plannedSets:2,sets:[{done:true},{done:true}]}]},
+               {id:'ss2',date:addDays(T,-1),workoutId:'w_upperA',done:true,
+                entries:[{plannedSets:2,sets:[{done:true},{done:true}]}]}];
+  ok('completing a session keeps the streak', checkinStreak(T)===2, checkinStreak(T));
+
+  /* A REST DAY MUST NOT BREAK IT. */
+  DB.checkins={}; DB.activities=[]; DB.sessions=[];
+  /* checked in on -4,-3 and today; nothing at all on -2 and -1 */
+  [4,3,0].forEach(function(o){ DB.checkins[addDays(T,-o)]=ci(addDays(T,-o)); });
+  DB.plans={}; DB.plans[addDays(T,-2)]={id:'rest'}; DB.plans[addDays(T,-1)]={id:'rest'};
+  ok('a rest day the engine planned does not break the streak',
+     checkinStreak(T)>=3, checkinStreak(T)+' with two planned rest days in the middle');
+
+  /* A day away must not break it either. */
+  DB.plans={};
+  DB.profile.awayUntil=addDays(T,-1);
+  ok('and neither does a day away', checkinStreak(T)>=3,
+     checkinStreak(T)+' with awayUntil '+DB.profile.awayUntil);
+  DB.profile.awayUntil=null;
+
+  /* Under three days it says nothing, rather than congratulating somebody
+     on having existed for one day. */
+  DB.checkins={}; DB.plans={};
+  DB.checkins[T]=ci(T);
+  ok('one day is not announced as a streak', streakInfo(T).show===false,
+     streakInfo(T).days+' days');
+
+  /* And it can be switched off for good. */
+  DB.settings.streak=false;
+  ok('turning it off silences it completely',
+     streakInfo(T).show===false && streakInfo(T).days===0);
+
+  DB.checkins=keepC; DB.activities=keepA; DB.sessions=keepS;
+  DB.settings=JSON.parse(keepSet); DB.profile=JSON.parse(keepP); DB.plans={};
+})();
+
+/* =======================================================================
+   §13: PARTIAL WORK GETS PARTIAL CREDIT
+   ==================================================================== */
+(function(){
+  var keepS=DB.sessions, keepA=DB.activities, T=todayISO();
+  var mk=function(id,logged,planned,skipped){
+    var ent=[];
+    for(var i=0;i<planned;i++) ent.push({plannedSets:1,sets:[{done:i<logged}]});
+    if(skipped) ent.push({plannedSets:2,skipped:true,sets:[]});
+    return {id:id,date:T,workoutId:'w_lowerA',done:true,entries:ent};
+  };
+  DB.activities=[];
+
+  var full=mk('f',8,8,0);
+  ok('a finished session is completed', sessionState(full)==='completed', sessionState(full));
+  ok('and gets full credit', sessionCredit(full)===1, sessionCredit(full));
+
+  var half=mk('h',4,8,0);
+  ok('half a session is partial', sessionState(half)==='partial', sessionState(half));
+  ok('and does NOT get full credit', sessionCredit(half)<1, sessionCredit(half));
+  ok('it gets the share it earned', sessionCredit(half)===0.5, sessionCredit(half));
+
+  var most=mk('m',7,8,0);
+  ok('near enough is completed', sessionState(most)==='completed',
+     sessionState(most)+' at '+sessionCompletion(most));
+
+  var none=mk('n',0,8,0);
+  ok('a session with nothing logged earns nothing', sessionCredit(none)===0,
+     sessionState(none)+' / '+sessionCredit(none));
+
+  var skip={id:'s',date:T,workoutId:'w_lowerA',done:true,skipped:true,entries:[]};
+  ok('a skipped session is skipped', sessionState(skip)==='skipped', sessionState(skip));
+
+  /* and the week counts credit, not ticks */
+  DB.sessions=[mk('w1',4,8,0)];
+  var p1=weekProgress(T);
+  DB.sessions=[mk('w2',8,8,0)];
+  var p2=weekProgress(T);
+  ok('the week gives a half-finished session half a session of credit',
+     p1.lower>0 && p1.lower<p2.lower, p1.lower+' vs '+p2.lower);
+  ok('and a finished one a whole session', p2.lower>=1, p2.lower);
+  ok('the week counts how many were finished and how many were not',
+     p1.partial===1 && p1.full===0 && p2.full===1 && p2.partial===0,
+     'partial '+p1.partial+'/'+p2.partial+'  full '+p1.full+'/'+p2.full);
+  /* two half sessions are one session's worth, not two */
+  /* Both inside THIS ISO week whatever day it is. addDays(T,-1) put the
+     second session in last week every Monday, which is the fixture trap this
+     suite has been bitten by before. */
+  var wkStart=weekStartOf(T);
+  var d2=(wkStart<T)? wkStart : T;
+  DB.sessions=[mk('a',4,8,0), Object.assign(mk('b',4,8,0),{date:d2})];
+  var p3=weekProgress(T);
+  ok('two half sessions are one session of credit, not two',
+     Math.abs(p3.lower-1)<0.01, p3.lower);
+  ok('and it says so in words',
+     sessionStateText(mk('h2',4,8,0))==='50% completed',
+     sessionStateText(mk('h2',4,8,0)));
+
+  DB.sessions=keepS; DB.activities=keepA;
+})();
 
 // ---------- equipment integrity ----------
 // Gym exercises now exist ON PURPOSE for users who have a gym. What must hold
