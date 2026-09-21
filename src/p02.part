@@ -103,6 +103,8 @@ const ICON = {
   target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
   ruler:'<path d="M3.5 9.5h17a1 1 0 011 1v3a1 1 0 01-1 1h-17a1 1 0 01-1-1v-3a1 1 0 011-1z"/><path d="M7 9.5v2M11 9.5v3M15 9.5v2M19 9.5v3"/>',
   info:'<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/>',
+  /* a coaching cue — the one thing a coach would say out loud */
+  bulb:'<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z"/>',
   /* the open readiness ring — the app's own mark, and sport-neutral */
   ring:'<path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5"/>',
   /* device types — enough to tell a ring from a band from a watch */
@@ -233,7 +235,7 @@ const SCHEMA_VERSION=2;             // bump to transform stored records
 /* A date, plus a letter when more than one build ships in a day. Without the
    letter there was no way to tell a second same-day deploy from the cached
    copy of the first, which is exactly the question "did my upload work?". */
-const APP_BUILD='2026-09-20f';
+const APP_BUILD='2026-09-21';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */
@@ -598,6 +600,398 @@ const SEED_BASE = {
 /* does THIS device actually hold WHOOP data? */
 const hasWhoop  = ()=> !!(DB&&DB.whoop&&DB.whoop.cycles&&DB.whoop.cycles.length>=7);
 const whoopMode = ()=> !!(DB&&DB.profile&&DB.profile.source&&DB.profile.source!=='none');
+
+/* =========================================================================
+   EXERCISE ILLUSTRATIONS
+   ------------------------------------------------------------------------
+   One figure, posed. Every illustration is the same skeleton - head, torso,
+   two arms, two legs - with different joint coordinates and optional props,
+   rendered to inline SVG in a 120x84 box.
+
+   WHY NOT assets/exercises/*.svg, which is the obvious answer:
+
+     1. Baseline ships as ONE html file with no requests of any kind. A
+        hundred-odd separate SVGs would be a hundred-odd requests, and every
+        one of them would need an entry in the service worker's shell list or
+        the illustrations would simply vanish offline - which is the failure
+        mode hardest to notice and worst to hit mid-session in a basement gym.
+     2. A path that does not exist cannot be drawn. Inline, there is no path,
+        so the "no fake image paths" rule holds by construction rather than by
+        a validator catching it afterwards. The validator still exists, and
+        checks that every exercise's key resolves to a real pose.
+     3. Consistency is the hard part of an exercise library, and it is the
+        part a shared skeleton gives for free: same body, same line weight,
+        same perspective conventions, same equipment shapes, every time. Forty
+        hand-drawn files drift by the tenth.
+     4. Adding one is a pose object of six coordinate pairs, which is what
+        "easy to expand" has to mean for this to keep up with 173 exercises.
+
+   Equipment drawn here is only what the app actually supports: bodyweight, a
+   pair of dumbbells, a band, a wall, the floor, a bike. No racks, no cables,
+   no machines - an illustration must never show kit the user has not got.
+
+   Coordinates: x 0..120, y 0..84, y downwards. Ground line at y=76.
+   ====================================================================== */
+const FIG_W=120, FIG_H=84, FIG_GND=76;
+
+/* Props, drawn over the figure. Each is a small shape, deliberately schematic:
+   the figure is the instruction, the prop only says what is in the hands. */
+function figProp(p){
+  const n=v=>Math.round(v*10)/10;
+  if(p.t==='band'){
+    /* a band sags; the curve is what makes it read as elastic rather than a stick */
+    const c=p.c||[(p.a[0]+p.b[0])/2,(p.a[1]+p.b[1])/2+8];
+    return `<path d="M${n(p.a[0])} ${n(p.a[1])} Q${n(c[0])} ${n(c[1])} ${n(p.b[0])} ${n(p.b[1])}"
+      class="fg-e" fill="none" stroke-width="2.4"/>`;
+  }
+  if(p.t==='db'){
+    const x=p.at[0], y=p.at[1];
+    return `<g class="fg-e"><line x1="${n(x-4)}" y1="${n(y)}" x2="${n(x+4)}" y2="${n(y)}" stroke-width="2.4"/>
+      <circle cx="${n(x-5)}" cy="${n(y)}" r="2.6" class="fg-ef"/>
+      <circle cx="${n(x+5)}" cy="${n(y)}" r="2.6" class="fg-ef"/></g>`;
+  }
+  if(p.t==='wall') return `<line x1="${n(p.x)}" y1="4" x2="${n(p.x)}" y2="${FIG_GND}" class="fg-g" stroke-width="3"/>`;
+  if(p.t==='block') return `<rect x="${n(p.x)}" y="${n(p.y)}" width="${n(p.w||22)}" height="${n(FIG_GND-p.y)}"
+      rx="2" class="fg-gf"/>`;
+  if(p.t==='anchor') return `<circle cx="${n(p.at[0])}" cy="${n(p.at[1])}" r="3" class="fg-ef"/>`;
+  if(p.t==='arr'){
+    /* one motion arrow, only where the pose alone cannot say which way */
+    const a=p.a,b=p.b, dx=b[0]-a[0], dy=b[1]-a[1];
+    const L=Math.sqrt(dx*dx+dy*dy)||1, ux=dx/L, uy=dy/L;
+    const hx=b[0]-ux*5, hy=b[1]-uy*5, px=-uy*3.2, py=ux*3.2;
+    return `<g class="fg-a"><line x1="${n(a[0])}" y1="${n(a[1])}" x2="${n(hx)}" y2="${n(hy)}" stroke-width="2.2"/>
+      <polygon points="${n(b[0])},${n(b[1])} ${n(hx+px)},${n(hy+py)} ${n(hx-px)},${n(hy-py)}" class="fg-af"/></g>`;
+  }
+  if(p.t==='arc'){
+    const r=p.r||7, x=p.at[0], y=p.at[1];
+    return `<path d="M${n(x-r)} ${n(y)} A${r} ${r} 0 1 1 ${n(x+r)} ${n(y)}" class="fg-a"
+      fill="none" stroke-width="2"/>`;
+  }
+  if(p.t==='bike'){
+    const x=p.at[0], y=p.at[1];
+    return `<g class="fg-e"><circle cx="${n(x-13)}" cy="${n(y)}" r="9" fill="none" stroke-width="2.2"/>
+      <circle cx="${n(x+13)}" cy="${n(y)}" r="9" fill="none" stroke-width="2.2"/>
+      <path d="M${n(x-13)} ${n(y)} L${n(x-1)} ${n(y-14)} L${n(x+13)} ${n(y)} M${n(x-1)} ${n(y-14)} L${n(x+7)} ${n(y-18)}"
+        fill="none" stroke-width="2.2"/></g>`;
+  }
+  return '';
+}
+
+/* The skeleton. Far-side limbs are drawn first and faded, which is the whole
+   of the perspective convention - it is what lets a side view read as a body
+   rather than a diagram. */
+function figSVG(p, o){
+  o=o||{};
+  const n=v=>Math.round(v*10)/10;
+  const seg=(a,b,w,cls)=>(a&&b)
+    ? `<line x1="${n(a[0])}" y1="${n(a[1])}" x2="${n(b[0])}" y2="${n(b[1])}" class="${cls}" stroke-width="${w}"/>`
+    : '';
+  const limb=(from,j,cls)=> j ? seg(from,j[0],4.6,cls)+seg(j[0],j[1],4.2,cls) : '';
+  const spine = p.spine
+    ? `<path d="M${n(p.sh[0])} ${n(p.sh[1])} Q${n(p.spine[0])} ${n(p.spine[1])} ${n(p.hip[0])} ${n(p.hip[1])}"
+         class="fg-t" fill="none" stroke-width="6.4"/>`
+    : seg(p.sh,p.hip,6.4,'fg-t');
+  return `<svg viewBox="0 0 ${FIG_W} ${FIG_H}" class="fig" role="img" aria-hidden="true">
+    ${(p.props||[]).filter(x=>x.t==='wall'||x.t==='block').map(figProp).join('')}
+    ${p.ground!==false?`<line x1="6" y1="${FIG_GND}" x2="${FIG_W-6}" y2="${FIG_GND}" class="fg-g" stroke-width="2.4"/>`:''}
+    ${limb(p.hip,p.leg2,'fg-f')}${limb(p.sh,p.arm2,'fg-f')}
+    ${spine}
+    ${limb(p.hip,p.leg,'fg-l')}${limb(p.sh,p.arm,'fg-l')}
+    <circle cx="${n(p.head[0])}" cy="${n(p.head[1])}" r="6.6" class="fg-h"/>
+    ${(p.props||[]).filter(x=>x.t!=='wall'&&x.t!=='block').map(figProp).join('')}
+  </svg>`;
+}
+
+/* ---- the poses ----
+   Named by movement, not by exercise, so several exercises can share one and
+   a new exercise usually needs no new drawing at all. */
+const POSES={
+  /* ---------- standing, front ---------- */
+  'arm-circles':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[44,28],[28,28]], arm2:[[76,28],[92,28]],
+    leg:[[54,62],[52,76]], leg2:[[66,62],[68,76]],
+    props:[{t:'arc',at:[28,26],r:7},{t:'arc',at:[92,26],r:7}]},
+  'band-pull-apart':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[46,30],[32,27]], arm2:[[74,30],[88,27]],
+    leg:[[54,62],[52,76]], leg2:[[66,62],[68,76]],
+    props:[{t:'band',a:[32,27],b:[88,27],c:[60,36]}]},
+  'band-overhead':{head:[60,20],sh:[60,32],hip:[60,50],
+    arm:[[42,20],[28,12]], arm2:[[78,20],[92,12]],
+    leg:[[54,63],[52,76]], leg2:[[66,63],[68,76]],
+    props:[{t:'band',a:[28,12],b:[92,12],c:[60,4]}]},
+  'db-raise':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[44,28],[30,28]], arm2:[[76,28],[90,28]],
+    leg:[[54,62],[52,76]], leg2:[[66,62],[68,76]],
+    props:[{t:'db',at:[30,28]},{t:'db',at:[90,28]},{t:'arr',a:[30,40],b:[30,31]}]},
+  'wall-slides':{head:[60,18],sh:[60,32],hip:[60,52],
+    arm:[[44,26],[42,12]], arm2:[[76,26],[78,12]],
+    leg:[[54,64],[52,76]], leg2:[[66,64],[68,76]],
+    props:[{t:'block',x:8,y:6,w:6},{t:'arr',a:[42,22],b:[42,10]}]},
+  'shoulder-cars':{head:[60,16],sh:[60,30],hip:[60,50],
+    arm:[[48,20],[42,8]], arm2:[[72,38],[74,50]],
+    leg:[[54,63],[52,76]], leg2:[[66,63],[68,76]],
+    props:[{t:'arc',at:[42,10],r:8}]},
+  'band-pallof':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[54,34],[58,30]], arm2:[[66,34],[62,30]],
+    leg:[[50,62],[48,76]], leg2:[[70,62],[72,76]],
+    props:[{t:'wall',x:112},{t:'anchor',at:[112,34]},{t:'band',a:[112,34],b:[62,30],c:[88,36]}]},
+  'lateral-bound':{head:[54,16],sh:[54,30],hip:[56,50],
+    arm:[[42,36],[34,28]], arm2:[[68,38],[76,32]],
+    leg:[[62,62],[60,76]], leg2:[[44,58],[34,66]],
+    props:[{t:'arr',a:[86,50],b:[104,50]}]},
+  'side-plank':{head:[96,30],sh:[86,38],hip:[56,54],
+    arm:[[86,52],[80,74]], arm2:[[86,26],[86,12]],
+    leg:[[36,64],[22,74]], leg2:[[36,66],[24,76]], ground:true},
+
+  /* ---------- standing, side (facing right) ---------- */
+  stand:{head:[58,14],sh:[58,28],hip:[58,48],
+    arm:[[58,38],[58,48]], leg:[[58,62],[58,76]], leg2:[[56,62],[56,76]]},
+  squat:{head:[62,26],sh:[56,38],hip:[48,56],
+    arm:[[64,42],[76,40]], arm2:[[64,44],[74,44]],
+    leg:[[70,58],[62,76]], leg2:[[68,60],[60,76]],
+    props:[{t:'arr',a:[36,46],b:[36,62]}]},
+  'goblet-squat':{head:[62,26],sh:[56,38],hip:[48,56],
+    arm:[[62,40],[60,34]], arm2:[[64,42],[62,36]],
+    leg:[[70,58],[62,76]], leg2:[[68,60],[60,76]],
+    props:[{t:'db',at:[62,33]}]},
+  lunge:{head:[58,16],sh:[58,30],hip:[58,50],
+    arm:[[58,40],[56,52]], arm2:[[60,40],[62,52]],
+    leg:[[78,58],[82,76]], leg2:[[44,64],[34,74]]},
+  'split-squat':{head:[56,18],sh:[56,32],hip:[56,52],
+    arm:[[58,42],[58,54]], leg:[[76,60],[80,76]], leg2:[[42,66],[32,76]],
+    props:[{t:'db',at:[52,54]}]},
+  'sl-rdl':{head:[30,36],sh:[42,40],hip:[64,44],
+    arm:[[40,50],[38,62]], leg:[[64,58],[64,76]],
+    leg2:[[82,42],[98,38]], props:[{t:'db',at:[38,63]}]},
+  hinge:{head:[32,34],sh:[44,38],hip:[66,44],
+    arm:[[44,50],[44,62]], leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]]},
+  'calf-raise':{head:[58,14],sh:[58,28],hip:[58,48],
+    arm:[[58,38],[58,48]], leg:[[58,60],[58,70]], leg2:[[56,60],[56,70]],
+    props:[{t:'arr',a:[76,52],b:[76,38]},{t:'wall',x:98}]},
+  'sl-calf-raise':{head:[58,14],sh:[58,28],hip:[58,48],
+    arm:[[58,38],[58,48]], leg:[[58,60],[58,70]],
+    leg2:[[46,58],[48,46]], props:[{t:'arr',a:[76,52],b:[76,38]},{t:'wall',x:98}]},
+  'tibialis-raise':{head:[52,16],sh:[52,30],hip:[52,50],
+    arm:[[54,40],[54,52]], leg:[[56,62],[58,76]], leg2:[[54,62],[56,76]],
+    props:[{t:'wall',x:40},{t:'arr',a:[74,74],b:[74,64]}]},
+  'calf-stretch':{head:[74,24],sh:[64,32],hip:[46,44],
+    arm:[[80,28],[94,26]], arm2:[[80,32],[94,30]],
+    leg:[[38,58],[30,76]], leg2:[[52,60],[58,76]],
+    props:[{t:'wall',x:98}]},
+  'couch-stretch':{head:[48,26],sh:[48,40],hip:[48,58],
+    arm:[[50,48],[50,60]], leg:[[70,62],[74,76]],
+    leg2:[[66,66],[88,52]], props:[{t:'wall',x:92}]},
+  'ankle-rock':{head:[52,22],sh:[52,36],hip:[52,56],
+    arm:[[60,44],[70,50]], leg:[[74,58],[70,76]], leg2:[[40,72],[26,74]],
+    props:[{t:'arr',a:[86,60],b:[92,70]}]},
+  run:{head:[62,14],sh:[60,28],hip:[56,48],
+    arm:[[70,34],[78,26]], arm2:[[46,36],[38,44]],
+    leg:[[74,54],[86,64]], leg2:[[42,60],[28,56]], props:[{t:'arr',a:[96,40],b:[110,40]}]},
+  walk:{head:[60,14],sh:[58,28],hip:[56,48],
+    arm:[[64,38],[68,48]], arm2:[[50,38],[46,48]],
+    leg:[[68,60],[74,76]], leg2:[[46,62],[40,76]]},
+  bike:{head:[52,22],sh:[54,34],hip:[60,48],
+    arm:[[66,40],[78,42]], arm2:[[66,42],[78,44]],
+    leg:[[74,56],[68,66]], leg2:[[72,58],[80,62]],
+    props:[{t:'bike',at:[70,64]}], ground:false},
+  'pogo-hops':{head:[58,18],sh:[58,32],hip:[58,50],
+    arm:[[58,42],[58,52]], leg:[[58,62],[58,70]], leg2:[[56,62],[56,70]],
+    props:[{t:'arr',a:[78,56],b:[78,36]},{t:'arr',a:[38,56],b:[38,36]}]},
+  jump:{head:[62,24],sh:[56,36],hip:[48,54],
+    arm:[[66,40],[78,34]], arm2:[[64,42],[76,38]],
+    leg:[[70,58],[62,76]], leg2:[[68,60],[60,76]],
+    props:[{t:'arr',a:[34,52],b:[34,26]}]},
+  decel:{head:[54,18],sh:[56,32],hip:[62,50],
+    arm:[[48,38],[38,32]], arm2:[[66,40],[74,34]],
+    leg:[[78,60],[84,76]], leg2:[[56,62],[50,76]],
+    props:[{t:'arr',a:[100,44],b:[86,44]}]},
+
+  /* ---------- hands and knees ---------- */
+  'cat-cow':{head:[30,52],sh:[44,46],hip:[80,44],spine:[62,34],
+    arm:[[44,60],[44,76]], arm2:[[42,60],[42,76]],
+    leg:[[80,60],[90,76]], leg2:[[78,60],[88,76]],
+    props:[{t:'arr',a:[62,22],b:[62,30]}]},
+  'bird-dog':{head:[30,52],sh:[44,46],hip:[80,44],
+    arm:[[44,60],[44,76]], arm2:[[30,40],[16,36]],
+    leg:[[80,60],[90,76]], leg2:[[94,42],[108,38]]},
+
+  /* ---------- on the back ---------- */
+  'dead-bug':{head:[32,66],sh:[44,68],hip:[78,68],
+    arm:[[44,56],[42,44]], arm2:[[34,72],[24,76]],
+    leg:[[80,54],[92,52]], leg2:[[92,70],[104,72]]},
+  'glute-bridge':{head:[26,70],sh:[36,70],hip:[62,54],
+    arm:[[32,74],[24,76]], arm2:[[34,74],[26,76]],
+    leg:[[84,60],[84,76]], leg2:[[82,62],[82,76]],
+    props:[{t:'arr',a:[62,44],b:[62,50]}]},
+  'sl-glute-bridge':{head:[26,70],sh:[36,70],hip:[62,54],
+    arm:[[32,74],[24,76]], leg:[[84,60],[84,76]],
+    leg2:[[80,48],[96,42]], props:[{t:'arr',a:[62,44],b:[62,50]}]},
+  'hollow-hold':{head:[42,60],sh:[52,66],hip:[70,68],
+    arm:[[34,56],[18,54]], arm2:[[36,58],[20,56]],
+    leg:[[86,60],[100,52]], leg2:[[84,62],[98,54]]},
+  'open-book':{head:[30,64],sh:[44,66],hip:[76,68],
+    arm:[[44,52],[52,40]], arm2:[[46,72],[56,74]],
+    leg:[[78,58],[92,58]], leg2:[[80,60],[94,60]],
+    props:[{t:'arc',at:[52,40],r:8}]},
+  'hip-90-90':{head:[44,44],sh:[48,56],hip:[54,70],
+    arm:[[60,62],[70,68]], leg:[[74,72],[88,66]], leg2:[[44,74],[30,70]]},
+  'legs-up-wall':{head:[26,70],sh:[38,70],hip:[70,70],
+    arm:[[34,74],[24,76]], arm2:[[36,74],[26,76]],
+    leg:[[78,56],[82,34]], leg2:[[76,58],[80,36]],
+    props:[{t:'wall',x:88}]},
+  breathe:{head:[28,68],sh:[40,70],hip:[72,70],
+    arm:[[38,74],[28,76]], arm2:[[40,74],[30,76]],
+    leg:[[88,72],[104,74]], leg2:[[86,74],[102,76]]},
+
+  /* ---------- front support ---------- */
+  plank:{head:[86,48],sh:[74,52],hip:[48,56],
+    arm:[[74,64],[80,76]], arm2:[[72,64],[78,76]],
+    leg:[[30,62],[18,74]], leg2:[[28,64],[16,76]]},
+  'scap-pushup':{head:[86,48],sh:[74,52],hip:[48,56],
+    arm:[[74,64],[80,76]], arm2:[[72,64],[78,76]],
+    leg:[[30,62],[18,74]], leg2:[[28,64],[16,76]],
+    props:[{t:'arr',a:[74,40],b:[74,48]}]},
+  'push-up':{head:[88,56],sh:[76,60],hip:[50,60],
+    arm:[[86,68],[80,76]], arm2:[[84,68],[78,76]],
+    leg:[[32,64],[18,74]], leg2:[[30,66],[16,76]],
+    props:[{t:'arr',a:[62,44],b:[62,54]}]},
+  'incline-push-up':{head:[92,40],sh:[80,46],hip:[54,56],
+    arm:[[84,52],[92,56]], arm2:[[82,54],[90,58]],
+    leg:[[34,64],[20,74]], leg2:[[32,66],[18,76]],
+    props:[{t:'block',x:86,y:56,w:26}]},
+  'pike-push-up':{head:[88,58],sh:[78,52],hip:[54,32],
+    arm:[[84,64],[88,76]], arm2:[[82,64],[86,76]],
+    leg:[[42,54],[30,74]], leg2:[[40,56],[28,76]]},
+  'prone-ytw':{head:[92,58],sh:[80,64],hip:[46,68],
+    arm:[[86,52],[98,44]], arm2:[[84,54],[96,46]],
+    leg:[[30,70],[16,72]], leg2:[[28,72],[14,74]]},
+  /* added after the validator named them: every exercise an authored workout
+     can prescribe has to be drawn, and these five were not */
+  'db-overhead-tri':{head:[58,16],sh:[58,30],hip:[58,50],
+    arm:[[56,14],[50,24]], arm2:[[62,14],[56,24]],
+    leg:[[54,64],[52,76]], leg2:[[64,64],[66,76]],
+    props:[{t:'db',at:[52,25]},{t:'arr',a:[36,26],b:[36,14]}]},
+  'db-curl':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[48,40],[50,26]], arm2:[[72,40],[74,52]],
+    leg:[[54,62],[52,76]], leg2:[[66,62],[68,76]],
+    props:[{t:'db',at:[50,25]},{t:'db',at:[74,53]},{t:'arr',a:[36,44],b:[36,30]}]},
+  superman:{head:[94,56],sh:[82,62],hip:[46,64],
+    arm:[[90,54],[104,48]], arm2:[[88,56],[102,50]],
+    leg:[[30,62],[14,56]], leg2:[[32,64],[16,58]],
+    props:[{t:'arr',a:[62,72],b:[62,64]}]},
+  copenhagen:{head:[96,34],sh:[86,42],hip:[58,56],
+    arm:[[86,56],[80,74]], arm2:[[86,30],[86,16]],
+    leg:[[42,54],[26,50]], leg2:[[44,66],[30,74]],
+    props:[{t:'block',x:8,y:50,w:24}]},
+  'adductor-squeeze':{head:[26,70],sh:[38,70],hip:[64,66],
+    arm:[[34,74],[24,76]], arm2:[[36,74],[26,76]],
+    leg:[[82,56],[80,74]], leg2:[[76,58],[74,74]],
+    props:[{t:'arr',a:[96,58],b:[86,58]},{t:'arr',a:[62,58],b:[72,58]}]},
+  'worlds-greatest':{head:[46,26],sh:[48,38],hip:[44,56],
+    arm:[[54,30],[60,18]], arm2:[[46,52],[44,70]],
+    leg:[[70,58],[74,76]], leg2:[[30,66],[18,74]],
+    props:[{t:'arc',at:[60,18],r:7}]},
+  'band-face-pull':{head:[58,16],sh:[58,30],hip:[58,50],
+    arm:[[74,26],[64,22]], arm2:[[72,30],[62,26]],
+    leg:[[54,63],[52,76]], leg2:[[64,63],[66,76]],
+    props:[{t:'wall',x:112},{t:'anchor',at:[112,20]},{t:'band',a:[112,20],b:[64,22],c:[88,18]}]}
+};
+
+/* Which pose an exercise uses. The library owns this - an exercise record may
+   also carry its own `illus` and that wins, but keeping the index in one place
+   means a pose can be reassigned across fifty exercises in one edit. */
+const EX_ILLUS={
+  /* lower */
+  lx01:'goblet-squat', lx02:'squat', lx03:'split-squat', lx04:'lunge', lx05:'squat',
+  lx06:'split-squat', lx07:'hinge', lx08:'hinge', lx09:'sl-rdl', lx10:'glute-bridge',
+  lx11:'lunge', lx12:'squat', lx13:'sl-glute-bridge', lx14:'glute-bridge',
+  lx15:'calf-raise', lx16:'calf-raise', lx17:'sl-calf-raise', lx18:'tibialis-raise',
+  lx19:'copenhagen', lx20:'adductor-squeeze', lx21:'squat', lx22:'lunge',
+  /* upper push */
+  up01:'push-up', up02:'push-up', up03:'incline-push-up', up04:'push-up',
+  up05:'pike-push-up', up06:'push-up', up07:'db-raise', up08:'db-raise',
+  up09:'db-raise', up10:'db-raise', up11:'db-raise', up12:'push-up',
+  up13:'push-up', up14:'db-raise', up15:'db-overhead-tri', up16:'push-up',
+  /* upper pull */
+  ul01:'hinge', ul02:'hinge', ul03:'hinge', ul04:'band-pull-apart', ul05:'band-pull-apart',
+  ul06:'band-pull-apart', ul07:'band-pull-apart', ul08:'band-pull-apart',
+  ul09:'band-face-pull', ul10:'prone-ytw', ul11:'prone-ytw', ul12:'band-overhead',
+  ul13:'db-curl', ul14:'db-curl', ul15:'superman', ul16:'prone-ytw',
+  /* core */
+  co01:'plank', co02:'plank', co03:'side-plank', co04:'side-plank', co05:'dead-bug',
+  co06:'bird-dog', co07:'hollow-hold', co08:'hollow-hold', co09:'band-pallof',
+  co10:'band-pallof', co11:'plank', co12:'dead-bug', co13:'side-plank',
+  /* plyometric */
+  pl01:'pogo-hops', pl02:'jump', pl03:'jump', pl04:'lateral-bound', pl05:'jump',
+  pl06:'lateral-bound', pl07:'jump', pl08:'jump', pl09:'jump', pl10:'decel',
+  /* mobility */
+  mo01:'hip-90-90', mo02:'couch-stretch', mo03:'couch-stretch', mo04:'ankle-rock',
+  mo05:'open-book', mo06:'cat-cow', mo07:'open-book', mo08:'cat-cow',
+  mo09:'hip-90-90', mo10:'legs-up-wall', mo11:'calf-stretch', mo12:'wall-slides',
+  mo13:'band-overhead', mo14:'breathe', mo15:'legs-up-wall',
+  /* conditioning and sport */
+  cd01:'run', cd02:'run', cd03:'run', cd04:'bike', cd05:'bike', cd06:'walk',
+  cd07:'run', cd08:'walk',
+  sp01:'run', sp02:'lateral-bound', sp03:'decel', sp04:'run', sp05:'lateral-bound',
+  sp06:'decel', sp07:'jump', sp08:'run'
+};
+
+/* Warm-up movements are named, not keyed, so they match on their name. Same
+   pose table - a warm-up arm circle and an exercise arm circle are one
+   drawing, which is the point of keying on the movement. */
+const WU_ILLUS={
+  'arm circles':'arm-circles', 'arm circles + leg swings':'arm-circles',
+  'shoulder cars':'shoulder-cars', 'band pull-apart':'band-pull-apart',
+  'band face pull':'band-face-pull', 'band shoulder dislocates':'band-overhead',
+  'wall slides':'wall-slides', 'scapular push-ups':'scap-pushup',
+  'incline push-ups':'incline-push-up', 'cat-cow':'cat-cow', 'dead bug':'dead-bug',
+  'bird dog':'bird-dog', 'glute bridge':'glute-bridge',
+  'bodyweight squats':'squat', 'split squat':'split-squat', 'walking lunge':'lunge',
+  'single-leg rdl (bodyweight)':'sl-rdl', 'calf raises':'calf-raise',
+  'calf stretch (straight + bent knee)':'calf-stretch', 'couch stretch':'couch-stretch',
+  'ankle dorsiflexion rock':'ankle-rock', '90/90 hip switch':'hip-90-90',
+  'thoracic rotation (open book)':'open-book', 'pigeon stretch':'hip-90-90',
+  'adductor rock':'hip-90-90', 'legs up the wall':'legs-up-wall',
+  'slow nasal breathing':'breathe', 'gentle full-body stretch':'breathe',
+  'pogo hops':'pogo-hops', 'countermovement jumps':'jump', 'drop and stick':'decel',
+  'high knees':'run', 'butt kicks':'run', 'a-skips':'run',
+  'build-up runs':'run', 'build-up sprints':'run', 'lateral shuffle':'lateral-bound',
+  'lateral shuffle + crossover':'lateral-bound', 'split step + first step':'decel',
+  'easy jog or bike':'run', 'easy jog around the court':'run', 'easy jog or walk':'run',
+  'easy jog, spin or brisk walk':'run', 'easy bike or brisk walk':'bike',
+  'easy walk or spin':'walk', 'leg swings front/back':'stand',
+  'leg swings lateral':'stand', 'leg swings all directions':'stand',
+  'hip circles + leg swings':'stand', 'leg swings + hip circles':'stand',
+  'doorway chest stretch':'wall-slides', 'serve shadow swings':'band-overhead',
+  "world's greatest stretch":'worlds-greatest',
+  'shadow swings / rotational throws':'band-pallof'
+};
+
+/* The one lookup everything else uses. Returns a pose key or null - never a
+   guess, because a wrong illustration is worse than none. */
+function illusKey(ex){
+  if(!ex) return null;
+  if(ex.illus && POSES[ex.illus]) return ex.illus;
+  if(ex.id && EX_ILLUS[ex.id] && POSES[EX_ILLUS[ex.id]]) return EX_ILLUS[ex.id];
+  const nm=String(ex.name||'').trim().toLowerCase();
+  if(nm && WU_ILLUS[nm] && POSES[WU_ILLUS[nm]]) return WU_ILLUS[nm];
+  return null;
+}
+/* `size` is 'lg' on the training screen, 'sm' for a list thumbnail. A movement
+   with no pose yet gets a deliberate mark, not a broken image. */
+function illusHTML(ex, size){
+  const k=illusKey(ex);
+  const cls='illus '+(size||'lg')+(k?'':' none');
+  if(!k) return `<div class="${cls}" aria-hidden="true">${svg('dumbbell')}</div>`;
+  return `<div class="${cls}">${figSVG(POSES[k])}</div>`;
+}
+/* coverage, for the validator and the About screen */
+function illusCoverage(){
+  const all=(DB&&DB.exercises)||[];
+  let n=0;
+  all.forEach(e=>{ if(illusKey(e)) n++; });
+  return {have:n, total:all.length, poses:Object.keys(POSES).length};
+}
 
 /* =========================================================================
    EXERCISE LIBRARY

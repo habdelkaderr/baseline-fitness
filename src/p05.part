@@ -465,7 +465,17 @@ function noticeRow(date){
       go:()=>{ resetStack(); openPane('Tests','Retest and compare', paneTests); }};
   }
 
-  /* 3 · the weekly digest, on the day the week turns over */
+  /* 3 · the walkthrough, while they are still new.
+     Above the digest, not below it. Somebody who has logged nothing has no
+     week of their own to review, so offering "Last week in review" on their
+     first Monday put a summary of an empty week in front of the one thing
+     that would actually help them. */
+  if(DB.profile.onboarded && !tourSeen() && loggedCount()===0){
+    return {id:'tour', icon:'info', t:'New here?',
+      s:'How Baseline works — about a minute', go:()=>openTour()};
+  }
+
+  /* 4 · the weekly digest, on the day the week turns over */
   if(dowOf(d)===1){
     const wkStart=weekStartOf(d);
     if(!(DB.ui && DB.ui.digestSeen===wkStart) && hasHistory()){
@@ -474,12 +484,6 @@ function noticeRow(date){
         go:()=>{ DB.ui=DB.ui||{}; DB.ui.digestSeen=wkStart; save();
                  resetStack(); openPane('Last week','How the week went', paneWeek); }};
     }
-  }
-
-  /* 4 · the walkthrough, while they are still new */
-  if(DB.profile.onboarded && !tourSeen() && loggedCount()===0){
-    return {id:'tour', icon:'info', t:'New here?',
-      s:'How Baseline works — about a minute', go:()=>openTour()};
   }
   return null;
 }
@@ -784,29 +788,65 @@ function ringRow(d){
   return `<div class="scores">
     <button class="score lead" id="rdRow" aria-label="Readiness ${rd?rd.score:'unknown'} of 100${
       B?', '+esc(B.label):''}. View details">
-      ${ringHTML({lead:true, pct: rd? rd.score : null, value: rd? rd.score : '—',
+      ${''/* An empty arc, not a dash. A dash in a ring reads as a broken
+              reading; an empty ring beside "Learning your baseline" reads as
+              what it is - nothing measured yet. */}
+      ${ringHTML({lead:true, pct: rd? rd.score : null, value: rd? rd.score : '',
                   color: B? B.color : null})}
       <span class="score-x">
         <span class="score-l">Readiness</span>
-        <span class="score-w" style="${B?'color:'+B.color:''}">${rd? esc(B.label) : 'Not checked in'}</span>
-        <span class="score-s">${rd? 'out of 100' : 'Check in to get today’s number'}</span>
+        ${(()=>{
+          /* No number today is not the same as no number possible. With a
+             check-in there is a real score; without one, what to say depends
+             on whether Baseline has been running long enough to have a normal
+             for this person at all. Neither case invents a figure, and neither
+             leaves a dash sitting in a card. */
+          if(rd) return `<span class="score-w" style="color:${B.color}">${esc(B.label)}</span>
+            <span class="score-s">out of 100</span>`;
+          const lvl=dataCoverage(d).level;
+          return lvl==='learning'
+            ? `<span class="score-w">Learning your baseline</span>
+               <span class="score-s">Check in and it starts from today</span>`
+            : `<span class="score-w">Not checked in</span>
+               <span class="score-s">Check in for today’s number</span>`;
+        })()}
       </span>
       <i class="rw-c">${svg('chev')}</i>
     </button>
     <div class="score-pair">
       <button class="score" id="ringStrain" aria-label="Strain today ${rnd(load,1)} of 21. See the day">
+        ${''/* Strain is computed from what you logged, not read off a strap:
+              nothing logged is a real zero, not an unknown. */}
         ${ringHTML({pct: load? Math.min(100, load/21*100) : null,
-                    value: load? rnd(load,1) : '—', color:'var(--cyan)'})}
+                    value: load? rnd(load,1) : '0', color:'var(--cyan)'})}
         <span class="score-x"><span class="score-l">Strain</span>
           <span class="score-s">of 21 today</span></span>
       </button>
-      <button class="score" id="ringSleep" aria-label="${slept!=null?'Slept '+fmtMin(slept):'Sleep not recorded'}">
-        ${ringHTML({pct: slept!=null? Math.min(100, slept/need*100) : null,
-                    value: slept!=null? (Math.round(slept/60*10)/10)+'h' : '—',
-                    color:'var(--violet)'})}
-        <span class="score-x"><span class="score-l">Sleep</span>
-          <span class="score-s">${slept!=null? 'of '+Math.round(need/60)+'h needed' : 'not recorded'}</span></span>
-      </button>
+      ${(()=>{
+        /* Sleep is a wearable-or-check-in figure, and it is NOT always there.
+           A permanent tile reading "Sleep —  not recorded" is an empty card
+           holding a space open for a device the user may not own, which is
+           exactly what makes an app look like a dashboard for hardware rather
+           than a coach. When there is no figure, the slot carries something
+           Baseline always knows: the training it has actually seen this week. */
+        if(slept!=null) return `
+          <button class="score" id="ringSleep" aria-label="Slept ${fmtMin(slept)}">
+            ${ringHTML({pct: Math.min(100, slept/need*100),
+                        value:(Math.round(slept/60*10)/10)+'h', color:'var(--violet)'})}
+            <span class="score-x"><span class="score-l">Sleep</span>
+              <span class="score-s">of ${Math.round(need/60)}h needed</span></span>
+          </button>`;
+        const wp=weekProgress(d);
+        const n=(DB.sessions||[]).filter(s=>s.done && s.date>=weekStartOf(d) && s.date<=d).length
+              + (DB.activities||[]).filter(a=>a.date>=weekStartOf(d) && a.date<=d).length;
+        return `
+          <button class="score" id="ringWeek" aria-label="${n} logged this week. See your training">
+            ${ringHTML({pct: n? Math.min(100, n/Math.max(3,(DB.targets&&DB.targets.sessions)||4)*100) : null,
+                        value: String(n), color:'var(--accent)'})}
+            <span class="score-x"><span class="score-l">This week</span>
+              <span class="score-s">${n===1?'session logged':'sessions logged'}</span></span>
+          </button>`;
+      })()}
     </div>
   </div>`;
 }
@@ -819,6 +859,9 @@ function wireRings(d){
   /* The sleep ring used to reopen the whole check-in, which answered a
      question nobody was asking. What you want from a sleep ring is the target
      and what tonight is worth. Editing is still one tap further in. */
+  /* the slot that replaces Sleep when there is no sleep figure */
+  const wkT=$('#ringWeek');
+  if(wkT) wkT.onclick=()=>{ const c=$('#actsCard'); if(c) c.scrollIntoView({behavior:'smooth',block:'center'}); };
   const z=$('#ringSleep');
   if(z) z.onclick=()=>pushPage({build:pageSleep(d)});
 }
@@ -1066,6 +1109,11 @@ function wireWeekStrip(d){
 function todayNoCheckin(d){
   const cy=cycleByDate(d);
   return `
+  ${''/* The same tiles as any other day. Readiness is the thing this app is
+          built around, so its slot exists before there is a number in it and
+          says what it is doing - "Learning your baseline" - rather than being
+          absent until a device or a check-in fills it. */}
+  ${ringRow(d)}
   <div class="rec">
     <div class="rec-l">Today</div>
     <div class="rec-t">How are you doing?</div>

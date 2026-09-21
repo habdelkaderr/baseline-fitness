@@ -139,18 +139,26 @@ function weekNarrative(R){
 /* the week's numbers, shown above the training history they summarise */
 function weekNumbers(R){
   const A=R.A, P=R.P, dl=R.dl, wk=R.wk;
+  /* WEARABLE FIGURES ARE CONDITIONAL.
+     Recovery, HRV and resting HR exist only if a device reported them. A tile
+     reading "Avg HRV —" reserves space on the screen for hardware the user may
+     not own, and four of them in a row make Baseline look like a readout for a
+     strap rather than a training system. Each one appears when there is a
+     figure to put in it and is simply absent otherwise; what the app always
+     knows - sessions, activities, load - leads regardless. */
+  const wearTiles=[
+    A.rec!=null  ? statTile('Avg recovery',rnd(A.rec,0),'%',A.rec>=67?'g':A.rec>=34?'y':'r',dl(A.rec,P.rec)) : '',
+    A.hrv!=null  ? statTile('Avg HRV',rnd(A.hrv,0),'ms','c',dl(A.hrv,P.hrv)) : '',
+    A.rhr!=null  ? statTile('Avg RHR',rnd(A.rhr,1),'bpm','',dl(A.rhr,P.rhr,1)) : '',
+    A.sleep!=null? statTile('Avg sleep',fmtMin(A.sleep),'',A.sleep>=R.sleepNeed-60?'g':'o',dl(A.sleep,P.sleep)) : ''
+  ].filter(Boolean);
   return `
-  <div class="stats c2">
-    ${statTile('Avg recovery',A.rec!=null?rnd(A.rec,0):null,'%',A.rec>=67?'g':A.rec>=34?'y':'r',dl(A.rec,P.rec))}
-    ${statTile('Avg HRV',A.hrv!=null?rnd(A.hrv,0):null,'ms','c',dl(A.hrv,P.hrv))}
-    ${statTile('Avg RHR',A.rhr!=null?rnd(A.rhr,1):null,'bpm','',dl(A.rhr,P.rhr,1))}
-    ${statTile('Avg sleep',A.sleep!=null?fmtMin(A.sleep):null,'',A.sleep>=R.sleepNeed-60?'g':'o',dl(A.sleep,P.sleep))}
-  </div>
   <div class="stats">
     ${statTile('Sessions',A.sessions,'','a',`vs ${P.sessions}`)}
     ${statTile('Activities',A.acts,'','g',`${A.sport} ${esc(sportLC())}`)}
     ${statTile('Week load',A.load,'','o',dl(A.load,P.load,1))}
   </div>
+  ${wearTiles.length?`<div class="stats${wearTiles.length>2?' c2':''}" id="wearWk">${wearTiles.join('')}</div>`:''}
   <div class="card" style="margin-top:12px">
     <div class="card-h"><div class="card-t">Daily load</div></div>
     <div class="chart-wrap">${barChart(wk.map(d=>{const dd=dayDemand(d);

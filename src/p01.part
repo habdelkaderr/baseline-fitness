@@ -1164,6 +1164,77 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .wm-plain{font-size:12.5px;color:var(--text-2);font-weight:600;
   margin-top:7px;line-height:1.5}
 
+/* ---------- Exercise illustrations ----------
+   One figure system, themed through tokens so it reads in both schemes. The
+   figure is instructional, so the body is the strongest line, equipment takes
+   the accent, and the ground and any wall recede. */
+.illus{display:block;width:100%}
+.illus svg.fig{display:block;width:100%;height:auto}
+.illus .fg-t,.illus .fg-l{stroke:var(--text);fill:none;stroke-linecap:round}
+.illus .fg-f{stroke:var(--text-3);fill:none;stroke-linecap:round}
+.illus .fg-h{fill:var(--text)}
+.illus .fg-e{stroke:var(--accent);fill:none;stroke-linecap:round}
+.illus .fg-ef{fill:var(--accent);stroke:none}
+.illus .fg-g{stroke:var(--border);fill:none;stroke-linecap:round}
+.illus .fg-gf{fill:var(--surface-3);stroke:none}
+.illus .fg-a{stroke:var(--accent);fill:none;stroke-linecap:round}
+.illus .fg-af{fill:var(--accent);stroke:none}
+/* on the training screen it is the biggest thing on the page, and it sits on
+   the page rather than inside a card - see the "no nested cards" rule */
+/* Big, but never so big that it pushes the button off the screen: the whole
+   point is that you can see the movement AND log the set without scrolling. */
+.illus.lg{max-width:420px;margin:0 auto;max-height:min(32vh,210px)}
+.illus.lg svg.fig{max-height:min(32vh,210px)}
+@media (min-width:700px){ .illus.lg,.illus.lg svg.fig{max-height:260px} }
+/* expanded inside a warm-up row: a quiet panel, so the row still reads as a row */
+.illus.md{background:var(--surface-2);border-radius:12px;padding:10px 6px;margin:10px 0}
+/* a list thumbnail */
+.illus.sm{width:56px;height:40px;flex:0 0 auto;background:var(--surface-2);
+  border-radius:8px;padding:2px}
+.illus.none{display:flex;align-items:center;justify-content:center;color:var(--text-3)}
+.illus.none svg{width:26px;height:26px}
+.illus.sm.none{width:56px;height:40px}
+
+/* ---------- The warm-up sheet: every movement on one screen ----------
+   An accordion, not a runner. Five movements are five lines; the one you are
+   unsure about opens where it stands. */
+.wuh{font-size:26px;font-weight:850;letter-spacing:-.9px;line-height:1.15}
+.wuh-s{font-size:13.5px;color:var(--text-2);font-weight:600;margin:7px 0 14px;line-height:1.5}
+.wacc{display:flex;flex-direction:column;gap:8px}
+.wacc-i{border:1px solid var(--border-soft);border-radius:14px;background:var(--surface);
+  overflow:hidden}
+.wacc-i.open{border-color:var(--accent-line);background:var(--surface)}
+.wacc-h{display:flex;align-items:center;gap:12px;width:100%;padding:11px 13px;
+  background:none;border:0;font-family:inherit;color:var(--text);cursor:pointer;text-align:left}
+.wacc-n{flex:0 0 auto;width:30px;height:30px;border-radius:9px;background:var(--surface-2);
+  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;
+  color:var(--text-2);font-variant-numeric:tabular-nums}
+.wacc-i.open .wacc-n{background:var(--accent);color:var(--accent-ink)}
+.wacc-x{flex:1;min-width:0}
+.wacc-t{font-size:15.5px;font-weight:750;letter-spacing:-.2px}
+.wacc-m{font-size:12.5px;color:var(--text-3);font-weight:650;margin-top:2px}
+.wacc-c{flex:0 0 auto;color:var(--text-3);display:flex;align-items:center}
+.wacc-c svg{width:18px;height:18px}
+.wacc-b{padding:0 13px 13px 13px}
+.wacc-b p{font-size:13.5px;color:var(--text-2);line-height:1.55;margin:0}
+/* the coaching cue: one tinted line with a bulb, never a wall of text */
+.cue{display:flex;gap:9px;align-items:flex-start;margin-top:11px;padding:10px 12px;
+  border-radius:11px;background:var(--accent-wash);border:1px solid var(--accent-line)}
+.cue i{flex:0 0 auto;color:var(--accent);display:flex}
+.cue i svg{width:16px;height:16px}
+.cue span{font-size:12.5px;font-weight:650;color:var(--text-2);line-height:1.45}
+
+/* ---------- Up next, as a row you can read at a glance ---------- */
+.unext{display:flex;align-items:center;gap:11px;width:100%;margin-top:12px;
+  padding:9px 11px;border-radius:13px;background:none;border:1px solid var(--border-soft);
+  font-family:inherit;color:var(--text);text-align:left;cursor:default}
+.unext .un-x{flex:1;min-width:0}
+.unext .un-l{font-size:10px;font-weight:750;letter-spacing:.5px;text-transform:uppercase;
+  color:var(--text-3)}
+.unext .un-t{font-size:14.5px;font-weight:750;letter-spacing:-.2px;margin-top:1px}
+.unext .un-m{font-size:12px;font-weight:650;color:var(--text-3);margin-top:1px;
+  font-variant-numeric:tabular-nums}
+
 /* ---------- The overview: the one dense screen, on purpose ----------
    Everything after it shows a single thing at a time, so this is where the
    whole session is allowed to be read at once. */
@@ -1178,14 +1249,16 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
    Not a card per set, and no list of what has already been logged. During a
    workout the phone is glanced at with sweaty hands from a metre away, so the
    screen carries the exercise, the set it is on, and one button. */
-.wset{margin:16px 0 14px;text-align:center}
+.wset{margin:14px 0 0;text-align:center;background:var(--surface-2);
+  border-radius:16px;padding:13px 14px 15px}
 .wset .ws-l{font-size:11.5px;font-weight:750;letter-spacing:.6px;
   text-transform:uppercase;color:var(--text-3)}
-.wset .ws-v{display:block;width:100%;margin-top:6px;padding:4px 0;background:none;
+.wset .ws-v{display:block;width:100%;margin-top:4px;padding:2px 0;background:none;
   border:0;font-family:inherit;color:var(--text);cursor:pointer;
-  font-size:44px;font-weight:850;letter-spacing:-1.6px;line-height:1.05}
+  font-size:42px;font-weight:850;letter-spacing:-1.6px;line-height:1.05}
 .wset .ws-v:active{opacity:.6}
 .wset .ws-kg{font-size:22px;font-weight:800;color:var(--text-3);letter-spacing:-.6px}
+.wset .ws-u{font-size:14px;font-weight:700;color:var(--text-3);margin-top:1px}
 /* the number to beat. One muted line, because it is a reference and not a
    control - but it stays, because standing in front of the bar is exactly when
    you want it. */
@@ -1279,6 +1352,9 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
   padding:2px var(--sp) 8px;margin:0 calc(-1 * var(--sp));scrollbar-width:none}
 .swipe::-webkit-scrollbar{display:none}
 .swipe>*{flex:0 0 auto}
+/* The original disclosure used elsewhere in the app. Left under its own
+   names: the warm-up accordion is a different component with a different
+   shape, so it is .wacc-* rather than a variant of this. */
 .acc-h{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;cursor:pointer}
 .acc-b{padding:0 16px 16px;display:none}
 .acc.open .acc-b{display:block}
