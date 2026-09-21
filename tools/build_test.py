@@ -4268,9 +4268,55 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   ok('there is a pose library', keys.length>=20, keys.length+' poses');
 
   var badRef=[];
-  Object.keys(EX_ILLUS).forEach(function(id){ if(!POSES[EX_ILLUS[id]]) badRef.push(id+' -> '+EX_ILLUS[id]); });
+  POSE_RULES.forEach(function(r){ if(!POSES[r[1]]) badRef.push(String(r[0])+' -> '+r[1]); });
+  Object.keys(EX_ILLUS_OVERRIDE).forEach(function(id){
+    if(!POSES[EX_ILLUS_OVERRIDE[id]]) badRef.push(id+' -> '+EX_ILLUS_OVERRIDE[id]); });
   Object.keys(WU_ILLUS).forEach(function(n){ if(!POSES[WU_ILLUS[n]]) badRef.push(n+' -> '+WU_ILLUS[n]); });
   ok('every illustration reference resolves to a real pose', badRef.length===0, badRef.join(' | '));
+
+  /* THE CHECK THAT WAS MISSING.
+     The first validator asked only whether a reference resolved, so a mapping
+     that pointed at a real pose of the WRONG movement passed every test - and
+     one did: "DB Bicep Curl" drew a band held overhead. Naming the pairs is
+     what makes a wrong answer fail. */
+  var expect=[
+    ['DB Bicep Curl','db-curl'], ['DB Hammer Curl','db-curl'], ['Band Curl','db-curl'],
+    ['Sliding Leg Curl','nordic'], ['Nordic Curl Eccentric','nordic'],
+    ['Band Kneeling Lat Pull','lat-pull'], ['Band Lat Pulldown','lat-pull'],
+    ['Band Row','row'], ['DB Bent-Over Row','row'], ['Inverted Row','row'],
+    ['Band Pull-Apart','band-pull-apart'], ['Band Face Pull','band-face-pull'],
+    ['Band Pallof Press','band-pallof'], ['Half-Kneeling Band Chop','band-pallof'],
+    ['DB Overhead Press','db-press-oh'], ['DB Arnold Press','db-press-oh'],
+    ['DB Floor Press','floor-press'], ['DB Lateral Raise','db-raise'],
+    ['DB Front Raise','db-raise'], ['Band Triceps Pushdown','band-pushdown'],
+    ['DB Overhead Triceps Extension','db-overhead-tri'],
+    ['Push-Up','push-up'], ['Pike Push-Up','pike-push-up'],
+    ['Elevated Pike Push-Up','pike-push-up'], ['Scapular push-ups','scap-pushup'],
+    ['RKC Plank','plank'], ['Side Plank','side-plank'], ['Side Plank Hip Dip','side-plank'],
+    ['Copenhagen Plank','copenhagen'], ['Dead Bug','dead-bug'], ['Bird Dog','bird-dog'],
+    ['Hollow Body Hold','hollow-hold'], ['Suitcase Carry','carry'],
+    ['Single-Leg Glute Bridge','sl-glute-bridge'], ['Floor Hip Thrust','glute-bridge'],
+    ['DB Romanian Deadlift','hinge'], ['Single-Leg RDL','sl-rdl'],
+    ['Wall Sit','wall-sit'], ['Tibialis Raise','tibialis-raise'],
+    ['Standing Calf Raise','calf-raise'], ['Single-Leg Calf Raise','sl-calf-raise'],
+    ['Tempo Goblet Squat','goblet-squat'], ['Split Squat','split-squat'],
+    ['Cossack Squat','split-squat'], ['Reverse Lunge','lunge'], ['Lateral Lunge','lunge'],
+    ['Pogo Hops','pogo-hops'], ['Countermovement Jump','jump'],
+    ['Lateral Bound (Skater)','lateral-bound'], ['Deceleration Drill','decel'],
+    ['Zone 2 Run','run'], ['Zone 2 Bike','bike'], ['Hill Sprints','run'],
+    ['Recovery Spin','bike'], ['Easy Walk','walk'], ['Tempo Run','run'],
+    ['Wall Slides','wall-slides'], ['Shoulder CARs','shoulder-cars'],
+    ['Cat-Cow','cat-cow'], ['Thoracic Rotation (Open Book)','open-book'],
+    ['90/90 Hip Switch','hip-90-90'], ['Calf Stretch','calf-stretch'],
+    ['Couch Stretch','couch-stretch'], ['Band Shoulder Dislocates','band-overhead'],
+    ['Superman','superman'], ['Prone Y-T-W','prone-ytw']
+  ];
+  var wrong=[];
+  expect.forEach(function(p){
+    var got=illusKey({name:p[0]});
+    if(got!==p[1]) wrong.push(p[0]+': '+(got||'NONE')+' (wanted '+p[1]+') via '+illusWhy({name:p[0]}));
+  });
+  ok('each movement gets the drawing of THAT movement', wrong.length===0, wrong.join('  |  '));
 
   var badDraw=[];
   keys.forEach(function(k){
@@ -4314,6 +4360,29 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   });
   ok('every exercise an authored workout can prescribe has one',
      missing.length===0, missing.join(', '));
+
+  /* AND everything a SUBSTITUTION can reach. The reported gap was an exercise
+     from the second library in p03b, which the id table never covered - the
+     catalogue the engine can resolve to is bigger than the one it authors. */
+  /* What is allowed to be undrawn is gym kit: a rack, a cable stack, a bar, a
+     machine. The app only offers those to somebody who ticked that equipment,
+     and drawing them is a separate job with its own props. Anything needing
+     only bodyweight, dumbbells, a band, a wall, the floor, a chair, a towel, a
+     bike or open ground is kit the figure system already draws, so an undrawn
+     one there is a gap and not a limit. */
+  var SUPPORTED={BW:1,DB:1,BAND:1,WALL:1,FLOOR:1,CHAIR:1,TOWEL:1,BIKE:1,RUN:1};
+  var gapHome=[], gapGym=[];
+  (DB.exercises||[]).forEach(function(ex){
+    if(illusKey(ex)) return;
+    var home = ex.equip ? !!SUPPORTED[ex.equip] : ((ex.tier||0) < 2);
+    (home?gapHome:gapGym).push(ex.name);
+  });
+  ok('nothing needing only home kit is left undrawn',
+     gapHome.length===0, gapHome.join(', '));
+  ok('and what is left needs a rack, a cable or a bar',
+     gapGym.length===0 || gapGym.every(function(n){
+       return /barbell|bench|cable|pull-?up|chin-?up|hanging|leg press|machine|kettlebell|treadmill|rower|med ball/i.test(n); }),
+     gapGym.join(', '));
 
   /* And every warm-up movement the app can show. */
   var wuMiss=[];
