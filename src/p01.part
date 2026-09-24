@@ -550,6 +550,14 @@ input[type=range]::-moz-range-progress{height:8px;border-radius:99px;background:
   max-width:100%;min-width:0;white-space:normal;text-align:center;line-height:1.25;
 }
 .pills button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:750}
+/* The post-session feedback group. A comfortable iPhone target and a full
+   row, because this is the one control on the finish screen that changes
+   what the engine does next - it should not be three small chips. */
+.pills.feel{gap:8px}
+.pills.feel button{flex:1 1 0;min-width:0;min-height:52px;font-size:13.5px;
+  padding:10px 8px}
+.pills.feel button.on{box-shadow:0 0 0 2px var(--accent-line)}
+@media (max-width:360px){ .pills.feel button{font-size:12.5px;padding:10px 4px} }
 
 /* ---------- Switches ----------------------------------------------------
    Every boolean in this app was a bare <input type=checkbox>, and the reset
@@ -1345,14 +1353,41 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .pfocus{display:block;width:100%;text-align:left;font-family:inherit;color:var(--text);
   cursor:pointer;margin-top:10px}
 .fbar{display:flex;align-items:center;gap:10px;margin-top:9px}
-.fbar .fb-l{flex:0 0 78px;font-size:12.5px;font-weight:650;color:var(--text-2)}
-.fbar .fb-t{flex:1;height:8px;border-radius:4px;background:var(--surface-3);overflow:hidden}
+/* The label can use two lines if the text is long or large; it is prose. */
+.fbar .fb-l{flex:0 0 78px;font-size:12.5px;font-weight:650;color:var(--text-2);
+  overflow-wrap:anywhere}
+.fbar .fb-t{flex:1;min-width:24px;height:8px;border-radius:4px;
+  background:var(--surface-3);overflow:hidden}
 .fbar .fb-t i{display:block;height:100%;border-radius:4px}
-.fbar .fb-p{flex:0 0 34px;text-align:right;font-size:12px;font-weight:750;
-  font-variant-numeric:tabular-nums;color:var(--text-2)}
+/* A NUMBER AND ITS UNIT ARE ONE WORD.
+   This was `flex:0 0 34px` with no nowrap. "100%" is 34px at the default
+   size, so it fitted by a hair and broke the moment anything made the text
+   bigger - at 1.15x it rendered as "100" over "%". The cell now grows to fit
+   its content and refuses to break inside, so the bar gives up the width
+   instead. Not solved by shrinking the type, which would only move the
+   failure to the next text size up. */
+.fbar .fb-p{flex:0 0 auto;min-width:34px;text-align:right;font-size:12px;
+  font-weight:750;font-variant-numeric:tabular-nums;color:var(--text-2);
+  white-space:nowrap}
 /* the date column on a recent-session row */
 .rows .pr-d{flex:0 0 62px;font-size:11.5px;font-weight:700;color:var(--text-3);line-height:1.3}
 .stat .lab svg{width:14px;height:14px;vertical-align:-2px;margin-right:4px;color:var(--text-3)}
+
+
+/* ---------- numbers must not break away from their units ----------
+   The focus-area percentage wrapped to "100" over "%" because its cell had a
+   fixed width and no nowrap. Every other cell that pairs a figure with a
+   unit, a sign or a percent fails the same way at the same text size, so
+   they are all protected here rather than one at a time as each is noticed.
+   Only the numeric cells: prose is still free to wrap. */
+.fbar .fb-p,
+.pload .pl-v, .pload .pl-d, .pload .pl-s,
+.stats .stat .val, .stats .stat .dlt,
+.score .score-t, .mtile .mt-v,
+.kv .v.num, .rv .num, .fin-x .num,
+.stat .val.num, .wset .ws-v, .wset .ws-u{ white-space:nowrap }
+/* and a tile's figure must be allowed to take the room it needs */
+.mtile .mt-v{overflow-wrap:normal}
 
 /* ---------- Settings: one card for you, then grouped rows ---------- */
 .set-card{padding:0;overflow:hidden}
@@ -1506,6 +1541,17 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .cue i{flex:0 0 auto;color:var(--accent);display:flex}
 .cue i svg{width:16px;height:16px}
 .cue span{font-size:12.5px;font-weight:650;color:var(--text-2);line-height:1.45}
+/* "Exercise details" - a disclosure, so it reads as something that opens
+   rather than as an overflow menu. Wider than Pause beside it, deliberately:
+   it is the more useful of the two. */
+.wm-det{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.wm-det svg{width:14px;height:14px;opacity:.75}
+/* the cue says it opens, without spending a line saying so */
+button.cue{position:relative;padding-right:30px}
+button.cue::after{content:'';position:absolute;right:12px;top:50%;
+  width:7px;height:7px;margin-top:-5px;border-right:2px solid var(--accent);
+  border-bottom:2px solid var(--accent);transform:rotate(45deg);opacity:.7}
+
 /* the cue is now a button - it opens the full instructions, which used to be
    a second block of prose sitting under it */
 button.cue{width:100%;text-align:left;font-family:inherit;cursor:pointer}
@@ -1514,6 +1560,13 @@ button.cue:active{background:var(--accent-line)}
 .wm-swap{display:flex;align-items:center;gap:8px;margin-top:9px;
   font-size:11.5px;font-weight:650;color:var(--text-3);line-height:1.35}
 .wm-swap svg{width:14px;height:14px;flex:0 0 auto;color:var(--text-3)}
+
+/* The readiness slot while it is the check-in action. It is the primary
+   thing on the screen at that moment, so it looks like it - and the empty
+   ring beside it still says honestly that nothing has been measured. */
+.score.lead.cta{border-color:var(--accent-line);background:var(--accent-wash)}
+.score.lead.cta .score-w{color:var(--accent)}
+.score.lead.cta .rw-c{color:var(--accent)}
 
 /* The check-in streak. One small mark on the date line: motivation to come
    back, not a score, so it must never be the loudest thing on the screen. */

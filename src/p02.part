@@ -383,7 +383,7 @@ const SCHEMA_VERSION=3;             // bump to transform stored records
 /* A date, plus a letter when more than one build ships in a day. Without the
    letter there was no way to tell a second same-day deploy from the cached
    copy of the first, which is exactly the question "did my upload work?". */
-const APP_BUILD='2026-09-21f';
+const APP_BUILD='2026-09-24b';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */
@@ -957,9 +957,19 @@ const POSES={
     arm:[[80,28],[94,26]], arm2:[[80,32],[94,30]],
     leg:[[38,58],[30,76]], leg2:[[52,60],[58,76]],
     props:[{t:'wall',x:98}]},
-  'couch-stretch':{head:[48,26],sh:[48,40],hip:[48,58],
-    arm:[[50,48],[50,60]], leg:[[70,62],[74,76]],
-    leg2:[[66,66],[88,52]], props:[{t:'wall',x:92}]},
+  /* A couch stretch is KNEELING: the rear knee is on the ground at the base
+     of the wall, the rear shin runs up it, the front foot is planted forward
+     in a lunge and the torso is tall. The previous version floated the rear
+     knee ten units off the floor and ran the shin up at forty-five degrees,
+     so nothing touched the ground and both legs pointed the same way - which
+     reads as sitting on the floor with the legs out. The pose was of the
+     right exercise and taught the wrong position, which for an instructional
+     drawing is the same as being wrong. */
+  'couch-stretch':{head:[60,16],sh:[60,30],hip:[64,54],
+    arm:[[58,42],[54,54]],
+    leg:[[70,74],[80,48]],
+    leg2:[[42,60],[38,76]],
+    props:[{t:'wall',x:84}]},
   'ankle-rock':{head:[52,22],sh:[52,36],hip:[52,56],
     arm:[[60,44],[70,50]], leg:[[74,58],[70,76]], leg2:[[40,72],[26,74]],
     props:[{t:'arr',a:[86,60],b:[92,70]}]},
@@ -1120,10 +1130,14 @@ const POSES={
     arm:[[40,42],[40,30]], arm2:[[42,44],[42,32]],
     leg:[[84,60],[84,74]], leg2:[[82,62],[82,76]],
     props:[{t:'block',x:22,y:58,w:62},{t:'db',at:[40,29]},{t:'arr',a:[56,38],b:[56,26]}]},
-  'db-incline-press':{head:[88,30],sh:[76,40],hip:[48,58],
-    arm:[[76,28],[76,14]], arm2:[[74,30],[74,16]],
-    leg:[[34,66],[20,74]], leg2:[[32,68],[18,76]],
-    props:[{t:'block',x:44,y:58,w:46},{t:'db',at:[76,13]},{t:'arr',a:[96,26],b:[96,14]}]},
+  /* The bench is BEHIND the upper back, which is what makes this an
+     incline press rather than a person lying on a hill. Props of type
+     block are drawn before the figure, so it reads as support. */
+  'db-incline-press':{head:[86,32],sh:[74,42],hip:[46,60],
+    arm:[[74,30],[71,16]], arm2:[[72,32],[69,18]],
+    leg:[[32,68],[18,74]], leg2:[[30,70],[16,76]],
+    props:[{t:'block',x:58,y:44,w:46},{t:'db',at:[70,15]},
+           {t:'arr',a:[96,28],b:[96,16]}]},
 
   /* ---- the barbell lifts ----------------------------------------------
      These were drawing a pair of dumbbells for a bar, which is the one
@@ -1154,14 +1168,17 @@ const POSES={
 
   /* ---- hanging from a bar --------------------------------------------
      These three had no drawing at all, which was at least honest. */
-  'pull-up':{head:[60,26],sh:[60,38],hip:[60,58],
-    arm:[[52,28],[50,16]], arm2:[[68,28],[70,16]],
-    leg:[[58,70],[48,78]], leg2:[[62,70],[52,80]],
-    props:[{t:'bar',x1:24,x2:96,y:14},{t:'arr',a:[88,42],b:[88,28]}], ground:false},
-  'hang-leg-raise':{head:[54,26],sh:[54,38],hip:[54,58],
-    arm:[[48,28],[46,16]], arm2:[[60,28],[62,16]],
-    leg:[[72,58],[88,56]], leg2:[[70,60],[86,58]],
-    props:[{t:'bar',x1:20,x2:90,y:14},{t:'arr',a:[102,74],b:[102,58]}], ground:false},
+  /* Hands wide on the bar and the body clearly below them. Drawn narrow
+     the whole hang occupied a fifth of the box and read as a vertical
+     smudge; a pull-up is a shape you recognise by the span of the grip. */
+  'pull-up':{head:[60,30],sh:[60,42],hip:[60,62],
+    arm:[[50,32],[44,16]], arm2:[[70,32],[76,16]],
+    leg:[[56,74],[66,80]], leg2:[[60,74],[70,82]],
+    props:[{t:'bar',x1:22,x2:98,y:14},{t:'arr',a:[92,46],b:[92,30]}], ground:false},
+  'hang-leg-raise':{head:[52,30],sh:[52,42],hip:[52,62],
+    arm:[[44,32],[40,16]], arm2:[[62,32],[66,16]],
+    leg:[[70,60],[90,58]], leg2:[[68,62],[88,60]],
+    props:[{t:'bar',x1:20,x2:94,y:14},{t:'arr',a:[104,78],b:[104,58]}], ground:false},
   /* under a table or a step, which is what the library's inverted row uses */
   'inverted-row':{head:[28,62],sh:[42,60],hip:[72,64],
     arm:[[42,48],[44,36]], arm2:[[44,50],[46,38]],
@@ -1370,12 +1387,16 @@ const POSES={
     props:[{t:'arr',a:[14,48],b:[14,26]}]},
 
   /* ---- the load that was missing -------------------------------------- */
+  /* ONE band, and the arms caught mid-raise rather than locked out level.
+     Two bands running from wide hands down to close feet draw a large V,
+     and a V is a shape - the eye reads the triangle and not the movement.
+     Standing on the band with one band up to the working hand is both what
+     people actually do and what leaves the body visible. */
   'band-raise':{head:[60,14],sh:[60,28],hip:[60,48],
-    arm:[[44,28],[30,28]], arm2:[[76,28],[90,28]],
-    leg:[[54,62],[52,76]], leg2:[[66,62],[68,76]],
-    props:[{t:'band',a:[30,28],b:[52,76],c:[34,54]},
-           {t:'band',a:[90,28],b:[68,76],c:[86,54]},
-           {t:'arr',a:[30,42],b:[30,31]}]},
+    arm:[[50,36],[38,30]], arm2:[[70,36],[82,30]],
+    leg:[[56,62],[56,76]], leg2:[[64,62],[64,76]],
+    props:[{t:'band',a:[60,76],b:[38,30],c:[42,56]},
+           {t:'arr',a:[24,42],b:[24,28]}]},
   'db-hip-thrust':{head:[26,70],sh:[36,70],hip:[62,54],
     arm:[[32,68],[46,56]], arm2:[[34,70],[48,58]],
     leg:[[84,60],[84,76]], leg2:[[82,62],[82,76]],
@@ -1638,7 +1659,12 @@ const EX_ILLUS = {
   g14:'bb-row',            // Barbell Row - was an unloaded bent-over row
   g15:null,                // Seated Cable Row - a machine
   g16:null,                // Cable Face Pull - a cable stack
-  g17:'band-pallof',       // Cable Pallof Press - same position and direction
+  /* Was 'band-pallof'. The position and direction are identical, which is
+     why it looked acceptable - but the drawing put a resistance band in the
+     hands of somebody doing a cable exercise, and a band is kit a gym user
+     may not own. Every other cable movement here is already null; this one
+     was the outlier, and the equipment check found it. */
+  g17:null,                // Cable Pallof Press - a cable stack is not drawn
   g18:null,                // Cable Woodchop - a cable stack
   g19:'hang-leg-raise',    // Hanging Leg Raise - had no drawing
   g20:null,                // Trap Bar Jump - a trap bar is not drawn

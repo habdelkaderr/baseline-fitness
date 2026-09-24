@@ -898,9 +898,18 @@ function ringRow(d){
   const need=(ci && ci.sleepNeed) ? ci.sleepNeed : 480;
   const slept=(ci && ci.sleepMin!=null) ? ci.sleepMin : null;
 
+  /* ONE ENTRY POINT.
+     With no check-in this slot used to carry a chevron and navigate to
+     pageReadiness(), which rendered nothing at all - while a second green
+     "Check in" button sat directly underneath it. Two ways in, one of them
+     blank. Now it IS the check-in when there is nothing to show, and the
+     detail screen only when there is something to detail. */
+  const isCTA = !rd;
   return `<div class="scores">
-    <button class="score lead" id="rdRow" aria-label="Readiness ${rd?rd.score:'unknown'} of 100${
-      B?', '+esc(B.label):''}. View details">
+    <button class="score lead${isCTA?' cta':''}" id="rdRow"
+      aria-label="${isCTA
+        ? 'Check in and tell Baseline how you are feeling today'
+        : 'Readiness '+rd.score+' of 100'+(B?', '+esc(B.label):'')+'. See what moved it'}">
       ${''/* An empty arc, not a dash. A dash in a ring reads as a broken
               reading; an empty ring beside "Learning your baseline" reads as
               what it is - nothing measured yet. */}
@@ -922,15 +931,26 @@ function ringRow(d){
               yellow:'Train, but keep it moderate.',
               orange:'Keep it light today.',
               red:'Rest is the better call.'}[rd.band]||'')}</span>`;
+          /* STATE on top, ACTION underneath, in one control.
+             §4 says never imply a personalised number exists when it does
+             not, so the strong line stays "Learning your baseline" - that is
+             what is true. §3 says there must be one obvious way to check in,
+             so the line under it is the instruction and the whole card is the
+             button. An earlier pass at this replaced the state with the
+             action and lost the honest empty state to get the clear one; the
+             slot is big enough for both. */
           const lvl=dataCoverage(d).level;
-          return lvl==='learning'
-            ? `<span class="score-w">Learning your baseline</span>
-               <span class="score-s">Check in and it starts from today</span>`
-            : `<span class="score-w">Not checked in</span>
-               <span class="score-s">Check in for today’s number</span>`;
+          return `<span class="score-w">${lvl==='learning'
+              ? 'Learning your baseline' : 'Not checked in yet'}</span>
+            <span class="score-s">Tap to check in &mdash; tell Baseline how you
+              are feeling today</span>`;
         })()}
       </span>
-      <i class="rw-c">${svg('chev')}</i>
+      ${''/* A chevron promises a destination. Without a check-in the
+              destination is the check-in itself, which the label already
+              says, so the mark here is the action rather than an arrow to a
+              screen that would have nothing on it. */}
+      <i class="rw-c">${isCTA? svg('play') : svg('chev')}</i>
     </button>
     ${''/* Strain and sleep moved off Home.
           Readiness already answers "how am I today", and it is BUILT from
@@ -1051,7 +1071,31 @@ function pageSleep(d){
    no device never sees an empty chart. */
 function pageReadiness(d){
   return function(c){
-    const ci=DB.checkins[d]; if(!ci){ c.innerHTML=''; return; }
+    const ci=DB.checkins[d];
+    /* NEVER BLANK.
+       This used to be `if(!ci){ c.innerHTML=''; return; }` - no appbar, no
+       content, no way back except the system gesture. Home no longer routes
+       here without a check-in, but a page builder must not depend on its
+       caller for that: a past date, a restored stack or a future caller can
+       all arrive here with nothing to show. */
+    if(!ci){
+      appbar('Readiness', fmtDate(d));
+      c.innerHTML=`
+        <div class="rec" style="text-align:center">
+          <div class="rec-l">Nothing recorded</div>
+          <div class="rec-t" style="font-size:20px">No check-in for this day</div>
+          <div class="rec-m">Readiness is worked out from how you say you feel,
+            plus whatever your device recorded. Without a check-in there is
+            nothing to work it out from.</div>
+        </div>
+        ${d===todayISO()
+          ? `<button class="btn primary big block" id="rdCheck">${svg('play')} Check in for today</button>`
+          : `<div class="hint" style="text-align:center">You can still check in for
+              today from the home screen.</div>`}`;
+      const b=$('#rdCheck');
+      if(b) b.onclick=()=>{ popPage(); openCheckin(d); };
+      return;
+    }
     const rd=readiness(d,ci), B=BAND[rd.band];
     appbar('Readiness', fmtDate(d));
     const dev=(ci.recovery!=null||ci.hrv!=null||ci.rhr!=null);
@@ -1254,13 +1298,22 @@ function todayNoCheckin(d){
           built around, so its slot exists before there is a number in it and
           says what it is doing - "Learning your baseline" - rather than being
           absent until a device or a check-in fills it. */}
+  ${''/* The readiness slot above IS the check-in when there is no check-in
+          yet - see ringRow(). What used to sit here was a second control
+          saying the same thing, with a broken one above it. The sentence that
+          explained the cost is kept, because "about a minute" is the thing
+          that gets somebody to do it. */}
   ${ringRow(d)}
+  ${''/* The lead block Today has always had. It no longer carries a second
+          check-in button - the readiness slot above IS the check-in now -
+          but it still says why it is worth doing, which is the part that
+          gets somebody to actually do it. */}
   <div class="rec">
     <div class="rec-l">Today</div>
     <div class="rec-t">How are you doing?</div>
-    <div class="rec-m">Baseline needs this before it can pick a session. About a minute.</div>
+    <div class="rec-m">Baseline needs this before it can pick a session.
+      About a minute, and the readiness card above is where it starts.</div>
   </div>
-  <button class="btn primary big block" id="btnCheck">${svg('play')} Check in</button>
   ${cy?`<div class="hint" style="margin-top:11px;text-align:center">Your ${esc(SRC_NAME())} numbers for today are already there — they will be filled in for you.</div>`:''}
 
   ${noticeHTML(d)}
@@ -1334,7 +1387,13 @@ function todayPlan(d){
 function wireToday(d){
   const on=(id,fn)=>{ const b=$('#'+id); if(b)b.onclick=fn; };
   /* the score pushes its own explanation rather than printing it here */
-  on('rdRow',()=>pushPage({build:pageReadiness(d)}));
+  /* Where the readiness slot goes depends on whether there is anything to
+   show. With no check-in it IS the check-in; pageReadiness would have
+   rendered an empty page. */
+on('rdRow',()=>{
+  if(!DB.checkins[d]) return openCheckin(d);
+  pushPage({build:pageReadiness(d)});
+});
   /* "Why this?" expands in place: progressive disclosure, not a new screen,
      because the answer is three lines and belongs next to the question */
   const wt=$('#whyT'), wb=$('#whyB');

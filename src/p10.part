@@ -717,7 +717,8 @@ function drawExercise(en,i,total){
   /* Two controls, both secondary, neither part of the training loop. */
   $('#wmFoot').innerHTML=`<div class="wm-row">
       <button class="tert" id="wmPauseBtn">Pause</button>
-      <button class="tert" id="wmMore">More</button>
+      <button class="tert wm-det" id="wmMore" aria-haspopup="dialog"
+        >Exercise details ${svg('down')}</button>
     </div>`;
 
   /* one place that writes a set value, whether it came from a stepper button
@@ -803,7 +804,20 @@ function drawExercise(en,i,total){
     const lastDone = (()=>{ for(let k=en.sets.length-1;k>=0;k--) if(en.sets[k].done) return k;
                             return -1; })();
     const rows=[
-      /* the everyday exceptions first: these are why somebody opens this menu */
+      /* WHAT THE LABEL PROMISES COMES FIRST.
+         This list used to open with "Undo the last set", which framed the
+         whole sheet as a corrections menu - and the control was called
+         "More", so nothing anywhere said the instructions were in here. The
+         reading comes first now, then the exceptions. */
+      {t:'How to do it', s:en.cue? en.cue.slice(0,44)+'…' : 'Cue, progression and the plan in full',
+       icon:'book', run:()=>wmHow()},
+      {t:'Why this exercise?', s:'What it covers and why it was picked',
+       icon:'info', run:()=>wmWhy()},
+      /* The substitution note, where the label now says information lives.
+         It was only ever a chip on the training screen, which is the right
+         size for a glance and the wrong place to explain itself. */
+      en.blockNote ? {t:'Why this one, not the other',
+       s:en.blockNote, icon:'swap', run:()=>wmWhy()} : null,
       lastDone>=0 ? {t:'Undo the last set', s:'Set '+(lastDone+1)+' back to not done',
        icon:'undo', now:true, run:()=>{ complete(lastDone); }} : null,
       {t:'Add a set', s:'One more than the plan asked for',
@@ -816,10 +830,6 @@ function drawExercise(en,i,total){
          const pe=W.entries[i-1];
          for(let k=pe.sets.length-1;k>=0;k--) if(pe.sets[k].done){ pe.sets[k].done=false; break; }
          stopRest(); W.step=i-1; saveLive(); drawWM(); }} : null,
-      {t:'How to do it', s:en.cue? en.cue.slice(0,44)+'…' : 'Cue, progression and the plan in full',
-       icon:'book', run:()=>wmHow()},
-      {t:'Why this exercise?', s:'What it covers and why it was picked',
-       icon:'info', run:()=>wmWhy()},
       /* only where a kilogram is not already on offer */
       exLoadable(exOf(en.exerciseId)) ? null : {
         t: en.wantWeight? 'Remove the weight field' : 'Add weight',
@@ -1000,9 +1010,14 @@ function drawFinish(){
         <div class="slider-top"><span class="l">Overall effort</span><span class="v num" id="fRpe_o">${avgRpe||7}</span></div>
         <input type="range" id="fRpe" min="1" max="10" step="1" value="${Math.round(avgRpe||7)}" data-out="fRpe_o">
         <div class="scale"><span>Very easy</span><span>Maximal</span></div></div></div>
-    <div class="field"><label>How was that?</label>
-      <div class="pills" id="fFeel">
-        ${FEEDBACK.map(f=>`<button data-v="${f.id}">${esc(f.name)}</button>`).join('')}
+    ${''/* A radio group, not three loose buttons. It was three loose buttons
+           with no handler at all - see the note on the wiring below. */}
+    <div class="field" role="radiogroup" aria-labelledby="fFeelL">
+      <label id="fFeelL">How was that?</label>
+      <div class="pills feel" id="fFeel">
+        ${FEEDBACK.map(f=>`<button type="button" data-v="${esc(f.id)}"
+          role="radio" aria-checked="${W.feedback===f.id?'true':'false'}"
+          class="${W.feedback===f.id?'on':''}">${esc(f.name)}</button>`).join('')}
       </div>
       <div class="hint">One tap. It is the only thing here that changes what
         you get next time.</div></div>
@@ -1029,12 +1044,36 @@ function drawFinish(){
     el.onclick=go;
     el.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); go(); } };
   });
+  /* THE HANDLER THAT WAS MISSING.
+     Without this the pills rendered, styled themselves as interactive, and
+     did nothing: `.on` was never set, so the save below always read null.
+     Written to W on tap rather than scraped from the DOM at save time, so a
+     redraw cannot lose the answer and the selection survives going back to
+     an exercise and returning. */
+  $$('#fFeel button').forEach(b=>{
+    b.onclick=()=>{
+      const v=b.dataset.v;
+      /* tapping the chosen one again clears it - the honest way to say
+         "actually, no comment" without a fourth pill */
+      W.feedback = (W.feedback===v) ? null : v;
+      $$('#fFeel button').forEach(x=>{
+        const on = x.dataset.v===W.feedback;
+        x.classList.toggle('on', on);
+        x.setAttribute('aria-checked', on?'true':'false');
+      });
+      saveLive(); haptic();
+    };
+  });
+
   $('#fSave').onclick=()=>{
     W.done=true; W.endedAt=Date.now(); W.durationMin=dur; W.setsDone=setsDone; W.volume=rnd(vol,1);
     W.sessionRpe=+$('#fRpe').value; W.notes=$('#fNotes').value.trim();
     /* one tap, and the only thing on that screen that changes what comes
-       next - see feedbackBias() */
-    W.feedback=(function(){ const b=$('#fFeel button.on'); return b?b.dataset.v:null; })();
+       next - see feedbackBias().
+       W.feedback is set by the pill handler above. It used to be scraped from
+       the DOM here instead, which is how nobody noticed the pills had no
+       handler: the scrape found nothing, returned null, and null is a valid
+       answer meaning "did not say". */
     DB.sessions=DB.sessions.filter(s=>s.id!==W.id);
     DB.sessions.push(JSON.parse(JSON.stringify(W)));
     DB.sessions.sort((a,b)=>a.date<b.date?-1:1);
@@ -1301,9 +1340,14 @@ function drawCardioStep(en,i,total){
     ${(()=>{ const bits=[effortWords(en.plannedRpe,'cardio'),
                          en.tempo?String(en.tempo).toLowerCase():''].filter(Boolean);
        return bits.length?`<div class="wm-plain">${esc(bits.join(' · '))}</div>`:''; })()}
-    ${(()=>{ const ex=exOf(en.exerciseId); const h=ex?briefHow(ex):'';
-       return h?`<button class="wm-how" id="wmHowLine">${esc(h)} <i>More</i></button>`:''; })()}
-    ${en.blockNote?`<div class="note warn">${esc(en.blockNote)}</div>`:''}
+    ${''/* The same hierarchy as the strength screen: one cue, and the rest
+           behind "Exercise details". This renderer had been left on the
+           older layout - a truncated how-to paragraph with a "More" marker,
+           and the substitution as a full-width warning note. */}
+    ${(()=>{ const ex=exOf(en.exerciseId); const h=(en.cue)||(ex?briefHow(ex):'');
+       return h?`<button class="cue" id="wmHowLine" aria-label="Show full instructions"
+         ><i>${svg('bulb')}</i><span>${esc(h)}</span></button>`:''; })()}
+    ${en.blockNote?`<div class="wm-swap">${svg('swap')}<span>${esc(en.blockNote)}</span></div>`:''}
     <div class="setlist">
       <div class="wnow${running?' live':''}">
         <div class="wnow-t">${done?'Logged':running?'In progress':started?'Stopped':'Ready'}
@@ -1339,7 +1383,8 @@ function drawCardioStep(en,i,total){
       </div>
     </div>
     <div class="btn-row">
-      <button class="btn sm ghost" id="wmMore">More</button>
+      <button class="btn sm ghost wm-det" id="wmMore" aria-haspopup="dialog"
+        >Exercise details ${svg('down')}</button>
     </div>`;
 
   $('#wmFoot').innerHTML=`<div class="btn-row">
