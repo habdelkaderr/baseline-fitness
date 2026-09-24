@@ -550,6 +550,14 @@ input[type=range]::-moz-range-progress{height:8px;border-radius:99px;background:
   max-width:100%;min-width:0;white-space:normal;text-align:center;line-height:1.25;
 }
 .pills button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:750}
+/* The post-session feedback group. A comfortable iPhone target and a full
+   row, because this is the one control on the finish screen that changes
+   what the engine does next - it should not be three small chips. */
+.pills.feel{gap:8px}
+.pills.feel button{flex:1 1 0;min-width:0;min-height:52px;font-size:13.5px;
+  padding:10px 8px}
+.pills.feel button.on{box-shadow:0 0 0 2px var(--accent-line)}
+@media (max-width:360px){ .pills.feel button{font-size:12.5px;padding:10px 4px} }
 
 /* ---------- Switches ----------------------------------------------------
    Every boolean in this app was a bare <input type=checkbox>, and the reset
@@ -1345,14 +1353,41 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .pfocus{display:block;width:100%;text-align:left;font-family:inherit;color:var(--text);
   cursor:pointer;margin-top:10px}
 .fbar{display:flex;align-items:center;gap:10px;margin-top:9px}
-.fbar .fb-l{flex:0 0 78px;font-size:12.5px;font-weight:650;color:var(--text-2)}
-.fbar .fb-t{flex:1;height:8px;border-radius:4px;background:var(--surface-3);overflow:hidden}
+/* The label can use two lines if the text is long or large; it is prose. */
+.fbar .fb-l{flex:0 0 78px;font-size:12.5px;font-weight:650;color:var(--text-2);
+  overflow-wrap:anywhere}
+.fbar .fb-t{flex:1;min-width:24px;height:8px;border-radius:4px;
+  background:var(--surface-3);overflow:hidden}
 .fbar .fb-t i{display:block;height:100%;border-radius:4px}
-.fbar .fb-p{flex:0 0 34px;text-align:right;font-size:12px;font-weight:750;
-  font-variant-numeric:tabular-nums;color:var(--text-2)}
+/* A NUMBER AND ITS UNIT ARE ONE WORD.
+   This was `flex:0 0 34px` with no nowrap. "100%" is 34px at the default
+   size, so it fitted by a hair and broke the moment anything made the text
+   bigger - at 1.15x it rendered as "100" over "%". The cell now grows to fit
+   its content and refuses to break inside, so the bar gives up the width
+   instead. Not solved by shrinking the type, which would only move the
+   failure to the next text size up. */
+.fbar .fb-p{flex:0 0 auto;min-width:34px;text-align:right;font-size:12px;
+  font-weight:750;font-variant-numeric:tabular-nums;color:var(--text-2);
+  white-space:nowrap}
 /* the date column on a recent-session row */
 .rows .pr-d{flex:0 0 62px;font-size:11.5px;font-weight:700;color:var(--text-3);line-height:1.3}
 .stat .lab svg{width:14px;height:14px;vertical-align:-2px;margin-right:4px;color:var(--text-3)}
+
+
+/* ---------- numbers must not break away from their units ----------
+   The focus-area percentage wrapped to "100" over "%" because its cell had a
+   fixed width and no nowrap. Every other cell that pairs a figure with a
+   unit, a sign or a percent fails the same way at the same text size, so
+   they are all protected here rather than one at a time as each is noticed.
+   Only the numeric cells: prose is still free to wrap. */
+.fbar .fb-p,
+.pload .pl-v, .pload .pl-d, .pload .pl-s,
+.stats .stat .val, .stats .stat .dlt,
+.score .score-t, .mtile .mt-v,
+.kv .v.num, .rv .num, .fin-x .num,
+.stat .val.num, .wset .ws-v, .wset .ws-u{ white-space:nowrap }
+/* and a tile's figure must be allowed to take the room it needs */
+.mtile .mt-v{overflow-wrap:normal}
 
 /* ---------- Settings: one card for you, then grouped rows ---------- */
 .set-card{padding:0;overflow:hidden}
@@ -1506,6 +1541,17 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .cue i{flex:0 0 auto;color:var(--accent);display:flex}
 .cue i svg{width:16px;height:16px}
 .cue span{font-size:12.5px;font-weight:650;color:var(--text-2);line-height:1.45}
+/* "Exercise details" - a disclosure, so it reads as something that opens
+   rather than as an overflow menu. Wider than Pause beside it, deliberately:
+   it is the more useful of the two. */
+.wm-det{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.wm-det svg{width:14px;height:14px;opacity:.75}
+/* the cue says it opens, without spending a line saying so */
+button.cue{position:relative;padding-right:30px}
+button.cue::after{content:'';position:absolute;right:12px;top:50%;
+  width:7px;height:7px;margin-top:-5px;border-right:2px solid var(--accent);
+  border-bottom:2px solid var(--accent);transform:rotate(45deg);opacity:.7}
+
 /* the cue is now a button - it opens the full instructions, which used to be
    a second block of prose sitting under it */
 button.cue{width:100%;text-align:left;font-family:inherit;cursor:pointer}
@@ -1514,6 +1560,13 @@ button.cue:active{background:var(--accent-line)}
 .wm-swap{display:flex;align-items:center;gap:8px;margin-top:9px;
   font-size:11.5px;font-weight:650;color:var(--text-3);line-height:1.35}
 .wm-swap svg{width:14px;height:14px;flex:0 0 auto;color:var(--text-3)}
+
+/* The readiness slot while it is the check-in action. It is the primary
+   thing on the screen at that moment, so it looks like it - and the empty
+   ring beside it still says honestly that nothing has been measured. */
+.score.lead.cta{border-color:var(--accent-line);background:var(--accent-wash)}
+.score.lead.cta .score-w{color:var(--accent)}
+.score.lead.cta .rw-c{color:var(--accent)}
 
 /* The check-in streak. One small mark on the date line: motivation to come
    back, not a score, so it must never be the loudest thing on the screen. */
@@ -2243,7 +2296,7 @@ const SCHEMA_VERSION=3;             // bump to transform stored records
 /* A date, plus a letter when more than one build ships in a day. Without the
    letter there was no way to tell a second same-day deploy from the cached
    copy of the first, which is exactly the question "did my upload work?". */
-const APP_BUILD='2026-09-21f';
+const APP_BUILD='2026-09-24b';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */
@@ -2817,9 +2870,19 @@ const POSES={
     arm:[[80,28],[94,26]], arm2:[[80,32],[94,30]],
     leg:[[38,58],[30,76]], leg2:[[52,60],[58,76]],
     props:[{t:'wall',x:98}]},
-  'couch-stretch':{head:[48,26],sh:[48,40],hip:[48,58],
-    arm:[[50,48],[50,60]], leg:[[70,62],[74,76]],
-    leg2:[[66,66],[88,52]], props:[{t:'wall',x:92}]},
+  /* A couch stretch is KNEELING: the rear knee is on the ground at the base
+     of the wall, the rear shin runs up it, the front foot is planted forward
+     in a lunge and the torso is tall. The previous version floated the rear
+     knee ten units off the floor and ran the shin up at forty-five degrees,
+     so nothing touched the ground and both legs pointed the same way - which
+     reads as sitting on the floor with the legs out. The pose was of the
+     right exercise and taught the wrong position, which for an instructional
+     drawing is the same as being wrong. */
+  'couch-stretch':{head:[60,16],sh:[60,30],hip:[64,54],
+    arm:[[58,42],[54,54]],
+    leg:[[70,74],[80,48]],
+    leg2:[[42,60],[38,76]],
+    props:[{t:'wall',x:84}]},
   'ankle-rock':{head:[52,22],sh:[52,36],hip:[52,56],
     arm:[[60,44],[70,50]], leg:[[74,58],[70,76]], leg2:[[40,72],[26,74]],
     props:[{t:'arr',a:[86,60],b:[92,70]}]},
@@ -2980,10 +3043,14 @@ const POSES={
     arm:[[40,42],[40,30]], arm2:[[42,44],[42,32]],
     leg:[[84,60],[84,74]], leg2:[[82,62],[82,76]],
     props:[{t:'block',x:22,y:58,w:62},{t:'db',at:[40,29]},{t:'arr',a:[56,38],b:[56,26]}]},
-  'db-incline-press':{head:[88,30],sh:[76,40],hip:[48,58],
-    arm:[[76,28],[76,14]], arm2:[[74,30],[74,16]],
-    leg:[[34,66],[20,74]], leg2:[[32,68],[18,76]],
-    props:[{t:'block',x:44,y:58,w:46},{t:'db',at:[76,13]},{t:'arr',a:[96,26],b:[96,14]}]},
+  /* The bench is BEHIND the upper back, which is what makes this an
+     incline press rather than a person lying on a hill. Props of type
+     block are drawn before the figure, so it reads as support. */
+  'db-incline-press':{head:[86,32],sh:[74,42],hip:[46,60],
+    arm:[[74,30],[71,16]], arm2:[[72,32],[69,18]],
+    leg:[[32,68],[18,74]], leg2:[[30,70],[16,76]],
+    props:[{t:'block',x:58,y:44,w:46},{t:'db',at:[70,15]},
+           {t:'arr',a:[96,28],b:[96,16]}]},
 
   /* ---- the barbell lifts ----------------------------------------------
      These were drawing a pair of dumbbells for a bar, which is the one
@@ -3014,14 +3081,17 @@ const POSES={
 
   /* ---- hanging from a bar --------------------------------------------
      These three had no drawing at all, which was at least honest. */
-  'pull-up':{head:[60,26],sh:[60,38],hip:[60,58],
-    arm:[[52,28],[50,16]], arm2:[[68,28],[70,16]],
-    leg:[[58,70],[48,78]], leg2:[[62,70],[52,80]],
-    props:[{t:'bar',x1:24,x2:96,y:14},{t:'arr',a:[88,42],b:[88,28]}], ground:false},
-  'hang-leg-raise':{head:[54,26],sh:[54,38],hip:[54,58],
-    arm:[[48,28],[46,16]], arm2:[[60,28],[62,16]],
-    leg:[[72,58],[88,56]], leg2:[[70,60],[86,58]],
-    props:[{t:'bar',x1:20,x2:90,y:14},{t:'arr',a:[102,74],b:[102,58]}], ground:false},
+  /* Hands wide on the bar and the body clearly below them. Drawn narrow
+     the whole hang occupied a fifth of the box and read as a vertical
+     smudge; a pull-up is a shape you recognise by the span of the grip. */
+  'pull-up':{head:[60,30],sh:[60,42],hip:[60,62],
+    arm:[[50,32],[44,16]], arm2:[[70,32],[76,16]],
+    leg:[[56,74],[66,80]], leg2:[[60,74],[70,82]],
+    props:[{t:'bar',x1:22,x2:98,y:14},{t:'arr',a:[92,46],b:[92,30]}], ground:false},
+  'hang-leg-raise':{head:[52,30],sh:[52,42],hip:[52,62],
+    arm:[[44,32],[40,16]], arm2:[[62,32],[66,16]],
+    leg:[[70,60],[90,58]], leg2:[[68,62],[88,60]],
+    props:[{t:'bar',x1:20,x2:94,y:14},{t:'arr',a:[104,78],b:[104,58]}], ground:false},
   /* under a table or a step, which is what the library's inverted row uses */
   'inverted-row':{head:[28,62],sh:[42,60],hip:[72,64],
     arm:[[42,48],[44,36]], arm2:[[44,50],[46,38]],
@@ -3230,12 +3300,16 @@ const POSES={
     props:[{t:'arr',a:[14,48],b:[14,26]}]},
 
   /* ---- the load that was missing -------------------------------------- */
+  /* ONE band, and the arms caught mid-raise rather than locked out level.
+     Two bands running from wide hands down to close feet draw a large V,
+     and a V is a shape - the eye reads the triangle and not the movement.
+     Standing on the band with one band up to the working hand is both what
+     people actually do and what leaves the body visible. */
   'band-raise':{head:[60,14],sh:[60,28],hip:[60,48],
-    arm:[[44,28],[30,28]], arm2:[[76,28],[90,28]],
-    leg:[[54,62],[52,76]], leg2:[[66,62],[68,76]],
-    props:[{t:'band',a:[30,28],b:[52,76],c:[34,54]},
-           {t:'band',a:[90,28],b:[68,76],c:[86,54]},
-           {t:'arr',a:[30,42],b:[30,31]}]},
+    arm:[[50,36],[38,30]], arm2:[[70,36],[82,30]],
+    leg:[[56,62],[56,76]], leg2:[[64,62],[64,76]],
+    props:[{t:'band',a:[60,76],b:[38,30],c:[42,56]},
+           {t:'arr',a:[24,42],b:[24,28]}]},
   'db-hip-thrust':{head:[26,70],sh:[36,70],hip:[62,54],
     arm:[[32,68],[46,56]], arm2:[[34,70],[48,58]],
     leg:[[84,60],[84,76]], leg2:[[82,62],[82,76]],
@@ -3498,7 +3572,12 @@ const EX_ILLUS = {
   g14:'bb-row',            // Barbell Row - was an unloaded bent-over row
   g15:null,                // Seated Cable Row - a machine
   g16:null,                // Cable Face Pull - a cable stack
-  g17:'band-pallof',       // Cable Pallof Press - same position and direction
+  /* Was 'band-pallof'. The position and direction are identical, which is
+     why it looked acceptable - but the drawing put a resistance band in the
+     hands of somebody doing a cable exercise, and a band is kit a gym user
+     may not own. Every other cable movement here is already null; this one
+     was the outlier, and the equipment check found it. */
+  g17:null,                // Cable Pallof Press - a cable stack is not drawn
   g18:null,                // Cable Woodchop - a cable stack
   g19:'hang-leg-raise',    // Hanging Leg Raise - had no drawing
   g20:null,                // Trap Bar Jump - a trap bar is not drawn
@@ -10594,9 +10673,18 @@ function ringRow(d){
   const need=(ci && ci.sleepNeed) ? ci.sleepNeed : 480;
   const slept=(ci && ci.sleepMin!=null) ? ci.sleepMin : null;
 
+  /* ONE ENTRY POINT.
+     With no check-in this slot used to carry a chevron and navigate to
+     pageReadiness(), which rendered nothing at all - while a second green
+     "Check in" button sat directly underneath it. Two ways in, one of them
+     blank. Now it IS the check-in when there is nothing to show, and the
+     detail screen only when there is something to detail. */
+  const isCTA = !rd;
   return `<div class="scores">
-    <button class="score lead" id="rdRow" aria-label="Readiness ${rd?rd.score:'unknown'} of 100${
-      B?', '+esc(B.label):''}. View details">
+    <button class="score lead${isCTA?' cta':''}" id="rdRow"
+      aria-label="${isCTA
+        ? 'Check in and tell Baseline how you are feeling today'
+        : 'Readiness '+rd.score+' of 100'+(B?', '+esc(B.label):'')+'. See what moved it'}">
       ${''/* An empty arc, not a dash. A dash in a ring reads as a broken
               reading; an empty ring beside "Learning your baseline" reads as
               what it is - nothing measured yet. */}
@@ -10618,15 +10706,26 @@ function ringRow(d){
               yellow:'Train, but keep it moderate.',
               orange:'Keep it light today.',
               red:'Rest is the better call.'}[rd.band]||'')}</span>`;
+          /* STATE on top, ACTION underneath, in one control.
+             §4 says never imply a personalised number exists when it does
+             not, so the strong line stays "Learning your baseline" - that is
+             what is true. §3 says there must be one obvious way to check in,
+             so the line under it is the instruction and the whole card is the
+             button. An earlier pass at this replaced the state with the
+             action and lost the honest empty state to get the clear one; the
+             slot is big enough for both. */
           const lvl=dataCoverage(d).level;
-          return lvl==='learning'
-            ? `<span class="score-w">Learning your baseline</span>
-               <span class="score-s">Check in and it starts from today</span>`
-            : `<span class="score-w">Not checked in</span>
-               <span class="score-s">Check in for today’s number</span>`;
+          return `<span class="score-w">${lvl==='learning'
+              ? 'Learning your baseline' : 'Not checked in yet'}</span>
+            <span class="score-s">Tap to check in &mdash; tell Baseline how you
+              are feeling today</span>`;
         })()}
       </span>
-      <i class="rw-c">${svg('chev')}</i>
+      ${''/* A chevron promises a destination. Without a check-in the
+              destination is the check-in itself, which the label already
+              says, so the mark here is the action rather than an arrow to a
+              screen that would have nothing on it. */}
+      <i class="rw-c">${isCTA? svg('play') : svg('chev')}</i>
     </button>
     ${''/* Strain and sleep moved off Home.
           Readiness already answers "how am I today", and it is BUILT from
@@ -10747,7 +10846,31 @@ function pageSleep(d){
    no device never sees an empty chart. */
 function pageReadiness(d){
   return function(c){
-    const ci=DB.checkins[d]; if(!ci){ c.innerHTML=''; return; }
+    const ci=DB.checkins[d];
+    /* NEVER BLANK.
+       This used to be `if(!ci){ c.innerHTML=''; return; }` - no appbar, no
+       content, no way back except the system gesture. Home no longer routes
+       here without a check-in, but a page builder must not depend on its
+       caller for that: a past date, a restored stack or a future caller can
+       all arrive here with nothing to show. */
+    if(!ci){
+      appbar('Readiness', fmtDate(d));
+      c.innerHTML=`
+        <div class="rec" style="text-align:center">
+          <div class="rec-l">Nothing recorded</div>
+          <div class="rec-t" style="font-size:20px">No check-in for this day</div>
+          <div class="rec-m">Readiness is worked out from how you say you feel,
+            plus whatever your device recorded. Without a check-in there is
+            nothing to work it out from.</div>
+        </div>
+        ${d===todayISO()
+          ? `<button class="btn primary big block" id="rdCheck">${svg('play')} Check in for today</button>`
+          : `<div class="hint" style="text-align:center">You can still check in for
+              today from the home screen.</div>`}`;
+      const b=$('#rdCheck');
+      if(b) b.onclick=()=>{ popPage(); openCheckin(d); };
+      return;
+    }
     const rd=readiness(d,ci), B=BAND[rd.band];
     appbar('Readiness', fmtDate(d));
     const dev=(ci.recovery!=null||ci.hrv!=null||ci.rhr!=null);
@@ -10950,13 +11073,22 @@ function todayNoCheckin(d){
           built around, so its slot exists before there is a number in it and
           says what it is doing - "Learning your baseline" - rather than being
           absent until a device or a check-in fills it. */}
+  ${''/* The readiness slot above IS the check-in when there is no check-in
+          yet - see ringRow(). What used to sit here was a second control
+          saying the same thing, with a broken one above it. The sentence that
+          explained the cost is kept, because "about a minute" is the thing
+          that gets somebody to do it. */}
   ${ringRow(d)}
+  ${''/* The lead block Today has always had. It no longer carries a second
+          check-in button - the readiness slot above IS the check-in now -
+          but it still says why it is worth doing, which is the part that
+          gets somebody to actually do it. */}
   <div class="rec">
     <div class="rec-l">Today</div>
     <div class="rec-t">How are you doing?</div>
-    <div class="rec-m">Baseline needs this before it can pick a session. About a minute.</div>
+    <div class="rec-m">Baseline needs this before it can pick a session.
+      About a minute, and the readiness card above is where it starts.</div>
   </div>
-  <button class="btn primary big block" id="btnCheck">${svg('play')} Check in</button>
   ${cy?`<div class="hint" style="margin-top:11px;text-align:center">Your ${esc(SRC_NAME())} numbers for today are already there — they will be filled in for you.</div>`:''}
 
   ${noticeHTML(d)}
@@ -11030,7 +11162,13 @@ function todayPlan(d){
 function wireToday(d){
   const on=(id,fn)=>{ const b=$('#'+id); if(b)b.onclick=fn; };
   /* the score pushes its own explanation rather than printing it here */
-  on('rdRow',()=>pushPage({build:pageReadiness(d)}));
+  /* Where the readiness slot goes depends on whether there is anything to
+   show. With no check-in it IS the check-in; pageReadiness would have
+   rendered an empty page. */
+on('rdRow',()=>{
+  if(!DB.checkins[d]) return openCheckin(d);
+  pushPage({build:pageReadiness(d)});
+});
   /* "Why this?" expands in place: progressive disclosure, not a new screen,
      because the answer is three lines and belongs next to the question */
   const wt=$('#whyT'), wb=$('#whyB');
@@ -15462,7 +15600,8 @@ function drawExercise(en,i,total){
   /* Two controls, both secondary, neither part of the training loop. */
   $('#wmFoot').innerHTML=`<div class="wm-row">
       <button class="tert" id="wmPauseBtn">Pause</button>
-      <button class="tert" id="wmMore">More</button>
+      <button class="tert wm-det" id="wmMore" aria-haspopup="dialog"
+        >Exercise details ${svg('down')}</button>
     </div>`;
 
   /* one place that writes a set value, whether it came from a stepper button
@@ -15548,7 +15687,20 @@ function drawExercise(en,i,total){
     const lastDone = (()=>{ for(let k=en.sets.length-1;k>=0;k--) if(en.sets[k].done) return k;
                             return -1; })();
     const rows=[
-      /* the everyday exceptions first: these are why somebody opens this menu */
+      /* WHAT THE LABEL PROMISES COMES FIRST.
+         This list used to open with "Undo the last set", which framed the
+         whole sheet as a corrections menu - and the control was called
+         "More", so nothing anywhere said the instructions were in here. The
+         reading comes first now, then the exceptions. */
+      {t:'How to do it', s:en.cue? en.cue.slice(0,44)+'…' : 'Cue, progression and the plan in full',
+       icon:'book', run:()=>wmHow()},
+      {t:'Why this exercise?', s:'What it covers and why it was picked',
+       icon:'info', run:()=>wmWhy()},
+      /* The substitution note, where the label now says information lives.
+         It was only ever a chip on the training screen, which is the right
+         size for a glance and the wrong place to explain itself. */
+      en.blockNote ? {t:'Why this one, not the other',
+       s:en.blockNote, icon:'swap', run:()=>wmWhy()} : null,
       lastDone>=0 ? {t:'Undo the last set', s:'Set '+(lastDone+1)+' back to not done',
        icon:'undo', now:true, run:()=>{ complete(lastDone); }} : null,
       {t:'Add a set', s:'One more than the plan asked for',
@@ -15561,10 +15713,6 @@ function drawExercise(en,i,total){
          const pe=W.entries[i-1];
          for(let k=pe.sets.length-1;k>=0;k--) if(pe.sets[k].done){ pe.sets[k].done=false; break; }
          stopRest(); W.step=i-1; saveLive(); drawWM(); }} : null,
-      {t:'How to do it', s:en.cue? en.cue.slice(0,44)+'…' : 'Cue, progression and the plan in full',
-       icon:'book', run:()=>wmHow()},
-      {t:'Why this exercise?', s:'What it covers and why it was picked',
-       icon:'info', run:()=>wmWhy()},
       /* only where a kilogram is not already on offer */
       exLoadable(exOf(en.exerciseId)) ? null : {
         t: en.wantWeight? 'Remove the weight field' : 'Add weight',
@@ -15745,9 +15893,14 @@ function drawFinish(){
         <div class="slider-top"><span class="l">Overall effort</span><span class="v num" id="fRpe_o">${avgRpe||7}</span></div>
         <input type="range" id="fRpe" min="1" max="10" step="1" value="${Math.round(avgRpe||7)}" data-out="fRpe_o">
         <div class="scale"><span>Very easy</span><span>Maximal</span></div></div></div>
-    <div class="field"><label>How was that?</label>
-      <div class="pills" id="fFeel">
-        ${FEEDBACK.map(f=>`<button data-v="${f.id}">${esc(f.name)}</button>`).join('')}
+    ${''/* A radio group, not three loose buttons. It was three loose buttons
+           with no handler at all - see the note on the wiring below. */}
+    <div class="field" role="radiogroup" aria-labelledby="fFeelL">
+      <label id="fFeelL">How was that?</label>
+      <div class="pills feel" id="fFeel">
+        ${FEEDBACK.map(f=>`<button type="button" data-v="${esc(f.id)}"
+          role="radio" aria-checked="${W.feedback===f.id?'true':'false'}"
+          class="${W.feedback===f.id?'on':''}">${esc(f.name)}</button>`).join('')}
       </div>
       <div class="hint">One tap. It is the only thing here that changes what
         you get next time.</div></div>
@@ -15774,12 +15927,36 @@ function drawFinish(){
     el.onclick=go;
     el.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); go(); } };
   });
+  /* THE HANDLER THAT WAS MISSING.
+     Without this the pills rendered, styled themselves as interactive, and
+     did nothing: `.on` was never set, so the save below always read null.
+     Written to W on tap rather than scraped from the DOM at save time, so a
+     redraw cannot lose the answer and the selection survives going back to
+     an exercise and returning. */
+  $$('#fFeel button').forEach(b=>{
+    b.onclick=()=>{
+      const v=b.dataset.v;
+      /* tapping the chosen one again clears it - the honest way to say
+         "actually, no comment" without a fourth pill */
+      W.feedback = (W.feedback===v) ? null : v;
+      $$('#fFeel button').forEach(x=>{
+        const on = x.dataset.v===W.feedback;
+        x.classList.toggle('on', on);
+        x.setAttribute('aria-checked', on?'true':'false');
+      });
+      saveLive(); haptic();
+    };
+  });
+
   $('#fSave').onclick=()=>{
     W.done=true; W.endedAt=Date.now(); W.durationMin=dur; W.setsDone=setsDone; W.volume=rnd(vol,1);
     W.sessionRpe=+$('#fRpe').value; W.notes=$('#fNotes').value.trim();
     /* one tap, and the only thing on that screen that changes what comes
-       next - see feedbackBias() */
-    W.feedback=(function(){ const b=$('#fFeel button.on'); return b?b.dataset.v:null; })();
+       next - see feedbackBias().
+       W.feedback is set by the pill handler above. It used to be scraped from
+       the DOM here instead, which is how nobody noticed the pills had no
+       handler: the scrape found nothing, returned null, and null is a valid
+       answer meaning "did not say". */
     DB.sessions=DB.sessions.filter(s=>s.id!==W.id);
     DB.sessions.push(JSON.parse(JSON.stringify(W)));
     DB.sessions.sort((a,b)=>a.date<b.date?-1:1);
@@ -16046,9 +16223,14 @@ function drawCardioStep(en,i,total){
     ${(()=>{ const bits=[effortWords(en.plannedRpe,'cardio'),
                          en.tempo?String(en.tempo).toLowerCase():''].filter(Boolean);
        return bits.length?`<div class="wm-plain">${esc(bits.join(' · '))}</div>`:''; })()}
-    ${(()=>{ const ex=exOf(en.exerciseId); const h=ex?briefHow(ex):'';
-       return h?`<button class="wm-how" id="wmHowLine">${esc(h)} <i>More</i></button>`:''; })()}
-    ${en.blockNote?`<div class="note warn">${esc(en.blockNote)}</div>`:''}
+    ${''/* The same hierarchy as the strength screen: one cue, and the rest
+           behind "Exercise details". This renderer had been left on the
+           older layout - a truncated how-to paragraph with a "More" marker,
+           and the substitution as a full-width warning note. */}
+    ${(()=>{ const ex=exOf(en.exerciseId); const h=(en.cue)||(ex?briefHow(ex):'');
+       return h?`<button class="cue" id="wmHowLine" aria-label="Show full instructions"
+         ><i>${svg('bulb')}</i><span>${esc(h)}</span></button>`:''; })()}
+    ${en.blockNote?`<div class="wm-swap">${svg('swap')}<span>${esc(en.blockNote)}</span></div>`:''}
     <div class="setlist">
       <div class="wnow${running?' live':''}">
         <div class="wnow-t">${done?'Logged':running?'In progress':started?'Stopped':'Ready'}
@@ -16084,7 +16266,8 @@ function drawCardioStep(en,i,total){
       </div>
     </div>
     <div class="btn-row">
-      <button class="btn sm ghost" id="wmMore">More</button>
+      <button class="btn sm ghost wm-det" id="wmMore" aria-haspopup="dialog"
+        >Exercise details ${svg('down')}</button>
     </div>`;
 
   $('#wmFoot').innerHTML=`<div class="btn-row">
