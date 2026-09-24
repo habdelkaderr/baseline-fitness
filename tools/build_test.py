@@ -4331,9 +4331,55 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
      Array.prototype.slice.call(v.querySelectorAll('.score .arc-t'))
        .every(function(e){ return e.textContent.trim()!=='—'; }),
      Array.prototype.slice.call(v.querySelectorAll('.score .arc-t')).map(function(e){return e.textContent;}).join('|'));
+  /* The next action used to be a separate green button under the readiness
+     card. It is now the readiness card, so the list of things that count as
+     "a clear next action" includes it. */
   ok('and there is still a clear next action', !!document.getElementById('btnStart')
      || !!document.getElementById('btnCheck')
+     || !!document.querySelector('#rdRow.cta')
      || /Rest is the recommendation/.test(txt), txt.slice(0,200));
+
+  /* §3: ONE WAY IN, AND IT MUST WORK.
+     The reported bug was two controls both saying "check in", one of which
+     opened a blank screen. So: count them, and follow the one that is left. */
+  (function(){
+    var ctas=Array.prototype.slice.call(v.querySelectorAll('button'))
+      .filter(function(el){ return /check.?in/i.test(el.textContent||''); });
+    ok('there is exactly one check-in control on a fresh home screen',
+       ctas.length===1, ctas.map(function(e){ return e.id||e.className; }).join(', '));
+    var cta=document.querySelector('#rdRow.cta');
+    ok('and it is the readiness card itself', !!cta,
+       document.getElementById('rdRow') ? document.getElementById('rdRow').className : '(no rdRow)');
+    if(cta){
+      /* it must be reachable, not merely present */
+      var r=cta.getBoundingClientRect();
+      ok('the readiness card is a real tap target',
+         r.width>200 && r.height>=44, Math.round(r.width)+'x'+Math.round(r.height));
+      var hit=document.elementFromPoint(r.left+r.width/2, r.top+r.height/2);
+      ok('and nothing is sitting on top of it',
+         hit===cta || cta.contains(hit), hit?(hit.className||hit.tagName):'nothing');
+      /* AND IT MUST NOT LEAD ANYWHERE BLANK */
+      cta.click();
+      var after=document.getElementById('view');
+      ok('tapping it opens the check-in, not an empty page',
+         after.textContent.trim().length>40, after.textContent.trim().length+' chars');
+      ok('and the check-in is what opened',
+         /how are you|check in|energy|soreness|sleep/i.test(after.textContent),
+         after.textContent.trim().slice(0,90));
+      if(typeof closeSheet==='function') closeSheet();
+      resetStack(); TAB='today'; render();
+    }
+    /* pageReadiness must never render nothing, whoever calls it */
+    var probe=document.createElement('div');
+    var keepCi=DB.checkins[T]; delete DB.checkins[T];
+    pageReadiness(T)(probe);
+    ok('the readiness page is never blank, even with no check-in',
+       probe.textContent.trim().length>40, probe.textContent.trim().length+' chars');
+    ok('and it offers a way forward rather than a dead end',
+       !!probe.querySelector('button') || /check in/i.test(probe.textContent),
+       probe.textContent.trim().slice(0,80));
+    if(keepCi) DB.checkins[T]=keepCi;
+  })();
 
   /* --- no device, but they checked in: a real number, from what they said --- */
   DB.checkins[T]={date:T,energy:7,soreness:2,stress:3,motivation:7,pain:'None',sleepMin:430};
@@ -4571,6 +4617,60 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   ok('no home-kit exercise is drawn holding gym equipment', leak.length===0,
      leak.join(' | '));
 
+  /* THE IMPLEMENT IN THE DRAWING IS THE IMPLEMENT IN THE EXERCISE.
+     "Band Lateral Raise" was drawn holding two dumbbells. The gym-kit check
+     above could not see it, because a band is home kit. This compares what
+     the exercise needs against what its pose actually draws. */
+  (function(){
+    var PROP_FOR={db:'db', band:'band', kb:'kb', ball:'ball', bb:'bb', bar:'bar'};
+    var wrong=[];
+    (DB.exercises||[]).forEach(function(e){
+      var k=illusKey(e); if(!k) return;
+      var props={};
+      (POSES[k].props||[]).forEach(function(p){ props[p.t]=1; });
+      var needs={};
+      (e.needs||[]).forEach(function(n){ needs[n]=1; });
+      Object.keys(PROP_FOR).forEach(function(kit){
+        var drawn=!!props[PROP_FOR[kit]], required=!!needs[kit];
+        /* Drawn but not needed is the fault that matters: it tells the user
+           to pick up something the exercise does not use, and something they
+           may not own. Needed but not drawn is a lesser omission - a loaded
+           hip thrust drawn unloaded still teaches the movement - so it is
+           reported separately below rather than failing here. */
+        if(drawn && !required)
+          wrong.push(e.id+' '+e.name+' needs ['+(e.needs||[]).join(',')+
+                     '] but the drawing shows a '+kit);
+      });
+    });
+    ok('no exercise is drawn holding equipment it does not use',
+       wrong.length===0, wrong.join(' | '));
+
+    /* A bodyweight exercise must be drawn empty-handed. */
+    var held=[];
+    (DB.exercises||[]).forEach(function(e){
+      if((e.needs||[]).length) return;
+      var k=illusKey(e); if(!k) return;
+      (POSES[k].props||[]).forEach(function(p){
+        if(PROP_FOR[p.t]) held.push(e.id+' '+e.name+' -> '+k+' holds a '+p.t);
+      });
+    });
+    ok('a bodyweight exercise is drawn empty-handed', held.length===0,
+       held.join(' | '));
+
+    /* And said out loud: which loaded exercises are drawn unloaded. */
+    var unloaded=[];
+    (DB.exercises||[]).forEach(function(e){
+      var k=illusKey(e); if(!k) return;
+      var props={};
+      (POSES[k].props||[]).forEach(function(p){ props[p.t]=1; });
+      (e.needs||[]).forEach(function(n){
+        if(PROP_FOR[n] && !props[PROP_FOR[n]]) unloaded.push(e.id+' ('+n+')');
+      });
+    });
+    ok('and the number drawn without their load is small and known',
+       unloaded.length<=14, unloaded.length+': '+unloaded.join(', '));
+  })();
+
   /* UNILATERAL WORK MUST NOT BE DRAWN ON TWO LIMBS.
      §1 asks this explicitly, and three exercises were failing it: a
      single-leg hop and two single-arm rows were drawn symmetrically. A pose
@@ -4622,6 +4722,195 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
     if(pair[1]==='down' && dy<=0) dir.push(pair[0]+' -> '+k+' arrow points up');
   });
   ok('movement arrows point the way the movement goes', dir.length===0, dir.join(' | '));
+
+  /* =====================================================================
+     §2  "HOW WAS THAT?" HAS TO DO SOMETHING
+     The pills rendered, styled themselves as interactive, and had no click
+     handler at all - so `.on` was never set and W.feedback was always null.
+     feedbackBias() had been running on no feedback for every session saved
+     through this screen.
+     ================================================================== */
+  (function(){
+    var keepS=DB.sessions, T=todayISO();
+    DB.sessions=[];
+    DB.checkins[T]={date:T,recovery:76,energy:7,soreness:3,stress:3,
+                    motivation:7,sleepMin:450,pain:'None'};
+    startWorkout('w_lowerA','full',T);
+    W.phase='main'; W.step=0;
+    W.entries.forEach(function(en){
+      (en.sets||[]).forEach(function(s){ s.done=true; s.reps=s.reps||'10'; }); });
+    W.step=W.entries.length; drawWM();
+
+    ok('the finish screen is shown', !!document.getElementById('fSave'));
+    var ff=document.getElementById('fFeel');
+    ok('the feedback group is there', !!ff);
+    var btns=ff.querySelectorAll('button');
+    ok('with one option per feedback value', btns.length===FEEDBACK.length,
+       btns.length+' of '+FEEDBACK.length);
+
+    ok('nothing is selected to begin with', !ff.querySelector('button.on'));
+    btns[1].click();
+    ok('tapping an option selects it', btns[1].classList.contains('on'),
+       btns[1].className);
+    ok('and records it immediately, not at save time',
+       W.feedback===btns[1].dataset.v, String(W.feedback));
+    ok('it is announced to assistive tech',
+       btns[1].getAttribute('aria-checked')==='true',
+       btns[1].getAttribute('aria-checked'));
+
+    btns[2].click();
+    ok('choosing another moves the selection',
+       btns[2].classList.contains('on') && !btns[1].classList.contains('on'));
+    ok('and only one is ever selected',
+       ff.querySelectorAll('button.on').length===1);
+
+    var chosen=W.feedback;
+    drawWM();
+    var ff2=document.getElementById('fFeel');
+    ok('the choice survives a redraw',
+       !!ff2.querySelector('button.on') &&
+       ff2.querySelector('button.on').dataset.v===chosen, String(chosen));
+
+    var small=[];
+    Array.prototype.forEach.call(ff2.querySelectorAll('button'), function(b){
+      var r=b.getBoundingClientRect();
+      if(r.height<44) small.push(b.textContent.trim()+' '+Math.round(r.height)+'px');
+    });
+    ok('every option is a comfortable tap target', small.length===0, small.join(', '));
+    ok('it is a radio group', ff2.parentElement.getAttribute('role')==='radiogroup');
+    ok('and the options are radios',
+       ff2.querySelector('button').getAttribute('role')==='radio');
+
+    document.getElementById('fSave').click();
+    var saved=DB.sessions[DB.sessions.length-1];
+    ok('the saved session carries the feedback', !!saved && saved.feedback===chosen,
+       saved?String(saved.feedback):'(not saved)');
+    ok('and feedbackBias() can read it',
+       typeof feedbackBias==='function' &&
+       (function(){ try{ feedbackBias(T); return true; }catch(e){ return false; } })());
+
+    DB.sessions=keepS;
+  })();
+
+  /* =====================================================================
+     §5  A NUMBER AND ITS UNIT ARE ONE WORD
+     "100%" rendered as "100" over "%". The cell had a hard flex basis of
+     34px and no nowrap: at the default size "100%" is 34px and just fitted,
+     so it only broke once anything made the text larger - an ordinary phone
+     setting, not an edge case.
+     ================================================================== */
+  (function(){
+    var keepS=DB.sessions, T=todayISO();
+    DB.sessions=[{id:'pc1',date:T,workoutId:'w_lowerA',done:true,
+                  entries:[{plannedSets:2,sets:[{done:true},{done:true}]}]}];
+    resetStack(); TAB='progress'; PTAB='overview'; POFF=0; render();
+
+    ok('the focus areas section is shown', !!document.getElementById('pFocus'));
+
+    var scales=[1, 1.15, 1.3, 1.5], wrapped=[];
+    var st=document.createElement('style'); document.head.appendChild(st);
+    scales.forEach(function(sc){
+      st.textContent = sc===1 ? '' :
+        '.fbar .fb-p,.fbar .fb-l{font-size:'+(12.5*sc)+'px !important}';
+      document.querySelectorAll('.fbar .fb-p').forEach(function(el){
+        var r=el.getBoundingClientRect();
+        var cs=getComputedStyle(el);
+        var lh=parseFloat(cs.lineHeight);
+        if(isNaN(lh)) lh=parseFloat(cs.fontSize)*1.25;
+        if(r.height>lh*1.6) wrapped.push('"'+el.textContent.trim()+'" at '+sc+'x');
+        if(cs.whiteSpace.indexOf('nowrap')<0)
+          wrapped.push('"'+el.textContent.trim()+'" may wrap ('+cs.whiteSpace+')');
+      });
+    });
+    st.remove();
+    ok('no percentage wraps between the number and the sign, at any text size',
+       wrapped.length===0, wrapped.join(' | '));
+
+    (function(){
+      var probe=document.createElement('div');
+      probe.className='fbar';
+      probe.style.cssText='position:fixed;left:-9999px;width:200px';
+      probe.innerHTML='<span class="fb-l">Lower body</span>'+
+        '<span class="fb-t"></span><span class="fb-p"></span>';
+      document.body.appendChild(probe);
+      var cell=probe.querySelector('.fb-p');
+      var bad=[];
+      [0,25,50,75,100].forEach(function(pc){
+        cell.textContent=pc+'%';
+        var r=cell.getBoundingClientRect();
+        var lh=parseFloat(getComputedStyle(cell).lineHeight)||15;
+        if(r.height>lh*1.6) bad.push(pc+'%');
+      });
+      probe.remove();
+      ok('0, 25, 50, 75 and 100 per cent all stay on one line',
+         bad.length===0, bad.join(', '));
+    })();
+
+    var loose=[];
+    document.querySelectorAll('#view .pload .pl-v, #view .stats .stat .val, '+
+      '#view .mtile .mt-v').forEach(function(el){
+      if(getComputedStyle(el).whiteSpace.indexOf('nowrap')<0)
+        loose.push(el.className+':'+el.textContent.trim().slice(0,10));
+    });
+    ok('other figures on Progress are protected the same way',
+       loose.length===0, loose.join(' | '));
+
+    DB.sessions=keepS;
+    resetStack(); TAB='today'; render();
+  })();
+
+  /* =====================================================================
+     §6 and §7  THE AFFORDANCE SAYS WHAT IS BEHIND IT,
+                and the training screen stays minimal
+     ================================================================== */
+  (function(){
+    var T=todayISO();
+    startWorkout('w_lowerA','full',T);
+    W.phase='main'; W.step=0;
+    W.entries[0].blockNote='Swapped from Chin-Up - needs equipment you do not have.';
+    drawWM();
+
+    var more=document.getElementById('wmMore');
+    ok('the details control exists', !!more);
+    ok('and it is not called "More"', !/^more$/i.test(more.textContent.trim()),
+       more.textContent.trim());
+    ok('it says what is behind it', /exercise details/i.test(more.textContent),
+       more.textContent.trim());
+    ok('it is a comfortable tap target',
+       more.getBoundingClientRect().height>=44,
+       Math.round(more.getBoundingClientRect().height)+'px');
+
+    var mid=document.querySelector('#wmBody .wm-mid');
+    ok('the training screen still shows one cue and no paragraphs',
+       mid.querySelectorAll('.cue').length===1 &&
+       mid.querySelectorAll('.wm-how').length===0,
+       mid.querySelectorAll('.cue').length+' cue / '+
+       mid.querySelectorAll('.wm-how').length+' how');
+
+    more.click();
+    var sheet=document.getElementById('wmMoreRows');
+    ok('tapping it opens the details', !!sheet);
+    if(sheet){
+      var rows=Array.prototype.slice.call(sheet.querySelectorAll('.rw-t, .rn'))
+        .map(function(e){ return e.textContent.trim(); });
+      ok('the reading comes first, not the corrections',
+         /how to do it/i.test(rows[0]||''), rows.slice(0,3).join(' | '));
+      ok('the substitution note is in there',
+         rows.some(function(x){ return /why this one/i.test(x); }), rows.join(' | '));
+      ok('and so is why the exercise was picked',
+         rows.some(function(x){ return /why this exercise/i.test(x); }), rows.join(' | '));
+    }
+    if(typeof closeSheet==='function') closeSheet();
+
+    drawWM();
+    var cue=document.getElementById('wmHowLine');
+    ok('the cue is a button, so the reading is reachable from it too',
+       !!cue && cue.tagName==='BUTTON');
+    if(cue) ok('and it is big enough to hit',
+       cue.getBoundingClientRect().height>=40,
+       Math.round(cue.getBoundingClientRect().height)+'px');
+    exitWM(true);
+  })();
 
   /* =====================================================================
      THE ENGINE ACTUALLY RESPONDS
@@ -6515,7 +6804,7 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
     resetStack(); TAB=tab; render();
     var v=document.getElementById('view');
     shapes[tab]=[
-      v.querySelector('.rec')?'lead':'-',                 // a dominant block
+      (v.querySelector('.rec')||v.querySelector('.score.lead'))?'lead':'-',  // a dominant block
       v.querySelector('.rows')?'rows':'-',                // navigation
       v.querySelector('.btn.primary.big')?'action':'-',   // a primary action
       v.querySelector('.card')?'card':'-',
