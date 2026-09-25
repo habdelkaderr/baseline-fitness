@@ -831,9 +831,16 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
    the user is touching, and the sentence is what tells them what to do. A
    squeezed illustration with a clipped instruction under it serves neither. */
 @media (max-height:520px){
-  .wm-b.live .wm-mid .illus{display:none}
+  .wm-b.live .wm-mid .illus,
+  .wm-b.live .wm-mid .illus-b{display:none}
   .wm-b.live .wm-mid .wm-swap{display:none}
-  .wm-b.live .wm-mid .cue{margin-top:0}
+  .wm-b.live .wm-mid .cue{margin-top:0;padding:9px 11px}
+  /* The cue keeps its text and its label - they are two of the three things
+     §1 says the screen must answer. What goes is the air around them, which
+     was the last 19px of scroll on a 320x568 phone. */
+  .wm-b.live .wm-mid button.cue .cue-t{font-size:12px;line-height:1.35}
+  .wm-b.live .wm-mid button.cue .cue-d{margin-top:5px;font-size:11px}
+  .wm-b.live .wset{padding-top:8px;padding-bottom:8px}
 }
 /* Paused. Three lines and two buttons, because somebody who has just paused a
    workout is dealing with whatever interrupted them, not reading. */
@@ -1490,9 +1497,15 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
    the page rather than inside a card - see the "no nested cards" rule */
 /* Big, but never so big that it pushes the button off the screen: the whole
    point is that you can see the movement AND log the set without scrolling. */
-.illus.lg{max-width:420px;margin:0 auto;max-height:min(32vh,210px)}
-.illus.lg svg.fig{max-height:min(32vh,210px)}
-@media (min-width:700px){ .illus.lg,.illus.lg svg.fig{max-height:260px} }
+/* §2 wants the drawing LARGE - it is the answer to "what should this look
+   like", and it is doing that work instead of a paragraph. The old cap of
+   210px left a band of dead space above the cue on a modern phone while the
+   figure sat small in the middle of it. It still yields first when the screen
+   is short: the flex rules on .wm-mid shrink it before anything else, and
+   below 520px of viewport it gives way entirely. */
+.illus.lg{max-width:460px;margin:0 auto;max-height:min(40vh,320px)}
+.illus.lg svg.fig{max-height:min(40vh,320px)}
+@media (min-width:700px){ .illus.lg,.illus.lg svg.fig{max-height:340px} }
 /* expanded inside a warm-up row: a quiet panel, so the row still reads as a row */
 .illus.md{background:var(--surface-2);border-radius:12px;padding:10px 6px;margin:10px 0}
 /* a list thumbnail */
@@ -1546,11 +1559,56 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
    it is the more useful of the two. */
 .wm-det{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .wm-det svg{width:14px;height:14px;opacity:.75}
-/* the cue says it opens, without spending a line saying so */
-button.cue{position:relative;padding-right:30px}
-button.cue::after{content:'';position:absolute;right:12px;top:50%;
-  width:7px;height:7px;margin-top:-5px;border-right:2px solid var(--accent);
-  border-bottom:2px solid var(--accent);transform:rotate(45deg);opacity:.7}
+/* THE CUE IS THE DOOR TO THE DETAILS.
+   It was already the control that opened the instructions and said nothing
+   about it, so nobody pressed it. The label sits under the cue rather than
+   beside it: the cue is what you read while moving, the label is what you
+   find when you go looking. Quieter than Log set, per §5. */
+button.cue{position:relative;width:100%;text-align:left;font-family:inherit;
+  cursor:pointer;align-items:flex-start;padding:11px 13px}
+button.cue .cue-x{flex:1;min-width:0;display:block}
+button.cue .cue-t{display:block;font-size:12.5px;font-weight:650;
+  color:var(--text-2);line-height:1.45}
+button.cue .cue-d{display:flex;align-items:center;gap:4px;margin-top:7px;
+  font-size:11.5px;font-weight:800;letter-spacing:.02em;color:var(--accent)}
+button.cue .cue-d svg{width:13px;height:13px}
+/* §8 - the first time only, and it goes when a set has been logged */
+button.cue .cue-d b{font-weight:850;font-size:9.5px;letter-spacing:.06em;
+  text-transform:uppercase;padding:1px 5px;border-radius:5px;
+  background:var(--accent);color:var(--accent-ink)}
+button.cue:active{background:var(--accent-line)}
+
+/* §7 - the drawing opens the sheet, so it has to be a button without
+   looking like one */
+.illus-b{display:block;width:100%;padding:0;margin:0;border:0;background:none;
+  font-family:inherit;color:inherit;cursor:pointer}
+.wm-b.live .wm-mid .illus-b{flex:1 1 auto;min-height:0;display:flex}
+.wm-b.live .wm-mid .illus-b .illus{flex:1 1 auto;min-height:0}
+.illus-b:active{opacity:.7}
+
+/* ---------- §6 the details sheet, in sections ---------- */
+.xd-fig{background:var(--surface-2);border-radius:14px;padding:10px 6px;
+  margin-bottom:16px}
+.xd-fig .illus{max-width:340px;margin:0 auto}
+.xd-s{margin-bottom:18px}
+.xd-s:last-child{margin-bottom:4px}
+.xd-h{font-size:11px;font-weight:850;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--text-3);margin-bottom:8px}
+.xd-p{font-size:14px;line-height:1.6;color:var(--text-2);margin:0}
+.xd-steps{margin:0;padding-left:0;list-style:none;counter-reset:xd}
+.xd-steps li{counter-increment:xd;position:relative;padding-left:30px;
+  font-size:14px;line-height:1.6;color:var(--text-2);margin-bottom:9px}
+.xd-steps li:last-child{margin-bottom:0}
+.xd-steps li::before{content:counter(xd);position:absolute;left:0;top:1px;
+  width:21px;height:21px;border-radius:50%;background:var(--surface-3);
+  color:var(--text-2);font-size:11px;font-weight:800;
+  display:flex;align-items:center;justify-content:center}
+.xd-pts{margin:0;padding:0;list-style:none}
+.xd-pts li{display:flex;gap:9px;align-items:flex-start;margin-bottom:8px;
+  font-size:14px;line-height:1.55;color:var(--text-2)}
+.xd-pts li:last-child{margin-bottom:0}
+.xd-pts .dot{flex:0 0 auto;width:6px;height:6px;border-radius:50%;
+  background:var(--accent);margin-top:7px}
 
 /* the cue is now a button - it opens the full instructions, which used to be
    a second block of prose sitting under it */
@@ -2296,7 +2354,7 @@ const SCHEMA_VERSION=3;             // bump to transform stored records
 /* A date, plus a letter when more than one build ships in a day. Without the
    letter there was no way to tell a second same-day deploy from the cached
    copy of the first, which is exactly the question "did my upload work?". */
-const APP_BUILD='2026-09-24b';
+const APP_BUILD='2026-09-25a';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */
@@ -3832,6 +3890,7 @@ function seedExercises(){ return [
 {id:'lx01',name:'Tempo Goblet Squat',cat:'lower',muscles:'Quads, glutes, core',equip:'DB',sets:4,reps:'8–12',rpe:'RPE 8 (2 RIR)',rest:'90s',tempo:'4-1-1-0',
  how:'Hold one dumbbell vertically at chest height. Feet shoulder-width, toes slightly out. Lower over 4 seconds, pause 1 second at the bottom, stand normally.',
  cue:'Knees track over the middle toes. Chest tall, ribs down. Push the floor away.',
+ miss:'Rushing the lowering phase. With a light weight the four seconds down IS the load.',
  prog:'Add 1 rep per set each week. At 4×12 move to 5-second eccentric, then to 3-second pause, then progress to Bulgarian Split Squat.',
  reg:'Bodyweight squat with the same tempo, or reduce depth to a comfortable range.',
  subs:'Bodyweight Tempo Squat · Wall Sit · Split Squat',
@@ -3840,6 +3899,7 @@ function seedExercises(){ return [
 {id:'lx02',name:'Bulgarian Split Squat',cat:'lower',muscles:'Quads, glutes, adductors, stabilisers',equip:'DB+CHAIR',sets:3,reps:'8–12 / leg',rpe:'RPE 8',rest:'75s / leg',tempo:'3-1-1-0',
  how:'Rear foot on a stable chair or step roughly knee height, front foot ~60 cm forward. Lower until the front thigh is near parallel, drive up through the front heel.',
  cue:'90% of the weight stays in the front leg. Keep the front shin close to vertical for quads, lean slightly forward for glutes.',
+ miss:'Pushing off the back foot. It is there for balance only - the front leg does the work.',
  prog:'Bodyweight → holding 1 DB → holding 2 DB → 3s pause at the bottom → 1.5 reps (full, half, full).',
  reg:'Static Split Squat with the rear foot on the floor.',
  subs:'Split Squat · Reverse Lunge · Skater Squat',
@@ -3848,6 +3908,7 @@ function seedExercises(){ return [
 {id:'lx03',name:'Split Squat',cat:'lower',muscles:'Quads, glutes',equip:'DB',sets:3,reps:'10–14 / leg',rpe:'RPE 7–8',rest:'60s / leg',tempo:'3-1-1-0',
  how:'Long split stance, both feet on the floor. Drop the back knee straight down to just above the ground, drive back up through the front foot.',
  cue:'Vertical torso. Back knee travels down, not forward.',
+ miss:'Letting the front knee drift inward. It tracks over the middle of the foot.',
  prog:'Reps → add DBs → pause at the bottom → elevate the front foot for extra range.',
  reg:'Shorten the range, or hold a wall for balance.',
  subs:'Bulgarian Split Squat · Reverse Lunge'},
@@ -3855,6 +3916,7 @@ function seedExercises(){ return [
 {id:'lx04',name:'Reverse Lunge',cat:'lower',muscles:'Quads, glutes, hamstrings',equip:'DB',sets:3,reps:'8–12 / leg',rpe:'RPE 7–8',rest:'75s',tempo:'2-0-1-0',
  how:'Step backwards into a lunge, lower the back knee to just above the floor, then drive through the front heel to return.',
  cue:'Step back far enough that the front knee stays over the ankle. Torso stays tall.',
+ miss:'Stepping back too short, which puts the knee ahead of the toes instead of stacking the shin.',
  prog:'Bodyweight → DBs → deficit (front foot on a low step) → add a knee drive at the top.',
  reg:'Hold a wall, or reduce the depth.',
  subs:'Split Squat · Walking Lunge · Step-Up'},
@@ -3862,6 +3924,7 @@ function seedExercises(){ return [
 {id:'lx05',name:'Lateral Lunge',cat:'lower',muscles:'Adductors, glute medius, quads',equip:'DB',sets:3,reps:'8–10 / side',rpe:'RPE 7',rest:'60s',tempo:'3-1-1-0',
  how:'Step wide to one side, sit back into that hip while the other leg stays straight. Push back to the centre.',
  cue:'Sit INTO the hip, do not just bend the knee. Both feet stay flat and forward.',
+ miss:'Bending the straight leg. It stays long while the hip of the bent leg goes back and down.',
  prog:'Add DBs → add a pause → progress to Cossack Squat.',
  reg:'Reduce the depth or hold onto support.',
  subs:'Cossack Squat · Skater Squat',
@@ -3870,6 +3933,7 @@ function seedExercises(){ return [
 {id:'lx06',name:'Cossack Squat',cat:'lower',muscles:'Adductors, quads, glutes, ankle mobility',equip:'BW',sets:3,reps:'6–10 / side',rpe:'RPE 7',rest:'60s',tempo:'3-1-1-0',
  how:'Very wide stance. Shift fully onto one leg, sinking as low as control allows while the other leg straightens with the toes up.',
  cue:'Heel of the working leg stays down. Chest up.',
+ miss:'Letting the heel of the bent leg lift. Keep it down even if that means less depth.',
  prog:'Depth → pause → hold a DB at the chest as a counterbalance.',
  reg:'Hold a wall, or use a partial range.',
  subs:'Lateral Lunge'},
@@ -3877,6 +3941,7 @@ function seedExercises(){ return [
 {id:'lx07',name:'Skater Squat',cat:'lower',muscles:'Quads, glutes, single-leg stability',equip:'BW',sets:3,reps:'5–10 / leg',rpe:'RPE 8',rest:'75s',tempo:'3-1-1-0',
  how:'Stand on one leg, other leg trailing behind. Hinge and lower until the rear knee lightly touches the floor (use a towel), then stand.',
  cue:'Reach the arms forward to counterbalance. Control the descent — no crashing.',
+ miss:'Reaching for the floor with the knee instead of sitting the hips back.',
  prog:'Counterbalance with DBs → reduce the pad height → full pistol progression.',
  reg:'Hold a wall with one hand, or use a higher touch point.',
  subs:'Bulgarian Split Squat · Step-Down',
@@ -3885,6 +3950,7 @@ function seedExercises(){ return [
 {id:'lx08',name:'Step-Up',cat:'lower',muscles:'Quads, glutes',equip:'DB+CHAIR',sets:3,reps:'8–12 / leg',rpe:'RPE 7',rest:'60s',tempo:'2-0-1-1',
  how:'Step onto a stable surface of knee height or lower, driving through the whole foot. Lower under control — do not push off the bottom leg.',
  cue:'The working leg does everything. Lower slowly for 2–3 seconds.',
+ miss:'Pushing off the trailing foot. The working leg should lift you on its own.',
  prog:'Height → DBs → slow eccentric → explosive drive with knee lift.',
  reg:'Lower step height.',
  subs:'Reverse Lunge · Split Squat',
@@ -3893,6 +3959,7 @@ function seedExercises(){ return [
 {id:'lx09',name:'Single-Leg RDL',cat:'lower',muscles:'Hamstrings, glutes, spinal erectors, balance',equip:'DB',sets:3,reps:'8–12 / leg',rpe:'RPE 7–8',rest:'60s',tempo:'3-1-1-0',
  how:'Stand on one leg holding a DB in the opposite hand. Hinge at the hip, the free leg extending straight back, until you feel a strong hamstring stretch. Return by squeezing the glute.',
  cue:'Hips stay square to the floor — do not let the back hip open. Slight knee bend held constant.',
+ miss:'Rotating the hips open. Keep them square to the floor and keep the range short.',
  prog:'Bodyweight → 1 DB → 2 DB → 3s pause at the bottom → deficit.',
  reg:'Touch the back toe down for balance, or hold a wall.',
  subs:'DB RDL · Band Good Morning',
@@ -3901,6 +3968,7 @@ function seedExercises(){ return [
 {id:'lx10',name:'DB Romanian Deadlift',cat:'lower',muscles:'Hamstrings, glutes, erectors',equip:'DB',sets:3,reps:'12–18',rpe:'RPE 8',rest:'75s',tempo:'4-1-1-0',
  how:'Both DBs in front of the thighs. Push the hips back, keep a long spine, slide the DBs down the legs until the hamstrings are loaded, then drive the hips forward.',
  cue:'This is a HIP movement, not a back movement. Bar path stays glued to the legs.',
+ miss:'Turning it into a squat. The knees stay soft and almost still; the hips travel back.',
  prog:'Reps → 4–5s eccentric → pause → progress to Single-Leg RDL.',
  reg:'Reduce range.',
  subs:'Single-Leg RDL · Band Good Morning'},
@@ -3908,6 +3976,7 @@ function seedExercises(){ return [
 {id:'lx11',name:'Nordic Curl Eccentric',cat:'lower',muscles:'Hamstrings (eccentric)',equip:'BW',sets:3,reps:'4–6',rpe:'RPE 9',rest:'90s',tempo:'5-0-X-0',
  how:'Kneel with the ankles anchored under a heavy immovable object (or a partner). Lower the torso forward as slowly as possible, catch with the hands, push back up.',
  cue:'Hips stay extended — do not fold at the waist. Fight the whole way down.',
+ miss:'Folding at the hips on the way down. Stay in one line from knee to shoulder.',
  prog:'Slow the descent → increase the range before the catch → fewer assisted reps.',
  reg:'Band-assisted, or hands on a raised surface to shorten the range.',
  subs:'Sliding Leg Curl · Single-Leg RDL',
@@ -3916,6 +3985,7 @@ function seedExercises(){ return [
 {id:'lx12',name:'Sliding Leg Curl',cat:'lower',muscles:'Hamstrings, glutes',equip:'TOWEL',sets:3,reps:'8–14',rpe:'RPE 8',rest:'60s',tempo:'2-0-3-0',
  how:'Lie on your back, heels on towels on a smooth floor. Bridge the hips up, then slide the heels out and drag them back in without letting the hips drop.',
  cue:'Hips stay high the entire set. Slow on the way out.',
+ miss:'Letting the hips drop as the feet slide out. Keep them up the whole way.',
  prog:'Reps → single leg → longer slide.',
  reg:'Double leg, shorter range.',
  subs:'Nordic Curl Eccentric · Glute Bridge March'},
@@ -3923,6 +3993,7 @@ function seedExercises(){ return [
 {id:'lx13',name:'Single-Leg Glute Bridge',cat:'lower',muscles:'Glutes, hamstrings',equip:'BW',sets:3,reps:'10–15 / leg',rpe:'RPE 7',rest:'45s',tempo:'2-0-1-2',
  how:'Lie on your back, one foot planted, the other knee pulled to the chest. Drive the hips up through the heel and squeeze at the top for 2 seconds.',
  cue:'Ribs down, do not arch the lower back. The glute should burn, not the hamstring.',
+ miss:'Arching the lower back to get higher. The height comes from the glute, not the spine.',
  prog:'Reps → pause length → DB on the hip → foot elevated.',
  reg:'Double-leg glute bridge.',
  subs:'Hip Thrust (floor) · Glute Bridge March'},
@@ -3930,6 +4001,7 @@ function seedExercises(){ return [
 {id:'lx14',name:'Floor Hip Thrust',cat:'lower',muscles:'Glutes',equip:'DB',sets:3,reps:'12–20',rpe:'RPE 8',rest:'60s',tempo:'2-0-1-2',
  how:'Upper back against a stable sofa or chair edge, DBs resting across the hips. Drive the hips to full extension, pause, lower under control.',
  cue:'Finish with a hard glute squeeze and a posterior pelvic tilt. Chin tucked.',
+ miss:'Finishing with the ribs flared. Tuck them down and squeeze at the top.',
  prog:'Reps → 3s pause → single leg.',
  reg:'Floor glute bridge without support.',
  subs:'Single-Leg Glute Bridge',
@@ -3938,6 +4010,7 @@ function seedExercises(){ return [
 {id:'lx15',name:'Wall Sit',cat:'lower',muscles:'Quads (isometric)',equip:'WALL',sets:3,reps:'30–75s',rpe:'RPE 8',rest:'60s',tempo:'Isometric',
  how:'Back flat against the wall, thighs at 90°, feet flat. Hold.',
  cue:'Weight in the heels, knees over the ankles. Breathe normally — do not hold your breath.',
+ miss:'Sliding below parallel and hanging on the joints instead of holding the position.',
  prog:'Add 10s per week → hold a DB → single-leg wall sit.',
  reg:'Higher knee angle, shorter hold.',
  subs:'Isometric Split Squat Hold',
@@ -3946,6 +4019,7 @@ function seedExercises(){ return [
 {id:'lx16',name:'Standing Calf Raise',cat:'lower',muscles:'Gastrocnemius, soleus, Achilles',equip:'DB',sets:4,reps:'15–25',rpe:'RPE 8',rest:'45s',tempo:'2-1-1-2',
  how:'Stand on the edge of a step (or the floor), rise as high as possible, pause 1s at the top, lower slowly to a full stretch.',
  cue:'FULL range. Most people cut the top and the bottom and get nothing.',
+ miss:'Bouncing. Pause at the top, then lower slowly.',
  prog:'Reps → DBs → single leg → 3s pause.',
  reg:'Floor instead of a step, both legs.',
  subs:'Single-Leg Calf Raise'},
@@ -3953,6 +4027,7 @@ function seedExercises(){ return [
 {id:'lx17',name:'Single-Leg Calf Raise',cat:'lower',muscles:'Gastrocnemius, soleus, ankle stability',equip:'BW',sets:3,reps:'12–20 / leg',rpe:'RPE 8',rest:'45s',tempo:'2-1-1-2',
  how:'One foot on a step edge, fingertips on a wall for balance only. Full rise, 1s pause, slow full stretch.',
  cue:'Do not push through the wall — it is balance, not support.',
+ miss:'Rolling onto the outside of the foot. Drive through the big toe.',
  prog:'Reps → hold a DB → 3s eccentric.',
  reg:'Two legs.',
  subs:'Standing Calf Raise',
@@ -3961,6 +4036,7 @@ function seedExercises(){ return [
 {id:'lx18',name:'Tibialis Raise',cat:'lower',muscles:'Tibialis anterior, shin',equip:'WALL',sets:3,reps:'15–25',rpe:'RPE 7',rest:'45s',tempo:'2-0-2-1',
  how:'Back against a wall, feet ~40 cm out. Keeping the heels down, pull the toes up towards the shins as far as possible, lower slowly.',
  cue:'Full lift, full lower. Expect a strong burn in the front of the shin.',
+ miss:'Leaning back to find more range. Keep the hips against the wall.',
  prog:'Reps → move the feet further from the wall → add a light DB across the toes.',
  reg:'Feet closer to the wall.',
  subs:'Heel Walks',
@@ -3969,6 +4045,7 @@ function seedExercises(){ return [
 {id:'lx19',name:'Copenhagen Plank',cat:'lower',muscles:'Adductors, groin, obliques',equip:'CHAIR',sets:3,reps:'15–40s / side',rpe:'RPE 8',rest:'45s',tempo:'Isometric',
  how:'Side plank position with the TOP leg resting on a chair. Lift the hips and the bottom leg off the floor.',
  cue:'Squeeze the top leg down into the surface. Body in a straight line.',
+ miss:'Letting the hips sag. The line from shoulder to knee stays straight.',
  prog:'Short lever (knee on the chair) → long lever (foot on the chair) → add reps of hip raises.',
  reg:'Bottom knee down, short lever.',
  subs:'Side Plank · Adductor Squeeze',
@@ -3977,6 +4054,7 @@ function seedExercises(){ return [
 {id:'lx20',name:'Adductor Squeeze',cat:'lower',muscles:'Adductors',equip:'BW',sets:3,reps:'5 × 8s',rpe:'RPE 7',rest:'30s',tempo:'Isometric',
  how:'Lying on your back, knees bent, ball or rolled towel between the knees. Squeeze hard for 8 seconds, relax 3.',
  cue:'Build tension gradually over 2 seconds — do not snap into it.',
+ miss:'Holding your breath. Squeeze and keep breathing.',
  prog:'Longer holds → straighter legs (longer lever).',
  reg:'Softer squeeze.',
  subs:'Copenhagen Plank'},
@@ -3985,6 +4063,7 @@ function seedExercises(){ return [
 {id:'pl01',name:'Pogo Hops',cat:'plyo',muscles:'Calves, Achilles, ankle stiffness',equip:'BW',sets:3,reps:'20–30',rpe:'RPE 6',rest:'60s',tempo:'Fast',
  how:'Small, fast, springy hops on the balls of the feet with almost straight knees. Minimum ground contact time.',
  cue:'Bounce off the ground like it is hot. The ankles do the work, not the knees.',
+ miss:'Bending the knees deeply. The ankles do this, not the hips.',
  prog:'Contacts → height → single leg → lateral pogos.',
  reg:'Fewer reps, lower height.',
  subs:'Ankle Stiffness Hops',
@@ -3993,6 +4072,7 @@ function seedExercises(){ return [
 {id:'pl02',name:'Countermovement Jump',cat:'plyo',muscles:'Quads, glutes, calves — full-body power',equip:'BW',sets:4,reps:'3–5',rpe:'RPE 7 (max effort, low volume)',rest:'75–90s',tempo:'Explosive',
  how:'Quick dip to a quarter squat and jump as high as possible. Land softly, reset fully between reps.',
  cue:'QUALITY over quantity. If the jump height visibly drops, the set is finished.',
+ miss:'Pausing at the bottom. Reverse immediately.',
  prog:'Track your best height. Progress by jumping higher, not more.',
  reg:'Sub-maximal jumps, or Squat Jump from a pause.',
  subs:'Squat Jump · Broad Jump',
@@ -4001,6 +4081,7 @@ function seedExercises(){ return [
 {id:'pl03',name:'Squat Jump (paused)',cat:'plyo',muscles:'Quads, glutes — concentric power',equip:'BW',sets:3,reps:'4–6',rpe:'RPE 7',rest:'75s',tempo:'Pause then explode',
  how:'Descend to a quarter squat, hold for 2 full seconds to remove the stretch reflex, then jump maximally.',
  cue:'Kill all the bounce in the pause, then explode from a dead stop.',
+ miss:'Rushing out of the pause. Hold it, then explode.',
  prog:'Height → longer pause → single-leg variation.',
  reg:'Fewer reps.',
  subs:'Countermovement Jump'},
@@ -4008,6 +4089,7 @@ function seedExercises(){ return [
 {id:'pl04',name:'Lateral Bound (Skater)',cat:'plyo',muscles:'Glute medius, quads, lateral power',equip:'BW',sets:3,reps:'5–8 / side',rpe:'RPE 7',rest:'75s',tempo:'Explosive',
  how:'Push off one leg laterally, land on the opposite leg, and STICK the landing for a full second before bounding back.',
  cue:'Land quietly on a stable, slightly bent knee that does not cave inward.',
+ miss:'Falling straight into the next one. Stick the landing first.',
  prog:'Distance → stick quality → continuous bounds without pausing.',
  reg:'Shorter distance, longer pause between reps.',
  subs:'Lateral Lunge · Skater Squat',
@@ -4016,6 +4098,7 @@ function seedExercises(){ return [
 {id:'pl05',name:'Broad Jump',cat:'plyo',muscles:'Glutes, hamstrings — horizontal power',equip:'BW',sets:3,reps:'3–5',rpe:'RPE 7',rest:'90s',tempo:'Explosive',
  how:'Two-footed jump for maximum distance. Land in an athletic absorbed position and hold it.',
  cue:'Drive the arms hard. Land soft — absorb through the hips.',
+ miss:'Landing stiff-legged. Absorb through the hips and knees.',
  prog:'Distance. Mark your best and test it monthly.',
  reg:'Sub-maximal distance with focus on landing.',
  subs:'Countermovement Jump',
@@ -4024,6 +4107,7 @@ function seedExercises(){ return [
 {id:'pl06',name:'Depth Drop & Stick',cat:'plyo',muscles:'Landing mechanics, eccentric strength',equip:'CHAIR',sets:3,reps:'4–6',rpe:'RPE 6',rest:'60s',tempo:'Absorb',
  how:'Step (do not jump) off a low surface ~30 cm. Land on both feet in an athletic position and freeze completely for 2 seconds.',
  cue:'Silent landing. Knees track over the toes, hips back, chest up.',
+ miss:'Stepping off from too high. The drop should be one you can stick silently.',
  prog:'Height (slowly) → single-leg landing → drop into an immediate jump.',
  reg:'Lower height, or jump in place and stick.',
  subs:'Jump & Stick',
@@ -4039,6 +4123,7 @@ function seedExercises(){ return [
 {id:'pl08',name:'Single-Leg Hop & Stick',cat:'plyo',muscles:'Single-leg power & stability',equip:'BW',sets:3,reps:'4–6 / leg',rpe:'RPE 7',rest:'60s',tempo:'Explosive',
  how:'Hop forward on one leg and stick the landing on the same leg for 2 seconds before the next rep.',
  cue:'The knee must not collapse inwards on landing. Stick it, then reset.',
+ miss:'Letting the knee collapse inward on landing.',
  prog:'Distance → multi-directional hops → continuous.',
  reg:'Smaller hop, or hop and land on two feet.',
  subs:'Lateral Bound'},
@@ -4054,6 +4139,7 @@ function seedExercises(){ return [
 {id:'pl10',name:'Ankle Stiffness Hops',cat:'plyo',muscles:'Achilles, calves',equip:'BW',sets:3,reps:'15–20 / leg',rpe:'RPE 6',rest:'45s',tempo:'Fast',
  how:'Single-leg pogo hops in place, minimal knee bend, fast ground contacts.',
  cue:'Stay tall. Bounce, do not squat.',
+ miss:'Spending too long on the ground. Keep contact time short.',
  prog:'Contacts → height → hopping forward and laterally.',
  reg:'Double leg.',
  subs:'Pogo Hops'},
@@ -4114,6 +4200,7 @@ function seedExercises(){ return [
 {id:'co01',name:'RKC Plank',cat:'core',muscles:'Anti-extension, deep core',equip:'BW',sets:3,reps:'15–30s',rpe:'RPE 9',rest:'60s',tempo:'Isometric',
  how:'Forearm plank, but actively squeeze glutes, quads and fists as hard as possible while pulling the elbows towards the toes.',
  cue:'Maximum full-body tension. If you can hold this over 30 seconds you are not squeezing hard enough.',
+ miss:'Holding the shape without tension. Squeeze the glutes and brace hard.',
  prog:'Increase the intensity of the contraction, not the duration. Then progress to long-lever.',
  reg:'Standard plank, knees down.',
  subs:'Long-Lever Plank · Hollow Body Hold',
@@ -4122,6 +4209,7 @@ function seedExercises(){ return [
 {id:'co02',name:'Long-Lever Plank',cat:'core',muscles:'Anti-extension',equip:'BW',sets:3,reps:'20–45s',rpe:'RPE 8',rest:'60s',tempo:'Isometric',
  how:'Plank with the elbows shifted well forward of the shoulders, increasing the lever arm.',
  cue:'Ribs down, pelvis tucked. Do not let the lower back sag.',
+ miss:'Letting the lower back arch as the arms reach forward.',
  prog:'Move the elbows further forward → add a DB on the back → lift one foot.',
  reg:'Standard plank.',
  subs:'RKC Plank'},
@@ -4129,6 +4217,7 @@ function seedExercises(){ return [
 {id:'co03',name:'Side Plank',cat:'core',muscles:'Anti-lateral flexion, obliques, QL',equip:'BW',sets:3,reps:'25–50s / side',rpe:'RPE 8',rest:'45s',tempo:'Isometric',
  how:'Forearm side plank, body in one straight line, hips stacked and lifted.',
  cue:'Push the floor away with the bottom shoulder. Do not let the hips drop.',
+ miss:'Letting the hips drift backward. Stack them over each other.',
  prog:'Time → top leg lifted → add hip dips → hold a DB.',
  reg:'Bottom knee down.',
  subs:'Copenhagen Plank · Suitcase Carry'},
@@ -4136,6 +4225,7 @@ function seedExercises(){ return [
 {id:'co04',name:'Side Plank Hip Dip',cat:'core',muscles:'Obliques, QL',equip:'BW',sets:3,reps:'10–15 / side',rpe:'RPE 8',rest:'45s',tempo:'2-0-1-1',
  how:'From a side plank, lower the hip towards the floor under control and drive it back up past neutral.',
  cue:'Controlled range. Squeeze at the top.',
+ miss:'Rotating the chest toward the floor. Stay square.',
  prog:'Reps → hold a DB → long lever.',
  reg:'Static side plank.',
  subs:'Side Plank'},
@@ -4143,6 +4233,7 @@ function seedExercises(){ return [
 {id:'co05',name:'Dead Bug',cat:'core',muscles:'Anti-extension, core–hip coordination',equip:'BW',sets:3,reps:'8–12 / side',rpe:'RPE 7',rest:'45s',tempo:'3-1-3-0',
  how:'On your back, arms up, knees at 90°. Lower the opposite arm and leg slowly towards the floor while keeping the lower back flat, then return.',
  cue:'The lower back must stay pressed down the entire time. The moment it lifts, shorten the range.',
+ miss:'Letting the lower back lift off the floor as the limbs extend.',
  prog:'Slower tempo → straighter leg → hold DBs → add a band for anti-extension.',
  reg:'Legs only, or arms only.',
  subs:'Bird Dog · Hollow Body Hold'},
@@ -4150,6 +4241,7 @@ function seedExercises(){ return [
 {id:'co06',name:'Bird Dog',cat:'core',muscles:'Anti-rotation, spinal stability, glutes',equip:'BW',sets:3,reps:'8–12 / side',rpe:'RPE 6',rest:'45s',tempo:'2-2-2-0',
  how:'On hands and knees, extend the opposite arm and leg fully, hold 2 seconds, return with control.',
  cue:'Hips stay level — imagine balancing a glass of water on your lower back.',
+ miss:'Rotating the hips as the leg lifts. Keep them level.',
  prog:'Hold time → add a band → bring the elbow to the knee between reps.',
  reg:'Arm only or leg only.',
  subs:'Dead Bug'},
@@ -4157,6 +4249,7 @@ function seedExercises(){ return [
 {id:'co07',name:'Hollow Body Hold',cat:'core',muscles:'Anterior chain, anti-extension',equip:'BW',sets:3,reps:'20–40s',rpe:'RPE 8',rest:'60s',tempo:'Isometric',
  how:'On your back, press the lower back into the floor, lift the shoulders and legs, arms overhead. Hold the banana shape.',
  cue:'Lower back stays glued down. Raise the legs higher if it lifts.',
+ miss:'Letting the lower back gap off the floor. Shorten the lever instead.',
  prog:'Time → arms overhead → hollow rocks → hold a DB.',
  reg:'Tuck the knees, hands by the sides.',
  subs:'Dead Bug · Long-Lever Plank'},
@@ -4164,6 +4257,7 @@ function seedExercises(){ return [
 {id:'co08',name:'Bear Hold / Bear Crawl',cat:'core',muscles:'Total-body core stability',equip:'BW',sets:3,reps:'20–40s',rpe:'RPE 7',rest:'45s',tempo:'Isometric/slow',
  how:'Hands and toes down, knees hovering 3 cm off the floor, back flat. Hold, or crawl forward moving opposite hand and foot.',
  cue:'Hips stay low and level. Do not rock side to side when crawling.',
+ miss:'Letting the knees touch down or the hips rise. Hover and hold.',
  prog:'Time → crawling distance → lateral crawls.',
  reg:'Knees down between reps.',
  subs:'RKC Plank'},
@@ -4171,6 +4265,7 @@ function seedExercises(){ return [
 {id:'co09',name:'Band Pallof Press',cat:'core',muscles:'Anti-rotation — force transfer',equip:'BAND',sets:3,reps:'10–14 / side',rpe:'RPE 7',rest:'45s',tempo:'2-2-2-0',
  how:'Band anchored at chest height to your side. Hold it at the sternum, press it straight out, hold 2 seconds, return.',
  cue:'Resist the rotation. The hips and shoulders must not turn at all.',
+ miss:'Letting the torso rotate toward the anchor as the arms extend.',
  prog:'Band tension → step further from the anchor → hold longer → half-kneeling → split stance.',
  reg:'Move closer to the anchor.',
  subs:'Band Anti-Rotation Hold · Suitcase Carry',
@@ -4201,6 +4296,7 @@ function seedExercises(){ return [
 {id:'co13',name:'Suitcase Carry',cat:'core',muscles:'Anti-lateral flexion, grip, traps',equip:'DB',sets:3,reps:'30–45s / side',rpe:'RPE 7',rest:'45s',tempo:'Walk',
  how:'Hold ONE dumbbell at your side and walk tall, resisting the pull to one side.',
  cue:'Shoulders level, ribs down. Do not lean away from the weight.',
+ miss:'Leaning away from the weight. Stay tall and square.',
  prog:'Time → distance → slower march with a knee lift.',
  reg:'Shorter carries.',
  subs:'Suitcase March · Side Plank',
@@ -4216,6 +4312,7 @@ function seedExercises(){ return [
 {id:'co15',name:'Mountain Climbers',cat:'core',muscles:'Core, hip flexors, conditioning',equip:'BW',sets:3,reps:'20–40 total',rpe:'RPE 7',rest:'45s',tempo:'Fast',
  how:'Plank position, drive the knees alternately towards the chest quickly without the hips rising.',
  cue:'Hips stay low and level. Speed comes from the legs, not from bouncing.',
+ miss:'Letting the hips bounce. The shoulders stay over the hands.',
  prog:'Reps → speed → cross-body variation.',
  reg:'Slower, or hands elevated.',
  subs:'Bear Crawl'},
@@ -4238,6 +4335,7 @@ function seedExercises(){ return [
 {id:'up01',name:'Push-Up',cat:'push',muscles:'Chest, front delts, triceps, core',equip:'BW',sets:4,reps:'8–20',rpe:'RPE 8 (2 RIR)',rest:'75s',tempo:'3-1-1-0',
  how:'Hands slightly wider than the shoulders, body in a straight line. Lower the chest to just above the floor over 3 seconds, pause, press up.',
  cue:'Elbows at about 45° from the body, not flared to 90°. Squeeze the glutes to keep the body rigid.',
+ miss:'Letting the hips sag or pike. The body moves as one piece.',
  prog:'Reps → 4s eccentric → 2s pause at the bottom → feet elevated → archer push-up.',
  reg:'Hands on a raised surface (incline push-up) — the higher the easier.',
  subs:'Incline Push-Up · DB Floor Press',
@@ -4246,6 +4344,7 @@ function seedExercises(){ return [
 {id:'up02',name:'Feet-Elevated Push-Up',cat:'push',muscles:'Upper chest, front delts, triceps',equip:'CHAIR',sets:4,reps:'6–15',rpe:'RPE 8',rest:'75s',tempo:'3-1-1-0',
  how:'Push-up with the feet on a chair, shifting more load to the upper chest and shoulders.',
  cue:'Do not let the hips sag. Full range — chest to the floor.',
+ miss:'Dropping the head instead of the chest. The chest leads.',
  prog:'Reps → higher elevation → pause reps → archer.',
  reg:'Standard push-up.',
  subs:'Push-Up · Pike Push-Up'},
@@ -4253,6 +4352,7 @@ function seedExercises(){ return [
 {id:'up03',name:'Archer Push-Up',cat:'push',muscles:'Chest, triceps — unilateral emphasis',equip:'BW',sets:3,reps:'4–8 / side',rpe:'RPE 8',rest:'75s',tempo:'3-0-1-0',
  how:'Wide hand position. Lower towards one hand while the other arm stays nearly straight, then press back up.',
  cue:'The straight arm assists only. Keep the hips square.',
+ miss:'Bending the straight arm. It stays long and light on the floor.',
  prog:'Reps → deeper range → less assistance from the straight arm → one-arm progression.',
  reg:'Standard push-up.',
  subs:'Push-Up',
@@ -4261,6 +4361,7 @@ function seedExercises(){ return [
 {id:'up04',name:'Diamond Push-Up',cat:'push',muscles:'Triceps, inner chest',equip:'BW',sets:3,reps:'6–15',rpe:'RPE 8',rest:'60s',tempo:'3-1-1-0',
  how:'Hands together forming a diamond under the chest. Lower the chest to the hands, elbows tucked tight.',
  cue:'Elbows stay close to the ribs throughout.',
+ miss:'Flaring the elbows. They stay close to the ribs.',
  prog:'Reps → feet elevated → slower eccentric.',
  reg:'Close-grip push-up on the knees or on an incline.',
  subs:'Push-Up · Band Triceps Pushdown'},
@@ -4268,6 +4369,7 @@ function seedExercises(){ return [
 {id:'up05',name:'Pike Push-Up',cat:'push',muscles:'Front & side delts, triceps',equip:'BW',sets:3,reps:'6–14',rpe:'RPE 8',rest:'75s',tempo:'3-1-1-0',
  how:'Downward-dog position, hips high. Lower the crown of the head towards the floor between the hands, then press back up.',
  cue:'Keep the hips stacked high over the shoulders — that is what makes it a shoulder exercise.',
+ miss:'Lowering to the chest instead of to the crown of the head.',
  prog:'Reps → feet elevated on a chair → deficit with hands raised → toward handstand push-up.',
  reg:'Hands elevated, hips lower.',
  subs:'DB Overhead Press · Band Overhead Press',
@@ -4283,6 +4385,7 @@ function seedExercises(){ return [
 {id:'up07',name:'DB Floor Press',cat:'push',muscles:'Chest, triceps, front delts',equip:'DB',sets:3,reps:'12–20',rpe:'RPE 8',rest:'60s',tempo:'3-1-1-0',
  how:'Lying on the floor, press both DBs from the chest to lockout. The upper arms stop when the elbows touch the floor.',
  cue:'Slow eccentric, hard squeeze at the top. With 5 kg, chase the burn not the weight.',
+ miss:'Bouncing the elbows off the floor. Pause, then press.',
  prog:'Reps → 4s eccentric → 2s pause on the floor → single arm.',
  reg:'Reduce reps.',
  subs:'Push-Up',
@@ -4291,6 +4394,7 @@ function seedExercises(){ return [
 {id:'up08',name:'DB Overhead Press',cat:'push',muscles:'Delts, triceps, upper chest',equip:'DB',sets:3,reps:'12–20',rpe:'RPE 8',rest:'60s',tempo:'3-0-1-1',
  how:'Standing or half-kneeling, press both DBs from the shoulders to full lockout overhead.',
  cue:'Ribs down — do not arch the lower back. Biceps end beside the ears.',
+ miss:'Arching the lower back to get the weight up. Ribs stay down.',
  prog:'Reps → slow eccentric → single arm → half-kneeling for more core demand.',
  reg:'Seated, fewer reps.',
  subs:'Pike Push-Up · Band Overhead Press'},
@@ -4298,6 +4402,7 @@ function seedExercises(){ return [
 {id:'up09',name:'DB Arnold Press',cat:'push',muscles:'All three deltoid heads',equip:'DB',sets:3,reps:'12–18',rpe:'RPE 8',rest:'60s',tempo:'3-0-2-0',
  how:'Start with the palms facing you at shoulder height. Rotate the palms outward as you press overhead, reverse on the way down.',
  cue:'Smooth continuous rotation. Control the whole path.',
+ miss:'Rushing the rotation. Turn as you press, not before.',
  prog:'Reps → slower tempo → pause at the top.',
  reg:'Standard overhead press.',
  subs:'DB Overhead Press'},
@@ -4305,6 +4410,7 @@ function seedExercises(){ return [
 {id:'up10',name:'DB Lateral Raise',cat:'push',muscles:'Side deltoids — shoulder width',equip:'DB',sets:4,reps:'15–25',rpe:'RPE 9 (near failure)',rest:'45s',tempo:'2-1-3-0',
  how:'Slight forward lean, DBs at the sides. Raise out to shoulder height leading with the elbows, pause, lower over 3 seconds.',
  cue:'Lead with the elbows, not the hands. No swinging — if you need momentum, slow down instead.',
+ miss:'Swinging with the hips. If it needs momentum the weight is too heavy.',
  prog:'Reps → 4s eccentric → 2s pause at the top → partial burnout reps after failure → lean-away single arm.',
  reg:'Fewer reps, or bend the elbows more to shorten the lever.',
  subs:'Band Lateral Raise',
@@ -4313,6 +4419,7 @@ function seedExercises(){ return [
 {id:'up11',name:'Band Lateral Raise',cat:'push',muscles:'Side delts',equip:'BAND',sets:3,reps:'15–25',rpe:'RPE 9',rest:'45s',tempo:'2-1-2-0',
  how:'Stand on the band, raise the arms out to the sides against increasing tension.',
  cue:'The band gets harder at the top — that is exactly where the side delt works hardest. Do not cheat the top.',
+ miss:'Letting the band pull the arms down fast. Control the return.',
  prog:'Shorten the band → more reps → slower eccentric.',
  reg:'Longer band.',
  subs:'DB Lateral Raise',
@@ -4321,6 +4428,7 @@ function seedExercises(){ return [
 {id:'up12',name:'DB Front Raise',cat:'push',muscles:'Front delts',equip:'DB',sets:3,reps:'12–20',rpe:'RPE 8',rest:'45s',tempo:'2-1-3-0',
  how:'Raise the DBs straight forward to shoulder height, pause, lower slowly.',
  cue:'No body swing. Stop at shoulder height.',
+ miss:'Going above shoulder height, which hands the work to the traps.',
  prog:'Reps → slower eccentric → pause.',
  reg:'Alternate arms.',
  subs:'Band Front Raise',
@@ -4329,6 +4437,7 @@ function seedExercises(){ return [
 {id:'up13',name:'Band Overhead Press',cat:'push',muscles:'Delts, triceps',equip:'BAND',sets:3,reps:'12–20',rpe:'RPE 8',rest:'60s',tempo:'2-0-2-0',
  how:'Stand on the band, press the handles overhead to lockout.',
  cue:'Tension increases at the top — keep pressing all the way.',
+ miss:'Letting the elbows flare forward. Keep them under the wrists.',
  prog:'Shorten the band → reps → single arm.',
  reg:'Longer band.',
  subs:'DB Overhead Press'},
@@ -4336,6 +4445,7 @@ function seedExercises(){ return [
 {id:'up14',name:'Band Triceps Pushdown',cat:'push',muscles:'Triceps',equip:'BAND',sets:3,reps:'15–25',rpe:'RPE 9',rest:'45s',tempo:'2-1-2-0',
  how:'Band anchored high. Elbows pinned to the sides, extend the forearms down and squeeze hard at the bottom.',
  cue:'Only the forearms move. Elbows do not drift forward.',
+ miss:'Letting the elbows drift forward. They stay pinned to the ribs.',
  prog:'Tension → reps → 2s squeeze at lockout.',
  reg:'Less tension.',
  subs:'DB Overhead Triceps Extension'},
@@ -4343,6 +4453,7 @@ function seedExercises(){ return [
 {id:'up15',name:'DB Overhead Triceps Extension',cat:'push',muscles:'Triceps (long head)',equip:'DB',sets:3,reps:'12–20',rpe:'RPE 8',rest:'45s',tempo:'3-1-1-0',
  how:'Hold one DB with both hands overhead. Lower it behind the head with a deep stretch, then extend.',
  cue:'Elbows stay narrow and pointing forward. Big stretch at the bottom is where the growth is.',
+ miss:'Flaring the elbows out. Keep them pointing forward.',
  prog:'Reps → slower eccentric → pause in the stretch → single arm.',
  reg:'Reduce range.',
  subs:'Band Triceps Pushdown · Diamond Push-Up'},
@@ -4351,6 +4462,7 @@ function seedExercises(){ return [
 {id:'ul01',name:'Band Row',cat:'pull',muscles:'Lats, rhomboids, rear delts, biceps',equip:'BAND',sets:4,reps:'12–20',rpe:'RPE 8',rest:'60s',tempo:'2-1-2-0',
  how:'Band anchored at chest height. Row the handles to the ribs, driving the elbows back and squeezing the shoulder blades.',
  cue:'Pull with the elbows, not the hands. Squeeze for a full second at the back.',
+ miss:'Shrugging at the top. The shoulders stay down as the elbows travel back.',
  prog:'Step further from the anchor → shorten the band → slower eccentric → single arm.',
  reg:'Step closer to the anchor.',
  subs:'DB Bent-Over Row · Inverted Row',
@@ -4359,6 +4471,7 @@ function seedExercises(){ return [
 {id:'ul02',name:'Band Single-Arm Row',cat:'pull',muscles:'Lats, mid-back, core anti-rotation',equip:'BAND',sets:3,reps:'12–18 / side',rpe:'RPE 8',rest:'45s',tempo:'2-1-2-0',
  how:'One handle, staggered stance. Row to the hip while resisting torso rotation.',
  cue:'Let the shoulder blade travel forward at the stretch, then pull it back and down.',
+ miss:'Rotating the torso for more range. Keep the chest square to the floor.',
  prog:'Tension → reps → slower eccentric.',
  reg:'Less tension.',
  subs:'DB Bent-Over Row'},
@@ -4366,6 +4479,7 @@ function seedExercises(){ return [
 {id:'ul03',name:'DB Bent-Over Row',cat:'pull',muscles:'Lats, rhomboids, rear delts',equip:'DB',sets:4,reps:'15–25',rpe:'RPE 8–9',rest:'60s',tempo:'2-1-3-0',
  how:'Hinge forward to about 45°, flat back. Row both DBs to the lower ribs, pause, lower slowly.',
  cue:'With light weight, the pause and slow eccentric are the whole exercise. Squeeze the blades together hard.',
+ miss:'Rounding the lower back. Hinge at the hip and keep the spine long.',
  prog:'Reps → 3–4s eccentric → 2s squeeze → single-arm.',
  reg:'Support the chest on a chair.',
  subs:'Band Row'},
@@ -4373,6 +4487,7 @@ function seedExercises(){ return [
 {id:'ul04',name:'DB Single-Arm Row',cat:'pull',muscles:'Lats, mid-back',equip:'DB+CHAIR',sets:3,reps:'15–25 / side',rpe:'RPE 8',rest:'45s',tempo:'2-1-3-0',
  how:'One hand and knee on a chair, other arm rowing the DB from a full stretch to the hip.',
  cue:'Full stretch at the bottom, elbow past the ribs at the top.',
+ miss:'Yanking with the arm. Start the pull from the shoulder blade.',
  prog:'Reps → slower eccentric → 2s pause.',
  reg:'Standing, hand on the thigh.',
  subs:'Band Single-Arm Row'},
@@ -4380,6 +4495,7 @@ function seedExercises(){ return [
 {id:'ul05',name:'Inverted Row',cat:'pull',muscles:'Lats, mid-back, biceps',equip:'CHAIR',sets:3,reps:'6–15',rpe:'RPE 8',rest:'75s',tempo:'2-1-2-0',
  how:'Lie under a sturdy table or between two stable chairs with a broom handle. Body straight, pull the chest to the edge.',
  cue:'Body rigid like a plank. Chest touches, not the chin.',
+ miss:'Letting the hips drop. Stay in one line from heel to head.',
  prog:'Lower the body angle → feet elevated → slower eccentric.',
  reg:'Bend the knees, raise the body angle.',
  subs:'Band Row',
@@ -4388,6 +4504,7 @@ function seedExercises(){ return [
 {id:'ul06',name:'Band Lat Pulldown',cat:'pull',muscles:'Lats — V-taper width',equip:'BAND',sets:3,reps:'15–25',rpe:'RPE 8',rest:'60s',tempo:'2-1-2-0',
  how:'Anchor the band high (door top or a branch). Kneel and pull the handles down to the chest, elbows driving down and back.',
  cue:'Think of pulling the elbows into your back pockets. Feel the lats, not the arms.',
+ miss:'Leaning back to finish the rep. The torso stays still.',
  prog:'Tension → kneel further back → slower eccentric → single arm.',
  reg:'Less tension.',
  subs:'Band Straight-Arm Pulldown',
@@ -4396,6 +4513,7 @@ function seedExercises(){ return [
 {id:'ul07',name:'Band Straight-Arm Pulldown',cat:'pull',muscles:'Lats (isolated)',equip:'BAND',sets:3,reps:'15–20',rpe:'RPE 8',rest:'45s',tempo:'2-1-2-0',
  how:'Band anchored high, arms straight. Pull down in an arc to the thighs, keeping the elbows locked.',
  cue:'Pure lat isolation — you should feel it directly under the armpits.',
+ miss:'Bending the elbows, which turns it into a triceps movement.',
  prog:'Tension → pause at the bottom → reps.',
  reg:'Less tension.',
  subs:'Band Lat Pulldown'},
@@ -4403,6 +4521,7 @@ function seedExercises(){ return [
 {id:'ul08',name:'Band Pull-Apart',cat:'pull',muscles:'Rear delts, rhomboids, posture',equip:'BAND',sets:3,reps:'20–30',rpe:'RPE 7',rest:'40s',tempo:'2-1-2-0',
  how:'Hold the band at shoulder height with straight arms, pull it apart until it touches the chest, squeeze, return slowly.',
  cue:'Squeeze the shoulder blades. Do not shrug.',
+ miss:'Shrugging. Keep the shoulders down and squeeze between the blades.',
  prog:'Reps → shorten the band → 2s hold at the end range.',
  reg:'Wider grip.',
  subs:'Band Face Pull · Prone Y-T-W',
@@ -4411,6 +4530,7 @@ function seedExercises(){ return [
 {id:'ul09',name:'Band Face Pull',cat:'pull',muscles:'Rear delts, external rotators, traps',equip:'BAND',sets:3,reps:'15–25',rpe:'RPE 7',rest:'45s',tempo:'2-1-2-0',
  how:'Band anchored at face height. Pull the handles towards the forehead, rotating the hands so the knuckles finish pointing behind you.',
  cue:'Finish in a double-biceps pose. External rotation is the whole point.',
+ miss:'Pulling to the chest instead of to the face.',
  prog:'Tension → reps → 2s hold at the end.',
  reg:'Less tension.',
  subs:'Band Pull-Apart',
@@ -4419,6 +4539,7 @@ function seedExercises(){ return [
 {id:'ul10',name:'Prone Y-T-W',cat:'pull',muscles:'Lower traps, rear delts, scapular control',equip:'BW',sets:3,reps:'8 each letter',rpe:'RPE 7',rest:'45s',tempo:'2-2-2-0',
  how:'Lie face down. Lift the arms off the floor in a Y shape, then a T, then a W, holding each for 2 seconds.',
  cue:'Thumbs up. Lift from the shoulder blades, not the hands. Keep the neck neutral.',
+ miss:'Lifting with the neck. The head stays down and neutral.',
  prog:'Hold time → hold the DBs → more reps.',
  reg:'Fewer reps, no hold.',
  subs:'Band Pull-Apart · Superman'},
@@ -4426,6 +4547,7 @@ function seedExercises(){ return [
 {id:'ul11',name:'Band Reverse Fly',cat:'pull',muscles:'Rear delts',equip:'BAND',sets:3,reps:'15–25',rpe:'RPE 8',rest:'45s',tempo:'2-1-2-0',
  how:'Band anchored at chest height, arms crossed and straight. Pull the arms apart and back in a wide arc.',
  cue:'Rear delts, not traps. Keep the shoulders down away from the ears.',
+ miss:'Bending the elbows through the rep. Hold one soft angle throughout.',
  prog:'Tension → reps → 2s hold.',
  reg:'Less tension.',
  subs:'Band Face Pull'},
@@ -4433,6 +4555,7 @@ function seedExercises(){ return [
 {id:'ul12',name:'DB Bicep Curl',cat:'pull',muscles:'Biceps',equip:'DB',sets:3,reps:'15–25',rpe:'RPE 9',rest:'45s',tempo:'2-1-3-1',
  how:'Curl both DBs with the elbows pinned to the sides, squeeze at the top, lower over 3 seconds.',
  cue:'No swinging. With 5 kg the eccentric and the squeeze are everything.',
+ miss:'Swinging the elbows forward. They stay by the ribs.',
  prog:'Reps → 4s eccentric → 2s peak squeeze → 1.5 reps → drop into band curls.',
  reg:'Fewer reps.',
  subs:'Band Curl · Hammer Curl'},
@@ -4440,6 +4563,7 @@ function seedExercises(){ return [
 {id:'ul13',name:'DB Hammer Curl',cat:'pull',muscles:'Brachialis, brachioradialis, forearms',equip:'DB',sets:3,reps:'15–25',rpe:'RPE 9',rest:'45s',tempo:'2-1-3-0',
  how:'Neutral grip (palms facing each other) throughout the curl.',
  cue:'Brachialis growth is what pushes the biceps up and makes the arm look thicker from the side.',
+ miss:'Rotating the wrist. The palms stay facing each other the whole way.',
  prog:'Reps → slower eccentric → cross-body variation.',
  reg:'Fewer reps.',
  subs:'DB Bicep Curl'},
@@ -4447,6 +4571,7 @@ function seedExercises(){ return [
 {id:'ul14',name:'Band Curl',cat:'pull',muscles:'Biceps',equip:'BAND',sets:3,reps:'20–30',rpe:'RPE 9',rest:'40s',tempo:'2-1-2-0',
  how:'Stand on the band and curl the handles with constant tension.',
  cue:'Peak tension at the top. Never let the band go slack.',
+ miss:'Letting the band snap the arm back down. Resist the return.',
  prog:'Shorten the band → reps.',
  reg:'Longer band.',
  subs:'DB Bicep Curl',
@@ -4455,6 +4580,7 @@ function seedExercises(){ return [
 {id:'ul15',name:'Superman',cat:'pull',muscles:'Spinal erectors, glutes, posture',equip:'BW',sets:3,reps:'10–15',rpe:'RPE 6',rest:'40s',tempo:'2-2-2-0',
  how:'Lie face down and lift the chest, arms and legs off the floor. Hold 2 seconds.',
  cue:'Lengthen rather than crunch. Keep the neck neutral and look at the floor.',
+ miss:'Craning the neck up. Look at the floor.',
  prog:'Hold time → reps → alternating swimmer variation.',
  reg:'Arms only or legs only.',
  subs:'Prone Y-T-W'},
@@ -4463,6 +4589,7 @@ function seedExercises(){ return [
 {id:'mo01',name:'90/90 Hip Switch',cat:'mobility',muscles:'Hip internal & external rotation',equip:'FLOOR',sets:2,reps:'8–10 / side',rpe:'Easy',rest:'—',tempo:'Slow',
  how:'Seated with both knees bent at 90°, one leg in front and one to the side. Rotate the knees to switch sides under control.',
  cue:'Chest tall. Do not use the hands unless you need them.',
+ miss:'Forcing the knees down with the hands. Let the hips do it.',
  prog:'Hands off the floor → pause and lift the front knee at the end range.',
  reg:'Use the hands for support, smaller range.',
  subs:'Hip Flexor Stretch',
@@ -4471,6 +4598,7 @@ function seedExercises(){ return [
 {id:'mo02',name:"World's Greatest Stretch",cat:'mobility',muscles:'Hips, hamstrings, T-spine, adductors',equip:'FLOOR',sets:2,reps:'5 / side',rpe:'Easy',rest:'—',tempo:'Slow',
  how:'Deep lunge, opposite hand down. Drop the back knee, drive the elbow towards the instep, then rotate the top arm open to the sky.',
  cue:'Reach the fingertips as far as possible on the rotation and follow with your eyes.',
+ miss:'Rushing through it. Hold each position and breathe.',
  prog:'Add a 3s hold at each end range.',
  reg:'Back knee down throughout.',
  subs:'Thoracic Rotation'},
@@ -4478,6 +4606,7 @@ function seedExercises(){ return [
 {id:'mo03',name:'Couch Stretch',cat:'mobility',muscles:'Hip flexors, quads',equip:'WALL',sets:2,reps:'45–60s / side',rpe:'Easy',rest:'—',tempo:'Hold',
  how:'Rear foot up against a wall or sofa, front foot forward in a lunge. Squeeze the rear glute and bring the torso upright.',
  cue:'Tuck the pelvis first — that is what makes it work. Breathe.',
+ miss:'Arching the lower back to get deeper. Tuck the pelvis first.',
  prog:'Longer holds, more upright torso.',
  reg:'Rear foot on the floor.',
  subs:'Hip Flexor Stretch',
@@ -4486,6 +4615,7 @@ function seedExercises(){ return [
 {id:'mo04',name:'Ankle Dorsiflexion Rock',cat:'mobility',muscles:'Ankle, calf',equip:'WALL',sets:2,reps:'10–12 / side',rpe:'Easy',rest:'—',tempo:'Slow',
  how:'Half-kneeling, front foot ~10 cm from a wall. Drive the knee forward over the toes towards the wall without lifting the heel.',
  cue:'Heel STAYS down. Move the foot further back as it improves.',
+ miss:'Letting the heel lift. It stays down throughout.',
  prog:'Increase the distance from the wall.',
  reg:'Move closer.',
  subs:'Calf Stretch',
@@ -4494,6 +4624,7 @@ function seedExercises(){ return [
 {id:'mo05',name:'Thoracic Rotation (Open Book)',cat:'mobility',muscles:'Mid-back rotation',equip:'FLOOR',sets:2,reps:'8–10 / side',rpe:'Easy',rest:'—',tempo:'Slow',
  how:'Side-lying, knees bent at 90° stacked, arms straight out in front. Open the top arm across the body, following it with your eyes.',
  cue:'The knees stay stacked and still — the rotation comes from the mid-back only.',
+ miss:'Rotating from the lower back instead of the ribcage.',
  prog:'Add a 3s hold at the end range.',
  reg:'Smaller range.',
  subs:"World's Greatest Stretch",
@@ -4502,6 +4633,7 @@ function seedExercises(){ return [
 {id:'mo06',name:'Cat-Cow',cat:'mobility',muscles:'Spine',equip:'FLOOR',sets:2,reps:'10',rpe:'Easy',rest:'—',tempo:'Slow',
  how:'On hands and knees, alternate between arching and rounding the spine, moving segment by segment.',
  cue:'Move slowly with the breath — inhale into the arch, exhale into the round.',
+ miss:'Moving fast. Match the movement to the breath.',
  prog:'More segmental control.',
  reg:'Smaller range.',
  subs:'Thoracic Rotation'},
@@ -4509,6 +4641,7 @@ function seedExercises(){ return [
 {id:'mo07',name:'Wall Slides',cat:'mobility',muscles:'Shoulders, scapular upward rotation',equip:'WALL',sets:2,reps:'10–12',rpe:'Easy',rest:'—',tempo:'Slow',
  how:'Back against the wall, forearms on the wall. Slide the arms overhead while keeping the wrists, elbows and lower back in contact.',
  cue:'Ribs down. If the lower back arches, reduce the range.',
+ miss:'Letting the lower back or the wrists come away from the wall.',
  prog:'Full overhead range with contact maintained.',
  reg:'Smaller range.',
  subs:'Shoulder CARs',
@@ -4517,6 +4650,7 @@ function seedExercises(){ return [
 {id:'mo08',name:'Shoulder CARs',cat:'mobility',muscles:'Full shoulder joint range',equip:'BW',sets:2,reps:'3–5 / side',rpe:'Easy',rest:'—',tempo:'Very slow',
  how:'Slowly trace the largest possible circle with one arm, keeping the rest of the body completely still.',
  cue:'Take 20 seconds per circle. Control every degree.',
+ miss:'Going fast and small. Go slow, and as big as control allows.',
  prog:'Slower, larger circles.',
  reg:'Smaller circles.',
  subs:'Wall Slides'},
@@ -4538,6 +4672,7 @@ function seedExercises(){ return [
 {id:'mo11',name:'Calf Stretch',cat:'mobility',muscles:'Gastrocnemius, soleus',equip:'WALL',sets:2,reps:'40s / side',rpe:'Easy',rest:'—',tempo:'Hold',
  how:'Hands on a wall, one leg back with the heel down and the knee straight (gastroc), then repeat with the knee bent (soleus).',
  cue:'Do both versions — they stretch different muscles.',
+ miss:'Letting the back heel lift or the foot turn out.',
  prog:'Longer holds.',
  reg:'Shorter holds.',
  subs:'Ankle Dorsiflexion Rock'},
@@ -7213,6 +7348,73 @@ function feedbackBias(){
 }
 
 /* ---- G · why this exercise ----------------------------------------- */
+/* Sentences, without a lookbehind - Safari only learned those recently and
+   this file has to run on whatever the user has. */
+function exSentences(s){
+  const txt=String(s||'').trim();
+  if(!txt) return [];
+  const parts=txt.match(/[^.!?]+[.!?]*/g)||[txt];
+  return parts.map(x=>x.trim()).filter(Boolean);
+}
+/* Has this person ever actually done this exercise?
+   §8: the details affordance is more visible for something new, and stops
+   being so once it is not. Read from logged sets rather than from a flag, so
+   it is true of the training that happened rather than of a screen that was
+   opened. */
+function exFamiliar(exId, excludeSessionId){
+  if(!exId) return true;
+  return !!lastPerformance(exId, null, excludeSessionId||null);
+}
+/* Everything known about an exercise, in sections, with the empty ones left
+   out. Returned as data rather than HTML so the sheet, the library and any
+   test can each present it their own way. */
+function exerciseDetail(en){
+  en = en || {};
+  const ex = exOf(en.exerciseId) || {};
+  const out = [];
+  const add = (title, kind, body) => {
+    if(body==null) return;
+    if(Array.isArray(body) && !body.length) return;
+    if(typeof body==='string' && !body.trim()) return;
+    out.push({t:title, kind:kind, body:body});
+  };
+
+  /* The instruction itself, as steps. */
+  add('How to do it','steps', exSentences(ex.how));
+  /* The cue is two or three imperatives; as bullets they can be scanned. */
+  add('Key points','bullets', exSentences(en.cue || ex.cue));
+  /* Only where one could be written accurately - see the miss field. */
+  add('Common mistake','text', ex.miss);
+  /* Where the library keeps its real cautions. */
+  add('Worth knowing','text', ex.notes);
+
+  /* The prescription, which is the other thing people open this for. */
+  const plan=[];
+  if(en.plannedSets) plan.push(['Sets', String(en.plannedSets)]);
+  if(en.plannedReps) plan.push(['Reps', String(en.plannedReps)]);
+  if(en.plannedRpe)  plan.push(['Effort', String(en.plannedRpe)]);
+  if(en.plannedRest) plan.push(['Rest', String(en.plannedRest)]);
+  if(en.tempo)       plan.push(['Tempo', String(en.tempo)]);
+  add('The plan','kv', plan);
+
+  add('How it progresses','text', ex.prog);
+  add('If it is too hard today','text', ex.reg);
+  add('Instead of this one','text', en.subs || ex.subs);
+
+  /* Why this movement is in front of you, when it is not the authored one. */
+  const why=[];
+  if(en.blockNote) why.push(en.blockNote);
+  if(en.swapNote)  why.push(en.swapNote);
+  add('Why this one','bullets', why);
+
+  const kit=[];
+  if(ex.equip) kit.push(((typeof EQ==='object'&&EQ[ex.equip])||ex.equip));
+  if(ex.muscles) kit.push('Works: '+ex.muscles);
+  add('Equipment','bullets', kit);
+
+  return out;
+}
+
 function exerciseWhy(en){
   const e=exOf(en.exerciseId);
   const bits=[];
@@ -15575,17 +15777,42 @@ function drawExercise(en,i,total){
       <div class="wm-sub">${nSets} × ${tm? esc(secsLabel(tm)) : esc(en.plannedReps)}</div>
     </div>
     <div class="wm-mid">
-      ${restActive()?'':illusHTML(e||{name:en.name},'lg')}
+      ${''/* §7 · the drawing opens the same sheet. A movement preview that
+             cannot be enlarged is a frustrating thing to squint at. */}
+      ${restActive()?'':`<button class="illus-b" id="wmIllus"
+          aria-label="Bigger illustration and instructions"
+          >${illusHTML(e||{name:en.name},'lg')}</button>`}
       ${''/* ONE line of instruction, and it is the cue - the thing a coach
              would say out loud while you are moving. The `how` paragraph that
              used to sit here as a truncated line with a More affordance is
              reference reading, and it is already in More under "How to do
              it". Two blocks of prose above the set card is what pushed the
              set card onto the Log button. */}
-      ${(en.cue||briefHow(e))?`<button class="cue" id="wmHowLine"
-          aria-label="Show full instructions">
-          <i>${svg('bulb')}</i><span>${esc(en.cue||briefHow(e))}</span>
-        </button>`:''}
+      ${''/* §2 and §5 · ONE cue, and the way to the rest of it.
+             The cue was already the button that opened the instructions and
+             never said so, so nobody pressed it. It now carries the label in
+             the reading order the brief asks for - cue, then details, then
+             the set - without adding a control to press, which §11 rules
+             out. "New" appears the first time an exercise comes up and stops
+             appearing once a set of it has been logged. */}
+      ${(()=>{
+        /* ONE cue, §4. Cues are written as two or three imperatives; the
+           first is the one that matters while moving, and the rest are in
+           Key points inside the sheet. exSentences() rather than a lookbehind
+           regex, which older Safari cannot parse. */
+        const all=en.cue||briefHow(e)||'';
+        const line=exSentences(all)[0]||all;
+        if(!line) return '';
+        const isNew=!exFamiliar(en.exerciseId, W?W.id:null);
+        return `<button class="cue" id="wmHowLine"
+          aria-label="Exercise details for ${esc(en.name)}">
+          <i>${svg('bulb')}</i>
+          <span class="cue-x">
+            <span class="cue-t">${esc(line)}</span>
+            <span class="cue-d">Exercise details${isNew?' <b>New</b>':''} ${svg('chev')}</span>
+          </span>
+        </button>`;
+      })()}
       ${''/* That this exercise is standing in for another is worth a glance,
              not a paragraph. It was a full-width warning note. */}
       ${en.blockNote?`<div class="wm-swap">${svg('swap')}<span>${esc(en.blockNote)}</span></div>`:''}
@@ -15600,8 +15827,11 @@ function drawExercise(en,i,total){
   /* Two controls, both secondary, neither part of the training loop. */
   $('#wmFoot').innerHTML=`<div class="wm-row">
       <button class="tert" id="wmPauseBtn">Pause</button>
+      ${''/* Not "Exercise details" any more: that now lives on the cue,
+             where the reading is. This sheet is mostly actions - undo, add a
+             set, replace, skip - so it is called what it is. */}
       <button class="tert wm-det" id="wmMore" aria-haspopup="dialog"
-        >Exercise details ${svg('down')}</button>
+        >Options ${svg('down')}</button>
     </div>`;
 
   /* one place that writes a set value, whether it came from a stepper button
@@ -15692,7 +15922,7 @@ function drawExercise(en,i,total){
          whole sheet as a corrections menu - and the control was called
          "More", so nothing anywhere said the instructions were in here. The
          reading comes first now, then the exceptions. */
-      {t:'How to do it', s:en.cue? en.cue.slice(0,44)+'…' : 'Cue, progression and the plan in full',
+      {t:'Exercise details', s:'How to do it, key points, the plan in full',
        icon:'book', run:()=>wmHow()},
       {t:'Why this exercise?', s:'What it covers and why it was picked',
        icon:'info', run:()=>wmWhy()},
@@ -15744,25 +15974,32 @@ function drawExercise(en,i,total){
   };
   /* the reference material, off the set screen and one tap away. The exact
      figures live here now that the screen itself speaks plainly. */
+  /* §6 · THE DETAILS SHEET.
+     Sections, built from exerciseDetail(), with the empty ones absent rather
+     than present and blank. It opens with the drawing, because the thing a
+     person came here for is usually "what does this look like" - and the
+     drawing they saw on the training screen is small. */
   const wmHow=()=>{
     const ex=exOf(en.exerciseId)||{};
-    openSheet(en.name,`
-      ${en.cue?`<div class="note acc"><b>Cue:</b> ${esc(en.cue)}</div>`:''}
-      ${ex.how?`<p class="lede">${esc(ex.how)}</p>`:''}
-      <div class="sec-t">The plan in full</div>
-      <div class="card tight">
-        <div class="kv"><span class="k">Sets</span><span class="v">${en.plannedSets}</span></div>
-        <div class="kv"><span class="k">Reps</span><span class="v">${esc(en.plannedReps||'—')}</span></div>
-        <div class="kv"><span class="k">Effort</span><span class="v">${esc(en.plannedRpe||'—')}</span></div>
-        <div class="kv"><span class="k">Rest</span><span class="v">${esc(en.plannedRest||'—')}</span></div>
-        ${en.tempo?`<div class="kv"><span class="k">Tempo</span><span class="v">${esc(en.tempo)}</span></div>`:''}
-      </div>
-      ${en.progNote?`<div class="note acc">${esc(en.progNote)}</div>`:''}
-      ${(en.target&&en.target.line)?`<div class="note">${esc(en.target.line)}</div>`:''}
-      ${ex.prog?`<div class="sec-t">How it progresses</div>
-        <p class="lede">${esc(ex.prog)}</p>`:''}
-      ${en.subs?`<div class="sec-t">If it is not working today</div>
-        <p class="lede">${esc(en.subs)}</p>`:''}`,
+    const secs=exerciseDetail(en);
+    const body=secs.map(s=>{
+      let inner='';
+      if(s.kind==='steps')
+        inner='<ol class="xd-steps">'+s.body.map(x=>`<li>${esc(x)}</li>`).join('')+'</ol>';
+      else if(s.kind==='bullets')
+        inner='<ul class="xd-pts">'+s.body.map(x=>`<li><span class="dot"></span><span>${x}</span></li>`).join('')+'</ul>';
+      else if(s.kind==='kv')
+        inner='<div class="card tight">'+s.body.map(p=>
+          `<div class="kv"><span class="k">${esc(p[0])}</span><span class="v">${esc(p[1])}</span></div>`).join('')+'</div>';
+      else
+        inner=`<p class="xd-p">${esc(s.body)}</p>`;
+      return `<div class="xd-s"><div class="xd-h">${esc(s.t)}</div>${inner}</div>`;
+    }).join('');
+    openSheet(en.name,
+      `<div class="xd-fig">${illusHTML(ex.id?ex:{name:en.name},'lg')}</div>
+       ${en.progNote?`<div class="note acc">${esc(en.progNote)}</div>`:''}
+       ${(en.target&&en.target.line)?`<div class="note">${esc(en.target.line)}</div>`:''}
+       ${body}`,
       `<button class="btn primary big block" onclick="closeSheet()">Got it</button>`);
   };
   /* G · the resolver already knew all of this and never said it */
@@ -15813,6 +16050,7 @@ function drawExercise(en,i,total){
     saveLive(); drawWM();
   });
   const hl=$('#wmHowLine'); if(hl) hl.onclick=()=>{ cancelAuto(); wmHow(); };
+  const il=$('#wmIllus');   if(il) il.onclick=()=>{ cancelAuto(); wmHow(); };
   /* Back and Next exercise are gone from the footer: forward movement is
      automatic and backward movement is an exception, so it lives under More. */
 }
@@ -16267,7 +16505,7 @@ function drawCardioStep(en,i,total){
     </div>
     <div class="btn-row">
       <button class="btn sm ghost wm-det" id="wmMore" aria-haspopup="dialog"
-        >Exercise details ${svg('down')}</button>
+        >Options ${svg('down')}</button>
     </div>`;
 
   $('#wmFoot').innerHTML=`<div class="btn-row">
