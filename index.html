@@ -1586,6 +1586,18 @@ button.cue:active{background:var(--accent-line)}
 .wm-b.live .wm-mid .illus-b .illus{flex:1 1 auto;min-height:0}
 .illus-b:active{opacity:.7}
 
+/* §7 - how many parts of this set are done. A per-side hold is two pieces
+   of work and the user needs to see which one is running and how many are
+   left, without reading a sentence about it. */
+.hold .hp{display:flex;align-items:center;justify-content:center;gap:5px;
+  margin-top:10px;font-size:11px;font-weight:700;color:var(--text-3)}
+.hold .hp i{width:22px;height:4px;border-radius:2px;background:var(--surface-3);
+  display:block}
+.hold .hp i.on{background:var(--accent)}
+.hold .hp i.now{background:var(--accent);opacity:.55;
+  box-shadow:0 0 0 2px var(--accent-line)}
+.hold .hp span{margin-left:5px}
+
 /* ---------- §6 the details sheet, in sections ---------- */
 .xd-fig{background:var(--surface-2);border-radius:14px;padding:10px 6px;
   margin-bottom:16px}
@@ -2354,7 +2366,7 @@ const SCHEMA_VERSION=3;             // bump to transform stored records
 /* A date, plus a letter when more than one build ships in a day. Without the
    letter there was no way to tell a second same-day deploy from the cached
    copy of the first, which is exactly the question "did my upload work?". */
-const APP_BUILD='2026-09-25a';
+const APP_BUILD='2026-09-29a';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */
@@ -4670,8 +4682,14 @@ function seedExercises(){ return [
  subs:'90/90 Hip Switch'},
 
 {id:'mo11',name:'Calf Stretch',cat:'mobility',muscles:'Gastrocnemius, soleus',equip:'WALL',sets:2,reps:'40s / side',rpe:'Easy',rest:'—',tempo:'Hold',
- how:'Hands on a wall, one leg back with the heel down and the knee straight (gastroc), then repeat with the knee bent (soleus).',
- cue:'Do both versions — they stretch different muscles.',
+ how:'Hands on a wall, one leg back with the heel flat on the floor. Version one: keep that back knee straight, which stretches the gastrocnemius. Version two: bend the back knee about 20 degrees while the heel stays down, which moves the stretch into the soleus underneath it.',
+ cue:'Heel stays down. The knee angle decides which muscle you are stretching.',
+ /* §8 · TWO VERSIONS, NAMED.
+    The cue used to read "Do both versions - they stretch different muscles",
+    which told the user there were two and not what they were. Declared here
+    so the timer walks them and the screen says which one is running. */
+ vers:[{n:'Straight knee', t:'Gastrocnemius'},
+       {n:'Bent knee',     t:'Soleus'}],
  miss:'Letting the back heel lift or the foot turn out.',
  prog:'Longer holds.',
  reg:'Shorter holds.',
@@ -6218,6 +6236,72 @@ function secsLabel(t){
        + (t.perSide? ' per side' : '');
 }
 
+/* ==========================================================================
+   THE PART SEQUENCE
+   -------------------------------------------------------------------------
+   One set of a timed exercise is not always one hold. "45 seconds per side"
+   is two holds; a calf stretch with a straight-knee and a bent-knee version
+   is two more again. `perSide` used to be a label suffix that changed
+   nothing, so the timer ran once per set and the user did half the work.
+
+   A sequence is the cross product of versions and sides, in the order they
+   should be done: all of one version's sides, then the next version's. Each
+   entry carries the label the screen shows while that part is running.
+
+   Nothing here is specific to an exercise. No versions and no sides gives a
+   one-part sequence, which is the old behaviour exactly - so rep-based work
+   and single holds are untouched.
+   ====================================================================== */
+const SIDE_WORDS={side:['Left','Right'], leg:['Left leg','Right leg'],
+                  arm:['Left arm','Right arm']};
+/* Which word the prescription used, so the label matches what was asked for. */
+function sideKind(reps){
+  const txt=String(reps==null?'':reps);
+  if(/\/\s*leg|each leg|per leg/i.test(txt)) return 'leg';
+  if(/\/\s*arm|each arm|per arm/i.test(txt)) return 'arm';
+  if(/\/\s*side|each side|per side/i.test(txt)) return 'side';
+  return null;
+}
+/* The versions an exercise declares, or none. Declared rather than derived:
+   "do both versions" in a description cannot tell you WHICH two. */
+function exVersions(ex){
+  if(!ex || !Array.isArray(ex.vers) || !ex.vers.length) return null;
+  return ex.vers.map(v=>({n:String(v.n||''), t:v.t?String(v.t):''}))
+                .filter(v=>v.n);
+}
+/* The ordered parts of ONE set. Always at least one. */
+function partSeq(ex, reps){
+  const kind=sideKind(reps);
+  const sides=kind ? SIDE_WORDS[kind] : null;
+  const vers=exVersions(ex);
+  const out=[];
+  (vers||[null]).forEach(v=>{
+    (sides||[null]).forEach(s=>{
+      const bits=[];
+      if(v) bits.push(v.n);
+      if(s) bits.push(s);
+      out.push({
+        ver: v? v.n : null,
+        verTarget: v? v.t : null,
+        side: s || null,
+        label: bits.length? bits.join(' \u00b7 ') : null
+      });
+    });
+  });
+  return out;
+}
+/* How much work one set of this actually is, said plainly - for the plan
+   section and for anything that needs to reason about volume. */
+function partSummary(ex, reps, secs){
+  const seq=partSeq(ex, reps);
+  if(seq.length<=1) return null;
+  const vers=exVersions(ex), kind=sideKind(reps);
+  const bits=[];
+  if(vers) bits.push(vers.length+' versions');
+  if(kind) bits.push('both '+(kind==='side'?'sides':kind==='leg'?'legs':'arms'));
+  return seq.length+' holds per set \u2014 '+bits.join(', ');
+}
+
 /* A rep prescription as numbers, or null when it is not reps at all:
    '30–40 min', '45s' and 'per side' are all in the block tables. */
 function repRange(reps){
@@ -7388,10 +7472,33 @@ function exerciseDetail(en){
   /* Where the library keeps its real cautions. */
   add('Worth knowing','text', ex.notes);
 
+  /* §10 · THE VERSIONS, NAMED AND TARGETED.
+     An exercise that prescribes two positions has to say which two. This
+     reads the declared versions rather than the description, so it cannot
+     drift out of step with what the timer actually walks. */
+  const vers=exVersions(ex);
+  if(vers && vers.length>1){
+    add('Do both versions','steps',
+        vers.map(v=>v.n + (v.t? ' \u2014 targets the '+v.t.toLowerCase() : '')));
+  }
+
   /* The prescription, which is the other thing people open this for. */
   const plan=[];
   if(en.plannedSets) plan.push(['Sets', String(en.plannedSets)]);
-  if(en.plannedReps) plan.push(['Reps', String(en.plannedReps)]);
+  if(en.plannedReps) plan.push([en.timed?'Time':'Reps', String(en.plannedReps)]);
+  /* §10 · say the real volume. "2 x 40s / side" with two versions is eight
+     holds, and a plan that does not say so is ambiguous. */
+  (function(){
+    const seq=partSeq(ex, en.plannedReps);
+    if(seq.length>1){
+      if(vers && vers.length>1) plan.push(['Versions', String(vers.length)]);
+      const kind=sideKind(en.plannedReps);
+      if(kind) plan.push(['Sides', 'Both '+(kind==='side'?'sides':kind==='leg'?'legs':'arms')]);
+      plan.push(['Per set', seq.length+' holds']);
+      if(en.plannedSets)
+        plan.push(['In total', (en.plannedSets*seq.length)+' holds']);
+    }
+  })();
   if(en.plannedRpe)  plan.push(['Effort', String(en.plannedRpe)]);
   if(en.plannedRest) plan.push(['Rest', String(en.plannedRest)]);
   if(en.tempo)       plan.push(['Tempo', String(en.tempo)]);
@@ -7415,21 +7522,139 @@ function exerciseDetail(en){
   return out;
 }
 
-function exerciseWhy(en){
-  const e=exOf(en.exerciseId);
-  const bits=[];
-  if(e&&e.pat){
-    const p=PATTERNS&&PATTERNS[e.pat];
-    bits.push('Covers <b>'+esc((p&&p.name)||e.pat)+'</b> in today’s session.');
+/* The name of a movement pattern, said properly.
+   PATTERNS is key -> string. Reading it as key -> {name} is why every
+   "Why this exercise?" screen said "Covers mob in today's session": the
+   lookup returned a string, `.name` on a string is undefined, and the
+   fallback was the raw key. */
+function patternName(pat){
+  if(!pat) return '';
+  const p = PATTERNS && PATTERNS[pat];
+  if(typeof p==='string') return p;
+  if(p && p.name) return p.name;
+  return String(pat);
+}
+/* What THIS exercise needs, in words. Not to be confused with gearNames(),
+   which takes no arguments and describes the user's whole kit - it was being
+   called with an argument it ignores, so every exercise claimed to need
+   everything the user owned. */
+function exNeedsText(ex){
+  if(!ex) return '';
+  const needs=deriveNeeds(ex)||[];
+  if(!needs.length) return 'Nothing but your bodyweight';
+  const names=needs.map(id=>{
+    const it=(typeof EQUIP_ITEMS!=='undefined')
+      ? EQUIP_ITEMS.find(x=>x.id===id) : null;
+    return it ? it.name.toLowerCase() : id;
+  });
+  if(names.length===1) return names[0].charAt(0).toUpperCase()+names[0].slice(1);
+  const last=names.pop();
+  const s=names.join(', ')+' and '+last;
+  return s.charAt(0).toUpperCase()+s.slice(1);
+}
+
+/* WHY THIS EXERCISE, IN THREE ANSWERS.
+   §4 and §5: what it targets, what it is doing in today's session, and what
+   it moves toward. Sections rather than a list of sentences, so the sheet can
+   lay them out and each one can be checked. Only the sections with something
+   to say are returned. */
+function exerciseWhyParts(en){
+  en=en||{};
+  const e=exOf(en.exerciseId)||{};
+  const out=[];
+  const add=(t,kind,body)=>{
+    if(body==null) return;
+    if(Array.isArray(body) && !body.length) return;
+    if(typeof body==='string' && !body.trim()) return;
+    out.push({t:t, kind:kind, body:body});
+  };
+
+  /* A · TARGET. From the exercise's own muscles field and its movement
+     pattern - never invented. */
+  const targets=[];
+  if(e.muscles) String(e.muscles).split(/[,;]/).forEach(m=>{
+    const s=m.trim();
+    /* The muscles field is prose - "Gastrocnemius, soleus" - so everything
+       after the first comma arrives lowercase and the chips read unevenly. */
+    if(s) targets.push(s.charAt(0).toUpperCase()+s.slice(1));
+  });
+  add('Targets','chips', targets);
+  if(e.pat) add('Movement','text', patternName(e.pat));
+
+  /* B · WHAT IT IS DOING IN TODAY'S SESSION. The session knows its own
+     category and the engine's reason for the day, so this is read rather
+     than written per exercise. */
+  const role=[];
+  const cat=(W&&W.category)||null;
+  const wname=(W&&W.workoutName)||null;
+  if(e.pat && wname){
+    role.push('Covers <b>'+esc(patternName(e.pat).toLowerCase())+'</b> in '+
+              esc(wname)+'.');
+  } else if(e.pat){
+    role.push('Covers <b>'+esc(patternName(e.pat).toLowerCase())+'</b> in today\u2019s session.');
   }
-  if(en.swapNote) bits.push(esc(en.swapNote));
+  if(e.cat==='mobility'||e.pat==='mob')
+    role.push('Mobility work is what makes the harder days repeatable.');
+  else if(e.pat==='jump'||e.pat==='bound'||e.pat==='land')
+    role.push('Explosive quality, kept short so it stays explosive.');
+  else if(e.cat==='core')
+    role.push('Trunk control is what lets the legs and the upper body work together.');
+  if(en.blockNote) role.push(esc(en.blockNote));
+  if(en.swapNote)  role.push(esc(en.swapNote));
+  add('Why today','bullets', role);
+
+  /* C · WHAT IT MOVES TOWARD. The weekly target it counts against, and the
+     sport it serves - both read from the profile, so nothing is claimed for a
+     user who never said it. */
+  const plan=[];
+  const tgtKey=(function(){
+    if(e.cat==='mobility'||e.pat==='mob') return 'mobility';
+    if(e.cat==='core') return 'core';
+    if(e.pat==='jump'||e.pat==='bound'||e.pat==='land'||e.pat==='sprint'||e.pat==='cod') return 'power';
+    if(['squat','hinge','lunge','slsquat','hipext','hamcurl','calf','tib','adduct'].indexOf(e.pat)>=0) return 'lower';
+    if(['pushh','pushv','pullh','pullv','latraise','reardelt','biceps','triceps'].indexOf(e.pat)>=0) return 'upper';
+    return null;
+  })();
+  if(tgtKey && typeof targetsNow==='function'){
+    const T=targetsNow(), M=(typeof targetMeta==='function')?targetMeta():{};
+    if(T[tgtKey]>0){
+      const label=((M[tgtKey]||[tgtKey])[0]||tgtKey).toLowerCase();
+      const P=(typeof weekProgress==='function')?weekProgress((W&&W.date)||todayISO()):null;
+      const done=P?Math.round((P[tgtKey]||0)*10)/10:null;
+      plan.push('Counts toward your <b>'+esc(label)+'</b> target'+
+        (done!=null? ' \u2014 '+done+' of '+T[tgtKey]+' this week.' : '.'));
+    }
+  }
+  if(typeof hasSportChosen==='function' && hasSportChosen()){
+    const q=(typeof sportProf==='function')?sportProf():null;
+    const sp=(typeof SPORT_LABEL==='function')?SPORT_LABEL():'';
+    if(q && q.qualities && tgtKey && tgtKey!=='upper')
+      plan.push('Feeds the '+esc(String(q.qualities).split(',')[0].trim().toLowerCase())+
+                ' that '+esc(sp.toLowerCase())+' asks for.');
+  }
+  /* What it needs, which is a plan fact rather than a coaching one. */
+  add('Plan contribution','bullets', plan);
+  add('Equipment','text', exNeedsText(e));
+
+  /* When it was last done - the one piece of history that belongs here. */
   const prev=lastPerformance(en.exerciseId, null, W?W.id:null);
   if(prev){
     const ago=daysBetween(prev.date, (W&&W.date)||todayISO());
-    bits.push('You last did it '+(ago<=0?'today':ago===1?'yesterday':ago+' days ago')+'.');
-  } else bits.push('You have not done this one before.');
-  if(e&&e.equip) bits.push('Needs: '+esc(gearNames(e.equip)||e.equip)+'.');
-  return bits;
+    add('Last time','text',
+        (ago<=0?'Today':ago===1?'Yesterday':ago+' days ago')+
+        (prev.sets&&prev.sets.length? ' \u2014 '+setsSummary(prev.sets,false) : ''));
+  } else {
+    add('Last time','text','You have not done this one before.');
+  }
+  return out;
+}
+/* Kept for anything that wants the old flat list of sentences. */
+function exerciseWhy(en){
+  return exerciseWhyParts(en).map(s=>{
+    if(s.kind==='chips')   return '<b>'+s.t+':</b> '+s.body.map(esc).join(' \u00b7 ');
+    if(s.kind==='bullets') return s.body.join(' ');
+    return '<b>'+s.t+':</b> '+esc(s.body);
+  });
 }
 
 /* ---- F · a session as plain text ------------------------------------ */
@@ -15132,10 +15357,21 @@ function startWorkout(wid,variant,date,rec){
         /* a hold is timed, not counted: derived here once so nothing
            downstream has to parse the prescription again */
         timed:setSecs(b.reps||e.reps),
+        /* §7 · THE PARTS OF ONE SET.
+           "45 seconds per side" is two holds, and a stretch with a
+           straight-knee and a bent-knee version is two more again. One part
+           means the old behaviour, so nothing rep-based changes. */
+        seq:partSeq(e, b.reps||e.reps),
         /* and a run or a ride is a clock, not a set list */
         cardio:cardioSpec(b, e), run:null,
         skipped:false,
-        sets:Array.from({length:n},()=>({reps:'',weight:'',rpe:'',done:false})) };})
+        sets:(function(){
+          const parts=partSeq(e, b.reps||e.reps).length;
+          return Array.from({length:n},()=>({reps:'',weight:'',rpe:'',done:false,
+            /* one flag per part; a single-part set keeps a one-element array
+               so every code path is the same shape */
+            p:Array.from({length:parts},()=>false)}));
+        })() };})
   };
   /* Fill every set in with what you did last time BEFORE the screen is
      drawn. Shown muted until confirmed, so nothing is recorded that the user
@@ -15346,6 +15582,61 @@ function wmNormalise(){
   if(W.phase==='warmup') W.phase='preview';
   if(W.step<0) W.step=0;
   if(W.kind==='activity') W.phase='main';
+  /* §7 · a session saved before parts existed has neither `seq` nor `p`.
+     Fill them in rather than letting the screen read undefined: a workout
+     paused yesterday has to survive today's build. */
+  (W.entries||[]).forEach(en=>{
+    if(!Array.isArray(en.seq) || !en.seq.length)
+      en.seq=partSeq(exOf(en.exerciseId), en.plannedReps);
+    const parts=Math.max(1, en.seq.length);
+    (en.sets||[]).forEach(s=>{
+      if(!Array.isArray(s.p) || s.p.length!==parts){
+        /* a set already logged counts as all of its parts done - it was
+           logged under the old model, where one tap WAS the whole set */
+        s.p=Array.from({length:parts},()=>!!s.done);
+      }
+    });
+  });
+}
+/* ==========================================================================
+   PARTS: the three questions the screen asks
+   ====================================================================== */
+/* How many parts one set of this entry has. Always at least one. */
+function partCount(en){
+  return Math.max(1, (en && Array.isArray(en.seq) && en.seq.length) ? en.seq.length : 1);
+}
+/* Which part of set n comes next, or -1 when the set is finished. */
+function partNext(en, n){
+  const s=en&&en.sets&&en.sets[n];
+  if(!s) return -1;
+  const total=partCount(en);
+  if(!Array.isArray(s.p) || s.p.length!==total) return s.done?-1:0;
+  for(let i=0;i<total;i++) if(!s.p[i]) return i;
+  return -1;
+}
+/* The label for a part - "Left", "Straight knee · Right" - or null when the
+   exercise has only one. */
+function partLabel(en, i){
+  if(!en || !Array.isArray(en.seq)) return null;
+  const p=en.seq[i];
+  return (p && p.label) || null;
+}
+/* Mark one part done, and the set with it once they all are. Returns true
+   when that completed the set, so the caller knows whether to advance. */
+function partDone(en, n, i){
+  const s=en&&en.sets&&en.sets[n];
+  if(!s) return false;
+  const total=partCount(en);
+  if(!Array.isArray(s.p) || s.p.length!==total)
+    s.p=Array.from({length:total},()=>false);
+  if(i>=0 && i<total) s.p[i]=true;
+  return s.p.every(Boolean);
+}
+/* Undo the whole set, parts included. */
+function partReset(en, n){
+  const s=en&&en.sets&&en.sets[n];
+  if(!s) return;
+  s.p=Array.from({length:partCount(en)},()=>false);
 }
 /* CURRENT, IMMEDIATE NEXT and NEXT PHASE are three different questions, and
    conflating the first two is what put "Up next: Bird Dog" above the movement
@@ -15443,8 +15734,28 @@ function wmComplete(exIdx, n){
   if(!W) return;
   const en=W.entries[exIdx]; if(!en || !en.sets[n]) return;
   const s=en.sets[n];
+  /* §7 · A MULTI-PART SET IS LOGGED ONE PART AT A TIME.
+     For an exercise with sides or versions, a tap means "that part is done".
+     The set itself completes when the last part does, and only then does the
+     rest of this function run - the carry-forward, the rest timer, the
+     advance. Undoing clears every part, or the set would read as finished
+     with holds still in it. */
+  if(!s.done && partCount(en)>1){
+    const pi=partNext(en,n);
+    if(pi>=0){
+      const whole=partDone(en,n,pi);
+      if(!whole){
+        haptic(); SOUND.set();
+        saveLive(); drawWM();
+        return;
+      }
+    }
+  }
+  if(s.done) partReset(en,n);
   s.done=!s.done;
   if(s.done){
+    /* completing it by any route means all its parts are done */
+    s.p=Array.from({length:partCount(en)},()=>true);
     if(!s.reps){ const ph=String(en.plannedReps).replace(/[^0-9–\-]/g,'').split(/[–\-]/)[0]; s.reps=ph||''; }
     if(!s.rpe){ const m=String(en.plannedRpe||'').match(/([0-9]+)/); if(m)s.rpe=m[1]; }
     if(!s.at) s.at=Date.now();          // kept for the adaptive engine
@@ -15470,6 +15781,90 @@ function wmComplete(exIdx, n){
     cancelAuto(); stopRest();
   }
   saveLive(); drawWM();
+}
+
+/* ==========================================================================
+   §3 · WEIGHT ENTRY, BOUNDED BY WHAT THE USER OWNS
+   -------------------------------------------------------------------------
+   "Add weight" used to toggle a flag and close the sheet, which enabled a
+   field two taps further on - so tapping it appeared to do nothing at all.
+
+   The presets are the honest part. Somebody with one pair of 5 kg dumbbells
+   should be offered 5 and 10, not a spinner from 0 to 200, and somebody with
+   no loadable kit at all should be told what the field is for rather than
+   handed kilograms they cannot make.
+
+   Module level rather than a closure inside the renderer: it was reachable
+   only by pressing one row, whose handler defers by 200ms, so nothing else
+   could open it - the same reason wmComplete() lives out here.
+   ====================================================================== */
+function weightPresets(){
+  const gear=(DB.profile&&DB.profile.gear)||[];
+  const kgOf=(id)=>(typeof gearKg==='function')? gearKg(id) : null;
+  const out=[];
+  const push=(v,lab)=>{ if(v==null||!(+v>0)) return;
+    const k=String(Math.round(+v*100)/100);
+    if(!out.some(p=>p.v===k)) out.push({v:k,l:lab}); };
+  if(gear.indexOf('db')>=0){
+    const d=kgOf('db')||(DB.profile&&DB.profile.dbKg)||null;
+    push(d,'one dumbbell'); push(d?d*2:null,'a pair');
+  }
+  if(gear.indexOf('kb')>=0)   push(kgOf('kb'),'kettlebell');
+  if(gear.indexOf('ball')>=0) push(kgOf('ball'),'medicine ball');
+  if(gear.indexOf('bb')>=0){  push(20,'bare bar'); push(kgOf('bb'),'loaded'); }
+  return out;
+}
+function openWeightSheet(en, n){
+  if(!en) return;
+  n = n||0;
+  const now=en.sets && en.sets[n] ? String(en.sets[n].weight||'') : '';
+  const presets=weightPresets();
+  const owns=presets.length>0;
+
+  openSheet('Weight \u00b7 '+en.name,`
+    ${owns?'':`<div class="note">Nothing on your equipment list adds load.
+      This is here for a weighted vest, a belt or anything you are holding
+      that Baseline does not know about \u2014 type it in kilograms.</div>`}
+    <div class="field"><label for="wkg">Weight</label>
+      <div class="fine">
+        <input class="inp num" type="number" inputmode="decimal" step="0.5"
+               min="0" max="300" id="wkg" value="${esc(now)}" placeholder="0">
+        <span class="hint" style="margin:0">kg</span>
+      </div>
+      ${presets.length?`<div class="pills" id="wkgP" style="margin-top:11px">${
+        presets.map(p=>`<button type="button" data-v="${esc(p.v)}"
+          class="${now===p.v?'on':''}">${esc(p.v)} kg
+          <small style="display:block;font-weight:600;opacity:.75">${esc(p.l)}</small>
+        </button>`).join('')}</div>`:''}
+      <div class="hint">Applies to every set of this exercise you have not
+        logged yet. It is saved with the session and read by the
+        progression.</div>
+    </div>
+    ${now?`<button class="btn ghost block" id="wkgClear">Remove the weight</button>`:''}`,
+    `<button class="btn primary big block" id="wkgSave">Save</button>`);
+
+  $$('#wkgP button').forEach(b=>b.onclick=()=>{
+    $('#wkg').value=b.dataset.v;
+    $$('#wkgP button').forEach(x=>x.classList.toggle('on', x===b));
+    haptic();
+  });
+  const apply=(v)=>{
+    if(!(v>0)){
+      en.wantWeight=false;
+      en.sets.forEach(s=>{ if(!s.done) s.weight=''; });
+    } else {
+      en.wantWeight=true;
+      const k=String(Math.round(v*100)/100);
+      /* a set already logged keeps what it was done with, because that is
+         what happened */
+      en.sets.forEach(s=>{ if(!s.done){ s.weight=k; s.touched=true; } });
+    }
+    saveLive(); closeSheet(); drawWM();
+    toast(v>0? v+' kg saved':'Weight removed','ok');
+  };
+  const clr=$('#wkgClear');
+  if(clr) clr.onclick=()=>apply(0);
+  $('#wkgSave').onclick=()=>apply(parseFloat($('#wkg').value));
 }
 
 /* Forward movement is the app's job, never a button the user has to find.
@@ -15736,12 +16131,27 @@ function drawExercise(en,i,total){
   const setCard = restActive() ? '' : (tm ? (()=>{
       const on = holdActive() && HOLD.ex===i && HOLD.set===cur;
       const want = +en.sets[cur].reps || tm.hi;
+      /* §7 · WHICH PART OF THE SET IS RUNNING.
+         This line used to read "Set 1 of 2 · per side", which told the user
+         to fit both sides into one 45-second hold, or to work it out. The
+         label now names the part - the side, the version, or both - and the
+         timer runs for that part alone. */
+      const np=partCount(en);
+      const pi=on ? HOLD.part : partNext(en,cur);
+      const plab=partLabel(en, pi<0?0:pi);
+      const head='Set '+(cur+1)+' of '+nSets
+        + (plab? ' · '+plab.toUpperCase() : '')
+        + (np>1 && !plab ? ' · '+(pi+1)+' of '+np : '');
       /* the target is tappable while the hold is not running, for the same
          reason the rep count is: changing it is the exception, not the flow */
       return `<div class="hold${on?' run':''}">
-        <div class="hl">Set ${cur+1} of ${nSets}${tm.perSide?' · per side':''}</div>
+        <div class="hl">${esc(head)}</div>
         ${on ? `<div class="ht num" id="holdT">${mmss(holdRemaining())}</div>`
              : `<button class="ht num" id="wsAdj" aria-label="Adjust the hold">${mmss(want)}</button>`}
+        ${np>1?`<div class="hp">${en.sets[cur].p.map((d,k)=>
+            `<i class="${d?'on':''}${k===pi?' now':''}" title="${esc(partLabel(en,k)||('Part '+(k+1)))}"></i>`
+          ).join('')}<span>${esc(
+            (en.sets[cur].p.filter(Boolean).length)+' of '+np+' done')}</span></div>`:''}
       </div>`;})()
     : `<div class="wset">
         <div class="ws-l">Set ${cur+1} of ${nSets}</div>
@@ -15756,8 +16166,14 @@ function drawExercise(en,i,total){
   const primary = restActive() ? ''
     : tm ? (()=>{ const on = holdActive() && HOLD.ex===i && HOLD.set===cur;
         const want = +en.sets[cur].reps || tm.hi;
+        /* When a set has several parts the button says which one it starts,
+           so the user is never guessing whether this is the left or the
+           right. */
+        const pi=partNext(en,cur);
+        const plab=partLabel(en, pi<0?0:pi);
+        const verb = plab ? ('Start '+plab.toLowerCase()) : 'Start the hold';
         return `<button class="btn ${on?'ghost':'primary'} big block" id="holdBtn" data-secs="${want}">${
-          on? svg('x')+' Stop' : svg('play')+' Start the hold'}</button>`;})()
+          on? svg('x')+' Stop' : svg('play')+' '+esc(verb)}</button>`;})()
     : `<button class="btn primary big block wlog" data-log="${cur}">Log set</button>`;
 
   /* Three bands. The middle one takes the slack, so the screen fills the phone
@@ -15884,7 +16300,10 @@ function drawExercise(en,i,total){
   const hb=$('#holdBtn');
   if(hb) hb.onclick=()=>{
     if(holdActive() && HOLD.ex===i) return stopHold();
-    startHold(+hb.dataset.secs||(tm?tm.hi:30), cur, en.name);
+    const pi=partNext(en,cur);
+    const plab=partLabel(en, pi<0?0:pi);
+    startHold(+hb.dataset.secs||(tm?tm.hi:30), cur,
+              en.name+(plab?' — '+plab:''), pi);
   };
   const rSkip=$('#restSkip'); if(rSkip) rSkip.onclick=()=>{ stopRest(); drawWM(); };
   const rAdd =$('#restAdd');  if(rAdd)  rAdd.onclick=()=>restAdd30();
@@ -15926,33 +16345,31 @@ function drawExercise(en,i,total){
        icon:'book', run:()=>wmHow()},
       {t:'Why this exercise?', s:'What it covers and why it was picked',
        icon:'info', run:()=>wmWhy()},
-      /* The substitution note, where the label now says information lives.
-         It was only ever a chip on the training screen, which is the right
-         size for a glance and the wrong place to explain itself. */
-      en.blockNote ? {t:'Why this one, not the other',
-       s:en.blockNote, icon:'swap', run:()=>wmWhy()} : null,
       lastDone>=0 ? {t:'Undo the last set', s:'Set '+(lastDone+1)+' back to not done',
        icon:'undo', now:true, run:()=>{ complete(lastDone); }} : null,
       {t:'Add a set', s:'One more than the plan asked for',
        icon:'plus', now:true, run:()=>{ en.sets.push({reps:'',weight:'',rpe:'',done:false});
                               en.plannedSets=en.sets.length; saveLive(); drawWM(); }},
-      i>0 ? {t:'Back an exercise', s:'Reopen '+W.entries[i-1].name,
+      i>0 ? {t:'Previous exercise',
+       s:'Return to the exercise before this one \u2014 '+W.entries[i-1].name,
        icon:'left', now:true, run:()=>{
          /* un-complete its last set, or the auto-advance would bounce straight
             back here the moment it redrew */
          const pe=W.entries[i-1];
          for(let k=pe.sets.length-1;k>=0;k--) if(pe.sets[k].done){ pe.sets[k].done=false; break; }
          stopRest(); W.step=i-1; saveLive(); drawWM(); }} : null,
-      /* only where a kilogram is not already on offer */
-      exLoadable(exOf(en.exerciseId)) ? null : {
-        t: en.wantWeight? 'Remove the weight field' : 'Add weight',
-        s: en.wantWeight? 'Back to reps only' : 'For a vest, belt or a held dumbbell',
+      /* §3 · only where a kilogram is not already on offer, and it opens a
+         weight entry rather than toggling a field two taps away. */
+      (exLoadable(exOf(en.exerciseId)) || en.timed || en.cardio) ? null : {
+        t: en.wantWeight? 'Change the weight' : 'Add weight',
+        s: en.wantWeight
+             ? (en.sets[cur>=0?cur:0].weight? 'Currently '+en.sets[cur>=0?cur:0].weight+' kg'
+                                            : 'No weight entered yet')
+             : 'For a vest, belt or a held dumbbell',
         icon:'barbell',
-        run:()=>{ en.wantWeight=!en.wantWeight;
-                  if(!en.wantWeight) en.sets.forEach(s=>{ s.weight=''; });
-                  saveLive(); drawWM(); }},
+        run:()=>wmWeight()},
       {t:'Replace exercise', s:'Something else for the same target',
-       icon:'undo', run:()=>wmSwap()},
+       icon:'swap', run:()=>wmSwap()},
       {t:'This hurt', s:'Keep it out of my sessions for 3 weeks',
        icon:'thermo', run:()=>wmHurt()},
       {t:'Add a note', s:en.note?'Note saved':'Form, how it felt',
@@ -16003,10 +16420,25 @@ function drawExercise(en,i,total){
       `<button class="btn primary big block" onclick="closeSheet()">Got it</button>`);
   };
   /* G · the resolver already knew all of this and never said it */
+  /* §4 and §5 · WHY THIS EXERCISE, IN THREE ANSWERS.
+     It used to be a flat list of sentences, one of which read "Covers mob in
+     today's session" and another of which listed the user's entire equipment
+     cupboard as things this exercise needed. Now it is sections - what it
+     targets, what it is doing today, what it moves toward - each short
+     enough to take in at a glance. */
   const wmWhy=()=>{
-    openSheet('Why this exercise?',
-      `<ul class="whyl">${exerciseWhy(en).map(b=>
-        `<li class="info"><span class="dot"></span><span>${b}</span></li>`).join('')}</ul>`,
+    const parts=exerciseWhyParts(en);
+    const body=parts.map(s=>{
+      let inner='';
+      if(s.kind==='chips')
+        inner='<div class="chips">'+s.body.map(x=>`<span class="chip">${esc(x)}</span>`).join('')+'</div>';
+      else if(s.kind==='bullets')
+        inner='<ul class="xd-pts">'+s.body.map(x=>`<li><span class="dot"></span><span>${x}</span></li>`).join('')+'</ul>';
+      else
+        inner=`<p class="xd-p">${s.kind==='raw'?s.body:esc(s.body)}</p>`;
+      return `<div class="xd-s"><div class="xd-h">${esc(s.t)}</div>${inner}</div>`;
+    }).join('');
+    openSheet('Why this exercise?', body,
       `<button class="btn primary big block" onclick="closeSheet()">Got it</button>`);
   };
   /* C · lighter than declaring an injury, which is what this used to require */
@@ -16035,6 +16467,10 @@ function drawExercise(en,i,total){
         drawWM();
       },true);
   };
+  /* §3 · the weight sheet lives at module level - see openWeightSheet().
+     It was inside this closure, which made it unreachable by anything except
+     the one row that opened it. */
+  const wmWeight=()=>openWeightSheet(en, cur>=0?cur:0);
   const wmSkip=()=>{ en.skipped=true; saveLive(); nextStep(); };
   const wmNote=()=>{
     openSheet('Note · '+en.name,`<div class="field"><label>Note for this exercise</label>
@@ -16756,20 +17192,23 @@ function weekContext(cat, addMin){
    ITSELF and lets the rest timer start, which is what makes a timed set one
    tap rather than three. */
 let holdTimer=null, holdEnd=0, holdDone=false, holdTick=-1;
-let HOLD={ex:-1, set:-1, secs:0, name:''};
+let HOLD={ex:-1, set:-1, secs:0, name:'', part:-1};
 function holdRemaining(){ return Math.max(0,(holdEnd-Date.now())/1000); }
 function holdActive(){ return holdEnd>0 && holdRemaining()>0; }
-function startHold(sec,n,name){
+function startHold(sec,n,name,part){
   stopRest();
   holdEnd=Date.now()+sec*1000; holdDone=false; holdTick=-1;
-  HOLD={ex:W?W.step:-1, set:n, secs:sec, name:name||''};
+  /* which part of the set this hold is for. -1 for a single-part set, which
+     behaves exactly as it always did. */
+  HOLD={ex:W?W.step:-1, set:n, secs:sec, name:name||'',
+        part:(part==null?-1:part)};
   audioCtx();
   clearInterval(holdTimer); holdTimer=setInterval(paintHold,200);
   drawWM();
 }
 function clearHold(){
   clearInterval(holdTimer); holdTimer=null;
-  holdEnd=0; holdTick=-1; HOLD={ex:-1,set:-1,secs:0,name:''};
+  holdEnd=0; holdTick=-1; HOLD={ex:-1,set:-1,secs:0,name:'',part:-1};
 }
 /* stopped early: record what was actually held, not what was asked for */
 function stopHold(){
@@ -16792,13 +17231,29 @@ function paintHold(){
   if(s!==holdTick){ holdTick=s; if(s>0&&s<=3) SOUND.tick(); }
   if(r<=0 && !holdDone){
     holdDone=true; haptic(); SOUND.rest();
-    notify('Hold complete', HOLD.name? HOLD.name+' — set logged' : 'Set logged');
-    const secs=HOLD.secs, n=HOLD.set, ex=HOLD.ex;
+    const secs=HOLD.secs, n=HOLD.set, ex=HOLD.ex, pi=HOLD.part;
+    const en=W && W.entries[ex];
     clearHold();
-    if(W && W.entries[ex] && W.entries[ex].sets[n]){
-      W.entries[ex].sets[n].reps=String(secs);
-      W.entries[ex].sets[n].touched=true;
+    if(en && en.sets[n]){
+      en.sets[n].reps=String(secs);
+      en.sets[n].touched=true;
     }
+    /* §7 · A PART, NOT THE SET.
+       This used to call wmComplete() the instant one hold ran out, so a
+       "45 seconds per side" set was logged after one 45-second hold and the
+       second side simply never happened. */
+    if(en && partCount(en)>1 && pi>=0){
+      const whole=partDone(en,n,pi);
+      if(!whole){
+        const nxt=partNext(en,n);
+        const lab=partLabel(en,nxt);
+        notify('Hold complete', lab? 'Next: '+lab : 'Next part');
+        saveLive(); drawWM();
+        return;
+      }
+      /* that was the last part: fall through to the ordinary log path */
+    }
+    notify('Hold complete', HOLD.name? HOLD.name+' — set logged' : 'Set logged');
     /* the ordinary log path does the work: carry-forward, the rest timer and
        the automatic move to the next exercise all live there. Called directly
        rather than by clicking a button that a timed exercise does not have. */
