@@ -3575,10 +3575,100 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   var en=W.entries[0];
   var bits=exerciseWhy(en);
   ok('it explains what the exercise covers', bits.length>0, bits.length);
-  ok('it says when you last did it',
-     bits.join(' ').indexOf('last did it')>=0
-     || bits.join(' ').indexOf('not done this one before')>=0,
-     bits.join(' | '));
+  ok('it says when you last did it', (function(){
+     var ps=exerciseWhyParts(en);
+     return ps.some(function(s){ return s.t==='Last time'; }); })(),
+     exerciseWhy(en).join(' | '));
+  /* §4 and §5 - THE TWO BUGS THAT WERE ON SCREEN.
+     "Covers mob in today's session" came from reading PATTERNS (a map of
+     key -> string) as key -> {name}, so every line printed the raw internal
+     key. And "Needs: bodyweight, dumbbells, resistance band, bench, ..."
+     came from calling gearNames(e.equip) - a function that takes no
+     arguments and returns the USER'S whole kit. */
+  (function(){
+    var ps=exerciseWhyParts(en);
+    var titles=ps.map(function(s){ return s.t; });
+    ok('why-this-exercise is sectioned', ps.length>=3, titles.join(' | '));
+    ok('and answers what it targets',
+       titles.indexOf('Targets')>=0 || titles.indexOf('Movement')>=0, titles.join(' | '));
+    ok('what it is doing today', titles.indexOf('Why today')>=0, titles.join(' | '));
+    ok('and what it moves toward',
+       titles.indexOf('Plan contribution')>=0 || titles.indexOf('Equipment')>=0,
+       titles.join(' | '));
+    /* §4C · the plan connection, where there IS a plan to connect to. It is
+       data-dependent by design - no lower-body target means no claim about
+       one - so the test creates the target rather than hoping for it. */
+    (function(){
+      var keepT=JSON.stringify(DB.targets);
+      DB.targets=Object.assign({}, JSON.parse(keepT), {lower:2, mobility:3});
+      var lw=(DB.exercises||[]).filter(function(x){ return x.cat==='lower'; })[0];
+      var p3=exerciseWhyParts({exerciseId:lw.id, name:lw.name, cue:lw.cue});
+      var t3=p3.map(function(s){ return s.t; });
+      ok('with a matching weekly target it says what it counts toward',
+         t3.indexOf('Plan contribution')>=0, t3.join(' | '));
+      var pc=p3.filter(function(s){ return s.t==='Plan contribution'; })[0];
+      ok('and names the target and the progress',
+         !!pc && pc.body.some(function(x){ return /target/i.test(x); }),
+         pc? pc.body.join(' / ') : '(none)');
+      /* and claims nothing when there is no such target */
+      DB.targets={core:2};
+      var p4=exerciseWhyParts({exerciseId:lw.id, name:lw.name, cue:lw.cue});
+      var pc4=p4.filter(function(s){ return s.t==='Plan contribution'; })[0];
+      ok('and claims no target the user does not have',
+         !pc4 || !pc4.body.some(function(x){ return /lower/i.test(x); }),
+         pc4? pc4.body.join(' / ') : 'absent');
+      DB.targets=JSON.parse(keepT);
+    })();
+    /* the chips read consistently */
+    (function(){
+      var bad=[];
+      (DB.exercises||[]).forEach(function(x){
+        var ps=exerciseWhyParts({exerciseId:x.id, name:x.name, cue:x.cue});
+        var tg=ps.filter(function(s){ return s.t==='Targets'; })[0];
+        if(!tg) return;
+        tg.body.forEach(function(c){
+          if(c && c[0] !== c[0].toUpperCase()) bad.push(x.id+': '+c);
+        });
+      });
+      ok('every target chip starts with a capital', bad.length===0,
+         bad.slice(0,5).join(' | '));
+    })();
+
+    /* no raw pattern key anywhere */
+    var all=JSON.stringify(ps);
+    var keys=Object.keys(PATTERNS||{});
+    var leaked=keys.filter(function(k){
+      /* the key as a standalone word, where its proper name differs */
+      if(patternName(k).toLowerCase()===k.toLowerCase()) return false;
+      return new RegExp('[>\\s"]'+k+'[<\\s".,]').test(all);
+    });
+    ok('no internal pattern key is shown to the user', leaked.length===0,
+       leaked.join(', ')+'  in  '+all.slice(0,160));
+    ok('and the pattern name resolves properly',
+       patternName('mob')==='Mobility' && patternName('pullv')==='Vertical pull',
+       patternName('mob')+' / '+patternName('pullv'));
+
+    /* the equipment line is about the EXERCISE, not the user */
+    var kit=ps.filter(function(s){ return s.t==='Equipment'; })[0];
+    if(kit){
+      var txt=String(kit.body);
+      var owns=(DB.profile.gear||[]).length;
+      ok('the equipment line names what the exercise needs, not the whole cupboard',
+         txt.split(',').length<=3, txt);
+      ok('and it is not just gearNames()',
+         typeof gearNames==='function' ? txt!==gearNames() : true, txt);
+    }
+    /* a bodyweight exercise must not claim to need anything */
+    (function(){
+      var bw=(DB.exercises||[]).filter(function(x){
+        return !(deriveNeeds(x)||[]).length; })[0];
+      if(!bw) return;
+      var p2=exerciseWhyParts({exerciseId:bw.id, name:bw.name, cue:bw.cue});
+      var k2=p2.filter(function(s){ return s.t==='Equipment'; })[0];
+      ok('a bodyweight exercise says it needs nothing but bodyweight',
+         !!k2 && /bodyweight/i.test(String(k2.body)), k2?String(k2.body):'(none)');
+    })();
+  })();
   /* Asserted by what the menu offers rather than by how many rows it has: a
      count breaks every time a legitimate action is added, which says nothing
      about whether the menu is right. */
@@ -4724,6 +4814,588 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
   ok('movement arrows point the way the movement goes', dir.length===0, dir.join(' | '));
 
   /* =====================================================================
+     SETS x TIME x SIDES x VERSIONS
+     The model used to flatten all four into sets-and-time, and `perSide` was
+     a label suffix that changed nothing - so "2 x 45 seconds per side" ran
+     the timer twice for 90 seconds of work when it prescribes four holds for
+     180. These check the representation first, then the timer that walks it.
+     ================================================================== */
+  (function(){
+    var T=todayISO();
+    DB.checkins[T]=DB.checkins[T]||{date:T,recovery:76,energy:7,soreness:3,
+                                    stress:3,motivation:7,sleepMin:450,pain:'None'};
+
+    /* ---- §11 the representation, before any UI ---- */
+    ok('a plain prescription is one piece of work per set',
+       partSeq({}, '8-12').length===1, partSeq({}, '8-12').length);
+    ok('per side is two', partSeq({}, '45s / side').length===2,
+       JSON.stringify(partSeq({}, '45s / side')));
+    ok('per leg is two, and says leg',
+       partSeq({}, '12-20 / leg').length===2 &&
+       /leg/i.test(partSeq({}, '12-20 / leg')[0].label||''),
+       JSON.stringify(partSeq({}, '12-20 / leg').map(function(p){return p.label;})));
+    ok('per arm is two, and says arm',
+       /arm/i.test(partSeq({}, '10 / arm')[0].label||''),
+       JSON.stringify(partSeq({}, '10 / arm').map(function(p){return p.label;})));
+    ok('"each side" counts as per side', partSeq({}, '30s each side').length===2);
+
+    /* two versions x two sides = four, in the right order */
+    var vex={vers:[{n:'Straight knee',t:'Gastrocnemius'},{n:'Bent knee',t:'Soleus'}]};
+    var seq=partSeq(vex, '40s / side');
+    ok('two versions and two sides is four pieces of work', seq.length===4, seq.length);
+    ok('and it runs one version through both sides before the next',
+       seq[0].ver==='Straight knee' && seq[1].ver==='Straight knee' &&
+       seq[2].ver==='Bent knee' && seq[3].ver==='Bent knee',
+       seq.map(function(p){return p.label;}).join(' / '));
+    ok('every part is labelled',
+       seq.every(function(p){ return p.label && p.label.length>3; }),
+       seq.map(function(p){return p.label;}).join(' | '));
+    ok('and carries what that version targets',
+       seq[0].verTarget==='Gastrocnemius' && seq[3].verTarget==='Soleus');
+    ok('two versions with no sides is two',
+       partSeq(vex, '40s').length===2, partSeq(vex,'40s').length);
+
+    /* ---- §6 and §7 the timer walks it ---- */
+    var keepS=DB.sessions; DB.sessions=[];
+    startWorkout('w_lowerA','full',T);
+    W.phase='main'; W.step=0;
+    var en=W.entries[0];
+    /* make the first entry the real multi-version case */
+    var cs=(DB.exercises||[]).filter(function(x){ return /calf stretch/i.test(x.name); })[0];
+    ok('the library has a declared multi-version exercise', !!cs && !!exVersions(cs),
+       cs? JSON.stringify(exVersions(cs)) : '(none)');
+    en.exerciseId=cs.id; en.name=cs.name; en.cue=cs.cue;
+    en.plannedReps=cs.reps; en.plannedSets=2;
+    en.timed=setSecs(cs.reps);
+    en.seq=partSeq(cs, cs.reps);
+    en.sets=[{reps:'',weight:'',rpe:'',done:false,p:[false,false,false,false]},
+             {reps:'',weight:'',rpe:'',done:false,p:[false,false,false,false]}];
+    drawWM();
+
+    ok('the prescription is per side', !!en.timed && en.timed.perSide===true);
+    ok('one set is four holds', partCount(en)===4, partCount(en));
+    ok('the whole exercise is eight', en.sets.length*partCount(en)===8);
+
+    /* the screen names the part */
+    var hl=document.querySelector('#wmBody .hold .hl');
+    ok('the card names the current part', !!hl &&
+       /STRAIGHT KNEE/i.test(hl.textContent) && /LEFT/i.test(hl.textContent),
+       hl?hl.textContent.trim():'(none)');
+    ok('and not the old ambiguous "per side"',
+       !!hl && !/\bper side\b/i.test(hl.textContent), hl?hl.textContent.trim():'');
+    var hb=document.getElementById('holdBtn');
+    ok('the button says which part it starts',
+       !!hb && /straight knee/i.test(hb.textContent), hb?hb.textContent.trim():'(none)');
+    ok('the card shows how many parts are left',
+       !!document.querySelector('#wmBody .hold .hp'),
+       (document.querySelector('#wmBody .hold .hp')||{}).textContent||'');
+
+    /* walk all four parts of set 1 */
+    var labels=[];
+    for(var k=0;k<4;k++){
+      var h2=document.querySelector('#wmBody .hold .hl');
+      labels.push(h2?h2.textContent.trim():'?');
+      /* complete the current part the way a finished hold does */
+      var pi=partNext(en,0);
+      wmComplete(0,0);
+      if(typeof stopRest==='function') stopRest();
+      drawWM();
+      if(k<3) ok('set 1 is still open after part '+(k+1),
+        en.sets[0].done!==true, 'p='+JSON.stringify(en.sets[0].p));
+    }
+    ok('four parts completes set 1', en.sets[0].done===true,
+       JSON.stringify(en.sets[0].p));
+    ok('and it walked straight-left, straight-right, bent-left, bent-right',
+       /STRAIGHT KNEE.*LEFT/i.test(labels[0]) &&
+       /STRAIGHT KNEE.*RIGHT/i.test(labels[1]) &&
+       /BENT KNEE.*LEFT/i.test(labels[2]) &&
+       /BENT KNEE.*RIGHT/i.test(labels[3]),
+       labels.join(' -> '));
+    ok('and moved on to set 2', /Set 2 of 2/i.test(
+       (document.querySelector('#wmBody .hold .hl')||{}).textContent||''),
+       (document.querySelector('#wmBody .hold .hl')||{}).textContent||'');
+
+    /* undoing a set clears every part of it */
+    wmComplete(0,0);
+    ok('undoing a set clears all of its parts',
+       en.sets[0].done===false && en.sets[0].p.every(function(x){ return !x; }),
+       JSON.stringify(en.sets[0].p));
+
+    /* ---- a normal rep exercise is untouched ---- */
+    exitWM(true);
+    startWorkout('w_lowerA','full',T);
+    W.phase='main'; W.step=0; drawWM();
+    var r0=W.entries[0];
+    ok('a rep-based exercise still has one piece of work per set',
+       partCount(r0)===1, partCount(r0));
+    var before=r0.sets.filter(function(s){ return s.done; }).length;
+    document.querySelector('#wmBody [data-log]').click();
+    if(typeof stopRest==='function'){ stopRest(); drawWM(); }
+    ok('and one tap still logs a whole set',
+       r0.sets.filter(function(s){ return s.done; }).length===before+1);
+    ok('with no part label cluttering the card',
+       !/\u00b7 (LEFT|RIGHT)/i.test(
+         (document.querySelector('#wmBody .wset .ws-l')||{}).textContent||''),
+       (document.querySelector('#wmBody .wset .ws-l')||{}).textContent||'');
+
+    /* ---- §10 the details sheet says the real volume ---- */
+    (function(){
+      var en2={exerciseId:cs.id, name:cs.name, cue:cs.cue,
+               plannedSets:2, plannedReps:cs.reps, timed:setSecs(cs.reps),
+               plannedRest:cs.rest};
+      var secs=exerciseDetail(en2);
+      var titles=secs.map(function(s){ return s.t; });
+      ok('the details name the versions', titles.indexOf('Do both versions')>=0,
+         titles.join(' | '));
+      var dv=secs.filter(function(s){ return s.t==='Do both versions'; })[0];
+      ok('and say what each one targets',
+         dv.body.length===2 && /gastrocnemius/i.test(dv.body[0]) &&
+         /soleus/i.test(dv.body[1]), dv.body.join(' / '));
+      var plan=secs.filter(function(s){ return s.t==='The plan'; })[0];
+      var flat=JSON.stringify(plan.body);
+      ok('the plan says how many versions', /Versions/.test(flat), flat);
+      ok('and how many holds in total', /8 holds/.test(flat), flat);
+      ok('no exercise still says "do both versions" without naming them',
+         (DB.exercises||[]).every(function(x){
+           if(!/both versions/i.test((x.cue||'')+(x.how||''))) return true;
+           return !!exVersions(x);
+         }),
+         (DB.exercises||[]).filter(function(x){
+           return /both versions/i.test((x.cue||'')+(x.how||'')) && !exVersions(x);
+         }).map(function(x){ return x.id; }).join(', '));
+    })();
+
+    /* ---- a resumed session from before parts existed ---- */
+    (function(){
+      var old={id:'oldw', date:T, workoutId:'w_lowerA', variant:'full',
+        phase:'main', step:0, startedAt:Date.now()-600000,
+        warmup:{name:'',dur:0,items:[]},
+        entries:[{exerciseId:cs.id, name:cs.name, plannedSets:2,
+                  plannedReps:cs.reps, cue:cs.cue, timed:setSecs(cs.reps),
+                  sets:[{reps:'40',weight:'',rpe:'',done:true},
+                        {reps:'',weight:'',rpe:'',done:false}]}]};
+      W=old;
+      wmNormalise();
+      ok('a session saved before parts existed gets a sequence',
+         Array.isArray(W.entries[0].seq) && W.entries[0].seq.length===4,
+         JSON.stringify((W.entries[0].seq||[]).length));
+      ok('a set already logged counts as all of its parts done',
+         W.entries[0].sets[0].p.every(Boolean),
+         JSON.stringify(W.entries[0].sets[0].p));
+      ok('and an unlogged one starts at the first part',
+         W.entries[0].sets[1].p.every(function(x){ return !x; }) &&
+         partNext(W.entries[0],1)===0);
+      W=null;
+    })();
+
+    DB.sessions=keepS;
+    if(document.getElementById('wmode').classList.contains('on')) exitWM(true);
+  })();
+
+  /* =====================================================================
+     §3  WEIGHT ENTRY, BOUNDED BY THE GEAR LIST
+     ================================================================== */
+  (function(){
+    var T=todayISO(), keepP=JSON.stringify(DB.profile);
+    DB.checkins[T]=DB.checkins[T]||{date:T,recovery:76,energy:7,soreness:3,
+                                    stress:3,motivation:7,sleepMin:450,pain:'None'};
+    DB.profile.gear=['db','band','bike','run']; DB.profile.dbKg=5;
+    if(DB.profile.gearKg) DB.profile.gearKg.db=5;
+
+    startWorkout('w_lowerA','full',T);
+    W.phase='main'; W.step=0;
+    /* a bodyweight exercise, which is where "Add weight" is offered */
+    var bw=(DB.exercises||[]).filter(function(x){
+      return !(deriveNeeds(x)||[]).length && x.cat!=='mobility' && x.cat!=='cardio'; })[0];
+    var en=W.entries[0];
+    en.exerciseId=bw.id; en.name=bw.name; en.cue=bw.cue;
+    en.plannedReps=bw.reps; en.timed=null; en.cardio=null;
+    en.seq=partSeq(bw,bw.reps);
+    en.sets=[{reps:'',weight:'',rpe:'',done:false,p:[false]},
+             {reps:'',weight:'',rpe:'',done:false,p:[false]}];
+    drawWM();
+
+    document.getElementById('wmMore').click();
+    var rows=Array.prototype.slice.call(
+      document.querySelectorAll('#wmMoreRows .rw-t, #wmMoreRows .rn'))
+      .map(function(e){ return e.textContent.trim(); });
+    /* Found by text, not by index: the label selector and the button list
+       are different lengths, so an index into one does not address the
+       other. */
+    var rowBtn=function(re){
+      return Array.prototype.slice.call(
+        document.querySelectorAll('#wmMoreRows button'))
+        .filter(function(b){ return re.test(b.textContent||''); })[0]||null;
+    };
+    ok('a bodyweight exercise offers Add weight',
+       rows.some(function(x){ return /add weight/i.test(x); }), rows.join(' | '));
+    var wbtn=rowBtn(/add weight/i);
+    ok('and the row is there to press', !!wbtn, rows.join(' | '));
+    /* The row's handler defers by 200ms so one sheet is not opened while
+       another closes, which a synchronous test cannot wait for. Open the
+       sheet through the same entry point the row uses. */
+    if(typeof closeSheet==='function') closeSheet();
+    openWeightSheet(en, 0);
+    ok('tapping it opens a weight entry', !!document.getElementById('wkg'),
+       (document.getElementById('sheet')||{}).textContent ?
+         document.getElementById('sheet').textContent.slice(0,80) : '(no sheet)');
+    ok('in kilograms', /kg/.test(document.getElementById('sheet').textContent));
+
+    /* the presets come from the gear list */
+    var pv=Array.prototype.slice.call(document.querySelectorAll('#wkgP button'))
+      .map(function(b){ return b.dataset.v; });
+    ok('the configured dumbbell weight is offered', pv.indexOf('5')>=0, pv.join(', '));
+    ok('and a pair of them', pv.indexOf('10')>=0, pv.join(', '));
+    ok('nothing the user does not own is offered',
+       pv.every(function(v){ return v==='5'||v==='10'; }), pv.join(', '));
+
+    /* saving writes it to every unlogged set */
+    var p0=document.querySelectorAll('#wkgP button')[0];
+    if(p0) p0.click(); else document.getElementById('wkg').value='5';
+    document.getElementById('wkgSave').click();
+    ok('the weight is saved to the exercise',
+       en.sets.every(function(s){ return s.weight==='5'; }),
+       JSON.stringify(en.sets.map(function(s){ return s.weight; })));
+    ok('and the field is switched on', en.wantWeight===true);
+
+    /* it reaches the log, and therefore the progression */
+    drawWM();
+    /* One tap per PART: the exercise this fixture picked happens to be
+       per-side, so a set is two taps. Tapping partCount() times also proves
+       the weight survives from one part to the next. */
+    for(var wk=0; wk<partCount(en); wk++){
+      var lb=document.querySelector('#wmBody [data-log]');
+      if(lb) lb.click();
+      if(typeof stopRest==='function'){ stopRest(); drawWM(); }
+    }
+    ok('a logged set carries the weight', en.sets[0].weight==='5' && en.sets[0].done,
+       'step='+W.step+' name='+(W.entries[W.step]||{}).name+
+       ' sets='+JSON.stringify(en.sets.map(function(s){
+          return {w:s.weight,d:s.done,r:s.reps}; })));
+
+    /* a loadable exercise already has a kg field, so it is NOT offered */
+    (function(){
+      var ld=(DB.exercises||[]).filter(function(x){ return exLoadable(x); })[0];
+      var e2=W.entries[1];
+      e2.exerciseId=ld.id; e2.name=ld.name; e2.timed=null; e2.cardio=null;
+      W.step=1; drawWM();
+      document.getElementById('wmMore').click();
+      var r2=Array.prototype.slice.call(
+        document.querySelectorAll('#wmMoreRows .rw-t, #wmMoreRows .rn'))
+        .map(function(e){ return e.textContent.trim(); });
+      ok('an exercise that already takes weight is not offered Add weight',
+         !r2.some(function(x){ return /add weight/i.test(x); }), r2.join(' | '));
+      if(typeof closeSheet==='function') closeSheet();
+    })();
+
+    /* nothing loadable owned: the row explains rather than offering kg */
+    (function(){
+      DB.profile.gear=[]; DB.profile.dbKg=null;
+      if(DB.profile.gearKg) DB.profile.gearKg={};
+      W.step=0; drawWM();
+      document.getElementById('wmMore').click();
+      var b3=Array.prototype.slice.call(document.querySelectorAll('#wmMoreRows button'))
+        .filter(function(b){ return /weight/i.test(b.textContent||''); })[0];
+      ok('the row is still offered with no loadable kit', !!b3,
+         'row '+(b3?'present':'absent'));
+      if(b3){
+        if(typeof closeSheet==='function') closeSheet();
+        openWeightSheet(W.entries[0], 0);
+        var sh=document.getElementById('sheet');
+        ok('with no loadable kit it explains what the field is for',
+           /vest|belt|holding/i.test(sh.textContent), sh.textContent.slice(0,120));
+        ok('and offers no presets it cannot justify',
+           document.querySelectorAll('#wkgP button').length===0,
+           document.querySelectorAll('#wkgP button').length+' presets');
+        if(typeof closeSheet==='function') closeSheet();
+      }
+    })();
+
+    /* a TIMED exercise is never offered kilograms */
+    (function(){
+      DB.profile.gear=['db']; DB.profile.dbKg=5;
+      var tm=(DB.exercises||[]).filter(function(x){ return !!setSecs(x.reps); })[0];
+      var e4=W.entries[0];
+      e4.exerciseId=tm.id; e4.name=tm.name; e4.timed=setSecs(tm.reps);
+      e4.plannedReps=tm.reps; e4.seq=partSeq(tm,tm.reps);
+      e4.sets=[{reps:'',weight:'',rpe:'',done:false,
+                p:Array.from({length:partSeq(tm,tm.reps).length},function(){return false;})}];
+      W.step=0; drawWM();
+      document.getElementById('wmMore').click();
+      var r4=Array.prototype.slice.call(
+        document.querySelectorAll('#wmMoreRows .rw-t, #wmMoreRows .rn'))
+        .map(function(e){ return e.textContent.trim(); });
+      ok('a timed hold is never offered a weight field',
+         !r4.some(function(x){ return /add weight/i.test(x); }), r4.join(' | '));
+      if(typeof closeSheet==='function') closeSheet();
+    })();
+
+    exitWM(true);
+    DB.profile=JSON.parse(keepP);
+  })();
+
+  /* =====================================================================
+     §1 and §2  THE OPTIONS ROWS
+     ================================================================== */
+  (function(){
+    var T=todayISO();
+    startWorkout('w_lowerA','full',T);
+    W.phase='main'; W.step=1; drawWM();
+    document.getElementById('wmMore').click();
+    var rows=Array.prototype.slice.call(
+      document.querySelectorAll('#wmMoreRows .rw-t, #wmMoreRows .rn'))
+      .map(function(e){ return e.textContent.trim(); });
+    var subs=Array.prototype.slice.call(
+      document.querySelectorAll('#wmMoreRows .rw-s, #wmMoreRows .rs'))
+      .map(function(e){ return e.textContent.trim(); });
+
+    ok('nothing says "Back an exercise"',
+       !rows.some(function(x){ return /back an exercise/i.test(x); }), rows.join(' | '));
+    ok('it says "Previous exercise"',
+       rows.some(function(x){ return /^previous exercise$/i.test(x); }), rows.join(' | '));
+    var pi=rows.map(function(x){ return /^previous exercise$/i.test(x); }).indexOf(true);
+    ok('and explains what that means',
+       /before this one/i.test(subs[pi]||''), subs[pi]||'');
+
+    /* §2 the replace icon */
+    /* The row itself, found by its text, and its own icon from inside it -
+       so nothing depends on two selectors returning the same length. */
+    var repRow=Array.prototype.slice.call(
+      document.querySelectorAll('#wmMoreRows button'))
+      .filter(function(b){ return /replace exercise/i.test(b.textContent||''); })[0];
+    ok('Replace exercise is present', !!repRow, rows.join(' | '));
+    var pd=function(s){ var m=String(s).match(/d="[^"]+"/g); return (m||[]).join('|'); };
+    var ricon=repRow? repRow.querySelector('svg') : null;
+    ok('and it draws the swap mark, not the undo arrow',
+       !!ricon && pd(ricon.innerHTML)===pd(ICON.swap),
+       ricon? pd(ricon.innerHTML).slice(0,70) : '(none)');
+    ok('which is a different drawing from Undo',
+       pd(ICON.swap)!==pd(ICON.undo));
+    ok('the icon is real SVG with no NaN in it',
+       !!ricon && ricon.innerHTML.indexOf('NaN')<0 &&
+       ricon.innerHTML.indexOf('undefined')<0);
+    if(ricon){
+      var ib=ricon.getBoundingClientRect();
+      ok('and is drawn at a sane size', ib.width>=12 && ib.width<=34,
+         Math.round(ib.width)+'x'+Math.round(ib.height));
+      var cs=getComputedStyle(ricon);
+      ok('with a stroke that follows the theme',
+         cs.stroke!=='none' && cs.stroke!=='', cs.stroke);
+    }
+    if(repRow){
+      var rb=repRow.getBoundingClientRect();
+      ok('the row is a comfortable target', rb.height>=44, Math.round(rb.height)+'px');
+    }
+    if(typeof closeSheet==='function') closeSheet();
+    exitWM(true);
+  })();
+
+  /* =====================================================================
+     PROGRESSIVE DISCLOSURE
+     The active screen answers three questions - what am I doing, what should
+     it look like, what should I focus on - and everything else is one
+     optional tap away. These check both halves: that the screen stays small,
+     and that nothing was lost to make it so.
+     ================================================================== */
+  (function(){
+    var T=todayISO();
+    DB.checkins[T]=DB.checkins[T]||{date:T,recovery:76,energy:7,soreness:3,
+                                    stress:3,motivation:7,sleepMin:450,pain:'None'};
+    var keepS=DB.sessions;
+    DB.sessions=[];
+    startWorkout('w_lowerA','full',T);
+    W.phase='main'; W.step=0;
+    var en=W.entries[0], ex=exOf(en.exerciseId);
+    drawWM();
+    var body=document.getElementById('wmBody');
+    var mid=body.querySelector('.wm-mid');
+
+    /* ---- §1: the screen answers three questions and stops ---- */
+    ok('the exercise is named', !!body.querySelector('.wm-ex') &&
+       body.querySelector('.wm-ex').textContent.trim().length>0);
+    ok('the prescription is there', !!body.querySelector('.wm-sub'));
+    ok('the illustration is there', !!mid.querySelector('.illus'));
+    ok('and exactly one cue', mid.querySelectorAll('.cue').length===1,
+       mid.querySelectorAll('.cue').length+' cues');
+
+    /* §4: ONE cue, not the whole cue field when that is several sentences */
+    (function(){
+      var full=en.cue||'';
+      var shown=(mid.querySelector('.cue-t')||{}).textContent||'';
+      var sents=exSentences(full);
+      if(sents.length>1){
+        ok('a multi-sentence cue is cut to its first sentence on screen',
+           shown.trim()===sents[0].trim(),
+           sents.length+' sentences, showing "'+shown.trim().slice(0,50)+'"');
+        ok('and the rest is not lost - it is in Key points',
+           exerciseDetail(en).some(function(s){
+             return s.t==='Key points' && s.body.length===sents.length; }),
+           JSON.stringify((exerciseDetail(en).filter(function(s){
+             return s.t==='Key points'; })[0]||{}).body||[]).slice(0,90));
+      } else {
+        ok('a single-sentence cue is shown whole', shown.trim()===full.trim() || shown.length>0);
+      }
+    })();
+
+    /* §10: none of the long-form material is permanently on screen */
+    (function(){
+      var txt=body.textContent;
+      var leaked=[];
+      [['the full how-to', ex.how],
+       ['the progression', ex.prog],
+       ['the regression', ex.reg],
+       ['the substitutions', ex.subs],
+       ['the notes', ex.notes]].forEach(function(p){
+        if(!p[1]) return;
+        /* compare on a distinctive slice, not the whole string */
+        var probe=String(p[1]).slice(0, 40);
+        if(probe && txt.indexOf(probe)>=0) leaked.push(p[0]);
+      });
+      ok('no long-form instruction is left on the training screen',
+         leaked.length===0, leaked.join(', '));
+      ok('and the screen is short', txt.replace(/[ ]+/g,' ').length<420,
+         txt.replace(/[ ]+/g,' ').length+' characters');
+    })();
+
+    /* ---- §5 and §2: the way in is named, and it is where the eye is ---- */
+    var cue=document.getElementById('wmHowLine');
+    ok('the cue is the way in', !!cue && cue.tagName==='BUTTON');
+    ok('and it says so', /exercise details/i.test(cue.textContent),
+       cue.textContent.replace(/[ ]+/g,' ').trim().slice(0,70));
+    ok('it sits between the cue text and the set card',
+       !!cue.querySelector('.cue-t') && !!cue.querySelector('.cue-d'));
+    ok('it is quieter than the primary action', (function(){
+      var prim=body.querySelector('.wm-bot .btn.primary');
+      if(!prim) return false;
+      var a=parseFloat(getComputedStyle(cue).fontSize);
+      var b=parseFloat(getComputedStyle(prim).fontSize);
+      return a<=b;
+    })());
+    ok('and it is a comfortable target',
+       cue.getBoundingClientRect().height>=44,
+       Math.round(cue.getBoundingClientRect().height)+'px');
+
+    /* §7: the drawing opens it too */
+    var ib=document.getElementById('wmIllus');
+    ok('the illustration is tappable', !!ib && ib.tagName==='BUTTON');
+    ok('and it is big enough to be worth tapping',
+       ib.getBoundingClientRect().height>=80,
+       Math.round(ib.getBoundingClientRect().height)+'px');
+
+    /* ---- §6: the sheet is sectioned, and complete ---- */
+    (function(){
+      var secs=exerciseDetail(en);
+      var titles=secs.map(function(s){ return s.t; });
+      ok('the details are sectioned', secs.length>=4, titles.join(' | '));
+      ok('and lead with how to do it', titles[0]==='How to do it', titles[0]);
+      ok('the how-to is steps, not a wall of prose',
+         secs[0].kind==='steps' && secs[0].body.length>=1,
+         secs[0].body.length+' steps');
+      ok('no section is empty', secs.every(function(s){
+         return Array.isArray(s.body) ? s.body.length>0 : String(s.body).trim().length>0; }),
+         titles.join(' | '));
+
+      /* NOTHING WAS LOST. Every field the library carries has a home. */
+      var missing=[];
+      if(ex.how  && !titles.some(function(x){ return x==='How to do it'; })) missing.push('how');
+      if(ex.prog && !titles.some(function(x){ return /progress/i.test(x); })) missing.push('prog');
+      if(ex.reg  && !titles.some(function(x){ return /too hard/i.test(x); })) missing.push('reg');
+      if(ex.subs && !titles.some(function(x){ return /instead/i.test(x); })) missing.push('subs');
+      if(ex.notes&& !titles.some(function(x){ return /worth knowing/i.test(x); })) missing.push('notes');
+      if(ex.equip&& !titles.some(function(x){ return /equipment/i.test(x); })) missing.push('equip');
+      ok('every field the exercise carries is presented somewhere',
+         missing.length===0, missing.join(', '));
+
+      /* and it renders */
+      cue.click();
+      var sh=document.getElementById('sheet');
+      ok('tapping the cue opens the sheet', sh.classList.contains('on'));
+      ok('the sheet shows the sections', sh.querySelectorAll('.xd-s').length===secs.length,
+         sh.querySelectorAll('.xd-s').length+' of '+secs.length);
+      ok('and opens with the drawing', !!sh.querySelector('.xd-fig .illus'));
+      ok('the steps are numbered', !!sh.querySelector('.xd-steps li'));
+      ok('it closes with one tap', !!sh.querySelector('.btn.primary'));
+      closeSheet();
+      ok('and closing it returns to the exercise', !!document.querySelector('#wmBody .wm-mid'));
+    })();
+
+    /* ---- §8: New, the first time only ---- */
+    (function(){
+      DB.sessions=[];
+      drawWM();
+      var c=document.getElementById('wmHowLine');
+      ok('an exercise never done before is flagged New',
+         /New/.test(c.textContent), c.textContent.replace(/[ ]+/g,' ').trim().slice(0,70));
+      ok('exFamiliar agrees', exFamiliar(en.exerciseId, W.id)===false);
+
+      /* log it in a past session, and the flag goes */
+      DB.sessions=[{id:'seen1', date:addDays(T,-7), workoutId:'w_lowerA', done:true,
+        entries:[{exerciseId:en.exerciseId, plannedSets:2,
+                  sets:[{done:true,reps:'10'},{done:true,reps:'10'}]}]}];
+      drawWM();
+      var c2=document.getElementById('wmHowLine');
+      ok('once it has been done, New is gone', !/New/.test(c2.textContent),
+         c2.textContent.replace(/[ ]+/g,' ').trim().slice(0,70));
+      ok('exFamiliar agrees again', exFamiliar(en.exerciseId, W.id)===true);
+      ok('but the details are still reachable',
+         /exercise details/i.test(c2.textContent));
+    })();
+
+    /* ---- §11: no extra actions were introduced ---- */
+    (function(){
+      DB.sessions=[];
+      drawWM();
+      var before=W.step;
+      var prim=document.querySelector('#wmBody .wm-bot .btn.primary');
+      ok('the primary action is still one tap to log',
+         !!prim && /log set/i.test(prim.textContent), prim?prim.textContent.trim():'-');
+      prim.click();
+      if(typeof stopRest==='function'){ stopRest(); drawWM(); }
+      ok('and logging still works without opening anything',
+         W.entries[before].sets[0].done===true);
+      ok('nothing asked for confirmation',
+         !document.getElementById('sheet').classList.contains('on'));
+    })();
+
+    exitWM(true);
+    DB.sessions=keepS;
+  })();
+
+  /* =====================================================================
+     §14  DIFFERENT EXERCISE TYPES NEED DIFFERENT INSTRUCTION
+     ================================================================== */
+  (function(){
+    var byCat={};
+    (DB.exercises||[]).forEach(function(e){ (byCat[e.cat]=byCat[e.cat]||[]).push(e); });
+    var want=['lower','push','pull','core','plyo','mobility'];
+    var thin=[], noCue=[];
+    want.forEach(function(cat){
+      (byCat[cat]||[]).forEach(function(e){
+        var en={exerciseId:e.id, name:e.name, cue:e.cue,
+                plannedSets:e.sets, plannedReps:e.reps,
+                plannedRpe:e.rpe, plannedRest:e.rest, tempo:e.tempo};
+        var secs=exerciseDetail(en);
+        if(secs.length<3) thin.push(e.id+' '+e.name+' ('+secs.length+' sections)');
+        if(!exSentences(e.cue||'').length) noCue.push(e.id+' '+e.name);
+      });
+    });
+    ok('every exercise in every category has a cue to show',
+       noCue.length===0, noCue.slice(0,6).join(' | '));
+    ok('and enough detail behind it to learn from',
+       thin.length===0, thin.slice(0,6).join(' | '));
+
+    /* the instruction is exercise-specific, not a template */
+    var cues={}, dupes=[];
+    (DB.exercises||[]).forEach(function(e){
+      var c=(e.cue||'').trim().toLowerCase();
+      if(!c) return;
+      if(cues[c]) dupes.push(cues[c]+' = '+e.id); else cues[c]=e.id;
+    });
+    ok('no two exercises share the same coaching cue',
+       dupes.length===0, dupes.slice(0,5).join(' | '));
+  })();
+
+  /* =====================================================================
      §2  "HOW WAS THAT?" HAS TO DO SOMETHING
      The pills rendered, styled themselves as interactive, and had no click
      handler at all - so `.on` was never set and W.feedback was always null.
@@ -4871,14 +5543,20 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
     drawWM();
 
     var more=document.getElementById('wmMore');
-    ok('the details control exists', !!more);
+    ok('the footer control exists', !!more);
     ok('and it is not called "More"', !/^more$/i.test(more.textContent.trim()),
        more.textContent.trim());
-    ok('it says what is behind it', /exercise details/i.test(more.textContent),
+    /* The instruction affordance moved onto the cue, in the reading order.
+       The footer sheet is mostly actions, so it is named for those. */
+    ok('the footer names the actions it holds', /options/i.test(more.textContent),
        more.textContent.trim());
     ok('it is a comfortable tap target',
        more.getBoundingClientRect().height>=44,
        Math.round(more.getBoundingClientRect().height)+'px');
+    var cueBtn=document.getElementById('wmHowLine');
+    ok('the cue carries the details label', !!cueBtn &&
+       /exercise details/i.test(cueBtn.textContent),
+       cueBtn?cueBtn.textContent.replace(/[ ]+/g,' ').trim().slice(0,80):'(none)');
 
     var mid=document.querySelector('#wmBody .wm-mid');
     ok('the training screen still shows one cue and no paragraphs',
@@ -4894,9 +5572,19 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
       var rows=Array.prototype.slice.call(sheet.querySelectorAll('.rw-t, .rn'))
         .map(function(e){ return e.textContent.trim(); });
       ok('the reading comes first, not the corrections',
-         /how to do it/i.test(rows[0]||''), rows.slice(0,3).join(' | '));
-      ok('the substitution note is in there',
-         rows.some(function(x){ return /why this one/i.test(x); }), rows.join(' | '));
+         /exercise details/i.test(rows[0]||''), rows.slice(0,3).join(' | '));
+      /* The substitution note used to be a row of its own in this sheet. It
+         is part of WHY this exercise is in front of you, so it is a bullet
+         inside "Why this exercise?" instead - one row fewer, nothing lost. */
+      ok('the substitution note is in why-this-exercise', (function(){
+         var e0=W.entries[0];
+         var keep=e0.blockNote;
+         e0.blockNote='Swapped from Chin-Up - needs equipment you do not have.';
+         var found=exerciseWhyParts(e0).some(function(s){
+           return s.kind==='bullets' && s.body.some(function(b){
+             return /Chin-Up/.test(b); }); });
+         e0.blockNote=keep;
+         return found; })(), rows.join(' | '));
       ok('and so is why the exercise was picked',
          rows.some(function(x){ return /why this exercise/i.test(x); }), rows.join(' | '));
     }
@@ -7278,7 +7966,14 @@ ok('a stopped timer stays stopped', !restActive());
   startWorkout('w_lowerA','full',T);
   W.phase='main'; W.step=0; drawWM();
   var total=W.entries.length;
-  var plannedSets=W.entries.reduce(function(a,e){ return a+(e.timed||e.cardio?0:e.sets.length); },0);
+  /* The real minimum is one tap per PART of a set, not per set: a per-side
+     hold is two pieces of work and cannot honestly be one tap. partCount()
+     is 1 for everything that is not sided or multi-version, so this is the
+     same number as before for every rep-based exercise. */
+  var plannedSets=W.entries.reduce(function(a,e){
+    return a+(e.timed||e.cardio?0:e.sets.length*partCount(e)); },0);
+  var plannedParts=W.entries.reduce(function(a,e){
+    return a+(e.cardio?0:e.sets.length*partCount(e)); },0);
 
   ok('the screen opens on the first exercise, first set',
      W.step===0 && /SET 1 OF/i.test(document.querySelector('.wset .ws-l').textContent),
@@ -7296,8 +7991,15 @@ ok('a stopped timer stays stopped', !restActive());
     if(nm && seen.indexOf(nm.textContent)<0) seen.push(nm.textContent);
     b.click(); taps++;
   }
-  ok('the whole workout is one tap per set',
-     taps===plannedSets, taps+' taps for '+plannedSets+' planned sets');
+  ok('the whole workout is one tap per piece of work',
+     taps===plannedSets, taps+' taps for '+plannedSets+' pieces of work');
+  /* And the parts are real: a sided exercise must have more parts than sets. */
+  (function(){
+    var sided=W.entries.filter(function(e){ return partCount(e)>1; });
+    ok('a per-side prescription is more than one piece of work per set',
+       sided.every(function(e){ return partCount(e)===e.seq.length && e.seq.length>1; }),
+       sided.map(function(e){ return e.name+' x'+partCount(e); }).join(', ')||'none in this workout');
+  })();
   ok('and every exercise was visited without a navigation tap',
      seen.length===total, seen.length+' of '+total+': '+seen.join(', '));
   ok('it ends on the finish screen by itself',
@@ -7513,9 +8215,12 @@ ok('a stopped timer stays stopped', !restActive());
   // ...and the exact figures are still one tap away. Through the how-to line
   // rather than the More menu, whose handlers run behind a 200ms close.
   document.getElementById('wmHowLine').click();
+  /* The figures, not the heading that happens to introduce them. This used
+     to match "The plan in full" and broke when the section was renamed,
+     which is a test failing on decoration rather than on contract. */
   ok('the plan in full is one tap away', (function(){
      var h=document.getElementById('sheet').innerHTML;
-     return /The plan in full/.test(h) && /Effort/.test(h) && /Rest/.test(h); })(),
+     return /Sets/.test(h) && /Reps/.test(h) && /Effort/.test(h) && /Rest/.test(h); })(),
      document.getElementById('sheet').innerHTML.slice(0,300));
   ok('and the More menu offers it too', (function(){
      closeSheet(); document.getElementById('wmMore').click();
@@ -7703,7 +8408,9 @@ ok('a stopped timer stays stopped', !restActive());
   document.getElementById('wmHowLine').click();
   ok('tapping it opens the full instructions',
      document.getElementById('sheet').classList.contains('on')
-     && /The plan in full/.test(document.getElementById('sheet').innerHTML));
+     && /Sets/.test(document.getElementById('sheet').innerHTML)
+     && /Reps/.test(document.getElementById('sheet').innerHTML),
+     document.getElementById('sheet').innerHTML.slice(0,160));
   closeSheet();
   exitWM(true); DB.checkins=keepC;
 })();
