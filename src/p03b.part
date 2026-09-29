@@ -863,6 +863,72 @@ function secsLabel(t){
        + (t.perSide? ' per side' : '');
 }
 
+/* ==========================================================================
+   THE PART SEQUENCE
+   -------------------------------------------------------------------------
+   One set of a timed exercise is not always one hold. "45 seconds per side"
+   is two holds; a calf stretch with a straight-knee and a bent-knee version
+   is two more again. `perSide` used to be a label suffix that changed
+   nothing, so the timer ran once per set and the user did half the work.
+
+   A sequence is the cross product of versions and sides, in the order they
+   should be done: all of one version's sides, then the next version's. Each
+   entry carries the label the screen shows while that part is running.
+
+   Nothing here is specific to an exercise. No versions and no sides gives a
+   one-part sequence, which is the old behaviour exactly - so rep-based work
+   and single holds are untouched.
+   ====================================================================== */
+const SIDE_WORDS={side:['Left','Right'], leg:['Left leg','Right leg'],
+                  arm:['Left arm','Right arm']};
+/* Which word the prescription used, so the label matches what was asked for. */
+function sideKind(reps){
+  const txt=String(reps==null?'':reps);
+  if(/\/\s*leg|each leg|per leg/i.test(txt)) return 'leg';
+  if(/\/\s*arm|each arm|per arm/i.test(txt)) return 'arm';
+  if(/\/\s*side|each side|per side/i.test(txt)) return 'side';
+  return null;
+}
+/* The versions an exercise declares, or none. Declared rather than derived:
+   "do both versions" in a description cannot tell you WHICH two. */
+function exVersions(ex){
+  if(!ex || !Array.isArray(ex.vers) || !ex.vers.length) return null;
+  return ex.vers.map(v=>({n:String(v.n||''), t:v.t?String(v.t):''}))
+                .filter(v=>v.n);
+}
+/* The ordered parts of ONE set. Always at least one. */
+function partSeq(ex, reps){
+  const kind=sideKind(reps);
+  const sides=kind ? SIDE_WORDS[kind] : null;
+  const vers=exVersions(ex);
+  const out=[];
+  (vers||[null]).forEach(v=>{
+    (sides||[null]).forEach(s=>{
+      const bits=[];
+      if(v) bits.push(v.n);
+      if(s) bits.push(s);
+      out.push({
+        ver: v? v.n : null,
+        verTarget: v? v.t : null,
+        side: s || null,
+        label: bits.length? bits.join(' \u00b7 ') : null
+      });
+    });
+  });
+  return out;
+}
+/* How much work one set of this actually is, said plainly - for the plan
+   section and for anything that needs to reason about volume. */
+function partSummary(ex, reps, secs){
+  const seq=partSeq(ex, reps);
+  if(seq.length<=1) return null;
+  const vers=exVersions(ex), kind=sideKind(reps);
+  const bits=[];
+  if(vers) bits.push(vers.length+' versions');
+  if(kind) bits.push('both '+(kind==='side'?'sides':kind==='leg'?'legs':'arms'));
+  return seq.length+' holds per set \u2014 '+bits.join(', ');
+}
+
 /* A rep prescription as numbers, or null when it is not reps at all:
    '30–40 min', '45s' and 'per side' are all in the block tables. */
 function repRange(reps){
@@ -1993,21 +2059,229 @@ function feedbackBias(){
 }
 
 /* ---- G · why this exercise ----------------------------------------- */
-function exerciseWhy(en){
-  const e=exOf(en.exerciseId);
-  const bits=[];
-  if(e&&e.pat){
-    const p=PATTERNS&&PATTERNS[e.pat];
-    bits.push('Covers <b>'+esc((p&&p.name)||e.pat)+'</b> in today’s session.');
+/* Sentences, without a lookbehind - Safari only learned those recently and
+   this file has to run on whatever the user has. */
+function exSentences(s){
+  const txt=String(s||'').trim();
+  if(!txt) return [];
+  const parts=txt.match(/[^.!?]+[.!?]*/g)||[txt];
+  return parts.map(x=>x.trim()).filter(Boolean);
+}
+/* Has this person ever actually done this exercise?
+   §8: the details affordance is more visible for something new, and stops
+   being so once it is not. Read from logged sets rather than from a flag, so
+   it is true of the training that happened rather than of a screen that was
+   opened. */
+function exFamiliar(exId, excludeSessionId){
+  if(!exId) return true;
+  return !!lastPerformance(exId, null, excludeSessionId||null);
+}
+/* Everything known about an exercise, in sections, with the empty ones left
+   out. Returned as data rather than HTML so the sheet, the library and any
+   test can each present it their own way. */
+function exerciseDetail(en){
+  en = en || {};
+  const ex = exOf(en.exerciseId) || {};
+  const out = [];
+  const add = (title, kind, body) => {
+    if(body==null) return;
+    if(Array.isArray(body) && !body.length) return;
+    if(typeof body==='string' && !body.trim()) return;
+    out.push({t:title, kind:kind, body:body});
+  };
+
+  /* The instruction itself, as steps. */
+  add('How to do it','steps', exSentences(ex.how));
+  /* The cue is two or three imperatives; as bullets they can be scanned. */
+  add('Key points','bullets', exSentences(en.cue || ex.cue));
+  /* Only where one could be written accurately - see the miss field. */
+  add('Common mistake','text', ex.miss);
+  /* Where the library keeps its real cautions. */
+  add('Worth knowing','text', ex.notes);
+
+  /* §10 · THE VERSIONS, NAMED AND TARGETED.
+     An exercise that prescribes two positions has to say which two. This
+     reads the declared versions rather than the description, so it cannot
+     drift out of step with what the timer actually walks. */
+  const vers=exVersions(ex);
+  if(vers && vers.length>1){
+    add('Do both versions','steps',
+        vers.map(v=>v.n + (v.t? ' \u2014 targets the '+v.t.toLowerCase() : '')));
   }
-  if(en.swapNote) bits.push(esc(en.swapNote));
+
+  /* The prescription, which is the other thing people open this for. */
+  const plan=[];
+  if(en.plannedSets) plan.push(['Sets', String(en.plannedSets)]);
+  if(en.plannedReps) plan.push([en.timed?'Time':'Reps', String(en.plannedReps)]);
+  /* §10 · say the real volume. "2 x 40s / side" with two versions is eight
+     holds, and a plan that does not say so is ambiguous. */
+  (function(){
+    const seq=partSeq(ex, en.plannedReps);
+    if(seq.length>1){
+      if(vers && vers.length>1) plan.push(['Versions', String(vers.length)]);
+      const kind=sideKind(en.plannedReps);
+      if(kind) plan.push(['Sides', 'Both '+(kind==='side'?'sides':kind==='leg'?'legs':'arms')]);
+      plan.push(['Per set', seq.length+' holds']);
+      if(en.plannedSets)
+        plan.push(['In total', (en.plannedSets*seq.length)+' holds']);
+    }
+  })();
+  if(en.plannedRpe)  plan.push(['Effort', String(en.plannedRpe)]);
+  if(en.plannedRest) plan.push(['Rest', String(en.plannedRest)]);
+  if(en.tempo)       plan.push(['Tempo', String(en.tempo)]);
+  add('The plan','kv', plan);
+
+  add('How it progresses','text', ex.prog);
+  add('If it is too hard today','text', ex.reg);
+  add('Instead of this one','text', en.subs || ex.subs);
+
+  /* Why this movement is in front of you, when it is not the authored one. */
+  const why=[];
+  if(en.blockNote) why.push(en.blockNote);
+  if(en.swapNote)  why.push(en.swapNote);
+  add('Why this one','bullets', why);
+
+  const kit=[];
+  if(ex.equip) kit.push(((typeof EQ==='object'&&EQ[ex.equip])||ex.equip));
+  if(ex.muscles) kit.push('Works: '+ex.muscles);
+  add('Equipment','bullets', kit);
+
+  return out;
+}
+
+/* The name of a movement pattern, said properly.
+   PATTERNS is key -> string. Reading it as key -> {name} is why every
+   "Why this exercise?" screen said "Covers mob in today's session": the
+   lookup returned a string, `.name` on a string is undefined, and the
+   fallback was the raw key. */
+function patternName(pat){
+  if(!pat) return '';
+  const p = PATTERNS && PATTERNS[pat];
+  if(typeof p==='string') return p;
+  if(p && p.name) return p.name;
+  return String(pat);
+}
+/* What THIS exercise needs, in words. Not to be confused with gearNames(),
+   which takes no arguments and describes the user's whole kit - it was being
+   called with an argument it ignores, so every exercise claimed to need
+   everything the user owned. */
+function exNeedsText(ex){
+  if(!ex) return '';
+  const needs=deriveNeeds(ex)||[];
+  if(!needs.length) return 'Nothing but your bodyweight';
+  const names=needs.map(id=>{
+    const it=(typeof EQUIP_ITEMS!=='undefined')
+      ? EQUIP_ITEMS.find(x=>x.id===id) : null;
+    return it ? it.name.toLowerCase() : id;
+  });
+  if(names.length===1) return names[0].charAt(0).toUpperCase()+names[0].slice(1);
+  const last=names.pop();
+  const s=names.join(', ')+' and '+last;
+  return s.charAt(0).toUpperCase()+s.slice(1);
+}
+
+/* WHY THIS EXERCISE, IN THREE ANSWERS.
+   §4 and §5: what it targets, what it is doing in today's session, and what
+   it moves toward. Sections rather than a list of sentences, so the sheet can
+   lay them out and each one can be checked. Only the sections with something
+   to say are returned. */
+function exerciseWhyParts(en){
+  en=en||{};
+  const e=exOf(en.exerciseId)||{};
+  const out=[];
+  const add=(t,kind,body)=>{
+    if(body==null) return;
+    if(Array.isArray(body) && !body.length) return;
+    if(typeof body==='string' && !body.trim()) return;
+    out.push({t:t, kind:kind, body:body});
+  };
+
+  /* A · TARGET. From the exercise's own muscles field and its movement
+     pattern - never invented. */
+  const targets=[];
+  if(e.muscles) String(e.muscles).split(/[,;]/).forEach(m=>{
+    const s=m.trim();
+    /* The muscles field is prose - "Gastrocnemius, soleus" - so everything
+       after the first comma arrives lowercase and the chips read unevenly. */
+    if(s) targets.push(s.charAt(0).toUpperCase()+s.slice(1));
+  });
+  add('Targets','chips', targets);
+  if(e.pat) add('Movement','text', patternName(e.pat));
+
+  /* B · WHAT IT IS DOING IN TODAY'S SESSION. The session knows its own
+     category and the engine's reason for the day, so this is read rather
+     than written per exercise. */
+  const role=[];
+  const cat=(W&&W.category)||null;
+  const wname=(W&&W.workoutName)||null;
+  if(e.pat && wname){
+    role.push('Covers <b>'+esc(patternName(e.pat).toLowerCase())+'</b> in '+
+              esc(wname)+'.');
+  } else if(e.pat){
+    role.push('Covers <b>'+esc(patternName(e.pat).toLowerCase())+'</b> in today\u2019s session.');
+  }
+  if(e.cat==='mobility'||e.pat==='mob')
+    role.push('Mobility work is what makes the harder days repeatable.');
+  else if(e.pat==='jump'||e.pat==='bound'||e.pat==='land')
+    role.push('Explosive quality, kept short so it stays explosive.');
+  else if(e.cat==='core')
+    role.push('Trunk control is what lets the legs and the upper body work together.');
+  if(en.blockNote) role.push(esc(en.blockNote));
+  if(en.swapNote)  role.push(esc(en.swapNote));
+  add('Why today','bullets', role);
+
+  /* C · WHAT IT MOVES TOWARD. The weekly target it counts against, and the
+     sport it serves - both read from the profile, so nothing is claimed for a
+     user who never said it. */
+  const plan=[];
+  const tgtKey=(function(){
+    if(e.cat==='mobility'||e.pat==='mob') return 'mobility';
+    if(e.cat==='core') return 'core';
+    if(e.pat==='jump'||e.pat==='bound'||e.pat==='land'||e.pat==='sprint'||e.pat==='cod') return 'power';
+    if(['squat','hinge','lunge','slsquat','hipext','hamcurl','calf','tib','adduct'].indexOf(e.pat)>=0) return 'lower';
+    if(['pushh','pushv','pullh','pullv','latraise','reardelt','biceps','triceps'].indexOf(e.pat)>=0) return 'upper';
+    return null;
+  })();
+  if(tgtKey && typeof targetsNow==='function'){
+    const T=targetsNow(), M=(typeof targetMeta==='function')?targetMeta():{};
+    if(T[tgtKey]>0){
+      const label=((M[tgtKey]||[tgtKey])[0]||tgtKey).toLowerCase();
+      const P=(typeof weekProgress==='function')?weekProgress((W&&W.date)||todayISO()):null;
+      const done=P?Math.round((P[tgtKey]||0)*10)/10:null;
+      plan.push('Counts toward your <b>'+esc(label)+'</b> target'+
+        (done!=null? ' \u2014 '+done+' of '+T[tgtKey]+' this week.' : '.'));
+    }
+  }
+  if(typeof hasSportChosen==='function' && hasSportChosen()){
+    const q=(typeof sportProf==='function')?sportProf():null;
+    const sp=(typeof SPORT_LABEL==='function')?SPORT_LABEL():'';
+    if(q && q.qualities && tgtKey && tgtKey!=='upper')
+      plan.push('Feeds the '+esc(String(q.qualities).split(',')[0].trim().toLowerCase())+
+                ' that '+esc(sp.toLowerCase())+' asks for.');
+  }
+  /* What it needs, which is a plan fact rather than a coaching one. */
+  add('Plan contribution','bullets', plan);
+  add('Equipment','text', exNeedsText(e));
+
+  /* When it was last done - the one piece of history that belongs here. */
   const prev=lastPerformance(en.exerciseId, null, W?W.id:null);
   if(prev){
     const ago=daysBetween(prev.date, (W&&W.date)||todayISO());
-    bits.push('You last did it '+(ago<=0?'today':ago===1?'yesterday':ago+' days ago')+'.');
-  } else bits.push('You have not done this one before.');
-  if(e&&e.equip) bits.push('Needs: '+esc(gearNames(e.equip)||e.equip)+'.');
-  return bits;
+    add('Last time','text',
+        (ago<=0?'Today':ago===1?'Yesterday':ago+' days ago')+
+        (prev.sets&&prev.sets.length? ' \u2014 '+setsSummary(prev.sets,false) : ''));
+  } else {
+    add('Last time','text','You have not done this one before.');
+  }
+  return out;
+}
+/* Kept for anything that wants the old flat list of sentences. */
+function exerciseWhy(en){
+  return exerciseWhyParts(en).map(s=>{
+    if(s.kind==='chips')   return '<b>'+s.t+':</b> '+s.body.map(esc).join(' \u00b7 ');
+    if(s.kind==='bullets') return s.body.join(' ');
+    return '<b>'+s.t+':</b> '+esc(s.body);
+  });
 }
 
 /* ---- F · a session as plain text ------------------------------------ */
