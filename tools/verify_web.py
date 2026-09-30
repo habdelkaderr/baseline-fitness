@@ -29,28 +29,37 @@ print("  unexpected extra files:", extra or "none")
 
 # ---------------------------------------------------------------------------
 # FRESHNESS. Everything below reads site/index.html, so a stale file means the
-# whole report describes code that is not the code. This has actually happened:
-# a run passed all twelve privacy gates against a build made before the privacy
-# copy was edited. Cheap to check, so it is checked first and it is fatal.
+# whole report describes code that is not the code. This has happened twice.
+#
+# Timestamps were not enough: make_web.py refreshes the output's mtime even
+# when its own input was stale, so the file looked new and was not. This
+# compares CONTENT instead - site/index.html must be exactly the src/ parts
+# concatenated, with the two icon links rewritten and line endings normalised.
+# That is also the contract tools/build.mjs implements, so this doubles as a
+# standing proof that the Cloudflare build and the local one agree.
 print("")
-print("-- BUILD IS NOT STALE --")
-_inputs = []
-for _d, _pat in ((os.path.join(PROJECT, "src"), ".part"),
-                 (_HERE, "make_web.py")):
-    if os.path.isdir(_d):
-        for _f in sorted(os.listdir(_d)):
-            if _f.endswith(_pat): _inputs.append(os.path.join(_d, _f))
-    elif os.path.exists(_d):
-        _inputs.append(_d)
-_mk = os.path.join(_HERE, "make_web.py")
-if os.path.exists(_mk) and _mk not in _inputs: _inputs.append(_mk)
-_built = os.path.getmtime(idx)
-_newer = [os.path.basename(p) for p in _inputs if os.path.getmtime(p) > _built + 1]
-print("  inputs checked              : %d" % len(_inputs))
-print("  newer than site/index.html  : %s" % (", ".join(_newer) if _newer else "none"))
-stale = bool(_newer)
+print("-- BUILD MATCHES SOURCE --")
+_PARTS = ["p01","p02","p03","p03b","p04","p04b",
+          "p05","p06","p07","p08","p09","p10"]
+_cat = ""
+for _n in _PARTS:
+    _cat += io.open(os.path.join(PROJECT, "src", _n + ".part"),
+                    encoding="utf-8", newline="").read()
+_cat = _cat.replace('href="icon-180.png"', 'href="icons/icon-180.png"')
+_cat = _cat.replace('href="icon-512.png"', 'href="icons/icon-512.png"')
+_built = io.open(idx, encoding="utf-8", newline="").read().replace(chr(13)+chr(10), chr(10))
+stale = (_cat != _built)
+print("  parts concatenated          : %d" % len(_PARTS))
+print("  source chars / built chars  : %d / %d" % (len(_cat), len(_built)))
+print("  site/index.html matches src : %s" % ("no" if stale else "yes"))
 if stale:
-    print("  >> site/ is STALE. Run tools/make_web.py before trusting anything below.")
+    _i = 0
+    while _i < min(len(_cat), len(_built)) and _cat[_i] == _built[_i]:
+        _i += 1
+    print("  >> STALE. First difference at char %d:" % _i)
+    print("     src   ..." + _cat[max(0,_i-40):_i+40].replace(chr(10), " "))
+    print("     built ..." + _built[max(0,_i-40):_i+40].replace(chr(10), " "))
+    print("  >> Run tools/make_web.py before trusting anything below.")
 
 print("\n-- NO PERSONAL DATA IN SHIPPED CODE --")
 checks=[
@@ -188,55 +197,41 @@ net=[
 for n,v in net: print("  %-30s %s" % (n, "OK" if v else "*** FAIL ***"))
 
 # ---------------------------------------------------------------------------
-#  WHAT "PRIVATE" NOW MEANS, MECHANICALLY
+#  WHAT "PRIVATE" MEANS, MECHANICALLY
 #  ---------------------------------------------------------------------------
-#  Baseline used to assert that the shipped file contained no external origin
-#  at all, which was true and easy to check. With optional encrypted sync there
-#  is exactly one origin it may reach, and the guarantee moves from "no network"
-#  to a set of claims that are still checkable:
-#
-#    1. the ONLY reachable origin is the configured Supabase project
-#    2. no secret / service-role key is in the file
-#    3. sync ships OFF, so an install that never opts in never connects
-#    4. there is ONE network function and it is gated on being configured
-#    5. nothing is uploaded that was not encrypted in the browser first
-#
-#  (5) is the one that matters most, and it is why syncPush is checked for a
-#  call to encryptPayload rather than being trusted.
+#  There is no backend. Cloudflare serves these files and the app then talks
+#  to nothing, so the claim is the strongest kind available: not a promise not
+#  to send data, but the absence of anywhere to send it and of any code that
+#  could. Each line below is one way that could stop being true.
 # ---------------------------------------------------------------------------
-cfg=re.search(r"window\.BASELINE_CONFIG=(\{.*?\});", t)
-sb_url=""
-if cfg:
-    try: sb_url=(json.loads(cfg.group(1)).get("supabaseUrl") or "")
-    except Exception: sb_url=""
-origins=set(re.findall(r"https?://[a-z0-9.\-]+", t, re.I))
+origins=set(re.findall(r"https?://[a-z0-9.-]+", t, re.I))
 allowed={"http://www.w3.org","https://www.w3.org"}
-if sb_url: allowed.add(sb_url)
 bad=[o for o in origins if o not in allowed]
 print("  external origins referenced :", bad or "none")
-print("  supabase project configured :", sb_url or "no (local-only build)")
+
+hdr_p=os.path.join(W,"_headers")
+hdr=io.open(hdr_p,encoding="utf-8").read() if os.path.exists(hdr_p) else ""
 
 priv=[
- # A secret key in a browser bypasses Row Level Security entirely.
- ("no secret / service-role key", ("sb_secret_" not in t) and ("service_role" not in t)),
- # One network function, and it cannot run unconfigured.
- ("one network entry point",   t.count("function sbFetch")==1),
- ("only fetch is used",        t.count("fetch(")>0 and "XMLHttpRequest" not in t),
- ("and it is gated on being configured",
-    "if(!syncPossible()) throw new Error" in t),
- ("sync requires a configured project",
-    "CFG.supabaseUrl && CFG.supabaseKey" in t),
- # Off until the user asks for it, in the seeded defaults.
- ("sync ships off",            "sync:false" in t),
- ("sensitive rows ship out",   "syncSensitive:false" in t),
- # Nothing readable leaves the device.
- ("upload is encrypted first", "await encryptPayload(syncPayload()" in t),
- ("AES-GCM with a derived key","AES-GCM" in t and "PBKDF2" in t),
- ("310k KDF iterations",       "KDF_ITER=310000" in t),
- ("the passphrase is never stored",
-    not re.search("setItem[(][^)]*pass", t, re.I)),
- # The session token is the only thing kept, and not beside the data.
- ("only a session token is persisted", 'SESS_KEY="baseline.session"' in t),
+ # No outbound call of any kind survives in the shipped file.
+ ("no fetch call",             "fetch(" not in t),
+ ("no navigator.sendBeacon",   "sendBeacon" not in t),
+ ("no websocket or SSE",       ("new WebSocket" not in t) and ("EventSource" not in t)),
+ # No remnant of the removed sync layer, which would be dead code pointing at
+ # a backend that no longer exists.
+ ("no supabase reference",     "supabase" not in t.lower()),
+ ("no injected build config",  "BASELINE_CONFIG" not in t),
+ ("no sync settings keys",     ("sync:false" not in t) and ("syncSensitive" not in t)),
+ ("no upload/encrypt engine",  ("encryptPayload" not in t) and ("sbFetch" not in t)),
+ ("no session token store",    "baseline.session" not in t),
+ # The browser is told to refuse an outbound connection as well, so a mistake
+ # in the app cannot quietly become a network call.
+ ("connect-src is self only",  "connect-src 'self';" in hdr),
+ ("CSP forbids form posts",    "form-action 'none'" in hdr),
+ ("CSP blocks framing",        "frame-ancestors 'none'" in hdr),
+ # Health data must not be written where it is casually readable.
+ ("health data not in localStorage",
+    not re.search("setItem[(][^)]*(hrv|recovery|whoop)", t, re.I)),
 ]
 for n,v in priv: print("  %-30s %s" % (n, "OK" if v else "*** FAIL ***"))
 

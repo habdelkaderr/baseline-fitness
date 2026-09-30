@@ -7813,72 +7813,6 @@ ok('exported backup contains no remote target', (function(){
   return (s.match(ORIGIN_RE)||[]).filter(function(u){ return !ALLOW_RE.test(u); }).length===0;
 })());
 
-// ---------- privacy copy must track the actual state, not a wish ----------
-/* Every absolute promise below was true when the app had no network path at
-   all. Now one exists, so each claim is checked in BOTH states: the strong
-   promise must still be made when it is true, and must be gone when it is
-   not. Rendered INTO the document, because these panes wire handlers with
-   document.querySelector and quietly do nothing in a detached node. No
-   backslash escapes in here on purpose - this file holds JS inside a plain
-   Python string, and every escape is a trap. */
-(function(){
-  var FORBIDDEN=['there is no sync',
-                 'no copy exists anywhere else',
-                 'nothing about you leaves the phone',
-                 'no account, no server and no analytics',
-                 'makes no network requests once it has loaded',
-                 'no network requests of any kind',
-                 'there is no endpoint to upload to'];
-  var keepSrc=DB.profile.source, keepTab=SETTAB;
-  DB.profile.source='whoop'; DB.profile.onboarded=true;
-  function copyNow(){
-    var out='';
-    resetStack(); TAB='today'; render();
-    var v=document.getElementById('view');
-    paneImport(v); out+=' '+(v.textContent||'');
-    ['data','privacy','alerts','about'].forEach(function(id){
-      resetStack(); TAB='settings'; render();
-      pushPage({build:function(c){ SETTAB=id; settingsBody(c); }});
-      out+=' '+(document.getElementById('view').textContent||'');
-    });
-    out+=' '+TOUR.map(function(c){ return c.t+' '+c.b; }).join(' ');
-    return out.toLowerCase();
-  }
-  var off=copyNow();
-  ok('privacy copy renders in the off state', off.length>4000, off.length);
-  ok('with backup off the copy still promises the device',
-     off.indexOf('on this device')>=0);
-  ok('and with backup off the absolute promise IS made',
-     off.indexOf('no network requests of any kind')>=0);
-  /* split so the origin scanner above does not read this as a real endpoint */
-  var kU=CFG.supabaseUrl, kK=CFG.supabaseKey, kS=SESS,
-      kOn=DB.settings.sync, kSen=DB.settings.syncSensitive;
-  CFG.supabaseUrl='https:'+'//exampleproject.supabase.co';
-  CFG.supabaseKey='sb_publishable_testonly';
-  SESS={token:'t',user:'u'};
-  DB.settings.sync=true; DB.settings.syncSensitive=true;
-  ok('all three sync gates report on', syncOn() && syncSensitiveOn());
-  var on=copyNow();
-  ok('privacy copy renders in the on state', on.length>4000, on.length);
-  var bad=FORBIDDEN.filter(function(p){ return on.indexOf(p)>=0; });
-  ok('with backup on nothing still claims data never leaves', bad.length===0,
-     bad.join(' | '));
-  ok('and the copy says the upload is encrypted', on.indexOf('encrypted')>=0);
-  ok('and that the passphrase is never uploaded',
-     on.indexOf('passphrase is never uploaded')>=0);
-  DB.settings.syncSensitive=false;
-  var mid=copyNow();
-  ok('with sensitive sharing off the wearable journal is described as left out',
-     mid.indexOf('left out')>=0);
-  var bad2=FORBIDDEN.filter(function(p){ return mid.indexOf(p)>=0; });
-  ok('and that state makes no absolute claim either', bad2.length===0,
-     bad2.join(' | '));
-  CFG.supabaseUrl=kU; CFG.supabaseKey=kK; SESS=kS;
-  DB.settings.sync=kOn; DB.settings.syncSensitive=kSen;
-  DB.profile.source=keepSrc; SETTAB=keepTab;
-  ok('sync state restored after the copy check', !syncOn());
-  resetStack(); TAB='today'; render();
-})();
 
 // ---------- iOS environment detection ----------
 ok('ENV reports a protocol', typeof ENV.proto==='string', ENV.proto);
@@ -10181,7 +10115,7 @@ ok('phase 4 is deload', PHASES[3].name==='Deload' && PHASES[3].vol<0.7);
 })();
 ok('no unused settings keys',
    Object.keys(DB.settings).sort().join(',')===
-     'autoAdjust,bands,hardStrain,notify,restTimerOn,sound,streak,sync,syncSensitive',
+     'autoAdjust,bands,hardStrain,notify,restTimerOn,sound,streak',
    Object.keys(DB.settings).sort().join(','));
 /* And each one reaches something. A matching list only means the list was
    updated; this means the key does a job. */
@@ -10193,11 +10127,7 @@ ok('no unused settings keys',
     notify:      function(){ return typeof notifyOn==='function'; },
     restTimerOn: function(){ return typeof DB.settings.restTimerOn==='boolean'; },
     sound:       function(){ return typeof SOUND==='object'; },
-    streak:      function(){ return typeof streakInfo==='function'; },
-    /* Encrypted sync. `sync` gates syncOn(); `syncSensitive` decides whether
-       cycle entries and the imported journal are in the payload at all. */
-    sync:          function(){ return typeof syncOn==='function'; },
-    syncSensitive: function(){ return typeof syncPayload==='function'; }
+    streak:      function(){ return typeof streakInfo==='function'; }
   };
   var orphan=Object.keys(DB.settings).filter(function(k){ return !consumers[k]; });
   ok('every settings key has a consumer', orphan.length===0, orphan.join(', '));

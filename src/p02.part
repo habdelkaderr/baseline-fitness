@@ -3,221 +3,10 @@
 /* ============================================================================
    BASELINE — Adaptive Training System
    Single file, offline first. Your training and health data lives in this
-   browser, and nothing is uploaded from it unless you switch on the
-   encrypted backup described below.
-
-   OPTIONAL ENCRYPTED SYNC. If a Supabase project is configured at build time
-   AND you create an account AND you turn sync on - three separate, deliberate
-   acts - Baseline can keep an encrypted copy of your data so you can restore
-   it on another device. The encryption happens here, in this browser, with a
-   key derived from a passphrase only you know: the server receives ciphertext
-   and cannot read it. Sync is off until you turn it on, and with no Supabase
-   project configured it cannot be turned on at all.
+   browser and nothing is uploaded from it. There is no account, no server and
+   no analytics: the app is delivered as static files and then talks to
+   nothing. Cloudflare serves the code and never sees the data.
    ========================================================================= */
-
-/* ---------------------------------------------------------------------------
-   BUILD-TIME CONFIGURATION
-   Vite bakes VITE_* variables into the bundle; Baseline has no bundler, so
-   tools/build.mjs writes them here instead. An EMPTY object is the default and
-   the safe state - no endpoint, no key, no way to send anything anywhere.
-   ------------------------------------------------------------------------ */
-/*__BASELINE_CONFIG__*/
-const CFG = (typeof window!=='undefined' && window.BASELINE_CONFIG) || {};
-
-/* ===========================================================================
-   ENCRYPTED BACKUP AND SYNC  (optional, off by default)
-   --------------------------------------------------------------------------
-   THE PROBLEM. A hosted database is somewhere else, run by somebody else.
-   Sending a year of recovery scores, sleep timings, cycle entries and journal
-   answers to it in readable form means trusting that company, its staff, its
-   backups, and anyone who ever compromises it.
-
-   THE DESIGN. Baseline never sends readable data. If you turn sync on it
-   derives a key from a passphrase you choose, encrypts the whole dataset in
-   this browser with AES-GCM, and uploads the ciphertext. Supabase stores an
-   opaque blob and a row id. It cannot read your data, and neither can anyone
-   who obtains a copy of the database. The passphrase is never uploaded and
-   never stored, so it cannot be recovered: forget it and the blob stays
-   unreadable, which is the point rather than a shortcoming.
-
-   WHAT IS SENT:  one encrypted blob, its salt and nonce, a byte count and a
-                  timestamp. An email address, because an account needs one.
-   WHAT IS NOT:   anything readable. No plaintext metric, no exercise name, no
-                  date, no device model, no analytics of any kind.
-
-   Access control is Row Level Security: each row carries its owner id and the
-   policy compares it with auth.uid(), so the publishable key in this browser
-   can only ever reach one row. See supabase/migrations/.
-   ======================================================================== */
-
-/* Is sync even possible? False unless the build was given both a project and
-   a publishable key. Everything below short-circuits on this, so an
-   unconfigured build never reaches a line of network code. */
-const syncPossible = ()=> !!(CFG.supabaseUrl && CFG.supabaseKey);
-/* Configured, signed in, AND switched on by the user. Three separate things. */
-const syncOn = ()=> syncPossible() && !!(DB&&DB.settings&&DB.settings.sync)
-                 && !!(SESS&&SESS.token);
-/* The second flag, asked about separately. Cycle entries and the imported
-   wearable journal are the two things people most often do not want leaving
-   the device at all, even encrypted, so the copy that describes them needs to
-   know which way this is set rather than guessing. */
-const syncSensitiveOn = ()=> syncOn() && !!(DB&&DB.settings&&DB.settings.syncSensitive);
-
-/* The signed-in session. Memory and localStorage only: a token in IndexedDB
-   beside the data it protects buys nothing. */
-let SESS=null;
-const SESS_KEY="baseline.session";
-function sessLoad(){
-  try{ const r=localStorage.getItem(SESS_KEY); SESS=r?JSON.parse(r):null; }
-  catch(e){ SESS=null; }
-  return SESS;
-}
-function sessSave(s){
-  SESS=s;
-  try{ s ? localStorage.setItem(SESS_KEY,JSON.stringify(s))
-         : localStorage.removeItem(SESS_KEY); }catch(e){}
-}
-
-/* ONE place that talks to the network, so there is one place to audit. It
-   refuses to do anything unless a project is configured. */
-async function sbFetch(path, opt){
-  if(!syncPossible()) throw new Error("sync is not configured");
-  opt=opt||{};
-  const h=Object.assign({
-    "apikey": CFG.supabaseKey,
-    "Content-Type": "application/json"
-  }, opt.headers||{});
-  if(SESS&&SESS.token) h["Authorization"]="Bearer "+SESS.token;
-  const r=await fetch(CFG.supabaseUrl+path, {
-    method: opt.method||"GET",
-    headers: h,
-    body: opt.body!=null ? JSON.stringify(opt.body) : undefined
-  });
-  const txt=await r.text();
-  let js=null; try{ js=txt?JSON.parse(txt):null; }catch(e){}
-  if(!r.ok){
-    /* The message only. An auth error can echo back the address that was
-       tried, and this app puts no identifier anywhere loggable. */
-    const e=new Error((js&&(js.msg||js.message||js.error_description))||("HTTP "+r.status));
-    e.status=r.status;
-    throw e;
-  }
-  return js;
-}
-
-/* ---- accounts -------------------------------------------------------- */
-async function syncSignUp(email, password){
-  const r=await sbFetch("/auth/v1/signup",{method:"POST",
-    body:{email:email, password:password}});
-  if(r&&r.access_token) sessSave({token:r.access_token, refresh:r.refresh_token,
-                                  uid:r.user&&r.user.id, email:email});
-  return r;
-}
-async function syncSignIn(email, password){
-  const r=await sbFetch("/auth/v1/token?grant_type=password",{method:"POST",
-    body:{email:email, password:password}});
-  sessSave({token:r.access_token, refresh:r.refresh_token,
-            uid:r.user&&r.user.id, email:email});
-  return r;
-}
-function syncSignOut(){ sessSave(null); PASSKEY=null; }
-
-/* ---- the encryption -------------------------------------------------- */
-/* A passphrase is not a key. PBKDF2 with a high iteration count and a random
-   per-backup salt is what makes a weak passphrase expensive to attack. */
-let PASSKEY=null;                  /* this page only, never stored */
-const KDF_ITER=310000;             /* OWASP floor for PBKDF2-SHA256 */
-async function deriveKey(pass, saltBytes){
-  const base=await crypto.subtle.importKey("raw",
-    new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
-  return crypto.subtle.deriveKey(
-    {name:"PBKDF2", salt:saltBytes, iterations:KDF_ITER, hash:"SHA-256"},
-    base, {name:"AES-GCM", length:256}, false, ["encrypt","decrypt"]);
-}
-const b64  = (buf)=> btoa(String.fromCharCode.apply(null, new Uint8Array(buf)));
-const unb64= (s)=> Uint8Array.from(atob(s), c=>c.charCodeAt(0));
-
-async function encryptPayload(obj, pass){
-  const salt=crypto.getRandomValues(new Uint8Array(16));
-  const iv  =crypto.getRandomValues(new Uint8Array(12));
-  const key =await deriveKey(pass, salt);
-  const data=new TextEncoder().encode(JSON.stringify(obj));
-  const ct  =await crypto.subtle.encrypt({name:"AES-GCM", iv:iv}, key, data);
-  return {v:1, kdf:"PBKDF2-SHA256", iter:KDF_ITER,
-          salt:b64(salt), iv:b64(iv), ct:b64(ct)};
-}
-async function decryptPayload(blob, pass){
-  const key=await deriveKey(pass, unb64(blob.salt));
-  const pt =await crypto.subtle.decrypt(
-    {name:"AES-GCM", iv:unb64(blob.iv)}, key, unb64(blob.ct));
-  return JSON.parse(new TextDecoder().decode(pt));
-}
-
-/* ---- what actually gets synced --------------------------------------- */
-/* Deliberately not everything. Cycle entries and the imported wearable
-   journal are the most sensitive rows in the database and the ones a person
-   is least likely to want anywhere but their own phone, so they are left out
-   unless explicitly included. Nothing here is readable to the server either
-   way; this is about not uploading what does not need uploading. */
-function syncPayload(){
-  const inc=!!(DB.settings&&DB.settings.syncSensitive);
-  const out={
-    _v:SCHEMA_VERSION, _at:new Date().toISOString(),
-    profile:DB.profile, targets:DB.targets, settings:DB.settings,
-    sessions:DB.sessions, activities:DB.activities, checkins:DB.checkins,
-    tests:DB.tests, physique:DB.physique, plans:DB.plans,
-    exercises:DB.exercises, workouts:DB.workouts, baselines:DB.baselines,
-    meta:DB.meta
-  };
-  if(inc){ out.mcycle=DB.mcycle; out.whoop=DB.whoop; }
-  return out;
-}
-/* A plain summary of what a backup would contain, for the screen that asks
-   the user to agree to it. Counts, never contents. */
-function syncSummary(){
-  const p=syncPayload();
-  return {
-    sessions:(p.sessions||[]).length,
-    activities:(p.activities||[]).length,
-    checkins:Object.keys(p.checkins||{}).length,
-    tests:(p.tests||[]).length,
-    sensitive:!!(DB.settings&&DB.settings.syncSensitive),
-    cycleRows:(DB.mcycle&&DB.mcycle.entries)?Object.keys(DB.mcycle.entries).length:0,
-    importedDays:(DB.whoop&&DB.whoop.cycles)?DB.whoop.cycles.length:0
-  };
-}
-
-/* ---- push, pull, delete --------------------------------------------- */
-async function syncPush(pass){
-  if(!syncOn()) throw new Error("sync is off");
-  const blob=await encryptPayload(syncPayload(), pass);
-  const bytes=blob.ct.length;
-  await sbFetch("/rest/v1/backups?on_conflict=user_id",{
-    method:"POST",
-    headers:{"Prefer":"resolution=merge-duplicates,return=minimal"},
-    body:[{user_id:SESS.uid, blob:blob, bytes:bytes,
-           updated_at:new Date().toISOString()}]
-  });
-  DB.meta.lastSync=new Date().toISOString();
-  DB.meta.lastSyncBytes=bytes;
-  save(true);
-  return {bytes:bytes};
-}
-async function syncPull(pass){
-  if(!syncOn()) throw new Error("sync is off");
-  const rows=await sbFetch("/rest/v1/backups?select=blob,updated_at&limit=1");
-  if(!rows||!rows.length) return null;
-  /* A wrong passphrase throws here rather than returning nonsense: AES-GCM
-     authenticates what it decrypts. */
-  return {data:await decryptPayload(rows[0].blob, pass), at:rows[0].updated_at};
-}
-/* Remove the server copy. The local data is untouched. */
-async function syncDeleteRemote(){
-  if(!syncPossible()||!SESS) throw new Error("not signed in");
-  await sbFetch("/rest/v1/backups?user_id=eq."+encodeURIComponent(SESS.uid),
-                {method:"DELETE", headers:{"Prefer":"return=minimal"}});
-  DB.meta.lastSync=null; DB.meta.lastSyncBytes=null; save(true);
-}
 
 /* ---------------------------------------------------------------- utilities */
 const $  = (s,r)=> (r||document).querySelector(s);
@@ -569,19 +358,16 @@ function toast(msg,kind){ const t=$('#toast'); t.textContent=msg; t.className=(k
 function haptic(){ try{ if(navigator.vibrate) navigator.vibrate(8);}catch(e){} }
 
 /* =========================================================================
-   LOCAL DATA STORE  —  privacy-first, per-device, local authority
+   LOCAL DATA STORE  —  privacy-first, per-device, no server
    ------------------------------------------------------------------------
    Architecture:
-        Static host   ->  delivers application code only
-        Browser       ->  runs the app, and holds the only readable copy
+        Cloudflare    ->  delivers application code only
+        Browser       ->  runs the app
         IndexedDB     ->  THIS device's private data
-        (optional)    ->  Supabase, storing ciphertext it cannot read
-   This device is the authority. Nothing readable ever leaves it: there is no
-   telemetry, and the optional backup is encrypted here, with a key derived
-   from a passphrase that is never uploaded, before any byte goes out. With
-   backup off, two people using the app, or one person on two devices, have
-   entirely separate datasets by construction, and the only way to move data
-   is an explicit JSON backup.
+   Nothing here ever leaves the device. There is no account, no sync, no
+   telemetry and no remote database. Two people using the app, or one person
+   on two devices, have entirely separate datasets by construction — the only
+   way to move data is an explicit JSON backup.
 
    IndexedDB is the primary durable store, with a real per-collection schema
    and versioned migrations. localStorage holds only tiny boot preferences.
@@ -599,7 +385,7 @@ const SCHEMA_VERSION=3;             // bump to transform stored records
 /* A date, plus a letter when more than one build ships in a day. Without the
    letter there was no way to tell a second same-day deploy from the cached
    copy of the first, which is exactly the question "did my upload work?". */
-const APP_BUILD='2026-09-30a';
+const APP_BUILD='2026-09-30b';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */

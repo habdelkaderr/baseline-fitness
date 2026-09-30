@@ -17,10 +17,7 @@ Baseline runs entirely in your browser, on your device. The fitness data you
 import is read by the page, used to work out your readiness and your training,
 and stored in your browser's own database on that device.
 
-**By default it is never uploaded: no account, no server, no analytics.** If you
-switch on encrypted backup, Baseline encrypts your data on this device first
-and the server stores something it cannot read. There are never any analytics.
-You
+**It is never uploaded: no account, no server, no analytics.** You
 can delete it at any time, and doing so deletes it.
 
 ---
@@ -86,8 +83,7 @@ sold, is not shared, and is not used to train any model.
 ## 4. Where processing happens
 
 **On your device, in your browser.** Baseline is a single web page with no
-backend by default. With encrypted backup off there is no server that could
-receive your data, because there is no
+backend. There is no server that could receive your data, because there is no
 server.
 
 ## 5. Where it is stored
@@ -110,9 +106,7 @@ you export and import yourself.
 
 **Nothing.**
 
-With encrypted backup off, Baseline makes no network requests once the page has
-loaded. With it on, the only address it can reach is your own backup project,
-and it sends ciphertext. It contains no
+Baseline makes no network requests once the page has loaded. It contains no
 analytics, no telemetry, no crash reporting, no advertising code, no fonts or
 scripts loaded from elsewhere, and no third-party libraries at all.
 

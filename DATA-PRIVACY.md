@@ -14,9 +14,8 @@ the twelve `.part` sources.
 ## 1. Architecture in one paragraph
 
 Baseline is a single HTML file with no build step, no dependencies, no
-package manager and no backend. It is served as a static file (GitHub Pages)
-and runs entirely in the browser. **By default there is no server component,
-no account,
+package manager and no backend. It is served as static files (Cloudflare)
+and runs entirely in the browser. **There is no server component, no account,
 no database off the device and no API of any kind.** Everything below follows
 from that.
 

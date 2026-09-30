@@ -5,7 +5,14 @@ _HERE = _os.path.dirname(_os.path.abspath(__file__))
 PROJECT = _os.path.dirname(_HERE)
 
 
-SRC = _os.path.join(PROJECT,"build","baseline.html")
+# Assembled from src/ directly, in the same order as tools/cycle.ps1 and
+# tools/build.mjs. It used to read build/baseline.html, which only cycle.ps1
+# regenerates, so running this without running cycle.ps1 first silently
+# packaged the PREVIOUS build - twice that shipped a site/ that did not match
+# src/, and once it passed every privacy check while doing so.
+SRC_PARTS = ["p01","p02","p03","p03b","p04","p04b",
+             "p05","p06","p07","p08","p09","p10"]
+SRC_DIR = _os.path.join(PROJECT,"src")
 OUT = _os.path.join(PROJECT,"site")
 ICO = os.path.join(OUT, "icons")
 if os.path.isdir(OUT): shutil.rmtree(OUT)
@@ -124,10 +131,8 @@ print("  manifest.webmanifest")
 SW = r"""/* Baseline service worker — offline support for the app shell.
    No user data passes through here. WHOOP files are parsed in the page and
    training data lives in IndexedDB, neither of which the Cache API can see.
-   The optional encrypted backup does not go through the cache either: it is
-   a direct call from the page, and the bytes are already ciphertext when
-   they leave. So nothing readable ever reaches this layer, or any other. */
-const CACHE = 'baseline-v23';
+   Nothing is ever sent anywhere: there is no server to send it to. */
+const CACHE = 'baseline-v24';
 const SHELL = [
   './',
   './index.html',
@@ -209,7 +214,12 @@ io.open(os.path.join(OUT, "sw.js"), "w", encoding="utf-8").write(SW)
 print("  sw.js")
 
 # ---------------------------------------------------------------- app
-html = io.open(SRC, encoding="utf-8").read()
+html = ""
+for _n in SRC_PARTS:
+    _p = _os.path.join(SRC_DIR, _n + ".part")
+    if not os.path.isfile(_p):
+        raise SystemExit("missing source part: " + _p)
+    html += io.open(_p, encoding="utf-8", newline="").read()
 # icons now live in icons/ — point the document links at them
 html = html.replace('href="icon-180.png"', 'href="icons/icon-180.png"')
 html = html.replace('href="icon-512.png"', 'href="icons/icon-512.png"')
@@ -219,11 +229,11 @@ print("  index.html  (%.1f KB)" % (len(html.encode('utf-8')) / 1024))
 # ---------------------------------------------------------------- headers
 # Cloudflare reads _headers from the served directory. connect-src is the
 # line that matters most: it is the allow-list for everywhere this app is
-# permitted to send anything. A local build has no Supabase project, so the
-# only permitted destination is the app's own origin.
+# permitted to send anything, and it is 'self' alone. There is no backend, so
+# the browser is told to refuse any outbound connection - a mistake in the app
+# cannot quietly become a network call.
 #
-# tools/build.mjs writes the same file on Cloudflare, adding the Supabase
-# origin when the build is configured with one. Keep the two in step.
+# tools/build.mjs writes this same file on Cloudflare. Keep the two in step.
 io.open(os.path.join(OUT, "_headers"), "w", encoding="utf-8").write(
 """/*
   X-Content-Type-Options: nosniff
@@ -340,11 +350,9 @@ on the device you used. This repository hosts the application code and nothing
 else.
 
 - No analytics and no trackers, ever
-- No account and no server unless you switch on encrypted backup
+- No account, no server, no database
 - No third-party libraries at all — nothing is loaded from anywhere else
-- With backup off, nothing is uploaded: there is no endpoint to upload to
-- With backup on, your data is encrypted on your device first, so the server
-  stores a blob it cannot read — and your passphrase never leaves the device
+- Nothing is uploaded, because there is no endpoint to upload to
 - Each browser on each device keeps a completely separate dataset
 - Anyone opening the same link gets an empty copy of the app, not your data
 

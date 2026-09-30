@@ -91,11 +91,9 @@ on the device you used. This repository hosts the application code and nothing
 else.
 
 - No analytics and no trackers, ever
-- No account and no server unless you switch on encrypted backup
+- No account, no server, no database
 - No third-party libraries at all — nothing is loaded from anywhere else
-- With backup off, nothing is uploaded: there is no endpoint to upload to
-- With backup on, your data is encrypted on your device first, so the server
-  stores a blob it cannot read — and your passphrase never leaves the device
+- Nothing is uploaded, because there is no endpoint to upload to
 - Each browser on each device keeps a completely separate dataset
 - Anyone opening the same link gets an empty copy of the app, not your data
 

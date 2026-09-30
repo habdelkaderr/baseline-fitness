@@ -1,15 +1,14 @@
 # Deploying Baseline
 
-Same architecture as HomeFix: **GitHub → Cloudflare Workers Builds → a static-assets
-Worker**, with Supabase reached only from the browser. There are no GitHub
-Actions and no manual `wrangler deploy` in the normal loop.
+Same hosting architecture as HomeFix: **GitHub → Cloudflare Workers Builds → a
+static-assets Worker**. There are no GitHub Actions and no manual
+`wrangler deploy` in the normal loop.
+
+Baseline has **no backend**. Cloudflare serves the files; the app then talks to
+nothing. There is no database, no account and no API to configure.
 
 ```
    local edit  →  git push  →  Cloudflare builds  →  Worker serves ./site
-                                                          │
-                                       (only if you turn it on, and encrypted)
-                                                          ↓
-                                                      Supabase
 ```
 
 ## How this differs from HomeFix, and why
@@ -35,10 +34,9 @@ assets.
 
 ### 1. GitHub
 ```bash
-git remote add origin https://github.com/<you>/baseline.git
+git remote add origin https://github.com/habdelkaderr/baseline-fitness.git
 git push -u origin main
 ```
-Check `git status` shows no `.env` before the first push.
 
 ### 2. Cloudflare
 Dashboard → **Workers & Pages → Create → Workers → Import a repository**, pick
@@ -58,29 +56,6 @@ Workers reject it as an infinite loop.
 `npm install` has nothing to install: `package.json` declares no dependencies
 on purpose, so there is nothing in the deploy path that can break or need
 auditing.
-
-### 3. Supabase — only if you want encrypted backup
-
-**Skip this entirely and Baseline still works.** With no variables set it
-builds exactly as it always has: no account, no network requests, everything
-in the browser.
-
-1. Create a project. Run `supabase/migrations/20260930000000_baseline_init.sql`
-   in the SQL Editor. It creates one table with Row Level Security so a
-   signed-in user can reach exactly one row — their own.
-2. Worker → **Settings → Build → Variables and secrets** (these are *build*
-   variables; Vite-style vars are baked in at build time):
-
-   | Name | Value |
-   |---|---|
-   | `VITE_SUPABASE_URL` | `https://<ref>.supabase.co` |
-   | `VITE_SUPABASE_PUBLISHABLE_KEY` | the **publishable** / anon key |
-
-   Never the secret or `service_role` key: it bypasses RLS, so a browser
-   holding one could read every user's row. `tools/build.mjs` fails the build
-   on purpose if it detects one.
-3. Changing a variable needs a new build — push a commit, or
-   **Deployments → Retry build**.
 
 `.node-version` pins Node 22 for the build.
 
@@ -110,9 +85,11 @@ powershell -File tools/run_layout.ps1   # 11 viewports x 2 themes
 cd tools; python make_web.py; python verify_web.py; python audit_privacy.py
 ```
 
-`verify_web.py` enforces the privacy guarantees mechanically — one network
-entry point, gated on being configured; sync off by default; nothing uploaded
-that was not encrypted first; no secret key in the bundle.
+`verify_web.py` enforces the privacy guarantees mechanically — no `fetch`, no
+beacon, no socket, no external origin, and `connect-src 'self'` in the shipped
+headers so the browser refuses an outbound connection even if one were added by
+mistake. It also fails if `site/` is older than `src/`, which is how a stale
+build once passed every other check.
 
 ## Custom domain
 

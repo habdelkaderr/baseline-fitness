@@ -349,21 +349,15 @@ function paneImport(c){
        <div class="kv"><span class="k">What is kept</span><span class="v">Daily figures only</span></div>
        <div class="kv"><span class="k">Where it is processed</span><span class="v">In this browser</span></div>
        <div class="kv"><span class="k">Where it is stored</span><span class="v">On this device</span></div>
-       <div class="kv"><span class="k">Sent anywhere</span><span class="v">${syncSensitiveOn()?'Encrypted backup only':'No'}</span></div>
+       <div class="kv"><span class="k">Sent anywhere</span><span class="v">No</span></div>
        <ul class="why" style="border:none;padding:10px 0 0;margin:0">
          <li class="pos"><span class="dot"></span><span>The file itself is <b>never stored</b>. It is read into memory,
            the figures Baseline understands are taken out of it, and the text is discarded.</span></li>
          <li class="pos"><span class="dot"></span><span>Only what the engine uses is kept: a date, and the recovery,
            HRV, resting heart rate, sleep and strain figures for that date.
            Free-text journal notes are <b>not</b> kept.</span></li>
-         ${syncSensitiveOn()
-           ? `<li class="pos"><span class="dot"></span><span>These figures are included in your
-                <b>encrypted</b> backup, because you turned that on. They are encrypted on this device
-                with your passphrase first, so the server holds something it cannot read.</span></li>`
-           : `<li class="pos"><span class="dot"></span><span>Nothing here is uploaded${syncOn()
-                ? `. Encrypted backup is on, but imported wearable data is <b>left out</b> of it unless
-                   you allow that separately in Settings`
-                : `. Baseline has no analytics and no trackers`}.</span></li>`}
+         <li class="pos"><span class="dot"></span><span>Nothing is uploaded. Baseline has no account, no server and no
+           analytics, and the page makes no network requests once it has loaded.</span></li>
          <li class="pos"><span class="dot"></span><span>It is stored in this browser's own database on this device.
            Clearing the site's data, or <b>Delete imported data</b> in Settings, removes it.</span></li>
          <li class="warn"><span class="dot"></span><span>Anyone who can unlock this device can open the app. Baseline
@@ -1042,43 +1036,27 @@ function settingsBody(v){
        <button class="btn ghost sm" id="expCsvA">Activities CSV</button>
        ${DB.whoop.cycles.length?`<button class="btn ghost sm" id="expCsvW">Metrics CSV</button>`:''}
      </div>
-     <div class="note warn"><b>Your data is stored locally on this device.</b> If you clear browser data or change devices, restore your backup to recover it. Clearing website data erases everything instantly${syncOn()?', and the encrypted backup is the only other copy — and it needs your passphrase to open':', and no copy exists anywhere else'}.</div>
+     <div class="note warn"><b>Your data is stored locally on this device.</b> If you clear browser data or change devices, restore your backup to recover it. Clearing website data erases everything instantly, and no copy exists anywhere else.</div>
    </div>
 
    <div class="card spane data">
      <div class="card-t" style="margin-bottom:10px">Using more than one device</div>
-     <p style="font-size:13px;line-height:1.6;color:var(--text-2)">Each browser on each device keeps its <b>own separate</b> dataset. Your phone's history is not on your PC.${syncOn()
-       ? ' Encrypted backup is on, so you can restore this dataset onto another device by signing in there and entering the same passphrase.'
-       : ' There is no sync unless you switch on encrypted backup.'}</p>
-     <div class="kv" style="margin-top:8px"><span class="k">To move data across</span><span class="v">${syncOn()?'Restore from your encrypted backup':'Export JSON → send the file → Import JSON'}</span></div>
-     <div class="hint" style="margin-top:6px">${syncOn()
-       ? 'A restore overwrites the data on that device with the last copy you pushed. It is not live two-way sync: push from the device you trained on.'
-       : 'That is a one-time snapshot. Changes made afterwards on either device will not appear on the other.'}</div>
+     <p style="font-size:13px;line-height:1.6;color:var(--text-2)">Each browser on each device keeps its <b>own separate</b> dataset. Your phone's history is not on your PC, and there is no sync — that is the price of having no account and no server.</p>
+     <div class="kv" style="margin-top:8px"><span class="k">To move data across</span><span class="v">Export JSON → send the file → Import JSON</span></div>
+     <div class="hint" style="margin-top:6px">That is a one-time snapshot. Changes made afterwards on either device will not appear on the other.</div>
    </div>
 
    ${''/* Its own pane, not a card buried in About: "where does my data go" is
           a question people come looking for, and it should have a door with
           that name on it. */}
    <div class="card spane privacy">
-     <div class="card-t" style="margin-bottom:10px">${syncOn()
-       ? 'On this device, and in an encrypted backup'
-       : 'Your data stays on this device'}</div>
+     <div class="card-t" style="margin-bottom:10px">Your data stays on this device</div>
      <ul class="why" style="border:none;padding:0;margin:0">
        <li class="pos"><span class="dot"></span><span>No analytics, no tracking, no advertising, no third-party services.</span></li>
-       ${syncOn()
-         ? `<li class="pos"><span class="dot"></span><span>Encrypted backup is <b>on</b>. Your data is encrypted
-              on this device with a key from your passphrase before it is uploaded, so the
-              server stores something it cannot read — and nor can anyone who copies it.</span></li>
-            <li class="pos"><span class="dot"></span><span>Your passphrase is never uploaded and never stored.
-              Nobody can reset it, and without it the backup cannot be opened.</span></li>
-            <li class="pos"><span class="dot"></span><span>The only address this app can reach is your own
-              backup project. Nothing else, ever.</span></li>`
-         : `<li class="pos"><span class="dot"></span><span>No network requests of any kind — the app works
-              fully offline and makes no connection to anything.</span></li>
-            ${syncPossible()
-              ? `<li class="pos"><span class="dot"></span><span>Encrypted backup is available and is
-                   <b>off</b>. Nothing is uploaded unless you turn it on yourself.</span></li>`
-              : ''}`}
+       <li class="pos"><span class="dot"></span><span>No network requests of any kind — the app works
+         fully offline and makes no connection to anything.</span></li>
+       <li class="pos"><span class="dot"></span><span>No account and no server. There is nowhere for your
+         data to be sent, which is a stronger guarantee than a promise not to send it.</span></li>
        <li class="pos"><span class="dot"></span><span>CSV imports are parsed in your browser; the files never leave your device.</span></li>
        <li class="pos"><span class="dot"></span><span>Your data sits in <span class="mono">IndexedDB</span>
          (with a <span class="mono">localStorage</span> fallback) under the key

@@ -333,9 +333,7 @@ function renderNav(){
       `<button data-tab="${t.id}" class="${t.mid?'mid ':''}${TAB===t.id?'on':''}"
          aria-current="${TAB===t.id?'page':'false'}"
          >${t.mid?`<i class="nav-fab">${svg(t.icon)}</i>`:svg(t.icon)}<span>${esc(t.label)}</span></button>`).join('')+
-    `<div class="nav-foot">${syncOn()
-        ? 'Encrypted backup is on.<br>Only you can read it. No tracking.'
-        : 'Your data stays on this device.<br>No account, no server, no tracking.'}</div>`;
+    `<div class="nav-foot">Your data stays on this device.<br>No account, no server, no tracking.</div>`;
   $$('#nav button').forEach(b=>b.onclick=()=>{ haptic(); go(b.dataset.tab); });
 }
 function go(tab){
@@ -642,11 +640,9 @@ const TOUR=[
    b:'A match, a long walk, helping someone move house. Three taps. '+
      'Unplanned activity is not a missed workout — tomorrow works around it.'},
   {t:'It stays on this device',
-   b:'Your data lives in this browser, on this phone. No account and no '+
-     'server unless you choose to switch on an encrypted backup later, and '+
-     'even then it is encrypted here before it leaves. '+
-     'Either way a backup is the only copy '+
-     'there is: Settings → Data → Backup, every few weeks.'}
+   b:'Your data lives in this browser, on this phone. No account, no server, '+
+     'nothing uploaded. Which also means a backup is the only copy there is: '+
+     'Settings → Data → Backup, every few weeks.'}
 ];
 let TOURSTEP=0;
 
