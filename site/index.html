@@ -1986,7 +1986,8 @@ button.cue:active{background:var(--accent-line)}
 /* ============================================================================
    BASELINE — Adaptive Training System
    Single file, offline first. Your training and health data lives in this
-   browser and nothing is uploaded from it.
+   browser, and nothing is uploaded from it unless you switch on the
+   encrypted backup described below.
 
    OPTIONAL ENCRYPTED SYNC. If a Supabase project is configured at build time
    AND you create an account AND you turn sync on - three separate, deliberate
@@ -2039,6 +2040,11 @@ const syncPossible = ()=> !!(CFG.supabaseUrl && CFG.supabaseKey);
 /* Configured, signed in, AND switched on by the user. Three separate things. */
 const syncOn = ()=> syncPossible() && !!(DB&&DB.settings&&DB.settings.sync)
                  && !!(SESS&&SESS.token);
+/* The second flag, asked about separately. Cycle entries and the imported
+   wearable journal are the two things people most often do not want leaving
+   the device at all, even encrypted, so the copy that describes them needs to
+   know which way this is set rather than guessing. */
+const syncSensitiveOn = ()=> syncOn() && !!(DB&&DB.settings&&DB.settings.syncSensitive);
 
 /* The signed-in session. Memory and localStorage only: a token in IndexedDB
    beside the data it protects buys nothing. */
@@ -2546,16 +2552,19 @@ function toast(msg,kind){ const t=$('#toast'); t.textContent=msg; t.className=(k
 function haptic(){ try{ if(navigator.vibrate) navigator.vibrate(8);}catch(e){} }
 
 /* =========================================================================
-   LOCAL DATA STORE  —  privacy-first, per-device, no server
+   LOCAL DATA STORE  —  privacy-first, per-device, local authority
    ------------------------------------------------------------------------
    Architecture:
-        GitHub Pages  ->  delivers application code only
-        Browser       ->  runs the app
+        Static host   ->  delivers application code only
+        Browser       ->  runs the app, and holds the only readable copy
         IndexedDB     ->  THIS device's private data
-   Nothing here ever leaves the device. There is no account, no sync, no
-   telemetry and no remote database. Two people using the app, or one person
-   on two devices, have entirely separate datasets by construction — the only
-   way to move data is an explicit JSON backup.
+        (optional)    ->  Supabase, storing ciphertext it cannot read
+   This device is the authority. Nothing readable ever leaves it: there is no
+   telemetry, and the optional backup is encrypted here, with a key derived
+   from a passphrase that is never uploaded, before any byte goes out. With
+   backup off, two people using the app, or one person on two devices, have
+   entirely separate datasets by construction, and the only way to move data
+   is an explicit JSON backup.
 
    IndexedDB is the primary durable store, with a real per-collection schema
    and versioned migrations. localStorage holds only tiny boot preferences.
@@ -2573,7 +2582,7 @@ const SCHEMA_VERSION=3;             // bump to transform stored records
 /* A date, plus a letter when more than one build ships in a day. Without the
    letter there was no way to tell a second same-day deploy from the cached
    copy of the first, which is exactly the question "did my upload work?". */
-const APP_BUILD='2026-09-29a';
+const APP_BUILD='2026-09-30a';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */
@@ -14510,15 +14519,21 @@ function paneImport(c){
        <div class="kv"><span class="k">What is kept</span><span class="v">Daily figures only</span></div>
        <div class="kv"><span class="k">Where it is processed</span><span class="v">In this browser</span></div>
        <div class="kv"><span class="k">Where it is stored</span><span class="v">On this device</span></div>
-       <div class="kv"><span class="k">Sent anywhere</span><span class="v">No</span></div>
+       <div class="kv"><span class="k">Sent anywhere</span><span class="v">${syncSensitiveOn()?'Encrypted backup only':'No'}</span></div>
        <ul class="why" style="border:none;padding:10px 0 0;margin:0">
          <li class="pos"><span class="dot"></span><span>The file itself is <b>never stored</b>. It is read into memory,
            the figures Baseline understands are taken out of it, and the text is discarded.</span></li>
          <li class="pos"><span class="dot"></span><span>Only what the engine uses is kept: a date, and the recovery,
            HRV, resting heart rate, sleep and strain figures for that date.
            Free-text journal notes are <b>not</b> kept.</span></li>
-         <li class="pos"><span class="dot"></span><span>Nothing is uploaded. Baseline has no account, no server and no
-           analytics, and the page makes no network requests once it has loaded.</span></li>
+         ${syncSensitiveOn()
+           ? `<li class="pos"><span class="dot"></span><span>These figures are included in your
+                <b>encrypted</b> backup, because you turned that on. They are encrypted on this device
+                with your passphrase first, so the server holds something it cannot read.</span></li>`
+           : `<li class="pos"><span class="dot"></span><span>Nothing here is uploaded${syncOn()
+                ? `. Encrypted backup is on, but imported wearable data is <b>left out</b> of it unless
+                   you allow that separately in Settings`
+                : `. Baseline has no analytics and no trackers`}.</span></li>`}
          <li class="pos"><span class="dot"></span><span>It is stored in this browser's own database on this device.
            Clearing the site's data, or <b>Delete imported data</b> in Settings, removes it.</span></li>
          <li class="warn"><span class="dot"></span><span>Anyone who can unlock this device can open the app. Baseline
@@ -15148,7 +15163,8 @@ function settingsBody(v){
      <div class="note acc" style="margin-top:12px">
        This is a <b>local</b> alert: your own device raising a notification for a
        timer your own device is running. It is not a push notification — there is
-       no server, no subscription, and nothing about you leaves the phone.
+       no push service and no subscription, and nothing about the timer leaves
+       the phone.
      </div>
    </div>
 
@@ -15196,14 +15212,18 @@ function settingsBody(v){
        <button class="btn ghost sm" id="expCsvA">Activities CSV</button>
        ${DB.whoop.cycles.length?`<button class="btn ghost sm" id="expCsvW">Metrics CSV</button>`:''}
      </div>
-     <div class="note warn"><b>Your data is stored locally on this device.</b> If you clear browser data or change devices, restore your backup to recover it. Clearing website data erases everything instantly, and no copy exists anywhere else.</div>
+     <div class="note warn"><b>Your data is stored locally on this device.</b> If you clear browser data or change devices, restore your backup to recover it. Clearing website data erases everything instantly${syncOn()?', and the encrypted backup is the only other copy — and it needs your passphrase to open':', and no copy exists anywhere else'}.</div>
    </div>
 
    <div class="card spane data">
      <div class="card-t" style="margin-bottom:10px">Using more than one device</div>
-     <p style="font-size:13px;line-height:1.6;color:var(--text-2)">Each browser on each device keeps its <b>own separate</b> dataset. Your phone's history is not on your PC, and there is no sync — that is the price of having no account and no server.</p>
-     <div class="kv" style="margin-top:8px"><span class="k">To move data across</span><span class="v">Export JSON → send the file → Import JSON</span></div>
-     <div class="hint" style="margin-top:6px">That is a one-time snapshot. Changes made afterwards on either device will not appear on the other.</div>
+     <p style="font-size:13px;line-height:1.6;color:var(--text-2)">Each browser on each device keeps its <b>own separate</b> dataset. Your phone's history is not on your PC.${syncOn()
+       ? ' Encrypted backup is on, so you can restore this dataset onto another device by signing in there and entering the same passphrase.'
+       : ' There is no sync unless you switch on encrypted backup.'}</p>
+     <div class="kv" style="margin-top:8px"><span class="k">To move data across</span><span class="v">${syncOn()?'Restore from your encrypted backup':'Export JSON → send the file → Import JSON'}</span></div>
+     <div class="hint" style="margin-top:6px">${syncOn()
+       ? 'A restore overwrites the data on that device with the last copy you pushed. It is not live two-way sync: push from the device you trained on.'
+       : 'That is a one-time snapshot. Changes made afterwards on either device will not appear on the other.'}</div>
    </div>
 
    ${''/* Its own pane, not a card buried in About: "where does my data go" is

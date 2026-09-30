@@ -3,7 +3,8 @@
 /* ============================================================================
    BASELINE — Adaptive Training System
    Single file, offline first. Your training and health data lives in this
-   browser and nothing is uploaded from it.
+   browser, and nothing is uploaded from it unless you switch on the
+   encrypted backup described below.
 
    OPTIONAL ENCRYPTED SYNC. If a Supabase project is configured at build time
    AND you create an account AND you turn sync on - three separate, deliberate
@@ -56,6 +57,11 @@ const syncPossible = ()=> !!(CFG.supabaseUrl && CFG.supabaseKey);
 /* Configured, signed in, AND switched on by the user. Three separate things. */
 const syncOn = ()=> syncPossible() && !!(DB&&DB.settings&&DB.settings.sync)
                  && !!(SESS&&SESS.token);
+/* The second flag, asked about separately. Cycle entries and the imported
+   wearable journal are the two things people most often do not want leaving
+   the device at all, even encrypted, so the copy that describes them needs to
+   know which way this is set rather than guessing. */
+const syncSensitiveOn = ()=> syncOn() && !!(DB&&DB.settings&&DB.settings.syncSensitive);
 
 /* The signed-in session. Memory and localStorage only: a token in IndexedDB
    beside the data it protects buys nothing. */
@@ -563,16 +569,19 @@ function toast(msg,kind){ const t=$('#toast'); t.textContent=msg; t.className=(k
 function haptic(){ try{ if(navigator.vibrate) navigator.vibrate(8);}catch(e){} }
 
 /* =========================================================================
-   LOCAL DATA STORE  —  privacy-first, per-device, no server
+   LOCAL DATA STORE  —  privacy-first, per-device, local authority
    ------------------------------------------------------------------------
    Architecture:
-        GitHub Pages  ->  delivers application code only
-        Browser       ->  runs the app
+        Static host   ->  delivers application code only
+        Browser       ->  runs the app, and holds the only readable copy
         IndexedDB     ->  THIS device's private data
-   Nothing here ever leaves the device. There is no account, no sync, no
-   telemetry and no remote database. Two people using the app, or one person
-   on two devices, have entirely separate datasets by construction — the only
-   way to move data is an explicit JSON backup.
+        (optional)    ->  Supabase, storing ciphertext it cannot read
+   This device is the authority. Nothing readable ever leaves it: there is no
+   telemetry, and the optional backup is encrypted here, with a key derived
+   from a passphrase that is never uploaded, before any byte goes out. With
+   backup off, two people using the app, or one person on two devices, have
+   entirely separate datasets by construction, and the only way to move data
+   is an explicit JSON backup.
 
    IndexedDB is the primary durable store, with a real per-collection schema
    and versioned migrations. localStorage holds only tiny boot preferences.
@@ -590,7 +599,7 @@ const SCHEMA_VERSION=3;             // bump to transform stored records
 /* A date, plus a letter when more than one build ships in a day. Without the
    letter there was no way to tell a second same-day deploy from the cached
    copy of the first, which is exactly the question "did my upload work?". */
-const APP_BUILD='2026-09-29a';
+const APP_BUILD='2026-09-30a';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */

@@ -8,7 +8,7 @@ idx=os.path.join(W,"index.html")
 t=io.open(idx,encoding="utf-8").read()
 
 print("="*64)
-print("BASELINE — GitHub Pages deployment verification")
+print("BASELINE — deployment verification (Cloudflare Workers static assets)")
 print("="*64)
 
 print("\n-- FILES --")
@@ -26,6 +26,31 @@ for root,d,fs in os.walk(W):
         rel=os.path.relpath(os.path.join(root,f),W).replace("\\","/")
         if rel not in need: extra.append(rel)
 print("  unexpected extra files:", extra or "none")
+
+# ---------------------------------------------------------------------------
+# FRESHNESS. Everything below reads site/index.html, so a stale file means the
+# whole report describes code that is not the code. This has actually happened:
+# a run passed all twelve privacy gates against a build made before the privacy
+# copy was edited. Cheap to check, so it is checked first and it is fatal.
+print("")
+print("-- BUILD IS NOT STALE --")
+_inputs = []
+for _d, _pat in ((os.path.join(PROJECT, "src"), ".part"),
+                 (_HERE, "make_web.py")):
+    if os.path.isdir(_d):
+        for _f in sorted(os.listdir(_d)):
+            if _f.endswith(_pat): _inputs.append(os.path.join(_d, _f))
+    elif os.path.exists(_d):
+        _inputs.append(_d)
+_mk = os.path.join(_HERE, "make_web.py")
+if os.path.exists(_mk) and _mk not in _inputs: _inputs.append(_mk)
+_built = os.path.getmtime(idx)
+_newer = [os.path.basename(p) for p in _inputs if os.path.getmtime(p) > _built + 1]
+print("  inputs checked              : %d" % len(_inputs))
+print("  newer than site/index.html  : %s" % (", ".join(_newer) if _newer else "none"))
+stale = bool(_newer)
+if stale:
+    print("  >> site/ is STALE. Run tools/make_web.py before trusting anything below.")
 
 print("\n-- NO PERSONAL DATA IN SHIPPED CODE --")
 checks=[
@@ -257,7 +282,10 @@ print("  workouts defined           :", len(re.findall(r"\{id:'w_", t)))
 print("  activity types             :", len(re.findall(r"^\s{2}\w+:\s+\{name:'", t, re.M)))
 print("  index.html size            : %.1f KB" % (os.path.getsize(idx)/1024))
 
-fails = [n for n,v in checks+cyc+psh+imp+own+net+priv+pwa+app if not v] + ([ "missing files" ] if not allok else []) + ([ "external origins" ] if bad else [])
+fails = ([n for n,v in checks+cyc+psh+imp+own+net+priv+pwa+app if not v]
+         + ([ "missing files" ] if not allok else [])
+         + ([ "external origins" ] if bad else [])
+         + ([ "build is stale (site/ predates src/)" ] if stale else []))
 print("\n" + "="*64)
 print("RESULT:", "ALL CHECKS PASSED" if not fails else ("FAILED: "+", ".join(fails)))
 print("="*64)

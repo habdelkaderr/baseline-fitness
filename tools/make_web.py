@@ -124,8 +124,10 @@ print("  manifest.webmanifest")
 SW = r"""/* Baseline service worker — offline support for the app shell.
    No user data passes through here. WHOOP files are parsed in the page and
    training data lives in IndexedDB, neither of which the Cache API can see.
-   Nothing is ever sent anywhere: there is no server to send it to. */
-const CACHE = 'baseline-v22';
+   The optional encrypted backup does not go through the cache either: it is
+   a direct call from the page, and the bytes are already ciphertext when
+   they leave. So nothing readable ever reaches this layer, or any other. */
+const CACHE = 'baseline-v23';
 const SHELL = [
   './',
   './index.html',

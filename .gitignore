@@ -62,3 +62,7 @@ node_modules/
 #  the deploy artifact, and it holds the generated icon set that the Node
 #  build cannot regenerate (make_web.py needs Pillow for that).
 build/
+
+# Python bytecode, from running the tools locally
+__pycache__/
+*.pyc
