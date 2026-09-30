@@ -1,0 +1,12 @@
+{
+  "name": "baseline",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Baseline - private, local-first adaptive training",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "dev": "node tools/build.mjs && node -e \"console.log('Serve ./site with any static server, e.g. python -m http.server -d site 8801')\"",
+    "check": "node tools/check.mjs"
+  }
+}

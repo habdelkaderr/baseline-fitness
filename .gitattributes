@@ -1,0 +1,13 @@
+# Deterministic bytes in the deploy artifact.
+#
+# make_web.py runs on Windows and writes CRLF; Cloudflare checks out on Linux.
+# Without this, site/index.html could be committed with one set of line
+# endings and served with another - harmless for HTML, but it makes the
+# service worker's cached copy differ from the built one for no reason, and it
+# makes any byte comparison between the Node and Python builders meaningless.
+* text=auto eol=lf
+
+# Generated binaries must never be touched.
+*.png binary
+*.ico binary
+*.woff2 binary

@@ -1,0 +1,3000 @@
+<script>
+"use strict";
+/* ============================================================================
+   BASELINE — Adaptive Training System
+   Single file, offline first. Your training and health data lives in this
+   browser and nothing is uploaded from it.
+
+   OPTIONAL ENCRYPTED SYNC. If a Supabase project is configured at build time
+   AND you create an account AND you turn sync on - three separate, deliberate
+   acts - Baseline can keep an encrypted copy of your data so you can restore
+   it on another device. The encryption happens here, in this browser, with a
+   key derived from a passphrase only you know: the server receives ciphertext
+   and cannot read it. Sync is off until you turn it on, and with no Supabase
+   project configured it cannot be turned on at all.
+   ========================================================================= */
+
+/* ---------------------------------------------------------------------------
+   BUILD-TIME CONFIGURATION
+   Vite bakes VITE_* variables into the bundle; Baseline has no bundler, so
+   tools/build.mjs writes them here instead. An EMPTY object is the default and
+   the safe state - no endpoint, no key, no way to send anything anywhere.
+   ------------------------------------------------------------------------ */
+/*__BASELINE_CONFIG__*/
+const CFG = (typeof window!=='undefined' && window.BASELINE_CONFIG) || {};
+
+/* ===========================================================================
+   ENCRYPTED BACKUP AND SYNC  (optional, off by default)
+   --------------------------------------------------------------------------
+   THE PROBLEM. A hosted database is somewhere else, run by somebody else.
+   Sending a year of recovery scores, sleep timings, cycle entries and journal
+   answers to it in readable form means trusting that company, its staff, its
+   backups, and anyone who ever compromises it.
+
+   THE DESIGN. Baseline never sends readable data. If you turn sync on it
+   derives a key from a passphrase you choose, encrypts the whole dataset in
+   this browser with AES-GCM, and uploads the ciphertext. Supabase stores an
+   opaque blob and a row id. It cannot read your data, and neither can anyone
+   who obtains a copy of the database. The passphrase is never uploaded and
+   never stored, so it cannot be recovered: forget it and the blob stays
+   unreadable, which is the point rather than a shortcoming.
+
+   WHAT IS SENT:  one encrypted blob, its salt and nonce, a byte count and a
+                  timestamp. An email address, because an account needs one.
+   WHAT IS NOT:   anything readable. No plaintext metric, no exercise name, no
+                  date, no device model, no analytics of any kind.
+
+   Access control is Row Level Security: each row carries its owner id and the
+   policy compares it with auth.uid(), so the publishable key in this browser
+   can only ever reach one row. See supabase/migrations/.
+   ======================================================================== */
+
+/* Is sync even possible? False unless the build was given both a project and
+   a publishable key. Everything below short-circuits on this, so an
+   unconfigured build never reaches a line of network code. */
+const syncPossible = ()=> !!(CFG.supabaseUrl && CFG.supabaseKey);
+/* Configured, signed in, AND switched on by the user. Three separate things. */
+const syncOn = ()=> syncPossible() && !!(DB&&DB.settings&&DB.settings.sync)
+                 && !!(SESS&&SESS.token);
+
+/* The signed-in session. Memory and localStorage only: a token in IndexedDB
+   beside the data it protects buys nothing. */
+let SESS=null;
+const SESS_KEY="baseline.session";
+function sessLoad(){
+  try{ const r=localStorage.getItem(SESS_KEY); SESS=r?JSON.parse(r):null; }
+  catch(e){ SESS=null; }
+  return SESS;
+}
+function sessSave(s){
+  SESS=s;
+  try{ s ? localStorage.setItem(SESS_KEY,JSON.stringify(s))
+         : localStorage.removeItem(SESS_KEY); }catch(e){}
+}
+
+/* ONE place that talks to the network, so there is one place to audit. It
+   refuses to do anything unless a project is configured. */
+async function sbFetch(path, opt){
+  if(!syncPossible()) throw new Error("sync is not configured");
+  opt=opt||{};
+  const h=Object.assign({
+    "apikey": CFG.supabaseKey,
+    "Content-Type": "application/json"
+  }, opt.headers||{});
+  if(SESS&&SESS.token) h["Authorization"]="Bearer "+SESS.token;
+  const r=await fetch(CFG.supabaseUrl+path, {
+    method: opt.method||"GET",
+    headers: h,
+    body: opt.body!=null ? JSON.stringify(opt.body) : undefined
+  });
+  const txt=await r.text();
+  let js=null; try{ js=txt?JSON.parse(txt):null; }catch(e){}
+  if(!r.ok){
+    /* The message only. An auth error can echo back the address that was
+       tried, and this app puts no identifier anywhere loggable. */
+    const e=new Error((js&&(js.msg||js.message||js.error_description))||("HTTP "+r.status));
+    e.status=r.status;
+    throw e;
+  }
+  return js;
+}
+
+/* ---- accounts -------------------------------------------------------- */
+async function syncSignUp(email, password){
+  const r=await sbFetch("/auth/v1/signup",{method:"POST",
+    body:{email:email, password:password}});
+  if(r&&r.access_token) sessSave({token:r.access_token, refresh:r.refresh_token,
+                                  uid:r.user&&r.user.id, email:email});
+  return r;
+}
+async function syncSignIn(email, password){
+  const r=await sbFetch("/auth/v1/token?grant_type=password",{method:"POST",
+    body:{email:email, password:password}});
+  sessSave({token:r.access_token, refresh:r.refresh_token,
+            uid:r.user&&r.user.id, email:email});
+  return r;
+}
+function syncSignOut(){ sessSave(null); PASSKEY=null; }
+
+/* ---- the encryption -------------------------------------------------- */
+/* A passphrase is not a key. PBKDF2 with a high iteration count and a random
+   per-backup salt is what makes a weak passphrase expensive to attack. */
+let PASSKEY=null;                  /* this page only, never stored */
+const KDF_ITER=310000;             /* OWASP floor for PBKDF2-SHA256 */
+async function deriveKey(pass, saltBytes){
+  const base=await crypto.subtle.importKey("raw",
+    new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    {name:"PBKDF2", salt:saltBytes, iterations:KDF_ITER, hash:"SHA-256"},
+    base, {name:"AES-GCM", length:256}, false, ["encrypt","decrypt"]);
+}
+const b64  = (buf)=> btoa(String.fromCharCode.apply(null, new Uint8Array(buf)));
+const unb64= (s)=> Uint8Array.from(atob(s), c=>c.charCodeAt(0));
+
+async function encryptPayload(obj, pass){
+  const salt=crypto.getRandomValues(new Uint8Array(16));
+  const iv  =crypto.getRandomValues(new Uint8Array(12));
+  const key =await deriveKey(pass, salt);
+  const data=new TextEncoder().encode(JSON.stringify(obj));
+  const ct  =await crypto.subtle.encrypt({name:"AES-GCM", iv:iv}, key, data);
+  return {v:1, kdf:"PBKDF2-SHA256", iter:KDF_ITER,
+          salt:b64(salt), iv:b64(iv), ct:b64(ct)};
+}
+async function decryptPayload(blob, pass){
+  const key=await deriveKey(pass, unb64(blob.salt));
+  const pt =await crypto.subtle.decrypt(
+    {name:"AES-GCM", iv:unb64(blob.iv)}, key, unb64(blob.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+
+/* ---- what actually gets synced --------------------------------------- */
+/* Deliberately not everything. Cycle entries and the imported wearable
+   journal are the most sensitive rows in the database and the ones a person
+   is least likely to want anywhere but their own phone, so they are left out
+   unless explicitly included. Nothing here is readable to the server either
+   way; this is about not uploading what does not need uploading. */
+function syncPayload(){
+  const inc=!!(DB.settings&&DB.settings.syncSensitive);
+  const out={
+    _v:SCHEMA_VERSION, _at:new Date().toISOString(),
+    profile:DB.profile, targets:DB.targets, settings:DB.settings,
+    sessions:DB.sessions, activities:DB.activities, checkins:DB.checkins,
+    tests:DB.tests, physique:DB.physique, plans:DB.plans,
+    exercises:DB.exercises, workouts:DB.workouts, baselines:DB.baselines,
+    meta:DB.meta
+  };
+  if(inc){ out.mcycle=DB.mcycle; out.whoop=DB.whoop; }
+  return out;
+}
+/* A plain summary of what a backup would contain, for the screen that asks
+   the user to agree to it. Counts, never contents. */
+function syncSummary(){
+  const p=syncPayload();
+  return {
+    sessions:(p.sessions||[]).length,
+    activities:(p.activities||[]).length,
+    checkins:Object.keys(p.checkins||{}).length,
+    tests:(p.tests||[]).length,
+    sensitive:!!(DB.settings&&DB.settings.syncSensitive),
+    cycleRows:(DB.mcycle&&DB.mcycle.entries)?Object.keys(DB.mcycle.entries).length:0,
+    importedDays:(DB.whoop&&DB.whoop.cycles)?DB.whoop.cycles.length:0
+  };
+}
+
+/* ---- push, pull, delete --------------------------------------------- */
+async function syncPush(pass){
+  if(!syncOn()) throw new Error("sync is off");
+  const blob=await encryptPayload(syncPayload(), pass);
+  const bytes=blob.ct.length;
+  await sbFetch("/rest/v1/backups?on_conflict=user_id",{
+    method:"POST",
+    headers:{"Prefer":"resolution=merge-duplicates,return=minimal"},
+    body:[{user_id:SESS.uid, blob:blob, bytes:bytes,
+           updated_at:new Date().toISOString()}]
+  });
+  DB.meta.lastSync=new Date().toISOString();
+  DB.meta.lastSyncBytes=bytes;
+  save(true);
+  return {bytes:bytes};
+}
+async function syncPull(pass){
+  if(!syncOn()) throw new Error("sync is off");
+  const rows=await sbFetch("/rest/v1/backups?select=blob,updated_at&limit=1");
+  if(!rows||!rows.length) return null;
+  /* A wrong passphrase throws here rather than returning nonsense: AES-GCM
+     authenticates what it decrypts. */
+  return {data:await decryptPayload(rows[0].blob, pass), at:rows[0].updated_at};
+}
+/* Remove the server copy. The local data is untouched. */
+async function syncDeleteRemote(){
+  if(!syncPossible()||!SESS) throw new Error("not signed in");
+  await sbFetch("/rest/v1/backups?user_id=eq."+encodeURIComponent(SESS.uid),
+                {method:"DELETE", headers:{"Prefer":"return=minimal"}});
+  DB.meta.lastSync=null; DB.meta.lastSyncBytes=null; save(true);
+}
+
+/* ---------------------------------------------------------------- utilities */
+const $  = (s,r)=> (r||document).querySelector(s);
+const $$ = (s,r)=> Array.from((r||document).querySelectorAll(s));
+const el = (t,a,h)=>{const n=document.createElement(t); if(a) for(const k in a){ if(k==='class')n.className=a[k]; else if(k.startsWith('on'))n.addEventListener(k.slice(2),a[k]); else if(a[k]!=null)n.setAttribute(k,a[k]); } if(h!=null)n.innerHTML=h; return n;};
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = ()=> Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const dv   =(v,d=0)=>{ const r=rnd(v,d); return r==null?'—':r; };
+const rnd  =(v,d=0)=>{ if(v==null||isNaN(v))return null; const m=Math.pow(10,d); return Math.round(v*m)/m; };
+const mean = a =>{ const v=a.filter(x=>x!=null&&!isNaN(x)); return v.length? v.reduce((s,x)=>s+x,0)/v.length : null; };
+const sd   = a =>{ const v=a.filter(x=>x!=null&&!isNaN(x)); if(v.length<2)return null; const m=mean(v); return Math.sqrt(v.reduce((s,x)=>s+(x-m)*(x-m),0)/(v.length-1)); };
+const median=a=>{ const v=a.filter(x=>x!=null&&!isNaN(x)).sort((x,y)=>x-y); if(!v.length)return null; const i=Math.floor(v.length/2); return v.length%2?v[i]:(v[i-1]+v[i])/2; };
+const sum  = a => a.filter(x=>x!=null&&!isNaN(x)).reduce((s,x)=>s+x,0);
+const todayISO = ()=> new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
+const addDays  = (iso,n)=>{ const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
+const dowOf    = iso => new Date(iso+'T12:00:00').getDay();          // 0=Sun
+const DOW_NAME = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const DOW_FULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const fmtDate  = iso =>{ const d=new Date(iso+'T12:00:00'); return DOW_NAME[d.getDay()]+' '+d.getDate()+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]; };
+/* "14–20 Sep", or "28 Sep – 4 Oct" across a month edge. Short enough for the
+   week strip, and explicit about which week is on screen. */
+const weekRangeLabel = (from,to)=>{
+  const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const a=new Date(from+'T12:00:00'), b=new Date(to+'T12:00:00');
+  return a.getMonth()===b.getMonth()
+    ? a.getDate()+'–'+b.getDate()+' '+MON[b.getMonth()]
+    : a.getDate()+' '+MON[a.getMonth()]+' – '+b.getDate()+' '+MON[b.getMonth()];
+};
+const fmtMin   = m =>{ if(m==null||isNaN(m))return '—'; const h=Math.floor(m/60), r=Math.round(m%60); return h? h+'h '+String(r).padStart(2,'0')+'m' : r+'m'; };
+const mmss     = s =>{ s=Math.max(0,Math.round(s)); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };
+/* A session clock. mmss is fine for a rest timer but a two-hour bike ride
+   would read as '127:14', so this rolls over into hours. */
+const hms      = s =>{ s=Math.max(0,Math.round(s));
+  const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), x=s%60;
+  return h? h+':'+String(m).padStart(2,'0')+':'+String(x).padStart(2,'0')
+          : m+':'+String(x).padStart(2,'0'); };
+/* Minutes between two "HH:MM" strings, or null if either is missing. An end
+   before a start means it ran past midnight, which a late game genuinely
+   does, so it wraps rather than going negative. */
+function minsBetween(from,to){
+  const p=s=>{ const m=/^([0-9]{1,2}):([0-9]{2})$/.exec(String(s||'').trim());
+               if(!m) return null;
+               const h=+m[1], mi=+m[2];
+               return (h<24 && mi<60) ? h*60+mi : null; };
+  const a=p(from), b=p(to);
+  if(a==null||b==null) return null;
+  let d=b-a; if(d<0) d+=1440;
+  return d;
+}
+/* "HH:MM" that many minutes after another one */
+function timePlus(from,mins){
+  const m=/^([0-9]{1,2}):([0-9]{2})$/.exec(String(from||'').trim());
+  if(!m || mins==null) return '';
+  const t=(((+m[1])*60+(+m[2])+(+mins))%1440+1440)%1440;
+  return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');
+}
+
+/* minutes per kilometre as 5:42 */
+const paceStr  = p =>{ if(p==null||!isFinite(p)||p<=0) return '—';
+  const m=Math.floor(p), s=Math.round((p-m)*60);
+  return (s===60? (m+1)+':00' : m+':'+String(s).padStart(2,'0'))+' /km'; };
+const daysBetween=(a,b)=> Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00'))/864e5);
+function pearson(xs,ys){
+  const p=[]; for(let i=0;i<xs.length;i++) if(xs[i]!=null&&ys[i]!=null&&!isNaN(xs[i])&&!isNaN(ys[i])) p.push([xs[i],ys[i]]);
+  if(p.length<8) return null;
+  const mx=mean(p.map(v=>v[0])), my=mean(p.map(v=>v[1]));
+  let n=0,dx=0,dy=0; p.forEach(([x,y])=>{n+=(x-mx)*(y-my); dx+=(x-mx)**2; dy+=(y-my)**2;});
+  if(!dx||!dy) return null;
+  return {r:n/Math.sqrt(dx*dy), n:p.length};
+}
+const ICON = {
+  dumbbell:'<path d="M6.5 6.5v11M3 9v6M17.5 6.5v11M21 9v6M6.5 12h11"/>',
+  tennis:'<circle cx="12" cy="12" r="9"/><path d="M5 5c4.5 4 4.5 10 0 14M19 5c-4.5 4-4.5 10 0 14"/>',
+  chart:'<path d="M3 20h18"/><path d="M6 20v-6M11 20V7M16 20v-9M21 20v-4"/>',
+  pulse:'<path d="M3 12h4l2.5-7 4 14L16 12h5"/>',
+  gear:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-1.8-.3 1.6 1.6 0 00-1 1.5V21a2 2 0 11-4 0v-.1A1.6 1.6 0 008 19.4a1.6 1.6 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00.3-1.8 1.6 1.6 0 00-1.5-1H2a2 2 0 110-4h.1A1.6 1.6 0 003.6 8a1.6 1.6 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 001.8.3H8a1.6 1.6 0 001-1.5V2a2 2 0 114 0v.1a1.6 1.6 0 001 1.5 1.6 1.6 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00-.3 1.8V8a1.6 1.6 0 001.5 1H22a2 2 0 110 4h-.1a1.6 1.6 0 00-1.5 1z"/>',
+  chev:'<path d="M9 18l6-6-6-6"/>', down:'<path d="M6 9l6 6 6-6"/>',
+  left:'<path d="M15 18l-6-6 6-6"/>',
+  check:'<path d="M20 6L9 17l-5-5"/>', x:'<path d="M18 6L6 18M6 6l12 12"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>', undo:'<path d="M3 7v6h6"/><path d="M3.5 13a9 9 0 102.1-7"/>',
+  edit:'<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>',
+  copy:'<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>',
+  trash:'<path d="M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2M19 6l-1 14a1 1 0 01-1 1H7a1 1 0 01-1-1L5 6"/>',
+  play:'<path d="M6 4l14 8-14 8z"/>', up:'<path d="M18 15l-6-6-6 6"/>',
+  /* pause, which the set had no glyph for - so the control that stops a
+     workout was wearing the stopwatch that means a rest timer */
+  pause:'<path d="M9 5v14M15 5v14"/>',
+  dl:'<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+  ul:'<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>',
+  flame:'<path d="M12 2s4 4.5 4 8a4 4 0 01-8 0c0-1 .5-2 .5-2S7 10 6 12a6 6 0 1012 0c0-5-6-10-6-10z"/>',
+  moon:'<path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/>',
+  heart:'<path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 10-7.8 7.8l8.8 8.8 8.8-8.8a5.5 5.5 0 000-7.8z"/>',
+  timer:'<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/>',
+  book:'<path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>',
+  run:'<circle cx="16" cy="4" r="2"/><path d="M12 21l1.5-6-3-2.5L9 17M10.5 12.5L8 8l4-1.5 3 2.5 3 1"/>',
+  bike:'<circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M15 6a1 1 0 100-2 1 1 0 000 2zM12 17.5L9 9l4-1 2.5 3.5H18"/>',
+  target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
+  ruler:'<path d="M3.5 9.5h17a1 1 0 011 1v3a1 1 0 01-1 1h-17a1 1 0 01-1-1v-3a1 1 0 011-1z"/><path d="M7 9.5v2M11 9.5v3M15 9.5v2M19 9.5v3"/>',
+  info:'<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/>',
+  /* a coaching cue — the one thing a coach would say out loud */
+  bulb:'<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z"/>',
+  /* you, on the home screen and on the profile row */
+  user:'<circle cx="12" cy="8" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>',
+  /* what you did, rather than what a device measured about it */
+  shoe:'<path d="M2 16.5h14.5a4.5 4.5 0 0 0 4.3-3.2l.2-.8-6.5-2-2-2.5H8l-1 3H4a2 2 0 0 0-2 2z"/><path d="M2 20h19"/>',
+  /* swapping today’s plan for another */
+  swap:'<path d="M4 8h13l-3-3M20 16H7l3 3"/>',
+  /* a section that leads somewhere bigger */
+  layers:'<path d="M12 3 3 8l9 5 9-5z"/><path d="M3 13l9 5 9-5"/>',
+  /* the settings index, one mark per row so the list scans by shape */
+  home:'<path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/>',
+  checkc:'<circle cx="12" cy="12" r="9"/><path d="M8 12.2l2.6 2.6L16 9.4"/>',
+  sliders:'<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
+  cal:'<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8.5 3v4M15.5 3v4"/>',
+  db:'<ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6"/><path d="M4.5 12v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6"/>',
+  shield:'<path d="M12 3l7.5 3v5.5c0 4.6-3.1 8-7.5 9.5-4.4-1.5-7.5-4.9-7.5-9.5V6z"/>',
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4"/>',
+  sliders2:'<path d="M5 4v6M5 14v6M12 4v9M12 17v3M19 4v3M19 11v9"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="15" r="2"/><circle cx="19" cy="9" r="2"/>',
+  help:'<circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .9-1 1.6v.3M12 17h.01"/>',
+  /* the open readiness ring — the app's own mark, and sport-neutral */
+  ring:'<path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5"/>',
+  /* device types — enough to tell a ring from a band from a watch */
+  watch:'<rect x="6.5" y="6.5" width="11" height="11" rx="3.4"/><path d="M9.5 6.5V3.5h5v3M9.5 17.5v3h5v-3"/>',
+  band:'<rect x="3" y="9" width="18" height="6" rx="3"/><path d="M8.5 9v6M15.5 9v6"/>',
+  ringfull:'<circle cx="12" cy="12" r="6.6"/>',
+  /* equipment */
+  eband:'<path d="M4 12c2.6-5.2 13.4-5.2 16 0-2.6 5.2-13.4 5.2-16 0z"/>',
+  bench:'<path d="M3 10.5h18v3H3zM6.5 13.5V19M17.5 13.5V19"/>',
+  pullbar:'<path d="M3 5.5h18M8 5.5v4M16 5.5v4M12 9.5v3"/>',
+  kettle:'<path d="M9.2 7.4a3 3 0 015.6 0"/><path d="M7 9.4h10a6 6 0 11-10 0z"/>',
+  medball:'<circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16"/>',
+  barbell:'<path d="M2 12h20M5 8v8M19 8v8M8.5 9.5v5M15.5 9.5v5"/>',
+  cable:'<path d="M5 4v6a7 7 0 0014 0V4"/><circle cx="12" cy="18.5" r="2.4"/>',
+  /* ---- one glyph per activity ----------------------------------------
+     A runner, a walker and a hiker drawn with the same silhouette does not
+     read as a tidy icon set; it reads as an app that cannot tell them apart.
+     The same went for the flame, which stood in for seven different sports.
+     These are the drawings that were missing, so nothing has to double up. */
+  walk:'<circle cx="12.5" cy="3.8" r="2"/><path d="M12.5 6.2v6.6"/><path d="M12.5 12.8L9.6 21M12.5 12.8l3.1 4.2.7 4"/><path d="M12.5 8.4L8.8 10.8M12.5 8.4l3.4 2.1"/>',
+  hike:'<path d="M2.5 20.5h19"/><path d="M5.5 20.5 11 8.5l3.4 7 1.8-3 5.3 8z"/><path d="M11 8.5 12.8 5"/>',
+  swim:'<circle cx="7" cy="7.5" r="2"/><path d="M10.2 10.6 14 8.2l4.5 3.4"/><path d="M2.5 16.4c1.6-1.3 3.2-1.3 4.8 0s3.2 1.3 4.8 0 3.2-1.3 4.8 0 3.2 1.3 4.6 0"/><path d="M2.5 20.4c1.6-1.3 3.2-1.3 4.8 0s3.2 1.3 4.8 0 3.2-1.3 4.8 0 3.2 1.3 4.6 0"/>',
+  soccer:'<circle cx="12" cy="12" r="9"/><path d="M12 7.6l3.6 2.6-1.4 4.3H9.8L8.4 10.2z"/><path d="M12 3v4.6M20 9.4l-4.4 3.1M17.2 19.6l-2.6-3.4M6.8 19.6l2.6-3.4M4 9.4l4.4 3.1"/>',
+  bball:'<circle cx="12" cy="6.2" r="3.6"/><path d="M3.4 12.8h17.2"/><path d="M6.4 12.8l1.5 6.8M17.6 12.8l-1.5 6.8M12 12.8v6.8"/><path d="M7.9 16.4h8.2"/>',
+  vball:'<circle cx="12" cy="12" r="9"/><path d="M12 3c3.1 3.7 3.1 14.3 0 18"/><path d="M3.9 7.6c5.1 1 9.6 5.1 11.1 13"/><path d="M20.1 7.6c-5.1 1-9.6 5.1-11.1 13"/>',
+  padel:'<rect x="5.6" y="2.6" width="12.8" height="12.4" rx="4.4"/><path d="M10.7 15.2 10.2 21.4h3.6l-.5-6.2"/><path d="M9.6 7.4h.01M14.4 7.4h.01M12 10.6h.01"/>',
+  squash:'<ellipse cx="12" cy="7.8" rx="4.8" ry="5.8"/><path d="M7.4 7.8h9.2M12 2.2v11.4"/><path d="M12 13.6v7.8"/>',
+  martial:'<path d="M5.5 9.2a4.6 4.6 0 0 1 4.6-4.6h2.4A5.5 5.5 0 0 1 18 10.1v3.6H5.5z"/><path d="M5.5 10.8h2.2a1.8 1.8 0 1 0 0-3.6"/><path d="M7.2 13.7v3.7a2 2 0 0 0 2 2h5.2a2 2 0 0 0 2-2v-3.7"/>',
+  ski:'<circle cx="13.2" cy="4" r="1.9"/><path d="M13 6.4l-2.2 4.8 3.6 2.1-1.1 4.2"/><path d="M13.6 8.2l3.6 2.6"/><path d="M3 21.2 20.6 16.8"/>',
+  golf:'<path d="M7 3v18"/><path d="M7 3.4l9.2 3.1L7 9.6z"/><circle cx="16.4" cy="19.6" r="1.6"/>',
+  row:'<path d="M5.6 18.4 18.4 5.6M18.4 18.4 5.6 5.6"/><path d="M2.8 21.2c-1-1-1-2.2 0-3.2l3.2 3.2c-1 1-2.2 1-3.2 0z"/><path d="M21.2 21.2c1-1 1-2.2 0-3.2l-3.2 3.2c1 1 2.2 1 3.2 0z"/>',
+  yoga:'<circle cx="12" cy="4" r="2"/><path d="M12 6.4v5.8"/><path d="M12 12.2l-6 3M12 12.2l6 3"/><path d="M4.4 19.2c2.6-2.6 12.6-2.6 15.2 0"/>',
+  climb:'<path d="M4.6 21V5.6a2 2 0 0 1 2-2H19"/><path d="M9.2 8.2h.01M14.8 6.4h.01M11.2 13h.01M16.8 11.2h.01M8.6 17.6h.01M14.2 16.4h.01"/>',
+  /* anything the list does not have a drawing for, said as "and the rest"
+     rather than borrowed from something else */
+  dots:'<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
+  /* ---- the trunk, drawn as a trunk ---------------------------------------
+     The core session used to carry `ul`, the upload arrow. That is the share
+     glyph on every phone, so the one strength session named after a body part
+     was marked with an action from a different part of the app entirely. */
+  core:'<rect x="7" y="3.4" width="10" height="17.2" rx="4.2"/><path d="M12 5.2v14"/><path d="M7.4 9.4h9.2M7.2 14.6h9.6"/>',
+  /* the two runs that are not just "a run": a pace to hold, and a pattern to
+     repeat */
+  gauge:'<path d="M3.6 17.5a8.4 8.4 0 1 1 16.8 0"/><path d="M12 17.5l4.6-4.8"/><path d="M3.6 20.5h16.8"/>',
+  intervals:'<path d="M2 17.5h4.2V6.5h5v11h5V9h5.8"/>',
+  /* explosive work. The flame stays with load, where it means the cost of a
+     day rather than the shape of a session. */
+  bolt:'<path d="M13.2 2.5 4.6 13.6h6.6l-1 7.9 8.4-11.1H12z"/>',
+  /* getting warm, as a ramp rather than as the flame that means load */
+  warmup:'<path d="M12 21.2v-9.4"/><path d="M8.4 15.4 12 11.8l3.6 3.6"/><path d="M5 8.2a7 7 0 0 1 14 0"/>',
+  /* ---- metrics that used to borrow another metric's mark ---------------- */
+  lungs:'<path d="M12 3.4v8.2"/><path d="M9.6 6.6C7.1 6.6 4 8.6 4 13.1c0 3.5 1.2 6.5 3.6 6.5 2 0 3.4-1.6 3.4-4.2v-3.8"/><path d="M14.4 6.6c2.5 0 5.6 2 5.6 6.5 0 3.5-1.2 6.5-3.6 6.5-2 0-3.4-1.6-3.4-4.2v-3.8"/>',
+  battery:'<rect x="2.4" y="7.8" width="16" height="8.8" rx="2.4"/><path d="M20.8 11v2.6"/><path d="M5.4 11.2v2M8.8 11.2v2M12.2 11.2v2"/>',
+  hourglass:'<path d="M6.5 3h11M6.5 21h11"/><path d="M8 3v3.8l4 5.2 4-5.2V3M8 21v-3.8l4-5.2 4 5.2V21"/>',
+  spo2:'<path d="M12 3.2s6 6.6 6 10.2a6 6 0 11-12 0C6 9.8 12 3.2 12 3.2z"/><path d="M9.4 14.2h5.2M12 11.6v5.2"/>',
+  /* a search field takes a magnifier. It had the target, which is the mark
+     this app uses for a test you are due to retake. */
+  search:'<circle cx="11" cy="11" r="6.4"/><path d="M15.8 15.8 20.6 20.6"/>',
+  /* metrics */
+  drop:'<path d="M12 3.2s6 6.6 6 10.2a6 6 0 11-12 0C6 9.8 12 3.2 12 3.2z"/>',
+  thermo:'<path d="M10 14.2V5a2 2 0 114 0v9.2a4 4 0 11-4 0z"/>'
+};
+const FILLED={play:1};
+const svg=(k,cls)=>`<svg class="${cls||''}" viewBox="0 0 24 24" fill="${FILLED[k]?'currentColor':'none'}" stroke="currentColor" stroke-width="${FILLED[k]?0:2}" stroke-linecap="round" stroke-linejoin="round">${ICON[k]||''}</svg>`;
+
+/* Two names for the same drawing is a fault no diff shows: the set looks
+   complete, and somewhere on screen one mark stands for two things. Reported
+   here so a test can fail on it rather than a user noticing it. */
+function iconAudit(){
+  const seen={}, dup=[];
+  Object.keys(ICON).forEach(k=>{
+    const g=String(ICON[k]).replace(/[ \n]+/g,'');
+    if(seen[g]) dup.push(seen[g]+'='+k); else seen[g]=k;
+  });
+  return {total:Object.keys(ICON).length, dup:dup};
+}
+
+/* A switch, drawn.
+   Every boolean setting used to be written out by hand as a bare checkbox
+   with an inline width and an accent-color, which the appearance:none reset
+   in the stylesheet turned into an invisible 22px square. Tapping one changed
+   the setting and showed nothing, so the screen looked broken. One builder
+   means that cannot happen in one place and not another, and it puts the
+   label, the explanation and the state in a fixed order.
+
+   `state` is for a switch whose position is not the whole story - an alert
+   the browser has blocked is "on" here and still silent - so the row can say
+   what is actually happening underneath it. */
+function toggleRow(o){
+  o=o||{};
+  const id=o.id||('tg'+uid());
+  return `<div class="tglr">
+    <input type="checkbox" id="${esc(id)}"${o.on?' checked':''}${o.disabled?' disabled':''}
+           aria-describedby="${esc(id)}_h">
+    <span class="tg-x">
+      <span class="tg-t">${esc(o.label||'')}</span>
+      ${o.hint?`<span class="tg-h" id="${esc(id)}_h">${o.hint}</span>`:''}
+      ${''/* Always emitted when the row has a state to report, even when that
+             state is currently nothing to report, so a repaint can fill it in
+             later. CSS hides it while it is empty. */}
+      ${o.state!=null?`<span class="tg-s ${esc(o.stateCls||'')}">${esc(o.state)}</span>`:''}
+    </span>
+    <span class="tgl" aria-hidden="true"></span>
+  </div>`;
+}
+
+/* =========================================================================
+   AUDIBLE CUES
+   Synthesised rather than shipped. An audio file would be bytes in the page, a
+   request to make, and one more thing to get wrong offline; four short tones
+   are about thirty lines of maths. Browsers will not start an AudioContext
+   outside a user gesture, so it is created lazily and resumed on every use.
+   ====================================================================== */
+let AC=null;
+function soundOn(){ return !(DB&&DB.settings) || DB.settings.sound!==false; }
+function audioCtx(){
+  if(!soundOn()) return null;
+  try{
+    if(!AC){ const C=window.AudioContext||window.webkitAudioContext; if(!C) return null; AC=new C(); }
+    if(AC.state==='suspended'){ const r=AC.resume(); if(r&&r.catch) r.catch(()=>{}); }
+    return AC;
+  }catch(e){ return null; }
+}
+function beep(freq,dur,delay,vol){
+  const c=audioCtx(); if(!c) return;
+  try{
+    const t0=c.currentTime+(delay||0), d=dur||0.14;
+    const o=c.createOscillator(), g=c.createGain();
+    o.type='sine'; o.frequency.setValueAtTime(freq,t0);
+    /* an exponential ramp cannot touch zero, hence the near-silent floor:
+       a square-edged gain change is an audible click on its own */
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002,vol||0.16),t0+0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001,t0+d);
+    o.connect(g); g.connect(c.destination);
+    o.start(t0); o.stop(t0+d+0.04);
+  }catch(e){}
+}
+const SOUND={
+  tick: ()=>beep(880,0.05,0,0.06),                                   // 3, 2, 1
+  rest: ()=>{ beep(784,0.14,0,0.17); beep(1046,0.22,0.15,0.17); },   // rest over
+  set:  ()=>beep(660,0.06,0,0.08),                                   // set logged
+  done: ()=>{ beep(523,0.12,0,0.15); beep(659,0.12,0.12,0.15);
+              beep(784,0.26,0.24,0.15); }                            // session saved
+};
+
+/* =========================================================================
+   LOCAL ALERTS
+   ------------------------------------------------------------------------
+   This is NOT a push notification and the distinction is the whole point.
+   Web Push would mean a push service, a server, and a subscription endpoint
+   identifying this device sitting on it. There is none of that here: the
+   phone raises its own alert, for a timer the phone itself is running, and
+   nothing about you leaves the device. Off until the user asks for it, and
+   permission is only ever requested from a tap.
+   ====================================================================== */
+function notifySupported(){ return typeof Notification!=='undefined'; }
+function notifyState(){ return notifySupported()? Notification.permission : 'unsupported'; }
+function notifyAsk(cb){
+  if(!notifySupported()) return cb&&cb('unsupported');
+  const done=p=>{ if(cb){ const f=cb; cb=null; f(p||notifyState()); } };
+  try{
+    /* two spellings of the same call: Safari kept the callback form long
+       after everyone else returned a promise */
+    const r=Notification.requestPermission(done);
+    if(r&&r.then) r.then(done).catch(()=>done('denied'));
+  }catch(e){ done('denied'); }
+}
+function notifyOn(){ return !!(DB&&DB.settings&&DB.settings.notify) && notifyState()==='granted'; }
+
+/* Saying what is actually happening, rather than what the feature is.
+   A notification switch has two states that both look like "on": the user has
+   turned it on and the browser allows it, and the user has turned it on and
+   the browser is blocking it. The second one is a silent phone, and the
+   switch cannot show the difference, so it is said in words. */
+function notifyText(){
+  const st=notifyState(), want=!!(DB&&DB.settings&&DB.settings.notify);
+  if(st==='unsupported') return 'NOT AVAILABLE HERE';
+  if(st==='denied')      return 'BLOCKED BY YOUR BROWSER';
+  /* Nothing to add: the switch itself already says off, and a second label
+     saying the same thing is the kind of noise that makes people stop reading
+     the ones that matter. */
+  if(!want)              return '';
+  return st==='granted' ? 'ON' : 'NEEDS PERMISSION';
+}
+function notifyCls(){
+  const st=notifyState();
+  if(st==='unsupported') return '';
+  if(st==='denied')      return 'r';
+  return notifyOn() ? 'g' : '';
+}
+/* the one sentence that tells them what to do next, if anything */
+function notifyNext(){
+  const st=notifyState(), want=!!(DB&&DB.settings&&DB.settings.notify);
+  if(st==='unsupported')
+    return 'This browser has no notifications, so nothing here can be turned on. '
+         + 'Sound and the on-screen timer still work.';
+  if(st==='denied')
+    return 'You blocked notifications for this page, so turning this on would '
+         + 'change nothing. Allow them for this site in your browser settings, '
+         + 'then come back and switch it on.';
+  if(st==='default')
+    return 'Your browser will ask for permission the first time you switch '
+         + 'this on. Nothing is sent anywhere either way.';
+  return want
+    ? 'Allowed. You will get a notification the moment a rest timer ends, even '
+      + 'with the screen off.'
+    : 'Your browser already allows this, so switching it on takes effect '
+      + 'straight away.';
+}
+function notify(title,body){
+  if(!notifyOn()) return;
+  const opt={body:body||'', tag:'baseline-timer', renotify:true,
+             icon:'icons/icon-192.png', badge:'icons/icon-192.png'};
+  try{
+    /* through the service worker where there is one, because a page that is
+       hidden or discarded cannot raise a Notification itself */
+    if(navigator.serviceWorker && navigator.serviceWorker.ready){
+      navigator.serviceWorker.ready
+        .then(reg=>{ try{ reg.showNotification(title,opt); }
+                     catch(e){ try{ new Notification(title,opt); }catch(e2){} } })
+        .catch(()=>{ try{ new Notification(title,opt); }catch(e){} });
+    } else { new Notification(title,opt); }
+  }catch(e){}
+}
+
+let toastT;
+function toast(msg,kind){ const t=$('#toast'); t.textContent=msg; t.className=(kind||'')+' on'; clearTimeout(toastT); toastT=setTimeout(()=>t.className=t.className.replace('on','').trim(),2400); }
+function haptic(){ try{ if(navigator.vibrate) navigator.vibrate(8);}catch(e){} }
+
+/* =========================================================================
+   LOCAL DATA STORE  —  privacy-first, per-device, no server
+   ------------------------------------------------------------------------
+   Architecture:
+        GitHub Pages  ->  delivers application code only
+        Browser       ->  runs the app
+        IndexedDB     ->  THIS device's private data
+   Nothing here ever leaves the device. There is no account, no sync, no
+   telemetry and no remote database. Two people using the app, or one person
+   on two devices, have entirely separate datasets by construction — the only
+   way to move data is an explicit JSON backup.
+
+   IndexedDB is the primary durable store, with a real per-collection schema
+   and versioned migrations. localStorage holds only tiny boot preferences.
+   The whole dataset is held in memory as `DB` while the app runs so the UI
+   stays synchronous; writes are debounced back to IndexedDB.
+   ====================================================================== */
+const DB_NAME='baseline';
+const DB_VERSION=2;                 // bump to add/alter object stores
+const SCHEMA_VERSION=3;             // bump to transform stored records
+/* v3: equipment stopped being allowed to delete a training target. See
+   the migration in p10 - it restores the ones the old prune zeroed. */
+/* A readable build stamp. Without one, a tester reporting "it's broken" cannot
+   tell you whether they are on today's build or a cached copy from last week,
+   which is most of the diagnosis. Bump this on every deploy. */
+/* A date, plus a letter when more than one build ships in a day. Without the
+   letter there was no way to tell a second same-day deploy from the cached
+   copy of the first, which is exactly the question "did my upload work?". */
+const APP_BUILD='2026-09-29a';
+/* The last few errors, kept in memory only, so a bug report can carry
+   something better than "it stopped working". Never written to disk, never
+   sent anywhere — it is read only by the diagnostics button. */
+const ERRLOG=[];
+function noteError(what){
+  ERRLOG.push(String(what).slice(0,160));
+  if(ERRLOG.length>5) ERRLOG.shift();
+}
+window.addEventListener('error',e=>noteError((e.message||'error')+' @'+(e.lineno||'?')));
+window.addEventListener('unhandledrejection',e=>
+  noteError('promise: '+((e.reason&&e.reason.message)||e.reason||'?')));
+
+/* =========================================================================
+   DIAGNOSTICS
+   A short, copyable summary for a bug report. Deliberately contains no
+   training data: counts only, never values, notes, dates of sessions or
+   anything a person entered. It goes to the clipboard, not to a server.
+   ====================================================================== */
+function diagnostics(){
+  const P=(DB&&DB.profile)||{};
+  const standalone = (window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)
+                     || window.navigator.standalone===true;
+  const ua=navigator.userAgent||'';
+  const dev = /iPhone/.test(ua)?'iPhone' : /iPad/.test(ua)?'iPad'
+            : /Android/.test(ua)?'Android' : /Mac/.test(ua)?'Mac'
+            : /Windows/.test(ua)?'Windows' : 'other';
+  const br  = /CriOS/.test(ua)?'Chrome iOS' : /FxiOS/.test(ua)?'Firefox iOS'
+            : /Edg\//.test(ua)?'Edge' : /Chrome/.test(ua)?'Chrome'
+            : /Safari/.test(ua)?'Safari' : 'other';
+  const osm = ua.match(/OS (\d+[_.]\d+)/) || ua.match(/Version\/(\d+)/);
+  const n=(a)=>Array.isArray(a)?a.length:0;
+  const L=[];
+  L.push(`Baseline build ${APP_BUILD} (schema ${SCHEMA_VERSION})`);
+  L.push(`${dev}${osm?' '+osm[1].replace('_','.'):''} \u00b7 ${br} \u00b7 ${standalone?'installed':'browser tab'} \u00b7 ${window.innerWidth}x${window.innerHeight}`);
+  L.push(`Theme: ${themePref()}`);
+  L.push(`Storage: ${Store.mode||'?'} \u00b7 eviction protection ${Store.persisted===true?'granted':Store.persisted===false?'DENIED':'unknown'}`);
+  L.push(`Setup: ${P.onboarded?'complete':'NOT FINISHED'} \u00b7 wearable ${P.source||'?'} \u00b7 sports ${(P.sports||[]).join('+')||'-'} \u00b7 gear ${(P.gear||[]).join('+')||'none'}`);
+  L.push(`Data: ${n(DB.sessions)} sessions, ${n(DB.activities)} activities, ${Object.keys(DB.checkins||{}).length} check-ins, ${n(DB.tests)} tests, ${n(DB.whoop&&DB.whoop.cycles)} imported days, ${n(P.limits)} limitations`);
+  L.push(`Errors: ${ERRLOG.length?ERRLOG.join(' | '):'none'}`);
+  return L.join('\n');
+}
+function copyDiagnostics(){
+  const txt=diagnostics();
+  const done=()=>toast('Diagnostics copied — paste it into your message','ok');
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done).catch(()=>showDiagnostics(txt));
+  } else showDiagnostics(txt);
+}
+/* clipboard access is refused in some browsers; show the text so it can still
+   be selected by hand rather than failing silently */
+function showDiagnostics(txt){
+  openSheet('Diagnostics',
+    `<p class="hint" style="margin-bottom:12px">Copy this and send it over. It contains no training data \u2014 counts only.</p>
+     <textarea class="inp" id="diagTxt" style="min-height:190px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px">${esc(txt||diagnostics())}</textarea>`,
+    `<button class="btn primary big block" onclick="closeSheet()">Done</button>`);
+  const el=$('#diagTxt'); if(el){ el.focus(); el.select(); }
+}
+const KEY='baseline.tps.v1';        // legacy localStorage blob (v1 installs)
+const PREF='baseline.prefs';        // tiny, non-sensitive boot hints
+
+/* collection -> object store definition */
+const STORES={
+  sessions  :{key:'id',   idx:['date']},
+  activities:{key:'id',   idx:['date','type']},
+  checkins  :{key:'date', idx:[]},
+  exercises :{key:'id',   idx:['cat']},
+  workouts  :{key:'id',   idx:[]},
+  tests     :{key:'id',   idx:['testId','date']},
+  physique  :{key:'id',   idx:['date']},
+  wCycles   :{key:'date', idx:[]},
+  wWorkouts :{key:'key',  idx:['date']},
+  wJournal  :{key:'key',  idx:['date']},
+  wImports  :{key:'at',   idx:[]}
+};
+/* singleton objects live in one keyed store */
+const KV_KEYS=['profile','settings','targets','baselines','plans','decisions','ui','meta','mcycle'];
+/* =========================================================================
+   THEME
+   Light by default, dark when the system asks for it, and an explicit
+   override if the user would rather pin one. Stored in localStorage rather
+   than the main record so it can be applied before the database has opened —
+   otherwise the app flashes the wrong theme on every launch.
+   ====================================================================== */
+const THEMES=[{id:'auto',name:'Match system'},{id:'light',name:'Light'},{id:'dark',name:'Dark'}];
+function themePref(){
+  try{ return localStorage.getItem('baseline.theme')||'auto'; }catch(e){ return 'auto'; }
+}
+function systemIsDark(){
+  return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme:dark)').matches);
+}
+function applyTheme(mode){
+  const m=mode||themePref();
+  const r=document.documentElement;
+  if(m==='auto') r.removeAttribute('data-theme');
+  else r.setAttribute('data-theme',m);
+  /* keep the browser chrome — status bar, form controls — in step */
+  const dark = m==='dark' || (m==='auto' && systemIsDark());
+  const meta=document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.setAttribute('content', dark?'#0B0C0E':'#FBFBF9');
+  return m;
+}
+function setTheme(mode){
+  try{ localStorage.setItem('baseline.theme',mode); }catch(e){}
+  applyTheme(mode);
+}
+applyTheme();
+/* follow the system live while set to auto */
+if(window.matchMedia){
+  const mq=window.matchMedia('(prefers-color-scheme:dark)');
+  const onChange=()=>{ if(themePref()==='auto') applyTheme('auto'); };
+  if(mq.addEventListener) mq.addEventListener('change',onChange);
+  else if(mq.addListener) mq.addListener(onChange);
+}
+
+/* collections written on an ordinary save (WHOOP is large and rarely changes) */
+const LIGHT=['sessions','activities','checkins','exercises','workouts','tests','physique'];
+const HEAVY=['wCycles','wWorkouts','wJournal','wImports'];
+
+const IDB={
+  db:null, ok:false, err:null,
+  open(){ return new Promise(res=>{
+    try{
+      if(!self.indexedDB){ IDB.err='IndexedDB unavailable'; return res(false); }
+      const r=indexedDB.open(DB_NAME,DB_VERSION);
+      r.onupgradeneeded=ev=>{
+        const db=r.result;
+        /* schema migration: additive only, never destructive */
+        Object.keys(STORES).forEach(name=>{
+          const def=STORES[name];
+          let st;
+          if(!db.objectStoreNames.contains(name)) st=db.createObjectStore(name,{keyPath:def.key});
+          else st=r.transaction.objectStore(name);
+          def.idx.forEach(f=>{ if(!st.indexNames.contains('by_'+f)) st.createIndex('by_'+f,f,{unique:false}); });
+        });
+        if(!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+        IDB.upgradedFrom=ev.oldVersion;
+      };
+      r.onsuccess=()=>{
+        IDB.db=r.result; IDB.ok=true;
+        IDB.db.onversionchange=()=>{ try{ IDB.db.close(); }catch(e){} IDB.ok=false; };
+        IDB.db.onclose=()=>{ IDB.ok=false; };
+        res(true);
+      };
+      r.onerror=()=>{ IDB.err=(r.error&&r.error.name)||'open failed'; res(false); };
+      r.onblocked=()=>{ IDB.err='blocked by another tab'; res(false); };
+      setTimeout(()=>{ if(!IDB.ok) res(false); },2500);   // never stall boot
+    }catch(e){ IDB.err=e.message; res(false); }
+  });},
+  tx(names,mode){ return IDB.db.transaction(names,mode); },
+  all(store){ return new Promise(res=>{
+    if(!IDB.ok) return res([]);
+    try{ const r=IDB.tx([store],'readonly').objectStore(store).getAll();
+      r.onsuccess=()=>res(r.result||[]); r.onerror=()=>res([]);
+    }catch(e){ res([]); }
+  });},
+  getKV(k){ return new Promise(res=>{
+    if(!IDB.ok) return res(null);
+    try{ const r=IDB.tx(['kv'],'readonly').objectStore('kv').get(k);
+      r.onsuccess=()=>res(r.result==null?null:r.result); r.onerror=()=>res(null);
+    }catch(e){ res(null); }
+  });},
+  /* write a set of collections + kv singletons in ONE transaction */
+  writeAll(collections, kv){ return new Promise(res=>{
+    if(!IDB.ok) return res(false);
+    try{
+      const names=collections.slice(); if(kv) names.push('kv');
+      const tx=IDB.tx(names,'readwrite');
+      tx.oncomplete=()=>res(true);
+      tx.onerror=()=>res(false);
+      tx.onabort=()=>{ Store.quotaHit=(tx.error&&tx.error.name==='QuotaExceededError'); res(false); };
+      collections.forEach(name=>{
+        const st=tx.objectStore(name);
+        st.clear();                                   // full replace keeps memory and disk identical
+        const rows=collectionRows(name);
+        for(let i=0;i<rows.length;i++){ try{ st.put(rows[i]); }catch(e){} }
+      });
+      if(kv){ const st=tx.objectStore('kv'); KV_KEYS.forEach(k=>{ try{ st.put(DB[k]!==undefined?DB[k]:null,k); }catch(e){} }); }
+    }catch(e){ res(false); }
+  });},
+  wipe(){ return new Promise(res=>{
+    if(!IDB.ok) return res(false);
+    try{
+      const names=Object.keys(STORES).concat('kv');
+      const tx=IDB.tx(names,'readwrite');
+      tx.oncomplete=()=>res(true); tx.onerror=()=>res(false); tx.onabort=()=>res(false);
+      names.forEach(n=>{ try{ tx.objectStore(n).clear(); }catch(e){} });
+    }catch(e){ res(false); }
+  });}
+};
+/* map a store name onto the in-memory collection it mirrors */
+function collectionRows(name){
+  switch(name){
+    case 'checkins': return Object.keys(DB.checkins||{}).map(d=>Object.assign({date:d},DB.checkins[d]));
+    case 'wCycles':   return DB.whoop.cycles||[];
+    case 'wWorkouts': return DB.whoop.workouts||[];
+    case 'wJournal':  return DB.whoop.journal||[];
+    case 'wImports':  return (DB.whoop.imports||[]).map(x=>Object.assign({},x,{at:x.at||new Date().toISOString()}));
+    default: return DB[name]||[];
+  }
+}
+
+function withTimeout(p,ms,fallback){
+  return Promise.race([
+    Promise.resolve(p).catch(()=>fallback),
+    new Promise(r=>setTimeout(()=>r(fallback),ms))
+  ]);
+}
+
+const Store={
+  idb:false, local:false, mem:{}, persisted:null, quotaHit:false, lastWrite:null, writing:false,
+  async init(){
+    try{ localStorage.setItem('__bl_probe','1'); localStorage.removeItem('__bl_probe'); this.local=true; }
+    catch(e){ this.local=false; }
+    this.idb=await withTimeout(IDB.open(),2500,false);
+    /* Never awaited: on a secure origin this can stay pending indefinitely
+       while the browser decides, which would hang boot and show a blank app. */
+    this.requestPersist();
+    return this;
+  },
+  requestPersist(){
+    try{
+      if(navigator.storage&&navigator.storage.persist){
+        withTimeout(navigator.storage.persist(),3000,null)
+          .then(v=>{ if(v!=null){ this.persisted=v; try{ updateBanner(); }catch(e){} } }).catch(()=>{});
+      }
+    }catch(e){}
+  },
+  get mode(){ return this.idb?'IndexedDB':this.local?'localStorage (fallback)':'memory only'; },
+  get durable(){ return this.idb||this.local; },
+  /* Small preferences, in localStorage because they must be readable before
+     IndexedDB has opened: the theme, and the id of a workout left running.
+     A live workout is training data, so it is cleared by both delete paths
+     and is listed in DATA-PRIVACY.md rather than described as nothing. */
+  pref(k,v){
+    try{
+      const o=JSON.parse(localStorage.getItem(PREF)||'{}');
+      if(v===undefined) return o[k];
+      o[k]=v; localStorage.setItem(PREF,JSON.stringify(o));
+    }catch(e){ return undefined; }
+  },
+  /* ---- load the whole dataset into memory ---- */
+  async loadAll(){
+    if(this.idb){
+      const out={};
+      for(const k of KV_KEYS) out[k]=await IDB.getKV(k);
+      const cols={};
+      for(const name of Object.keys(STORES)) cols[name]=await IDB.all(name);
+      const any = KV_KEYS.some(k=>out[k]) || Object.keys(cols).some(k=>cols[k].length);
+      if(any) return {kv:out, cols};
+    }
+    /* v1 installs kept one JSON blob in localStorage — migrate it in */
+    if(this.local){
+      try{ const raw=localStorage.getItem(KEY); if(raw) return {legacy:JSON.parse(raw)}; }catch(e){}
+    }
+    return null;
+  },
+  /* ---- persist ---- */
+  async write(heavy){
+    if(!DB) return false;
+    this.writing=true;
+    let ok=false;
+    const cols = heavy ? LIGHT.concat(HEAVY) : LIGHT.slice();
+    if(this.idb) ok = await IDB.writeAll(cols,true);
+    if(!ok && this.local){
+      /* fallback for browsers where IndexedDB is unavailable */
+      try{ localStorage.setItem(KEY,JSON.stringify(DB)); ok=true; this.quotaHit=false; }
+      catch(e){ this.quotaHit=true; }
+    }
+    this.writing=false;
+    if(ok) this.lastWrite=Date.now();
+    return ok;
+  },
+  async clearAll(){
+    if(this.idb) await IDB.wipe();
+    this.purgeLegacy();
+    try{ localStorage.removeItem(PREF); }catch(e){}
+  },
+  /* The whole-DB JSON blob that `write` falls back to when IndexedDB is
+     unavailable. It contains imported health data, so anything that claims
+     to delete that data has to remove it too - whether or not this session
+     happens to be using it. Skipping that is how a deletion claim becomes
+     untrue on the one device where it mattered. */
+  purgeLegacy(){
+    try{ localStorage.removeItem(KEY); }catch(e){}
+  },
+  async estimate(){
+    try{ if(navigator.storage&&navigator.storage.estimate) return await withTimeout(navigator.storage.estimate(),2000,null); }catch(e){}
+    return null;
+  },
+  counts(){
+    if(!DB) return {};
+    return {sessions:(DB.sessions||[]).length, activities:(DB.activities||[]).length,
+      checkins:Object.keys(DB.checkins||{}).length, exercises:(DB.exercises||[]).length,
+      workouts:(DB.workouts||[]).length, cycles:(DB.whoop.cycles||[]).length,
+      whoopWorkouts:(DB.whoop.workouts||[]).length, journal:(DB.whoop.journal||[]).length};
+  }
+};
+
+let DB=null, saveT=null, saveHeavyPending=false;
+function save(now,heavy){
+  if(heavy) saveHeavyPending=true;
+  clearTimeout(saveT);
+  const go=()=>{
+    const h=saveHeavyPending; saveHeavyPending=false;
+    Store.write(h).then(ok=>{
+      if(!ok) toast(Store.quotaHit?'Storage full — export a backup':'Could not save — export a backup','err');
+      updateBanner();
+    });
+  };
+  if(now) go(); else saveT=setTimeout(go,300);
+}
+/* WHOOP stores are large and only change on import/restore/erase */
+const saveWhoop=()=>save(true,true);
+
+/* the honest warning when data will not survive a reload */
+function updateBanner(){
+  const el2=document.getElementById('sbanner'); if(!el2)return;
+  if(Store.durable && !Store.quotaHit){ el2.className=''; el2.innerHTML=''; return; }
+  el2.className='on';
+  el2.innerHTML = Store.quotaHit
+    ? `<b>Storage is full.</b> Recent changes may not have been saved. Export a JSON backup now, then remove old data.
+       <button id="sbBk">Export backup</button>`
+    : `<b>This page cannot save data.</b> Your browser is blocking local storage for this page, so anything you enter will be lost when you close the tab.
+       <button id="sbFix">How to fix this →</button>`;
+  const a=document.getElementById('sbBk'); if(a)a.onclick=exportJSON;
+  const b=document.getElementById('sbFix'); if(b)b.onclick=()=>{ openSetup(); };
+}
+
+/* where is this running? drives the Setup screen */
+const ENV={
+  get proto(){ return location.protocol; },
+  get isFile(){ return location.protocol==='file:'; },
+  get isHttps(){ return location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1'; },
+  get standalone(){ return !!(window.navigator.standalone) ||
+    (window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches); },
+  get iOS(){ return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1); },
+  get safari(){ return /^((?!chrome|android|crios|fxios|edgios).)*safari/i.test(navigator.userAgent); },
+  get desktop(){ return window.matchMedia&&window.matchMedia('(min-width: 900px)').matches; },
+  get canInstall(){ return this.isHttps && !this.standalone; }
+};
+
+/* =========================================================================
+   BASELINES
+   Nothing physiological is invented. Until a WHOOP export is imported these
+   stay null, the UI shows them as "not established", and the engine drops
+   those signals from its weighting rather than substituting a population
+   average and presenting it as the user's own baseline.
+   The one exception is a generic 8h sleep-need placeholder, labelled as
+   generic everywhere it appears.
+   ====================================================================== */
+const SEED_BASE = {
+  source:'No WHOOP data imported — physiological baselines not established.',
+  hrv:null, hrvSd:null, rhr:null, rhrSd:null,
+  recovery:null, recoverySd:null,
+  sleepNeed:480, sleepNeedGeneric:true,
+  sleepMean:null, sleepPerf:null,
+  respRate:null, respSd:null,
+  strainMean:null, strainSd:null,
+  computed:false, n:0, from:null, to:null
+};
+/* does THIS device actually hold WHOOP data? */
+const hasWhoop  = ()=> !!(DB&&DB.whoop&&DB.whoop.cycles&&DB.whoop.cycles.length>=7);
+const whoopMode = ()=> !!(DB&&DB.profile&&DB.profile.source&&DB.profile.source!=='none');
+
+/* =========================================================================
+   EXERCISE ILLUSTRATIONS
+   ------------------------------------------------------------------------
+   One figure, posed. Every illustration is the same skeleton - head, torso,
+   two arms, two legs - with different joint coordinates and optional props,
+   rendered to inline SVG in a 120x84 box.
+
+   WHY NOT assets/exercises/*.svg, which is the obvious answer:
+
+     1. Baseline ships as ONE html file with no requests of any kind. A
+        hundred-odd separate SVGs would be a hundred-odd requests, and every
+        one of them would need an entry in the service worker's shell list or
+        the illustrations would simply vanish offline - which is the failure
+        mode hardest to notice and worst to hit mid-session in a basement gym.
+     2. A path that does not exist cannot be drawn. Inline, there is no path,
+        so the "no fake image paths" rule holds by construction rather than by
+        a validator catching it afterwards. The validator still exists, and
+        checks that every exercise's key resolves to a real pose.
+     3. Consistency is the hard part of an exercise library, and it is the
+        part a shared skeleton gives for free: same body, same line weight,
+        same perspective conventions, same equipment shapes, every time. Forty
+        hand-drawn files drift by the tenth.
+     4. Adding one is a pose object of six coordinate pairs, which is what
+        "easy to expand" has to mean for this to keep up with 173 exercises.
+
+   Equipment drawn here is only what the app actually supports as equipment:
+   bodyweight, dumbbells, a band, a kettlebell, a medicine ball, a pull-up or
+   fixed bar, a barbell, a bench/step/block, a wall, the floor, a bike. No
+   cables and no machines, because the app has no such tier - and an
+   illustration must never show kit the user has not got. A gym-only prop
+   (barbell, bar) is only ever reached from a gym-only exercise, which the
+   equipment gate has already filtered before the drawing is asked for.
+
+   Coordinates: x 0..120, y 0..84, y downwards. Ground line at y=76.
+   ====================================================================== */
+const FIG_W=120, FIG_H=84, FIG_GND=76;
+
+/* Props, drawn over the figure. Each is a small shape, deliberately schematic:
+   the figure is the instruction, the prop only says what is in the hands. */
+function figProp(p){
+  const n=v=>Math.round(v*10)/10;
+  if(p.t==='band'){
+    /* a band sags; the curve is what makes it read as elastic rather than a stick */
+    const c=p.c||[(p.a[0]+p.b[0])/2,(p.a[1]+p.b[1])/2+8];
+    return `<path d="M${n(p.a[0])} ${n(p.a[1])} Q${n(c[0])} ${n(c[1])} ${n(p.b[0])} ${n(p.b[1])}"
+      class="fg-e" fill="none" stroke-width="2.4"/>`;
+  }
+  if(p.t==='db'){
+    const x=p.at[0], y=p.at[1];
+    return `<g class="fg-e"><line x1="${n(x-4)}" y1="${n(y)}" x2="${n(x+4)}" y2="${n(y)}" stroke-width="2.4"/>
+      <circle cx="${n(x-5)}" cy="${n(y)}" r="2.6" class="fg-ef"/>
+      <circle cx="${n(x+5)}" cy="${n(y)}" r="2.6" class="fg-ef"/></g>`;
+  }
+  if(p.t==='wall') return `<line x1="${n(p.x)}" y1="4" x2="${n(p.x)}" y2="${FIG_GND}" class="fg-g" stroke-width="3"/>`;
+  if(p.t==='block') return `<rect x="${n(p.x)}" y="${n(p.y)}" width="${n(p.w||22)}" height="${n(FIG_GND-p.y)}"
+      rx="2" class="fg-gf"/>`;
+  if(p.t==='anchor') return `<circle cx="${n(p.at[0])}" cy="${n(p.at[1])}" r="3" class="fg-ef"/>`;
+  if(p.t==='arr'){
+    /* one motion arrow, only where the pose alone cannot say which way */
+    const a=p.a,b=p.b, dx=b[0]-a[0], dy=b[1]-a[1];
+    const L=Math.sqrt(dx*dx+dy*dy)||1, ux=dx/L, uy=dy/L;
+    const hx=b[0]-ux*5, hy=b[1]-uy*5, px=-uy*3.2, py=ux*3.2;
+    return `<g class="fg-a"><line x1="${n(a[0])}" y1="${n(a[1])}" x2="${n(hx)}" y2="${n(hy)}" stroke-width="2.2"/>
+      <polygon points="${n(b[0])},${n(b[1])} ${n(hx+px)},${n(hy+py)} ${n(hx-px)},${n(hy-py)}" class="fg-af"/></g>`;
+  }
+  if(p.t==='arc'){
+    const r=p.r||7, x=p.at[0], y=p.at[1];
+    return `<path d="M${n(x-r)} ${n(y)} A${r} ${r} 0 1 1 ${n(x+r)} ${n(y)}" class="fg-a"
+      fill="none" stroke-width="2"/>`;
+  }
+  /* A fixed bar overhead: a pull-up bar. Drawn as equipment rather than
+     structure, because it is a thing the user has to own. */
+  if(p.t==='bar') return `<line x1="${n(p.x1)}" y1="${n(p.y)}" x2="${n(p.x2)}" y2="${n(p.y)}"
+      class="fg-e" stroke-width="3.2"/>`;
+  /* The edge of a table or a step, to row or press under. Structure, like the
+     wall and the ground, because "a sturdy table" is not equipment and must
+     not read as a bar somebody needs to buy. */
+  if(p.t==='edge') return `<path d="M${n(p.x1)} ${n(p.y)} H${n(p.x2)} V${n(p.y+4)}"
+      class="fg-g" fill="none" stroke-width="3"/>`;
+  if(p.t==='kb'){
+    /* bell with a handle - the handle is what tells it from a dumbbell */
+    const x=p.at[0], y=p.at[1];
+    return `<g class="fg-e"><path d="M${n(x-3.4)} ${n(y-3)} a3.4 3.4 0 0 1 6.8 0"
+        fill="none" stroke-width="2"/>
+      <circle cx="${n(x)}" cy="${n(y+2.4)}" r="4.2" class="fg-ef"/></g>`;
+  }
+  if(p.t==='ball') return `<circle cx="${n(p.at[0])}" cy="${n(p.at[1])}" r="5.2"
+      class="fg-e" fill="none" stroke-width="2.4"/>`;
+  if(p.t==='bb'){
+    /* a long bar with a collar at each end. Only ever drawn for exercises the
+       barbell tier actually unlocks, so it cannot appear for someone who has
+       told the app they train at home with a band. */
+    const x=p.at[0], y=p.at[1], w=p.w||24;
+    return `<g class="fg-e"><line x1="${n(x-w)}" y1="${n(y)}" x2="${n(x+w)}" y2="${n(y)}" stroke-width="2.4"/>
+      <line x1="${n(x-w+2.5)}" y1="${n(y-4.2)}" x2="${n(x-w+2.5)}" y2="${n(y+4.2)}" stroke-width="2.8"/>
+      <line x1="${n(x+w-2.5)}" y1="${n(y-4.2)}" x2="${n(x+w-2.5)}" y2="${n(y+4.2)}" stroke-width="2.8"/></g>`;
+  }
+  if(p.t==='bike'){
+    const x=p.at[0], y=p.at[1];
+    return `<g class="fg-e"><circle cx="${n(x-13)}" cy="${n(y)}" r="9" fill="none" stroke-width="2.2"/>
+      <circle cx="${n(x+13)}" cy="${n(y)}" r="9" fill="none" stroke-width="2.2"/>
+      <path d="M${n(x-13)} ${n(y)} L${n(x-1)} ${n(y-14)} L${n(x+13)} ${n(y)} M${n(x-1)} ${n(y-14)} L${n(x+7)} ${n(y-18)}"
+        fill="none" stroke-width="2.2"/></g>`;
+  }
+  return '';
+}
+
+/* The skeleton. Far-side limbs are drawn first and faded, which is the whole
+   of the perspective convention - it is what lets a side view read as a body
+   rather than a diagram. */
+function figSVG(p, o){
+  o=o||{};
+  const n=v=>Math.round(v*10)/10;
+  const seg=(a,b,w,cls)=>(a&&b)
+    ? `<line x1="${n(a[0])}" y1="${n(a[1])}" x2="${n(b[0])}" y2="${n(b[1])}" class="${cls}" stroke-width="${w}"/>`
+    : '';
+  const limb=(from,j,cls)=> j ? seg(from,j[0],4.6,cls)+seg(j[0],j[1],4.2,cls) : '';
+  const spine = p.spine
+    ? `<path d="M${n(p.sh[0])} ${n(p.sh[1])} Q${n(p.spine[0])} ${n(p.spine[1])} ${n(p.hip[0])} ${n(p.hip[1])}"
+         class="fg-t" fill="none" stroke-width="6.4"/>`
+    : seg(p.sh,p.hip,6.4,'fg-t');
+  return `<svg viewBox="0 0 ${FIG_W} ${FIG_H}" class="fig" role="img" aria-hidden="true">
+    ${(p.props||[]).filter(x=>x.t==='wall'||x.t==='block'||x.t==='edge').map(figProp).join('')}
+    ${p.ground!==false?`<line x1="6" y1="${FIG_GND}" x2="${FIG_W-6}" y2="${FIG_GND}" class="fg-g" stroke-width="2.4"/>`:''}
+    ${limb(p.hip,p.leg2,'fg-f')}${limb(p.sh,p.arm2,'fg-f')}
+    ${spine}
+    ${limb(p.hip,p.leg,'fg-l')}${limb(p.sh,p.arm,'fg-l')}
+    <circle cx="${n(p.head[0])}" cy="${n(p.head[1])}" r="6.6" class="fg-h"/>
+    ${(p.props||[]).filter(x=>x.t!=='wall'&&x.t!=='block'&&x.t!=='edge').map(figProp).join('')}
+  </svg>`;
+}
+
+/* ---- the poses ----
+   Named by movement, not by exercise, so several exercises can share one and
+   a new exercise usually needs no new drawing at all. */
+const POSES={
+  /* ---------- standing, front ---------- */
+  'arm-circles':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[44,28],[28,28]], arm2:[[76,28],[92,28]],
+    leg:[[54,62],[52,76]], leg2:[[66,62],[68,76]],
+    props:[{t:'arc',at:[28,26],r:7},{t:'arc',at:[92,26],r:7}]},
+  'band-pull-apart':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[46,30],[32,27]], arm2:[[74,30],[88,27]],
+    leg:[[54,62],[52,76]], leg2:[[66,62],[68,76]],
+    props:[{t:'band',a:[32,27],b:[88,27],c:[60,36]}]},
+  'band-overhead':{head:[60,20],sh:[60,32],hip:[60,50],
+    arm:[[42,20],[28,12]], arm2:[[78,20],[92,12]],
+    leg:[[54,63],[52,76]], leg2:[[66,63],[68,76]],
+    props:[{t:'band',a:[28,12],b:[92,12],c:[60,4]}]},
+  'db-raise':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[44,28],[30,28]], arm2:[[76,28],[90,28]],
+    leg:[[54,62],[52,76]], leg2:[[66,62],[68,76]],
+    props:[{t:'db',at:[30,28]},{t:'db',at:[90,28]},{t:'arr',a:[30,40],b:[30,31]}]},
+  'wall-slides':{head:[60,18],sh:[60,32],hip:[60,52],
+    arm:[[44,26],[42,12]], arm2:[[76,26],[78,12]],
+    leg:[[54,64],[52,76]], leg2:[[66,64],[68,76]],
+    props:[{t:'block',x:8,y:6,w:6},{t:'arr',a:[42,22],b:[42,10]}]},
+  'shoulder-cars':{head:[60,16],sh:[60,30],hip:[60,50],
+    arm:[[48,20],[42,8]], arm2:[[72,38],[74,50]],
+    leg:[[54,63],[52,76]], leg2:[[66,63],[68,76]],
+    props:[{t:'arc',at:[42,10],r:8}]},
+  'band-pallof':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[54,34],[58,30]], arm2:[[66,34],[62,30]],
+    leg:[[50,62],[48,76]], leg2:[[70,62],[72,76]],
+    props:[{t:'wall',x:112},{t:'anchor',at:[112,34]},{t:'band',a:[112,34],b:[62,30],c:[88,36]}]},
+  'lateral-bound':{head:[54,16],sh:[54,30],hip:[56,50],
+    arm:[[42,36],[34,28]], arm2:[[68,38],[76,32]],
+    leg:[[62,62],[60,76]], leg2:[[44,58],[34,66]],
+    props:[{t:'arr',a:[86,50],b:[104,50]}]},
+  'side-plank':{head:[96,30],sh:[86,38],hip:[56,54],
+    arm:[[86,52],[80,74]], arm2:[[86,26],[86,12]],
+    leg:[[36,64],[22,74]], leg2:[[36,66],[24,76]], ground:true},
+
+  /* ---------- standing, side (facing right) ---------- */
+  stand:{head:[58,14],sh:[58,28],hip:[58,48],
+    arm:[[58,38],[58,48]], leg:[[58,62],[58,76]], leg2:[[56,62],[56,76]]},
+  squat:{head:[62,26],sh:[56,38],hip:[48,56],
+    arm:[[64,42],[76,40]], arm2:[[64,44],[74,44]],
+    leg:[[70,58],[62,76]], leg2:[[68,60],[60,76]],
+    props:[{t:'arr',a:[36,46],b:[36,62]}]},
+  'goblet-squat':{head:[62,26],sh:[56,38],hip:[48,56],
+    arm:[[62,40],[60,34]], arm2:[[64,42],[62,36]],
+    leg:[[70,58],[62,76]], leg2:[[68,60],[60,76]],
+    props:[{t:'db',at:[62,33]}]},
+  lunge:{head:[58,16],sh:[58,30],hip:[58,50],
+    arm:[[58,40],[56,52]], arm2:[[60,40],[62,52]],
+    leg:[[78,58],[82,76]], leg2:[[44,64],[34,74]]},
+  'split-squat':{head:[56,18],sh:[56,32],hip:[56,52],
+    arm:[[58,42],[58,54]], leg:[[76,60],[80,76]], leg2:[[42,66],[32,76]],
+    props:[{t:'db',at:[52,54]}]},
+  'sl-rdl':{head:[30,36],sh:[42,40],hip:[64,44],
+    arm:[[40,50],[38,62]], leg:[[64,58],[64,76]],
+    leg2:[[82,42],[98,38]], props:[{t:'db',at:[38,63]}]},
+  hinge:{head:[32,34],sh:[44,38],hip:[66,44],
+    arm:[[44,50],[44,62]], leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]]},
+  'calf-raise':{head:[58,14],sh:[58,28],hip:[58,48],
+    arm:[[58,38],[58,48]], leg:[[58,60],[58,70]], leg2:[[56,60],[56,70]],
+    props:[{t:'arr',a:[76,52],b:[76,38]},{t:'wall',x:98}]},
+  'sl-calf-raise':{head:[58,14],sh:[58,28],hip:[58,48],
+    arm:[[58,38],[58,48]], leg:[[58,60],[58,70]],
+    leg2:[[46,58],[48,46]], props:[{t:'arr',a:[76,52],b:[76,38]},{t:'wall',x:98}]},
+  'tibialis-raise':{head:[52,16],sh:[52,30],hip:[52,50],
+    arm:[[54,40],[54,52]], leg:[[56,62],[58,76]], leg2:[[54,62],[56,76]],
+    props:[{t:'wall',x:40},{t:'arr',a:[74,74],b:[74,64]}]},
+  'calf-stretch':{head:[74,24],sh:[64,32],hip:[46,44],
+    arm:[[80,28],[94,26]], arm2:[[80,32],[94,30]],
+    leg:[[38,58],[30,76]], leg2:[[52,60],[58,76]],
+    props:[{t:'wall',x:98}]},
+  /* A couch stretch is KNEELING: the rear knee is on the ground at the base
+     of the wall, the rear shin runs up it, the front foot is planted forward
+     in a lunge and the torso is tall. The previous version floated the rear
+     knee ten units off the floor and ran the shin up at forty-five degrees,
+     so nothing touched the ground and both legs pointed the same way - which
+     reads as sitting on the floor with the legs out. The pose was of the
+     right exercise and taught the wrong position, which for an instructional
+     drawing is the same as being wrong. */
+  'couch-stretch':{head:[60,16],sh:[60,30],hip:[64,54],
+    arm:[[58,42],[54,54]],
+    leg:[[70,74],[80,48]],
+    leg2:[[42,60],[38,76]],
+    props:[{t:'wall',x:84}]},
+  'ankle-rock':{head:[52,22],sh:[52,36],hip:[52,56],
+    arm:[[60,44],[70,50]], leg:[[74,58],[70,76]], leg2:[[40,72],[26,74]],
+    props:[{t:'arr',a:[86,60],b:[92,70]}]},
+  run:{head:[62,14],sh:[60,28],hip:[56,48],
+    arm:[[70,34],[78,26]], arm2:[[46,36],[38,44]],
+    leg:[[74,54],[86,64]], leg2:[[42,60],[28,56]], props:[{t:'arr',a:[96,40],b:[110,40]}]},
+  walk:{head:[60,14],sh:[58,28],hip:[56,48],
+    arm:[[64,38],[68,48]], arm2:[[50,38],[46,48]],
+    leg:[[68,60],[74,76]], leg2:[[46,62],[40,76]]},
+  bike:{head:[52,22],sh:[54,34],hip:[60,48],
+    arm:[[66,40],[78,42]], arm2:[[66,42],[78,44]],
+    leg:[[74,56],[68,66]], leg2:[[72,58],[80,62]],
+    props:[{t:'bike',at:[70,64]}], ground:false},
+  'pogo-hops':{head:[58,18],sh:[58,32],hip:[58,50],
+    arm:[[58,42],[58,52]], leg:[[58,62],[58,70]], leg2:[[56,62],[56,70]],
+    props:[{t:'arr',a:[78,56],b:[78,36]},{t:'arr',a:[38,56],b:[38,36]}]},
+  jump:{head:[62,24],sh:[56,36],hip:[48,54],
+    arm:[[66,40],[78,34]], arm2:[[64,42],[76,38]],
+    leg:[[70,58],[62,76]], leg2:[[68,60],[60,76]],
+    props:[{t:'arr',a:[34,52],b:[34,26]}]},
+  decel:{head:[54,18],sh:[56,32],hip:[62,50],
+    arm:[[48,38],[38,32]], arm2:[[66,40],[74,34]],
+    leg:[[78,60],[84,76]], leg2:[[56,62],[50,76]],
+    props:[{t:'arr',a:[100,44],b:[86,44]}]},
+
+  /* ---------- hands and knees ---------- */
+  'cat-cow':{head:[30,52],sh:[44,46],hip:[80,44],spine:[62,34],
+    arm:[[44,60],[44,76]], arm2:[[42,60],[42,76]],
+    leg:[[80,60],[90,76]], leg2:[[78,60],[88,76]],
+    props:[{t:'arr',a:[62,22],b:[62,30]}]},
+  'bird-dog':{head:[30,52],sh:[44,46],hip:[80,44],
+    arm:[[44,60],[44,76]], arm2:[[30,40],[16,36]],
+    leg:[[80,60],[90,76]], leg2:[[94,42],[108,38]]},
+
+  /* ---------- on the back ---------- */
+  'dead-bug':{head:[32,66],sh:[44,68],hip:[78,68],
+    arm:[[44,56],[42,44]], arm2:[[34,72],[24,76]],
+    leg:[[80,54],[92,52]], leg2:[[92,70],[104,72]]},
+  'glute-bridge':{head:[26,70],sh:[36,70],hip:[62,54],
+    arm:[[32,74],[24,76]], arm2:[[34,74],[26,76]],
+    leg:[[84,60],[84,76]], leg2:[[82,62],[82,76]],
+    props:[{t:'arr',a:[62,44],b:[62,50]}]},
+  'sl-glute-bridge':{head:[26,70],sh:[36,70],hip:[62,54],
+    arm:[[32,74],[24,76]], leg:[[84,60],[84,76]],
+    leg2:[[80,48],[96,42]], props:[{t:'arr',a:[62,44],b:[62,50]}]},
+  'hollow-hold':{head:[42,60],sh:[52,66],hip:[70,68],
+    arm:[[34,56],[18,54]], arm2:[[36,58],[20,56]],
+    leg:[[86,60],[100,52]], leg2:[[84,62],[98,54]]},
+  'open-book':{head:[30,64],sh:[44,66],hip:[76,68],
+    arm:[[44,52],[52,40]], arm2:[[46,72],[56,74]],
+    leg:[[78,58],[92,58]], leg2:[[80,60],[94,60]],
+    props:[{t:'arc',at:[52,40],r:8}]},
+  'hip-90-90':{head:[44,44],sh:[48,56],hip:[54,70],
+    arm:[[60,62],[70,68]], leg:[[74,72],[88,66]], leg2:[[44,74],[30,70]]},
+  'legs-up-wall':{head:[26,70],sh:[38,70],hip:[70,70],
+    arm:[[34,74],[24,76]], arm2:[[36,74],[26,76]],
+    leg:[[78,56],[82,34]], leg2:[[76,58],[80,36]],
+    props:[{t:'wall',x:88}]},
+  breathe:{head:[28,68],sh:[40,70],hip:[72,70],
+    arm:[[38,74],[28,76]], arm2:[[40,74],[30,76]],
+    leg:[[88,72],[104,74]], leg2:[[86,74],[102,76]]},
+
+  /* ---------- front support ---------- */
+  plank:{head:[86,48],sh:[74,52],hip:[48,56],
+    arm:[[74,64],[80,76]], arm2:[[72,64],[78,76]],
+    leg:[[30,62],[18,74]], leg2:[[28,64],[16,76]]},
+  'scap-pushup':{head:[86,48],sh:[74,52],hip:[48,56],
+    arm:[[74,64],[80,76]], arm2:[[72,64],[78,76]],
+    leg:[[30,62],[18,74]], leg2:[[28,64],[16,76]],
+    props:[{t:'arr',a:[74,40],b:[74,48]}]},
+  'push-up':{head:[88,56],sh:[76,60],hip:[50,60],
+    arm:[[86,68],[80,76]], arm2:[[84,68],[78,76]],
+    leg:[[32,64],[18,74]], leg2:[[30,66],[16,76]],
+    props:[{t:'arr',a:[62,44],b:[62,54]}]},
+  'incline-push-up':{head:[92,40],sh:[80,46],hip:[54,56],
+    arm:[[84,52],[92,56]], arm2:[[82,54],[90,58]],
+    leg:[[34,64],[20,74]], leg2:[[32,66],[18,76]],
+    props:[{t:'block',x:86,y:56,w:26}]},
+  'pike-push-up':{head:[88,58],sh:[78,52],hip:[54,32],
+    arm:[[84,64],[88,76]], arm2:[[82,64],[86,76]],
+    leg:[[42,54],[30,74]], leg2:[[40,56],[28,76]]},
+  'prone-ytw':{head:[92,58],sh:[80,64],hip:[46,68],
+    arm:[[86,52],[98,44]], arm2:[[84,54],[96,46]],
+    leg:[[30,70],[16,72]], leg2:[[28,72],[14,74]]},
+  /* pulling, which the first pass had no drawing for at all - so every row
+     and pulldown borrowed a hinge or a pull-apart and looked wrong */
+  'lat-pull':{head:[52,22],sh:[52,34],hip:[52,52],
+    arm:[[64,26],[58,34]], arm2:[[62,28],[56,36]],
+    leg:[[52,66],[66,72]], leg2:[[50,66],[64,74]],
+    props:[{t:'wall',x:110},{t:'anchor',at:[110,14]},{t:'band',a:[110,14],b:[58,34],c:[86,20]}]},
+  row:{head:[30,36],sh:[44,40],hip:[66,46],
+    arm:[[48,52],[54,42]], arm2:[[46,54],[52,44]],
+    leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]],
+    props:[{t:'arr',a:[54,64],b:[54,48]}]},
+  'db-press-oh':{head:[60,20],sh:[60,34],hip:[60,52],
+    arm:[[44,26],[42,12]], arm2:[[76,26],[78,12]],
+    leg:[[54,64],[52,76]], leg2:[[66,64],[68,76]],
+    props:[{t:'db',at:[42,11]},{t:'db',at:[78,11]},{t:'arr',a:[60,16],b:[60,6]}]},
+  'floor-press':{head:[28,68],sh:[42,68],hip:[72,68],
+    arm:[[42,56],[42,44]], arm2:[[44,58],[44,46]],
+    leg:[[86,58],[86,74]], leg2:[[84,60],[84,76]],
+    props:[{t:'db',at:[42,43]},{t:'arr',a:[56,50],b:[56,38]}]},
+  'band-pushdown':{head:[58,16],sh:[58,30],hip:[58,50],
+    arm:[[62,40],[62,52]], arm2:[[60,40],[60,52]],
+    leg:[[54,64],[52,76]], leg2:[[64,64],[66,76]],
+    props:[{t:'wall',x:108},{t:'anchor',at:[108,10]},{t:'band',a:[108,10],b:[62,52],c:[88,30]},
+           {t:'arr',a:[78,44],b:[78,58]}]},
+  nordic:{head:[26,44],sh:[38,48],hip:[58,56],
+    arm:[[34,58],[30,70]], arm2:[[36,58],[32,70]],
+    leg:[[58,70],[74,74]], leg2:[[56,70],[72,74]],
+    props:[{t:'arr',a:[18,56],b:[14,68]}]},
+  carry:{head:[60,14],sh:[58,28],hip:[56,48],
+    arm:[[62,38],[64,50]], arm2:[[50,38],[48,50]],
+    leg:[[68,60],[74,76]], leg2:[[46,62],[40,76]],
+    props:[{t:'db',at:[64,52]},{t:'db',at:[48,52]}]},
+  'wall-sit':{head:[46,26],sh:[46,40],hip:[52,56],
+    arm:[[62,46],[74,46]], arm2:[[60,48],[72,48]],
+    leg:[[74,56],[74,76]], leg2:[[72,58],[72,76]],
+    props:[{t:'wall',x:38}]},
+
+  /* added after the validator named them: every exercise an authored workout
+     can prescribe has to be drawn, and these five were not */
+  'db-overhead-tri':{head:[58,16],sh:[58,30],hip:[58,50],
+    arm:[[56,14],[50,24]], arm2:[[62,14],[56,24]],
+    leg:[[54,64],[52,76]], leg2:[[64,64],[66,76]],
+    props:[{t:'db',at:[52,25]},{t:'arr',a:[36,26],b:[36,14]}]},
+  'db-curl':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[48,40],[50,26]], arm2:[[72,40],[74,52]],
+    leg:[[54,62],[52,76]], leg2:[[66,62],[68,76]],
+    props:[{t:'db',at:[50,25]},{t:'db',at:[74,53]},{t:'arr',a:[36,44],b:[36,30]}]},
+  superman:{head:[94,56],sh:[82,62],hip:[46,64],
+    arm:[[90,54],[104,48]], arm2:[[88,56],[102,50]],
+    leg:[[30,62],[14,56]], leg2:[[32,64],[16,58]],
+    props:[{t:'arr',a:[62,72],b:[62,64]}]},
+  copenhagen:{head:[96,34],sh:[86,42],hip:[58,56],
+    arm:[[86,56],[80,74]], arm2:[[86,30],[86,16]],
+    leg:[[42,54],[26,50]], leg2:[[44,66],[30,74]],
+    props:[{t:'block',x:8,y:50,w:24}]},
+  'adductor-squeeze':{head:[26,70],sh:[38,70],hip:[64,66],
+    arm:[[34,74],[24,76]], arm2:[[36,74],[26,76]],
+    leg:[[82,56],[80,74]], leg2:[[76,58],[74,74]],
+    props:[{t:'arr',a:[96,58],b:[86,58]},{t:'arr',a:[62,58],b:[72,58]}]},
+  /* ======================================================================
+     ADDED IN THE ILLUSTRATION AUDIT
+     Every pose below replaces a borrow that was wrong in a way a user would
+     see: a bench press drawn on the floor, a box jump with no box, a
+     suitcase carry with two weights, a single-leg squat drawn on two legs, a
+     hamstring bridge-curl drawn as a biceps curl. The rule applied was: if
+     the body position, the moving limb, the direction of travel and the
+     implement are not all right, it is not the same drawing.
+     ================================================================== */
+
+  /* ---- pressing on a bench ---------------------------------------------
+     floor-press was standing in for both of these. On the floor the upper
+     arm stops at the ground, which is the whole difference between a floor
+     press and a bench press, so it cannot show either bench variant. */
+  'db-bench-press':{head:[26,54],sh:[40,54],hip:[70,54],
+    arm:[[40,42],[40,30]], arm2:[[42,44],[42,32]],
+    leg:[[84,60],[84,74]], leg2:[[82,62],[82,76]],
+    props:[{t:'block',x:22,y:58,w:62},{t:'db',at:[40,29]},{t:'arr',a:[56,38],b:[56,26]}]},
+  /* The bench is BEHIND the upper back, which is what makes this an
+     incline press rather than a person lying on a hill. Props of type
+     block are drawn before the figure, so it reads as support. */
+  'db-incline-press':{head:[86,32],sh:[74,42],hip:[46,60],
+    arm:[[74,30],[71,16]], arm2:[[72,32],[69,18]],
+    leg:[[32,68],[18,74]], leg2:[[30,70],[16,76]],
+    props:[{t:'block',x:58,y:44,w:46},{t:'db',at:[70,15]},
+           {t:'arr',a:[96,28],b:[96,16]}]},
+
+  /* ---- the barbell lifts ----------------------------------------------
+     These were drawing a pair of dumbbells for a bar, which is the one
+     mistake a lifter spots instantly. */
+  'bb-squat':{head:[62,26],sh:[56,38],hip:[48,56],
+    arm:[[64,40],[74,36]], arm2:[[64,42],[74,38]],
+    leg:[[70,58],[62,76]], leg2:[[68,60],[60,76]],
+    props:[{t:'bb',at:[58,34],w:26},{t:'arr',a:[30,46],b:[30,62]}]},
+  'bb-hinge':{head:[32,34],sh:[44,38],hip:[66,44],
+    arm:[[44,50],[44,62]], leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]],
+    props:[{t:'bb',at:[44,64],w:22},{t:'arr',a:[22,54],b:[22,42]}]},
+  'bb-bench':{head:[26,54],sh:[40,54],hip:[70,54],
+    arm:[[40,42],[40,30]], arm2:[[42,44],[42,32]],
+    leg:[[84,60],[84,74]], leg2:[[82,62],[82,76]],
+    props:[{t:'block',x:22,y:58,w:62},{t:'bb',at:[41,28],w:20},{t:'arr',a:[58,38],b:[58,26]}]},
+  'bb-ohp':{head:[60,20],sh:[60,34],hip:[60,52],
+    arm:[[46,26],[44,12]], arm2:[[74,26],[76,12]],
+    leg:[[54,64],[52,76]], leg2:[[66,64],[68,76]],
+    props:[{t:'bb',at:[60,11],w:26},{t:'arr',a:[60,20],b:[60,6]}]},
+  'bb-row':{head:[30,36],sh:[44,40],hip:[66,46],
+    arm:[[46,52],[50,42]], arm2:[[44,54],[48,44]],
+    leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]],
+    props:[{t:'bb',at:[49,62],w:22},{t:'arr',a:[68,66],b:[68,52]}]},
+  'bb-hip-thrust':{head:[22,66],sh:[34,66],hip:[60,54],
+    arm:[[32,72],[24,76]], arm2:[[34,72],[26,76]],
+    leg:[[84,60],[84,76]], leg2:[[82,62],[82,76]],
+    props:[{t:'block',x:8,y:66,w:26},{t:'bb',at:[60,48],w:18},{t:'arr',a:[60,40],b:[60,46]}]},
+
+  /* ---- hanging from a bar --------------------------------------------
+     These three had no drawing at all, which was at least honest. */
+  /* Hands wide on the bar and the body clearly below them. Drawn narrow
+     the whole hang occupied a fifth of the box and read as a vertical
+     smudge; a pull-up is a shape you recognise by the span of the grip. */
+  'pull-up':{head:[60,30],sh:[60,42],hip:[60,62],
+    arm:[[50,32],[44,16]], arm2:[[70,32],[76,16]],
+    leg:[[56,74],[66,80]], leg2:[[60,74],[70,82]],
+    props:[{t:'bar',x1:22,x2:98,y:14},{t:'arr',a:[92,46],b:[92,30]}], ground:false},
+  'hang-leg-raise':{head:[52,30],sh:[52,42],hip:[52,62],
+    arm:[[44,32],[40,16]], arm2:[[62,32],[66,16]],
+    leg:[[70,60],[90,58]], leg2:[[68,62],[88,60]],
+    props:[{t:'bar',x1:20,x2:94,y:14},{t:'arr',a:[104,78],b:[104,58]}], ground:false},
+  /* under a table or a step, which is what the library's inverted row uses */
+  'inverted-row':{head:[28,62],sh:[42,60],hip:[72,64],
+    arm:[[42,48],[44,36]], arm2:[[44,50],[46,38]],
+    leg:[[86,66],[100,70]], leg2:[[84,68],[98,72]],
+    props:[{t:'edge',x1:20,x2:62,y:32},{t:'arr',a:[60,54],b:[60,42]}]},
+
+  /* ---- the kettlebell ------------------------------------------------ */
+  'kb-swing':{head:[32,34],sh:[44,38],hip:[66,44],
+    arm:[[46,50],[48,62]], leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]],
+    props:[{t:'kb',at:[48,64]},{t:'arr',a:[30,60],b:[16,46]}]},
+  'kb-front-squat':{head:[62,26],sh:[56,38],hip:[48,56],
+    arm:[[62,40],[60,34]], arm2:[[64,42],[62,36]],
+    leg:[[70,58],[62,76]], leg2:[[68,60],[60,76]],
+    props:[{t:'kb',at:[61,31]}]},
+
+  /* ---- the medicine ball --------------------------------------------
+     A rotational THROW was drawn as a band Pallof press, which is an
+     isometric hold: opposite intent, opposite implement. */
+  'ball-throw':{head:[50,18],sh:[50,32],hip:[52,50],
+    arm:[[62,32],[74,28]], arm2:[[60,34],[72,30]],
+    leg:[[44,62],[38,76]], leg2:[[62,62],[68,76]],
+    props:[{t:'wall',x:110},{t:'ball',at:[79,27]},{t:'arr',a:[88,40],b:[102,36]}]},
+
+  /* ---- stepping onto and down from something ------------------------
+     Both were drawn as a lunge, which has no step in it. */
+  'step-up':{head:[42,16],sh:[42,30],hip:[44,50],
+    arm:[[46,40],[48,52]], arm2:[[38,40],[36,52]],
+    leg:[[60,54],[76,58]], leg2:[[40,64],[36,76]],
+    props:[{t:'block',x:74,y:58,w:32},{t:'arr',a:[22,58],b:[22,44]}]},
+  'step-down':{head:[72,14],sh:[72,28],hip:[72,48],
+    arm:[[76,38],[78,50]], arm2:[[68,38],[66,50]],
+    leg:[[74,60],[76,70]], leg2:[[58,58],[42,66]],
+    props:[{t:'block',x:64,y:70,w:42},{t:'arr',a:[26,52],b:[26,68]}]},
+  'box-jump':{head:[38,28],sh:[32,40],hip:[24,56],
+    arm:[[42,44],[54,38]], arm2:[[40,46],[52,42]],
+    leg:[[46,60],[38,76]], leg2:[[44,62],[36,76]],
+    props:[{t:'block',x:76,y:50,w:34},{t:'arr',a:[54,52],b:[76,40]}]},
+
+  /* ---- carrying one weight, not two -------------------------------- */
+  'suitcase-carry':{head:[60,14],sh:[58,28],hip:[56,48],
+    arm:[[62,38],[64,50]], arm2:[[50,38],[46,48]],
+    leg:[[68,60],[74,76]], leg2:[[46,62],[40,76]],
+    props:[{t:'db',at:[64,52]}]},
+  'suitcase-march':{head:[60,14],sh:[58,28],hip:[56,48],
+    arm:[[62,38],[64,50]], arm2:[[50,38],[46,48]],
+    leg:[[58,62],[58,76]], leg2:[[72,52],[86,58]],
+    props:[{t:'db',at:[64,52]},{t:'arr',a:[96,62],b:[96,50]}]},
+
+  /* ---- one leg, drawn on one leg ----------------------------------- */
+  'sl-squat':{head:[62,28],sh:[56,40],hip:[48,58],
+    arm:[[62,44],[74,40]], arm2:[[62,46],[74,44]],
+    leg:[[66,62],[58,76]], leg2:[[62,52],[80,48]],
+    props:[{t:'arr',a:[30,48],b:[30,62]}]},
+  'sl-hinge':{head:[30,36],sh:[42,40],hip:[64,44],
+    arm:[[44,34],[56,26]], arm2:[[44,48],[46,60]],
+    leg:[[64,58],[64,76]], leg2:[[82,42],[98,38]]},
+  /* One leg bent and loaded, the other straight, and the torso over the bent
+     one. Drawn symmetric it read as a wide squat, which is a different
+     exercise with a different point. */
+  'lateral-lunge':{head:[42,22],sh:[44,34],hip:[52,52],
+    arm:[[40,44],[34,54]], arm2:[[50,44],[56,54]],
+    leg:[[34,64],[32,76]], leg2:[[74,64],[100,74]],
+    props:[{t:'arr',a:[16,48],b:[16,64]}]},
+
+  /* ---- on the back: hamstrings and hips ----------------------------
+     x17 Single-Leg Bridge Curl was drawing a DUMBBELL BICEPS CURL, because
+     its name contains the word curl. That one mistake is why the whole
+     resolution moved from name rules to an explicit table. */
+  'sliding-leg-curl':{head:[24,70],sh:[36,70],hip:[60,56],
+    arm:[[32,74],[22,76]], arm2:[[34,74],[24,76]],
+    leg:[[82,62],[96,72]], leg2:[[80,64],[94,74]],
+    props:[{t:'arr',a:[100,58],b:[112,66]}]},
+  'sl-bridge-curl':{head:[24,70],sh:[36,70],hip:[60,56],
+    arm:[[32,74],[22,76]],
+    leg:[[82,62],[96,72]], leg2:[[76,48],[92,42]],
+    props:[{t:'arr',a:[100,58],b:[112,66]}]},
+  'band-leg-curl':{head:[96,62],sh:[84,66],hip:[50,70],
+    arm:[[86,58],[98,52]], arm2:[[84,60],[96,54]],
+    leg:[[36,66],[44,52]], leg2:[[34,70],[20,72]],
+    props:[{t:'wall',x:10},{t:'anchor',at:[10,70]},
+           {t:'band',a:[10,70],b:[44,52],c:[24,66]},{t:'arr',a:[56,48],b:[48,38]}]},
+  'hip-thrust-march':{head:[26,70],sh:[36,70],hip:[62,54],
+    arm:[[32,74],[24,76]], arm2:[[34,74],[26,76]],
+    leg:[[84,60],[84,76]], leg2:[[78,46],[76,34]],
+    props:[{t:'arr',a:[96,44],b:[96,32]}]},
+  'bridge-walkout':{head:[20,70],sh:[32,70],hip:[58,58],
+    arm:[[28,74],[18,76]], arm2:[[30,74],[20,76]],
+    leg:[[86,64],[104,74]], leg2:[[84,66],[102,76]],
+    props:[{t:'arr',a:[106,60],b:[116,68]}]},
+  'frog-pump':{head:[26,70],sh:[38,70],hip:[62,58],
+    arm:[[34,74],[24,76]], arm2:[[36,74],[26,76]],
+    leg:[[86,52],[94,68]], leg2:[[82,64],[92,70]],
+    props:[{t:'arr',a:[62,48],b:[62,54]}]},
+  'reverse-crunch':{head:[26,70],sh:[38,70],hip:[64,64],
+    arm:[[34,74],[24,76]], arm2:[[36,74],[26,76]],
+    leg:[[70,50],[56,46]], leg2:[[68,52],[54,48]],
+    props:[{t:'arr',a:[88,58],b:[76,48]}]},
+  'windshield-wiper':{head:[26,70],sh:[38,70],hip:[66,70],
+    arm:[[36,62],[22,58]], arm2:[[38,74],[24,76]],
+    leg:[[74,56],[86,44]], leg2:[[72,58],[84,46]],
+    props:[{t:'arc',at:[86,42],r:9}]},
+  'adductor-slide':{head:[26,70],sh:[38,70],hip:[64,66],
+    arm:[[34,74],[24,76]], arm2:[[36,74],[26,76]],
+    leg:[[82,56],[80,74]], leg2:[[76,58],[74,74]],
+    props:[{t:'arr',a:[70,58],b:[58,58]},{t:'arr',a:[88,58],b:[100,58]}]},
+  'side-lying-adductor':{head:[96,64],sh:[86,66],hip:[56,70],
+    arm:[[86,58],[86,46]], arm2:[[84,72],[76,76]],
+    leg:[[40,64],[24,58]], leg2:[[42,74],[26,76]],
+    props:[{t:'arr',a:[14,70],b:[14,56]}]},
+
+  /* ---- front support variants ------------------------------------- */
+  'bear-hold':{head:[30,50],sh:[44,46],hip:[80,46],
+    arm:[[44,60],[44,76]], arm2:[[42,60],[42,76]],
+    leg:[[80,60],[90,70]], leg2:[[78,60],[88,72]]},
+  'mountain-climber':{head:[86,48],sh:[74,52],hip:[48,56],
+    arm:[[74,64],[80,76]], arm2:[[72,64],[78,76]],
+    leg:[[30,62],[18,74]], leg2:[[56,58],[68,62]],
+    props:[{t:'arr',a:[38,50],b:[56,50]}]},
+  'feet-elev-push-up':{head:[92,62],sh:[80,62],hip:[54,56],
+    arm:[[90,70],[86,76]], arm2:[[88,70],[84,76]],
+    leg:[[36,50],[22,46]], leg2:[[34,52],[20,48]],
+    props:[{t:'block',x:8,y:46,w:26},{t:'arr',a:[66,48],b:[66,58]}]},
+  'archer-push-up':{head:[88,56],sh:[76,60],hip:[50,60],
+    arm:[[86,68],[80,76]], arm2:[[60,66],[42,74]],
+    leg:[[32,64],[18,74]], leg2:[[30,66],[16,76]],
+    props:[{t:'arr',a:[64,44],b:[64,54]}]},
+  'diamond-push-up':{head:[88,56],sh:[76,60],hip:[50,60],
+    arm:[[80,68],[72,76]], arm2:[[78,68],[70,76]],
+    leg:[[32,64],[18,74]], leg2:[[30,66],[16,76]],
+    props:[{t:'arr',a:[62,44],b:[62,54]}]},
+  'prone-lat-pull':{head:[94,60],sh:[82,66],hip:[46,70],
+    arm:[[88,56],[100,50]], arm2:[[78,60],[70,52]],
+    leg:[[30,70],[16,72]], leg2:[[28,72],[14,74]],
+    props:[{t:'arr',a:[106,46],b:[92,42]}]},
+
+  /* ---- standing, band ---------------------------------------------- */
+  'band-curl':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[48,40],[50,26]], arm2:[[72,40],[74,52]],
+    leg:[[54,62],[52,76]], leg2:[[66,62],[68,76]],
+    props:[{t:'band',a:[52,76],b:[50,26],c:[36,52]},{t:'arr',a:[34,44],b:[34,30]}]},
+  'band-pull-through':{head:[32,34],sh:[44,38],hip:[66,44],
+    arm:[[46,52],[50,64]], leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]],
+    props:[{t:'wall',x:112},{t:'anchor',at:[112,72]},
+           {t:'band',a:[112,72],b:[50,64]},{t:'arr',a:[26,52],b:[14,44]}]},
+  'band-good-morning':{head:[32,34],sh:[44,38],hip:[66,44],
+    arm:[[46,34],[50,30]], leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]],
+    props:[{t:'band',a:[44,36],b:[66,76],c:[46,58]},{t:'arr',a:[26,52],b:[26,40]}]},
+
+  /* ---- running drills ---------------------------------------------- */
+  'wall-drill':{head:[46,18],sh:[48,32],hip:[52,50],
+    arm:[[38,28],[26,22]], arm2:[[40,30],[28,24]],
+    leg:[[54,64],[58,76]], leg2:[[66,52],[80,56]],
+    props:[{t:'wall',x:20},{t:'arr',a:[94,60],b:[94,46]}]},
+  'resisted-sprint':{head:[62,14],sh:[60,28],hip:[56,48],
+    arm:[[70,34],[78,26]], arm2:[[46,36],[38,44]],
+    leg:[[74,54],[86,64]], leg2:[[42,60],[28,56]],
+    props:[{t:'anchor',at:[8,48]},{t:'band',a:[8,48],b:[56,48],c:[32,56]},
+           {t:'arr',a:[96,40],b:[110,40]}]},
+  'toe-walk':{head:[60,14],sh:[58,28],hip:[56,48],
+    arm:[[64,38],[68,48]], arm2:[[50,38],[46,48]],
+    leg:[[68,58],[74,70]], leg2:[[46,60],[40,70]],
+    props:[{t:'arr',a:[94,64],b:[94,52]}]},
+  'heel-lower':{head:[58,14],sh:[58,28],hip:[58,48],
+    arm:[[58,38],[58,48]], leg:[[58,60],[58,72]],
+    leg2:[[46,58],[48,46]],
+    props:[{t:'arr',a:[76,38],b:[76,54]},{t:'wall',x:98}]},
+
+  /* ---- named by the validator: prescribed by a workout, needs only home kit ---- */
+  'hamstring-flow':{head:[24,70],sh:[36,70],hip:[64,70],
+    arm:[[46,62],[58,56]], arm2:[[42,72],[30,76]],
+    leg:[[76,56],[86,40]], leg2:[[84,72],[100,74]],
+    props:[{t:'arr',a:[98,52],b:[98,40]}]},
+  'wall-iso-raise':{head:[52,16],sh:[52,30],hip:[52,50],
+    arm:[[66,30],[80,30]], arm2:[[46,40],[44,52]],
+    leg:[[48,62],[46,76]], leg2:[[56,62],[58,76]],
+    props:[{t:'wall',x:88},{t:'arr',a:[72,44],b:[72,34]}]},
+  /* both hands meet: one arm curls, the other resists it. No dumbbell, which
+     is the whole point - this exercise is what you do when you have none. */
+  'self-resisted-curl':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[48,40],[52,26]], arm2:[[72,38],[56,26]],
+    leg:[[54,62],[52,76]], leg2:[[66,62],[68,76]],
+    props:[{t:'arr',a:[36,44],b:[36,30]}]},
+
+  /* ---- one limb, drawn on one limb -------------------------------------
+     §1 asks whether the drawing says unilateral or bilateral. These three
+     were saying bilateral for unilateral work. */
+  'sl-hop':{head:[62,24],sh:[56,36],hip:[48,54],
+    arm:[[66,40],[78,34]], arm2:[[64,42],[76,38]],
+    leg:[[70,58],[62,76]], leg2:[[62,50],[78,44]],
+    props:[{t:'arr',a:[34,52],b:[34,26]}]},
+  'row-single':{head:[30,36],sh:[44,40],hip:[66,46],
+    arm:[[48,52],[54,42]], arm2:[[42,50],[36,58]],
+    leg:[[68,58],[64,76]], leg2:[[66,58],[62,76]],
+    props:[{t:'arr',a:[56,64],b:[56,48]}]},
+
+  /* ---- travelling, not rising ----------------------------------------
+     A broad jump with an upward arrow is an instruction to do a vertical
+     jump. The whole exercise is the horizontal distance. */
+  'broad-jump':{head:[62,24],sh:[56,36],hip:[48,54],
+    arm:[[66,40],[80,36]], arm2:[[64,42],[78,38]],
+    leg:[[70,58],[62,76]], leg2:[[68,60],[60,76]],
+    props:[{t:'arr',a:[86,50],b:[112,44]}]},
+  'split-jump':{head:[58,22],sh:[56,34],hip:[54,52],
+    arm:[[64,40],[74,32]], arm2:[[46,42],[36,36]],
+    leg:[[72,56],[84,64]], leg2:[[40,58],[26,66]],
+    props:[{t:'arr',a:[14,48],b:[14,26]}]},
+
+  /* ---- the load that was missing -------------------------------------- */
+  /* ONE band, and the arms caught mid-raise rather than locked out level.
+     Two bands running from wide hands down to close feet draw a large V,
+     and a V is a shape - the eye reads the triangle and not the movement.
+     Standing on the band with one band up to the working hand is both what
+     people actually do and what leaves the body visible. */
+  'band-raise':{head:[60,14],sh:[60,28],hip:[60,48],
+    arm:[[50,36],[38,30]], arm2:[[70,36],[82,30]],
+    leg:[[56,62],[56,76]], leg2:[[64,62],[64,76]],
+    props:[{t:'band',a:[60,76],b:[38,30],c:[42,56]},
+           {t:'arr',a:[24,42],b:[24,28]}]},
+  'db-hip-thrust':{head:[26,70],sh:[36,70],hip:[62,54],
+    arm:[[32,68],[46,56]], arm2:[[34,70],[48,58]],
+    leg:[[84,60],[84,76]], leg2:[[82,62],[82,76]],
+    props:[{t:'db',at:[54,50]},{t:'arr',a:[62,44],b:[62,50]}]},
+  'band-glute-bridge':{head:[26,70],sh:[36,70],hip:[62,54],
+    arm:[[32,74],[24,76]], arm2:[[34,74],[26,76]],
+    leg:[[84,60],[84,76]], leg2:[[82,62],[82,76]],
+    props:[{t:'band',a:[48,52],b:[78,54],c:[62,44]},{t:'arr',a:[62,40],b:[62,48]}]},
+
+  /* landing on one leg, which is the exercise and the risk both */
+  'sl-landing':{head:[54,18],sh:[56,32],hip:[62,50],
+    arm:[[48,38],[38,32]], arm2:[[66,40],[74,34]],
+    leg:[[78,60],[84,76]], leg2:[[58,54],[44,48]],
+    props:[{t:'arr',a:[100,44],b:[86,44]}]},
+
+  /* ---- hips on the floor ------------------------------------------- */
+  pigeon:{head:[40,38],sh:[44,50],hip:[54,66],
+    arm:[[58,60],[70,64]], arm2:[[56,62],[68,66]],
+    leg:[[46,72],[28,70]], leg2:[[72,70],[92,72]]},
+  'adductor-rock':{head:[30,52],sh:[44,48],hip:[80,48],
+    arm:[[44,60],[44,76]], arm2:[[42,60],[42,76]],
+    leg:[[80,62],[92,74]], leg2:[[86,58],[106,62]],
+    props:[{t:'arr',a:[62,36],b:[46,36]}]},
+
+  'worlds-greatest':{head:[46,26],sh:[48,38],hip:[44,56],
+    arm:[[54,30],[60,18]], arm2:[[46,52],[44,70]],
+    leg:[[70,58],[74,76]], leg2:[[30,66],[18,74]],
+    props:[{t:'arc',at:[60,18],r:7}]},
+  'band-face-pull':{head:[58,16],sh:[58,30],hip:[58,50],
+    arm:[[74,26],[64,22]], arm2:[[72,30],[62,26]],
+    leg:[[54,63],[52,76]], leg2:[[64,63],[66,76]],
+    props:[{t:'wall',x:112},{t:'anchor',at:[112,20]},{t:'band',a:[112,20],b:[64,22],c:[88,18]}]}
+};
+
+/* RETIRED: name rules.
+   These decided every exercise's drawing until the illustration audit. They
+   are kept only because WU_ILLUS below is the same idea applied to warm-up
+   movement names, which genuinely have no id - and because the list is the
+   record of which names were ambiguous. NOTHING READS POSE_RULES ANY MORE;
+   illusKey() goes to EX_ILLUS. If you are adding an exercise, add a line to
+   EX_ILLUS, look at the drawing, and leave it null if it is not right.
+
+   What went wrong with rules, concretely: order decided meaning. "Sliding Leg
+   Curl" had to be caught by the hamstring rule before the biceps rule saw
+   "curl", "Step-Up" fell into the lunge rule because no step existed to draw,
+   and a name nobody had written a rule for silently got the nearest match
+   instead of nothing.
+
+   Derived from the name, by rules, in order - not from a table of ids.
+
+   The first version WAS a table of ids, written by reading the id ranges and
+   assuming they ran in category order. They do not: "DB Bicep Curl" is ul12
+   and got a band held overhead, and "Band Kneeling Lat Pull" lives in a second
+   library in p03b so it was never in the table and got nothing at all. A
+   longer hand-written table would have the same failure mode with more places
+   to hide. What a movement IS sits in its name, so that is what is read.
+
+   Ordered, first match wins, specific before general - "Sliding Leg Curl" has
+   to be caught by the hamstring rule before the bicep-curl rule sees "curl".
+   Anything genuinely irregular goes in EX_ILLUS_OVERRIDE below. */
+const POSE_RULES=[
+  /* hamstrings first: these contain "curl" and are not arm work */
+  [/nordic|leg curl/,                      'nordic'],
+  /* pulling */
+  [/pallof|anti-rotation|rotational press|band chop/, 'band-pallof'],
+  [/face pull/,                            'band-face-pull'],
+  [/pull-?apart|reverse fly/,              'band-pull-apart'],
+  [/lat pull|pulldown|straight-arm/,       'lat-pull'],
+  [/\brow\b/,                              'row'],
+  [/superman/,                             'superman'],
+  [/y-t-w|prone y/,                        'prone-ytw'],
+  [/shrug/,                                'carry'],
+  /* pressing and arms */
+  [/triceps pushdown|pushdown/,            'band-pushdown'],
+  [/triceps extension|overhead triceps/,   'db-overhead-tri'],
+  [/floor press/,                          'floor-press'],
+  [/overhead press|arnold/,                'db-press-oh'],
+  [/lateral raise|front raise/,            'db-raise'],
+  [/\bcurl\b/,                             'db-curl'],
+  /* push-ups, most specific first */
+  [/scapular push/,                        'scap-pushup'],
+  [/pike push/,                            'pike-push-up'],
+  [/incline push/,                         'incline-push-up'],
+  [/push-?up/,                             'push-up'],
+  /* trunk */
+  [/copenhagen/,                           'copenhagen'],
+  [/side plank/,                           'side-plank'],
+  [/suitcase|farmer|carry|march/,          'carry'],
+  [/bear (hold|crawl)|mountain climber/,   'plank'],
+  [/plank/,                                'plank'],
+  [/hollow|reverse crunch/,                'hollow-hold'],
+  [/bird dog/,                             'bird-dog'],
+  [/dead bug/,                             'dead-bug'],
+  /* hips and legs */
+  [/single-leg glute bridge|single leg glute bridge/, 'sl-glute-bridge'],
+  [/glute bridge|hip thrust/,              'glute-bridge'],
+  [/adductor squeeze/,                     'adductor-squeeze'],
+  [/single-leg rdl|single leg rdl/,        'sl-rdl'],
+  [/rdl|romanian|good morning|hinge/,      'hinge'],
+  [/wall sit/,                             'wall-sit'],
+  [/tibialis/,                             'tibialis-raise'],
+  [/single-leg calf|single leg calf/,      'sl-calf-raise'],
+  [/calf raise/,                           'calf-raise'],
+  [/calf stretch/,                         'calf-stretch'],
+  [/couch stretch/,                        'couch-stretch'],
+  [/ankle dorsiflexion|ankle rock/,        'ankle-rock'],
+  [/goblet/,                               'goblet-squat'],
+  [/split squat|cossack|skater squat/,     'split-squat'],
+  [/lunge/,                                'lunge'],
+  /* plyometrics and sprint work, before the plain squat rule */
+  [/pogo|ankle stiffness/,                 'pogo-hops'],
+  [/lateral bound|skater|lateral shuffle|star drill|spider/, 'lateral-bound'],
+  [/depth drop|drop & stick|drop and stick|deceleration|5-10-5|agility|split-?step/, 'decel'],
+  [/jump|\bhop\b|hops\b|broad jump/,       'jump'],
+  [/squat/,                                'squat'],
+  /* mobility */
+  [/wall slide/,                           'wall-slides'],
+  [/shoulder car/,                         'shoulder-cars'],
+  [/dislocate/,                            'band-overhead'],
+  [/open book|thoracic rotation/,          'open-book'],
+  [/cat-?cow/,                             'cat-cow'],
+  [/90\/90|hip switch|adductor rock|pigeon/, 'hip-90-90'],
+  [/legs up|hamstring flow/,               'legs-up-wall'],
+  [/breath/,                               'breathe'],
+  [/world's greatest|worlds greatest/,     'worlds-greatest'],
+  /* conditioning */
+  [/bike|spin|cycl/,                       'bike'],
+  [/\bwalk/,                               'walk'],
+  [/sprint|run|jog|knees|butt kick|a-skip/,'run'],
+  /* whatever is left that clearly involves a band overhead */
+  [/band overhead/,                        'band-overhead'],
+  /* added when the whole-library check named them: these need only kit the app
+     already draws, so falling back would have been laziness rather than a
+     limit. What is left undrawn needs a rack, a cable stack or a bar. */
+  [/step-?up|step-?down/,                  'lunge'],
+  [/frog pump/,                            'glute-bridge'],
+  [/pull-?through/,                        'hinge'],
+  [/rotational throw|woodchop/,            'band-pallof'],
+  [/db bench|incline db press/,            'floor-press'],
+  [/heel lower|heel drop/,                 'sl-calf-raise'],
+  [/side-?lying adductor|adductor raise/,  'copenhagen'],
+  [/adductor slide|slide-?out/,            'adductor-squeeze'],
+  [/band rotation/,                        'band-pallof'],
+  [/snap-?down|drop landing|\blanding\b/,  'decel'],
+  [/acceleration/,                         'run'],
+  [/windshield/,                           'open-book'],
+  [/\bbounds?\b/,                          'jump']
+];
+
+/* RETIRED with POSE_RULES. Every one of these is now a line in EX_ILLUS,
+   which is where an exception and a rule look the same - because to the
+   reader of a table they are the same. */
+const EX_ILLUS_OVERRIDE={
+  mo12:'legs-up-wall',     /* "Hamstring Flow" is a supine flow, not a hinge */
+  sp01:'decel',            /* "Split-Step Reaction Drill" is a braking step */
+  sp07:'lateral-bound'     /* "Crossover Step Start" moves sideways first */
+};
+
+/* WARM-UP MOVEMENTS, BY NAME.
+   A warm-up item is a line of text inside a workout - "Pogo hops", "12 reps"
+   - not a library row, so it has no id to look up and a name is all there
+   is. This is now the ONLY place a name decides a drawing, and it is a
+   closed table: a warm-up name that is not here gets the placeholder, not
+   the nearest match.
+
+   Keys are lower-cased, because illusKey() lower-cases before looking up. */
+const WU_ILLUS={
+  /* the stock routines, every movement they prescribe */
+  'ankle dorsiflexion rock':'ankle-rock', 'bodyweight squats':'squat',
+  'glute bridge':'glute-bridge', 'walking lunge':'lunge',
+  'pogo hops':'pogo-hops', 'band pull-apart':'band-pull-apart',
+  'wall slides':'wall-slides', 'shoulder cars':'shoulder-cars',
+  'scapular push-ups':'scap-pushup', 'incline push-ups':'incline-push-up',
+  'band face pull':'band-face-pull', "world's greatest stretch":'worlds-greatest',
+  'a-skips':'run', 'high knees':'run', 'butt kicks':'run',
+  'lateral shuffle':'lateral-bound', 'split squat':'split-squat',
+  '90/90 hip switch':'hip-90-90', 'cat-cow':'cat-cow',
+  'dead bug':'dead-bug', 'bird dog':'bird-dog',
+  /* motions rather than shapes, which is why they are named here at all */
+  'arm circles':'arm-circles', 'arm circles + leg swings':'arm-circles',
+  'leg swings front/back':'stand', 'leg swings lateral':'stand',
+  'leg swings all directions':'stand', 'hip circles + leg swings':'stand',
+  'leg swings + hip circles':'stand',
+  'doorway chest stretch':'wall-slides', 'serve shadow swings':'band-overhead',
+  'shadow swings / rotational throws':'band-pallof',
+  'gentle full-body stretch':'breathe', 'slow nasal breathing':'breathe',
+  'easy bike or brisk walk':'bike', 'easy walk or spin':'walk',
+  'easy jog, spin or brisk walk':'run', 'easy jog or bike':'run',
+  'easy jog around the court':'run', 'easy jog or walk':'run',
+  'build-up runs':'run', 'build-up sprints':'run',
+  'countermovement jumps':'jump', 'drop and stick':'decel',
+  'lateral shuffle + crossover':'lateral-bound',
+  'split step + first step':'decel', 'adductor rock':'adductor-rock'
+};
+
+/* =========================================================================
+   EXERCISE -> ILLUSTRATION, EXPLICITLY
+   ------------------------------------------------------------------------
+   One line per exercise id. The pose named here was compared against the
+   rendered drawing, checking body position, which limb moves, the direction
+   of travel, the implement in the hands, whether it is one limb or two, and
+   whether the arrow says what actually happens. `null` means no drawing has
+   been verified for it, and null renders a placeholder rather than the
+   nearest-looking thing.
+
+   This replaces name-pattern matching. Patterns are how a hamstring bridge
+   curl came to be drawn as a biceps curl: the name contained "curl", the
+   rule fired, and nothing downstream could tell that the picture was of a
+   different exercise entirely. A table makes a wrong drawing a visible line
+   in a diff instead of an emergent property of rule order.
+
+   Where two exercises share a pose it is because the drawing is true of
+   both - Chin-Up and Pull-Up differ only in grip, which a stick figure
+   cannot show and which no drawing here pretends to show.
+   ====================================================================== */
+const EX_ILLUS = {
+  /* ---- cardio ---- */
+  cd01:'run',              // Zone 2 Run
+  cd02:'bike',             // Zone 2 Bike
+  cd03:'run',              // Tennis Interval Run
+  cd04:'run',              // Hill Sprints
+  cd05:'bike',             // Recovery Spin
+  cd06:'walk',             // Easy Walk
+  cd07:'bike',             // Bike Intervals
+  cd08:'run',              // Tempo Run
+
+  /* ---- core ---- */
+  co01:'plank',            // RKC Plank
+  co02:'plank',            // Long-Lever Plank
+  co03:'side-plank',       // Side Plank
+  co04:'side-plank',       // Side Plank Hip Dip
+  co05:'dead-bug',         // Dead Bug
+  co06:'bird-dog',         // Bird Dog
+  co07:'hollow-hold',      // Hollow Body Hold
+  co08:'bear-hold',        // Bear Hold / Bear Crawl - knees off the floor, not a plank
+  co09:'band-pallof',      // Band Pallof Press
+  co10:'band-pallof',      // Band Anti-Rotation Hold
+  co11:'band-pallof',      // Half-Kneeling Band Chop
+  co12:'band-pallof',      // Band Rotational Press
+  co13:'suitcase-carry',   // Suitcase Carry - ONE weight
+  co14:'suitcase-march',   // Suitcase March - one weight, knee up
+  co15:'mountain-climber', // Mountain Climbers - was a static plank
+  co16:'reverse-crunch',   // Reverse Crunch - was a hollow hold
+  co17:'hollow-hold',      // Hollow Rock
+
+  /* ---- gym library ---- */
+  g01:'bb-squat',          // Barbell Back Squat - was a bodyweight squat
+  g02:'bb-hinge',          // Barbell Romanian Deadlift - was an unloaded hinge
+  g03:'bb-hip-thrust',     // Barbell Hip Thrust - was a floor glute bridge
+  g04:null,                // Leg Press - a machine, and machines are not drawn
+  g05:null,                // Seated Leg Curl - a machine; was drawn as a Nordic curl
+  g06:'calf-raise',        // Standing Calf Raise (machine) - the movement is the same
+  g07:'lunge',             // Walking Lunge (loaded)
+  g08:'bb-bench',          // Barbell Bench Press - had no drawing at all
+  g09:'db-bench-press',    // DB Bench Press - was drawn on the floor
+  g10:'bb-ohp',            // Overhead Press (barbell) - was two dumbbells
+  g11:null,                // Cable Lateral Raise - a cable stack is not drawn
+  g12:'pull-up',           // Pull-Up
+  g13:null,                // Lat Pulldown - a machine; was drawn as a band
+  g14:'bb-row',            // Barbell Row - was an unloaded bent-over row
+  g15:null,                // Seated Cable Row - a machine
+  g16:null,                // Cable Face Pull - a cable stack
+  /* Was 'band-pallof'. The position and direction are identical, which is
+     why it looked acceptable - but the drawing put a resistance band in the
+     hands of somebody doing a cable exercise, and a band is kit a gym user
+     may not own. Every other cable movement here is already null; this one
+     was the outlier, and the equipment check found it. */
+  g17:null,                // Cable Pallof Press - a cable stack is not drawn
+  g18:null,                // Cable Woodchop - a cable stack
+  g19:'hang-leg-raise',    // Hanging Leg Raise - had no drawing
+  g20:null,                // Trap Bar Jump - a trap bar is not drawn
+  g21:'db-incline-press',  // Incline DB Press - was drawn flat on the floor
+  g22:'row',               // Chest-Supported DB Row
+  g23:'split-squat',       // Bulgarian Split Squat (loaded)
+  g24:'nordic',            // Nordic Curl (anchored)
+  g25:'carry',             // Farmer Carry - two weights, which is right here
+  g26:'box-jump',          // Box Jump - was a jump with no box
+  g27:'ball-throw',        // Med Ball Rotational Throw - was a band Pallof press
+  g28:null,                // Treadmill / Rower Intervals - no one machine to draw
+
+  /* ---- lower body ---- */
+  lx01:'goblet-squat',     // Tempo Goblet Squat
+  lx02:'split-squat',      // Bulgarian Split Squat
+  lx03:'split-squat',      // Split Squat
+  lx04:'lunge',            // Reverse Lunge
+  lx05:'lateral-lunge',    // Lateral Lunge - was a forward lunge
+  lx06:'lateral-lunge',    // Cossack Squat - a deep SIDE lunge, not a split squat
+  lx07:'sl-squat',         // Skater Squat - one leg, with the other trailing
+  lx08:'step-up',          // Step-Up - was a lunge, with no step in it
+  lx09:'sl-rdl',           // Single-Leg RDL
+  lx10:'hinge',            // DB Romanian Deadlift
+  lx11:'nordic',           // Nordic Curl Eccentric
+  lx12:'sliding-leg-curl', // Sliding Leg Curl - was a kneeling Nordic curl
+  lx13:'sl-glute-bridge',  // Single-Leg Glute Bridge
+  lx14:'db-hip-thrust',    // Floor Hip Thrust - it is loaded, so show the load
+  lx15:'wall-sit',         // Wall Sit
+  lx16:'calf-raise',       // Standing Calf Raise
+  lx17:'sl-calf-raise',    // Single-Leg Calf Raise
+  lx18:'tibialis-raise',   // Tibialis Raise
+  lx19:'copenhagen',       // Copenhagen Plank
+  lx20:'adductor-squeeze', // Adductor Squeeze
+
+  /* ---- mobility ---- */
+  mo01:'hip-90-90',        // 90/90 Hip Switch
+  mo02:'worlds-greatest',  // World's Greatest Stretch
+  mo03:'couch-stretch',    // Couch Stretch
+  mo04:'ankle-rock',       // Ankle Dorsiflexion Rock
+  mo05:'open-book',        // Thoracic Rotation (Open Book)
+  mo06:'cat-cow',          // Cat-Cow
+  mo07:'wall-slides',      // Wall Slides
+  mo08:'shoulder-cars',    // Shoulder CARs
+  mo09:'adductor-rock',    // Adductor Rock - was a seated 90/90
+  mo10:'pigeon',           // Pigeon Stretch - was a seated 90/90
+  mo11:'calf-stretch',     // Calf Stretch
+  mo12:'hamstring-flow',   // Hamstring Flow
+  mo13:'band-overhead',    // Band Shoulder Dislocates
+
+  /* ---- plyometrics ---- */
+  pl01:'pogo-hops',        // Pogo Hops
+  pl02:'jump',             // Countermovement Jump
+  pl03:'jump',             // Squat Jump (paused)
+  pl04:'lateral-bound',    // Lateral Bound (Skater)
+  pl05:'broad-jump',       // Broad Jump - the arrow pointed up, not forward
+  pl06:'decel',            // Depth Drop & Stick
+  pl07:'split-jump',       // Split Jump - it lands in a split stance
+  pl08:'sl-hop',           // Single-Leg Hop & Stick - was drawn on two legs
+  pl09:'jump',             // Serve-Jump Simulation
+  pl10:'pogo-hops',        // Ankle Stiffness Hops
+
+  /* ---- speed ---- */
+  sp01:'decel',            // Split-Step Reaction Drill
+  sp02:'run',              // Acceleration Sprints
+  sp03:'decel',            // 5-10-5 Pro Agility
+  sp04:'lateral-bound',    // Lateral Shuffle
+  sp05:'lateral-bound',    // Spider / Star Drill
+  sp06:'decel',            // Deceleration Drill
+  sp07:'lateral-bound',    // Crossover Step Start
+
+  /* ---- upper body: pull ---- */
+  ul01:'row',              // Band Row
+  ul02:'row-single',       // Band Single-Arm Row - one arm
+  ul03:'row',              // DB Bent-Over Row
+  ul04:'row-single',       // DB Single-Arm Row - one arm
+  ul05:'inverted-row',     // Inverted Row - was a bent-over row, the opposite way up
+  ul06:'lat-pull',         // Band Lat Pulldown
+  ul07:'lat-pull',         // Band Straight-Arm Pulldown
+  ul08:'band-pull-apart',  // Band Pull-Apart
+  ul09:'band-face-pull',   // Band Face Pull
+  ul10:'prone-ytw',        // Prone Y-T-W
+  ul11:'band-pull-apart',  // Band Reverse Fly
+  ul12:'db-curl',          // DB Bicep Curl
+  ul13:'db-curl',          // DB Hammer Curl
+  ul14:'band-curl',        // Band Curl - was drawn holding dumbbells
+  ul15:'superman',         // Superman
+
+  /* ---- upper body: push ---- */
+  up01:'push-up',          // Push-Up
+  up02:'feet-elev-push-up',// Feet-Elevated Push-Up - the elevation is the exercise
+  up03:'archer-push-up',   // Archer Push-Up - one arm out is the exercise
+  up04:'diamond-push-up',  // Diamond Push-Up - hand position is the exercise
+  up05:'pike-push-up',     // Pike Push-Up
+  up06:'pike-push-up',     // Elevated Pike Push-Up
+  up07:'floor-press',      // DB Floor Press
+  up08:'db-press-oh',      // DB Overhead Press
+  up09:'db-press-oh',      // DB Arnold Press
+  up10:'db-raise',         // DB Lateral Raise
+  up11:'band-raise',       // Band Lateral Raise - was drawn holding dumbbells
+  up12:'db-raise',         // DB Front Raise
+  up13:'band-overhead',    // Band Overhead Press
+  up14:'band-pushdown',    // Band Triceps Pushdown
+  up15:'db-overhead-tri',  // DB Overhead Triceps Extension
+
+  /* ---- the extended library ---- */
+  x01:'squat',             // Prisoner Squat
+  x02:'squat',             // 1.5-Rep Squat
+  x03:'goblet-squat',      // Heels-Elevated Goblet Squat
+  x04:'kb-front-squat',    // Kettlebell Front Squat - was an empty-handed squat
+  x05:'sl-hinge',          // Single-Leg Hip Hinge - was drawn on two legs
+  x06:'band-pull-through', // Band Pull-Through - was an unloaded hinge
+  x07:'band-good-morning', // Banded Good Morning - was an unloaded hinge
+  x08:'kb-swing',          // Kettlebell Swing - had no drawing
+  x09:'step-down',         // Step-Down (Eccentric) - was a lunge
+  x10:'sl-squat',          // Shrimp Squat - was drawn on two legs
+  x11:'sl-squat',          // Pistol Squat Progression - was drawn on two legs
+  x12:'frog-pump',         // Frog Pump
+  x13:'band-glute-bridge', // Banded Glute Bridge - the band was not shown
+  x14:'hip-thrust-march',  // Hip Thrust March - was a standing dumbbell carry
+  x15:'band-leg-curl',     // Band Leg Curl - was a kneeling Nordic curl
+  x16:'bridge-walkout',    // Long-Lever Bridge Walkout - was a walking figure
+  x17:'sl-bridge-curl',    // Single-Leg Bridge Curl - was a DUMBBELL BICEPS CURL
+  x18:'calf-raise',        // Bent-Knee Calf Raise
+  x19:'heel-lower',        // Eccentric Heel Lower - the arrow now points down
+  x20:'toe-walk',          // Toe Walk - was a flat-footed walk
+  x21:'tibialis-raise',    // Tibialis Wall Raise
+  x22:'side-lying-adductor',// Side-Lying Adductor Raise - was a Copenhagen plank
+  x23:'adductor-slide',    // Adductor Slide-Out - arrows now point out, not in
+  x24:'pull-up',           // Chin-Up - grip differs from a pull-up; a figure cannot show grip
+  x25:'pull-up',           // Negative Pull-Up
+  x26:'lat-pull',          // Band Kneeling Lat Pull - the pose is kneeling, which is right
+  x27:'band-pallof',       // Half-Kneeling Band Rotation
+  x28:'band-pallof',       // Standing Band Woodchop
+  x29:'decel',             // Snap-Down
+  x30:'sl-landing',        // Single-Leg Drop Landing - was landing on two feet
+  x31:'decel',             // Lateral Drop & Stick
+  x32:'lateral-bound',     // Continuous Skater Bounds
+  x33:'broad-jump',        // Standing Triple Jump - travels forward
+  x34:'wall-drill',        // Wall Acceleration Drill - was a free run, with no wall
+  x35:'run',               // Flying Sprints
+  x36:'resisted-sprint',   // Resisted Sprint Starts - the band was missing
+  x37:'broad-jump',        // Hill Bounds - travel, not height
+  x38:'wall-iso-raise',    // Wall Isometric Lateral Raise - was drawn holding dumbbells
+  x39:'self-resisted-curl',// Self-Resisted Curl - was drawn holding dumbbells
+  x40:'windshield-wiper',  // Lying Windshield Wiper - was a side-lying open book
+  x41:'prone-lat-pull'     // Prone Sliding Lat Pull - was a kneeling band pulldown
+};
+
+/* The one lookup everything else uses. Returns a verified pose key, or null.
+   Never a guess: an illustration of the wrong exercise is worse than no
+   illustration, because the user cannot tell that it is wrong.
+
+   Resolution order, and why:
+     1. `ex.illus`   - a row that states its own pose, for user-added
+                       exercises. Checked against POSES so a stale key
+                       cannot render nothing.
+     2. EX_ILLUS[id] - the verified table. AUTHORITATIVE, including when the
+                       answer is null. An id that is in the table never falls
+                       through to a name rule, which is what stopped
+                       "Single-Leg Bridge Curl" being drawn as a biceps curl.
+     3. WU_ILLUS     - warm-up movement names. These are free text inside a
+                       workout, not library rows, so they have no id to look
+                       up and a name is all there is.
+     4. nothing      - and nothing is a real answer. */
+function illusKey(ex){
+  if(!ex) return null;
+  if(ex.illus && POSES[ex.illus]) return ex.illus;
+  if(ex.id && Object.prototype.hasOwnProperty.call(EX_ILLUS, ex.id)){
+    const k=EX_ILLUS[ex.id];
+    return (k && POSES[k]) ? k : null;
+  }
+  const nm=String(ex.name||'').trim().toLowerCase();
+  if(!nm) return null;
+  if(WU_ILLUS[nm] && POSES[WU_ILLUS[nm]]) return WU_ILLUS[nm];
+  return null;
+}
+/* Where the answer came from, for the validator's messages and for the
+   "why this drawing" line in the library. */
+function illusWhy(ex){
+  if(!ex) return 'no exercise';
+  if(ex.illus && POSES[ex.illus]) return 'declared on the exercise';
+  if(ex.id && Object.prototype.hasOwnProperty.call(EX_ILLUS, ex.id))
+    return EX_ILLUS[ex.id] ? 'verified table' : 'table: none verified';
+  const nm=String(ex.name||'').trim().toLowerCase();
+  if(WU_ILLUS[nm]) return 'warm-up name';
+  return 'not in the table';
+}
+/* `size` is 'lg' on the training screen, 'sm' for a list thumbnail.
+
+   A movement with no verified drawing gets a PLACEHOLDER, and the
+   placeholder has to look like a placeholder. It used to be the dumbbell
+   icon, which on a training screen reads as "here is your exercise" - a
+   silent claim about a movement nothing had checked. A dashed frame with a
+   line of text reads as an absence, which is what it is. */
+function illusHTML(ex, size){
+  const k=illusKey(ex);
+  const sz=size||'lg';
+  if(!k) return `<div class="illus ${sz} none" role="img"
+      aria-label="No illustration for this movement yet">
+      <span class="il-n">${svg('help')}${sz==='sm'?'':'<b>No illustration yet</b>'}</span>
+    </div>`;
+  return `<div class="illus ${sz}">${figSVG(POSES[k])}</div>`;
+}
+/* Coverage and correctness, for the validator and the About screen.
+   `unverified` is named rather than counted, because the point of the number
+   is to be worked through. */
+function illusCoverage(){
+  const all=(DB&&DB.exercises)||[];
+  const unverified=[], missing=[];
+  all.forEach(e=>{
+    if(illusKey(e)) return;
+    if(e.id && Object.prototype.hasOwnProperty.call(EX_ILLUS, e.id)) unverified.push(e.id);
+    else missing.push(e.id||e.name);
+  });
+  return {have:all.length-unverified.length-missing.length, total:all.length,
+          poses:Object.keys(POSES).length,
+          unverified:unverified, missing:missing};
+}
+/* Every pose named by the table must exist, and every exercise must be in
+   the table. Returned rather than thrown so a test can name the rows. */
+function illusAudit(){
+  const all=(DB&&DB.exercises)||[];
+  const notInTable=[], deadPose=[], unusedPose=[];
+  const used={};
+  all.forEach(e=>{
+    if(!e.id || !Object.prototype.hasOwnProperty.call(EX_ILLUS, e.id)) notInTable.push(e.id||e.name);
+  });
+  Object.keys(EX_ILLUS).forEach(id=>{
+    const k=EX_ILLUS[id];
+    if(k==null) return;
+    if(!POSES[k]) deadPose.push(id+' -> '+k); else used[k]=1;
+  });
+  Object.keys(WU_ILLUS).forEach(n=>{
+    const k=WU_ILLUS[n];
+    if(!POSES[k]) deadPose.push('warm-up "'+n+'" -> '+k); else used[k]=1;
+  });
+  Object.keys(POSES).forEach(k=>{ if(!used[k]) unusedPose.push(k); });
+  return {notInTable:notInTable, deadPose:deadPose, unusedPose:unusedPose,
+          rows:Object.keys(EX_ILLUS).length};
+}
+
+/* =========================================================================
+   EXERCISE LIBRARY
+   Every exercise declares the equipment it needs; you are only ever shown
+   1 resistance band · bicycle · running · open space. Nothing else.
+   ====================================================================== */
+const EQ = {BW:'Bodyweight', DB:'Dumbbells', BAND:'Resistance band', WALL:'Wall', FLOOR:'Floor',
+            CHAIR:'Chair/step (check stability)', BIKE:'Bicycle', RUN:'Open ground', TOWEL:'Towel/sliders'};
+
+function seedExercises(){ return [
+/* ---------------- LOWER BODY — STRENGTH ---------------- */
+{id:'lx01',name:'Tempo Goblet Squat',cat:'lower',muscles:'Quads, glutes, core',equip:'DB',sets:4,reps:'8–12',rpe:'RPE 8 (2 RIR)',rest:'90s',tempo:'4-1-1-0',
+ how:'Hold one dumbbell vertically at chest height. Feet shoulder-width, toes slightly out. Lower over 4 seconds, pause 1 second at the bottom, stand normally.',
+ cue:'Knees track over the middle toes. Chest tall, ribs down. Push the floor away.',
+ miss:'Rushing the lowering phase. With a light weight the four seconds down IS the load.',
+ prog:'Add 1 rep per set each week. At 4×12 move to 5-second eccentric, then to 3-second pause, then progress to Bulgarian Split Squat.',
+ reg:'Bodyweight squat with the same tempo, or reduce depth to a comfortable range.',
+ subs:'Bodyweight Tempo Squat · Wall Sit · Split Squat',
+ notes:'With only 5 kg, TIME UNDER TENSION is your load. Never rush the eccentric.'},
+
+{id:'lx02',name:'Bulgarian Split Squat',cat:'lower',muscles:'Quads, glutes, adductors, stabilisers',equip:'DB+CHAIR',sets:3,reps:'8–12 / leg',rpe:'RPE 8',rest:'75s / leg',tempo:'3-1-1-0',
+ how:'Rear foot on a stable chair or step roughly knee height, front foot ~60 cm forward. Lower until the front thigh is near parallel, drive up through the front heel.',
+ cue:'90% of the weight stays in the front leg. Keep the front shin close to vertical for quads, lean slightly forward for glutes.',
+ miss:'Pushing off the back foot. It is there for balance only - the front leg does the work.',
+ prog:'Bodyweight → holding 1 DB → holding 2 DB → 3s pause at the bottom → 1.5 reps (full, half, full).',
+ reg:'Static Split Squat with the rear foot on the floor.',
+ subs:'Split Squat · Reverse Lunge · Skater Squat',
+ notes:'CONFIRM the chair is stable and will not slide before loading it. If in doubt, use the floor-based Split Squat.'},
+
+{id:'lx03',name:'Split Squat',cat:'lower',muscles:'Quads, glutes',equip:'DB',sets:3,reps:'10–14 / leg',rpe:'RPE 7–8',rest:'60s / leg',tempo:'3-1-1-0',
+ how:'Long split stance, both feet on the floor. Drop the back knee straight down to just above the ground, drive back up through the front foot.',
+ cue:'Vertical torso. Back knee travels down, not forward.',
+ miss:'Letting the front knee drift inward. It tracks over the middle of the foot.',
+ prog:'Reps → add DBs → pause at the bottom → elevate the front foot for extra range.',
+ reg:'Shorten the range, or hold a wall for balance.',
+ subs:'Bulgarian Split Squat · Reverse Lunge'},
+
+{id:'lx04',name:'Reverse Lunge',cat:'lower',muscles:'Quads, glutes, hamstrings',equip:'DB',sets:3,reps:'8–12 / leg',rpe:'RPE 7–8',rest:'75s',tempo:'2-0-1-0',
+ how:'Step backwards into a lunge, lower the back knee to just above the floor, then drive through the front heel to return.',
+ cue:'Step back far enough that the front knee stays over the ankle. Torso stays tall.',
+ miss:'Stepping back too short, which puts the knee ahead of the toes instead of stacking the shin.',
+ prog:'Bodyweight → DBs → deficit (front foot on a low step) → add a knee drive at the top.',
+ reg:'Hold a wall, or reduce the depth.',
+ subs:'Split Squat · Walking Lunge · Step-Up'},
+
+{id:'lx05',name:'Lateral Lunge',cat:'lower',muscles:'Adductors, glute medius, quads',equip:'DB',sets:3,reps:'8–10 / side',rpe:'RPE 7',rest:'60s',tempo:'3-1-1-0',
+ how:'Step wide to one side, sit back into that hip while the other leg stays straight. Push back to the centre.',
+ cue:'Sit INTO the hip, do not just bend the knee. Both feet stay flat and forward.',
+ miss:'Bending the straight leg. It stays long while the hip of the bent leg goes back and down.',
+ prog:'Add DBs → add a pause → progress to Cossack Squat.',
+ reg:'Reduce the depth or hold onto support.',
+ subs:'Cossack Squat · Skater Squat',
+ notes:'Directly trains the wide-ball defensive lunge and open-stance loading.'},
+
+{id:'lx06',name:'Cossack Squat',cat:'lower',muscles:'Adductors, quads, glutes, ankle mobility',equip:'BW',sets:3,reps:'6–10 / side',rpe:'RPE 7',rest:'60s',tempo:'3-1-1-0',
+ how:'Very wide stance. Shift fully onto one leg, sinking as low as control allows while the other leg straightens with the toes up.',
+ cue:'Heel of the working leg stays down. Chest up.',
+ miss:'Letting the heel of the bent leg lift. Keep it down even if that means less depth.',
+ prog:'Depth → pause → hold a DB at the chest as a counterbalance.',
+ reg:'Hold a wall, or use a partial range.',
+ subs:'Lateral Lunge'},
+
+{id:'lx07',name:'Skater Squat',cat:'lower',muscles:'Quads, glutes, single-leg stability',equip:'BW',sets:3,reps:'5–10 / leg',rpe:'RPE 8',rest:'75s',tempo:'3-1-1-0',
+ how:'Stand on one leg, other leg trailing behind. Hinge and lower until the rear knee lightly touches the floor (use a towel), then stand.',
+ cue:'Reach the arms forward to counterbalance. Control the descent — no crashing.',
+ miss:'Reaching for the floor with the knee instead of sitting the hips back.',
+ prog:'Counterbalance with DBs → reduce the pad height → full pistol progression.',
+ reg:'Hold a wall with one hand, or use a higher touch point.',
+ subs:'Bulgarian Split Squat · Step-Down',
+ notes:'Best single-leg strength builder available without a gym.'},
+
+{id:'lx08',name:'Step-Up',cat:'lower',muscles:'Quads, glutes',equip:'DB+CHAIR',sets:3,reps:'8–12 / leg',rpe:'RPE 7',rest:'60s',tempo:'2-0-1-1',
+ how:'Step onto a stable surface of knee height or lower, driving through the whole foot. Lower under control — do not push off the bottom leg.',
+ cue:'The working leg does everything. Lower slowly for 2–3 seconds.',
+ miss:'Pushing off the trailing foot. The working leg should lift you on its own.',
+ prog:'Height → DBs → slow eccentric → explosive drive with knee lift.',
+ reg:'Lower step height.',
+ subs:'Reverse Lunge · Split Squat',
+ notes:'ONLY if you have a confirmed stable, non-slip surface at a safe height. Otherwise substitute.'},
+
+{id:'lx09',name:'Single-Leg RDL',cat:'lower',muscles:'Hamstrings, glutes, spinal erectors, balance',equip:'DB',sets:3,reps:'8–12 / leg',rpe:'RPE 7–8',rest:'60s',tempo:'3-1-1-0',
+ how:'Stand on one leg holding a DB in the opposite hand. Hinge at the hip, the free leg extending straight back, until you feel a strong hamstring stretch. Return by squeezing the glute.',
+ cue:'Hips stay square to the floor — do not let the back hip open. Slight knee bend held constant.',
+ miss:'Rotating the hips open. Keep them square to the floor and keep the range short.',
+ prog:'Bodyweight → 1 DB → 2 DB → 3s pause at the bottom → deficit.',
+ reg:'Touch the back toe down for balance, or hold a wall.',
+ subs:'DB RDL · Band Good Morning',
+ notes:'Hamstring strength is the single best protector against the sprint/lunge injuries tennis produces.'},
+
+{id:'lx10',name:'DB Romanian Deadlift',cat:'lower',muscles:'Hamstrings, glutes, erectors',equip:'DB',sets:3,reps:'12–18',rpe:'RPE 8',rest:'75s',tempo:'4-1-1-0',
+ how:'Both DBs in front of the thighs. Push the hips back, keep a long spine, slide the DBs down the legs until the hamstrings are loaded, then drive the hips forward.',
+ cue:'This is a HIP movement, not a back movement. Bar path stays glued to the legs.',
+ miss:'Turning it into a squat. The knees stay soft and almost still; the hips travel back.',
+ prog:'Reps → 4–5s eccentric → pause → progress to Single-Leg RDL.',
+ reg:'Reduce range.',
+ subs:'Single-Leg RDL · Band Good Morning'},
+
+{id:'lx11',name:'Nordic Curl Eccentric',cat:'lower',muscles:'Hamstrings (eccentric)',equip:'BW',sets:3,reps:'4–6',rpe:'RPE 9',rest:'90s',tempo:'5-0-X-0',
+ how:'Kneel with the ankles anchored under a heavy immovable object (or a partner). Lower the torso forward as slowly as possible, catch with the hands, push back up.',
+ cue:'Hips stay extended — do not fold at the waist. Fight the whole way down.',
+ miss:'Folding at the hips on the way down. Stay in one line from knee to shoulder.',
+ prog:'Slow the descent → increase the range before the catch → fewer assisted reps.',
+ reg:'Band-assisted, or hands on a raised surface to shorten the range.',
+ subs:'Sliding Leg Curl · Single-Leg RDL',
+ notes:'Very high hamstring stimulus. Start with 2 sets — this causes serious soreness for 3–4 days. Never before tennis.'},
+
+{id:'lx12',name:'Sliding Leg Curl',cat:'lower',muscles:'Hamstrings, glutes',equip:'TOWEL',sets:3,reps:'8–14',rpe:'RPE 8',rest:'60s',tempo:'2-0-3-0',
+ how:'Lie on your back, heels on towels on a smooth floor. Bridge the hips up, then slide the heels out and drag them back in without letting the hips drop.',
+ cue:'Hips stay high the entire set. Slow on the way out.',
+ miss:'Letting the hips drop as the feet slide out. Keep them up the whole way.',
+ prog:'Reps → single leg → longer slide.',
+ reg:'Double leg, shorter range.',
+ subs:'Nordic Curl Eccentric · Glute Bridge March'},
+
+{id:'lx13',name:'Single-Leg Glute Bridge',cat:'lower',muscles:'Glutes, hamstrings',equip:'BW',sets:3,reps:'10–15 / leg',rpe:'RPE 7',rest:'45s',tempo:'2-0-1-2',
+ how:'Lie on your back, one foot planted, the other knee pulled to the chest. Drive the hips up through the heel and squeeze at the top for 2 seconds.',
+ cue:'Ribs down, do not arch the lower back. The glute should burn, not the hamstring.',
+ miss:'Arching the lower back to get higher. The height comes from the glute, not the spine.',
+ prog:'Reps → pause length → DB on the hip → foot elevated.',
+ reg:'Double-leg glute bridge.',
+ subs:'Hip Thrust (floor) · Glute Bridge March'},
+
+{id:'lx14',name:'Floor Hip Thrust',cat:'lower',muscles:'Glutes',equip:'DB',sets:3,reps:'12–20',rpe:'RPE 8',rest:'60s',tempo:'2-0-1-2',
+ how:'Upper back against a stable sofa or chair edge, DBs resting across the hips. Drive the hips to full extension, pause, lower under control.',
+ cue:'Finish with a hard glute squeeze and a posterior pelvic tilt. Chin tucked.',
+ miss:'Finishing with the ribs flared. Tuck them down and squeeze at the top.',
+ prog:'Reps → 3s pause → single leg.',
+ reg:'Floor glute bridge without support.',
+ subs:'Single-Leg Glute Bridge',
+ notes:'Only if you have a stable, non-sliding surface at roughly bench height.'},
+
+{id:'lx15',name:'Wall Sit',cat:'lower',muscles:'Quads (isometric)',equip:'WALL',sets:3,reps:'30–75s',rpe:'RPE 8',rest:'60s',tempo:'Isometric',
+ how:'Back flat against the wall, thighs at 90°, feet flat. Hold.',
+ cue:'Weight in the heels, knees over the ankles. Breathe normally — do not hold your breath.',
+ miss:'Sliding below parallel and hanging on the joints instead of holding the position.',
+ prog:'Add 10s per week → hold a DB → single-leg wall sit.',
+ reg:'Higher knee angle, shorter hold.',
+ subs:'Isometric Split Squat Hold',
+ notes:'Excellent low-joint-stress quad work for ORANGE recovery days.'},
+
+{id:'lx16',name:'Standing Calf Raise',cat:'lower',muscles:'Gastrocnemius, soleus, Achilles',equip:'DB',sets:4,reps:'15–25',rpe:'RPE 8',rest:'45s',tempo:'2-1-1-2',
+ how:'Stand on the edge of a step (or the floor), rise as high as possible, pause 1s at the top, lower slowly to a full stretch.',
+ cue:'FULL range. Most people cut the top and the bottom and get nothing.',
+ miss:'Bouncing. Pause at the top, then lower slowly.',
+ prog:'Reps → DBs → single leg → 3s pause.',
+ reg:'Floor instead of a step, both legs.',
+ subs:'Single-Leg Calf Raise'},
+
+{id:'lx17',name:'Single-Leg Calf Raise',cat:'lower',muscles:'Gastrocnemius, soleus, ankle stability',equip:'BW',sets:3,reps:'12–20 / leg',rpe:'RPE 8',rest:'45s',tempo:'2-1-1-2',
+ how:'One foot on a step edge, fingertips on a wall for balance only. Full rise, 1s pause, slow full stretch.',
+ cue:'Do not push through the wall — it is balance, not support.',
+ miss:'Rolling onto the outside of the foot. Drive through the big toe.',
+ prog:'Reps → hold a DB → 3s eccentric.',
+ reg:'Two legs.',
+ subs:'Standing Calf Raise',
+ notes:'Ankle and calf strength directly feeds serve drive and repeated push-off.'},
+
+{id:'lx18',name:'Tibialis Raise',cat:'lower',muscles:'Tibialis anterior, shin',equip:'WALL',sets:3,reps:'15–25',rpe:'RPE 7',rest:'45s',tempo:'2-0-2-1',
+ how:'Back against a wall, feet ~40 cm out. Keeping the heels down, pull the toes up towards the shins as far as possible, lower slowly.',
+ cue:'Full lift, full lower. Expect a strong burn in the front of the shin.',
+ miss:'Leaning back to find more range. Keep the hips against the wall.',
+ prog:'Reps → move the feet further from the wall → add a light DB across the toes.',
+ reg:'Feet closer to the wall.',
+ subs:'Heel Walks',
+ notes:'The best available insurance against shin splints and it improves deceleration control.'},
+
+{id:'lx19',name:'Copenhagen Plank',cat:'lower',muscles:'Adductors, groin, obliques',equip:'CHAIR',sets:3,reps:'15–40s / side',rpe:'RPE 8',rest:'45s',tempo:'Isometric',
+ how:'Side plank position with the TOP leg resting on a chair. Lift the hips and the bottom leg off the floor.',
+ cue:'Squeeze the top leg down into the surface. Body in a straight line.',
+ miss:'Letting the hips sag. The line from shoulder to knee stays straight.',
+ prog:'Short lever (knee on the chair) → long lever (foot on the chair) → add reps of hip raises.',
+ reg:'Bottom knee down, short lever.',
+ subs:'Side Plank · Adductor Squeeze',
+ notes:'Groin strains are a top-3 tennis injury. This is the most evidence-backed prevention exercise available.'},
+
+{id:'lx20',name:'Adductor Squeeze',cat:'lower',muscles:'Adductors',equip:'BW',sets:3,reps:'5 × 8s',rpe:'RPE 7',rest:'30s',tempo:'Isometric',
+ how:'Lying on your back, knees bent, ball or rolled towel between the knees. Squeeze hard for 8 seconds, relax 3.',
+ cue:'Build tension gradually over 2 seconds — do not snap into it.',
+ miss:'Holding your breath. Squeeze and keep breathing.',
+ prog:'Longer holds → straighter legs (longer lever).',
+ reg:'Softer squeeze.',
+ subs:'Copenhagen Plank'},
+
+/* ---------------- PLYOMETRICS / POWER ---------------- */
+{id:'pl01',name:'Pogo Hops',cat:'plyo',muscles:'Calves, Achilles, ankle stiffness',equip:'BW',sets:3,reps:'20–30',rpe:'RPE 6',rest:'60s',tempo:'Fast',
+ how:'Small, fast, springy hops on the balls of the feet with almost straight knees. Minimum ground contact time.',
+ cue:'Bounce off the ground like it is hot. The ankles do the work, not the knees.',
+ miss:'Bending the knees deeply. The ankles do this, not the hips.',
+ prog:'Contacts → height → single leg → lateral pogos.',
+ reg:'Fewer reps, lower height.',
+ subs:'Ankle Stiffness Hops',
+ notes:'Always the FIRST plyometric in any session — it primes the tendons.'},
+
+{id:'pl02',name:'Countermovement Jump',cat:'plyo',muscles:'Quads, glutes, calves — full-body power',equip:'BW',sets:4,reps:'3–5',rpe:'RPE 7 (max effort, low volume)',rest:'75–90s',tempo:'Explosive',
+ how:'Quick dip to a quarter squat and jump as high as possible. Land softly, reset fully between reps.',
+ cue:'QUALITY over quantity. If the jump height visibly drops, the set is finished.',
+ miss:'Pausing at the bottom. Reverse immediately.',
+ prog:'Track your best height. Progress by jumping higher, not more.',
+ reg:'Sub-maximal jumps, or Squat Jump from a pause.',
+ subs:'Squat Jump · Broad Jump',
+ notes:'This is your serve-jump driver. Never chase fatigue on this exercise.'},
+
+{id:'pl03',name:'Squat Jump (paused)',cat:'plyo',muscles:'Quads, glutes — concentric power',equip:'BW',sets:3,reps:'4–6',rpe:'RPE 7',rest:'75s',tempo:'Pause then explode',
+ how:'Descend to a quarter squat, hold for 2 full seconds to remove the stretch reflex, then jump maximally.',
+ cue:'Kill all the bounce in the pause, then explode from a dead stop.',
+ miss:'Rushing out of the pause. Hold it, then explode.',
+ prog:'Height → longer pause → single-leg variation.',
+ reg:'Fewer reps.',
+ subs:'Countermovement Jump'},
+
+{id:'pl04',name:'Lateral Bound (Skater)',cat:'plyo',muscles:'Glute medius, quads, lateral power',equip:'BW',sets:3,reps:'5–8 / side',rpe:'RPE 7',rest:'75s',tempo:'Explosive',
+ how:'Push off one leg laterally, land on the opposite leg, and STICK the landing for a full second before bounding back.',
+ cue:'Land quietly on a stable, slightly bent knee that does not cave inward.',
+ miss:'Falling straight into the next one. Stick the landing first.',
+ prog:'Distance → stick quality → continuous bounds without pausing.',
+ reg:'Shorter distance, longer pause between reps.',
+ subs:'Lateral Lunge · Skater Squat',
+ notes:'The closest direct match to wide-ball recovery and open-stance push-off.'},
+
+{id:'pl05',name:'Broad Jump',cat:'plyo',muscles:'Glutes, hamstrings — horizontal power',equip:'BW',sets:3,reps:'3–5',rpe:'RPE 7',rest:'90s',tempo:'Explosive',
+ how:'Two-footed jump for maximum distance. Land in an athletic absorbed position and hold it.',
+ cue:'Drive the arms hard. Land soft — absorb through the hips.',
+ miss:'Landing stiff-legged. Absorb through the hips and knees.',
+ prog:'Distance. Mark your best and test it monthly.',
+ reg:'Sub-maximal distance with focus on landing.',
+ subs:'Countermovement Jump',
+ notes:'Horizontal power transfers to first-step acceleration better than vertical jumping does.'},
+
+{id:'pl06',name:'Depth Drop & Stick',cat:'plyo',muscles:'Landing mechanics, eccentric strength',equip:'CHAIR',sets:3,reps:'4–6',rpe:'RPE 6',rest:'60s',tempo:'Absorb',
+ how:'Step (do not jump) off a low surface ~30 cm. Land on both feet in an athletic position and freeze completely for 2 seconds.',
+ cue:'Silent landing. Knees track over the toes, hips back, chest up.',
+ miss:'Stepping off from too high. The drop should be one you can stick silently.',
+ prog:'Height (slowly) → single-leg landing → drop into an immediate jump.',
+ reg:'Lower height, or jump in place and stick.',
+ subs:'Jump & Stick',
+ notes:'Deceleration training. This is what protects your knees during hard direction changes.'},
+
+{id:'pl07',name:'Split Jump',cat:'plyo',muscles:'Quads, glutes — alternating power',equip:'BW',sets:3,reps:'6–10 total',rpe:'RPE 7',rest:'75s',tempo:'Explosive',
+ how:'From a lunge position, jump and switch legs in the air, landing softly in the opposite lunge.',
+ cue:'Soft landings, upright torso. Do not let the back knee slam.',
+ prog:'Reps → height → continuous rhythm.',
+ reg:'Step through instead of jumping.',
+ subs:'Reverse Lunge · Lateral Bound'},
+
+{id:'pl08',name:'Single-Leg Hop & Stick',cat:'plyo',muscles:'Single-leg power & stability',equip:'BW',sets:3,reps:'4–6 / leg',rpe:'RPE 7',rest:'60s',tempo:'Explosive',
+ how:'Hop forward on one leg and stick the landing on the same leg for 2 seconds before the next rep.',
+ cue:'The knee must not collapse inwards on landing. Stick it, then reset.',
+ miss:'Letting the knee collapse inward on landing.',
+ prog:'Distance → multi-directional hops → continuous.',
+ reg:'Smaller hop, or hop and land on two feet.',
+ subs:'Lateral Bound'},
+
+{id:'pl09',name:'Serve-Jump Simulation',cat:'plyo',muscles:'Leg drive, hip extension, trunk',equip:'BW',sets:4,reps:'4–6',rpe:'RPE 7',rest:'75s',tempo:'Explosive',
+ how:'Adopt your serve stance. Load into the trophy position, then drive up and forward off both legs into the court, landing on the front foot.',
+ cue:'Drive UP and INTO the court, not just up. The legs lead, the arm follows.',
+ prog:'Height → add the arm swing → add a light band around the hips for resistance.',
+ reg:'Half-effort, focus on the movement pattern.',
+ subs:'Countermovement Jump',
+ notes:'Pattern-specific power. Keep the volume low — 20 quality reps beats 60 tired ones.'},
+
+{id:'pl10',name:'Ankle Stiffness Hops',cat:'plyo',muscles:'Achilles, calves',equip:'BW',sets:3,reps:'15–20 / leg',rpe:'RPE 6',rest:'45s',tempo:'Fast',
+ how:'Single-leg pogo hops in place, minimal knee bend, fast ground contacts.',
+ cue:'Stay tall. Bounce, do not squat.',
+ miss:'Spending too long on the ground. Keep contact time short.',
+ prog:'Contacts → height → hopping forward and laterally.',
+ reg:'Double leg.',
+ subs:'Pogo Hops'},
+
+/* ---------------- SPEED / AGILITY / TENNIS MOVEMENT ---------------- */
+{id:'sp01',name:'Split-Step Reaction Drill',cat:'speed',muscles:'Reactive ankles, first step',equip:'RUN',sets:4,reps:'6 reactions',rpe:'RPE 7',rest:'60s',tempo:'Reactive',
+ how:'Small split-step hop, land on the balls of the feet, and immediately explode 3–4 m in a random direction you choose mid-air.',
+ cue:'Land and go in the same beat. No pause between landing and the first step.',
+ prog:'React faster → longer sprints out → add a partner or a random call.',
+ reg:'Pre-plan the direction.',
+ subs:'Lateral Shuffle'},
+
+{id:'sp02',name:'Acceleration Sprints (10–20 m)',cat:'speed',muscles:'Full body — acceleration',equip:'RUN',sets:6,reps:'1 × 15 m',rpe:'RPE 8 (95% effort)',rest:'60–90s full recovery',tempo:'Max',
+ how:'From a split-step or staggered stance, accelerate maximally for 10–20 m. Walk back fully before the next rep.',
+ cue:'Aggressive forward body lean for the first 5 steps. Drive the ground backwards.',
+ prog:'Add reps (max 8) → add a reactive start → vary the start position.',
+ reg:'Reduce to 85% effort or fewer reps.',
+ subs:'Hill Sprints · Lateral Shuffle',
+ notes:'Needs FULL recovery between reps. This is quality work, not conditioning.'},
+
+{id:'sp03',name:'5-10-5 Pro Agility',cat:'speed',muscles:'COD, deceleration, lateral power',equip:'RUN',sets:4,reps:'1 rep each side',rpe:'RPE 8',rest:'90s',tempo:'Max',
+ how:'Three markers 5 m apart. Start at the middle, sprint 5 m right, touch, 10 m left, touch, 5 m back through the middle.',
+ cue:'Get LOW into the turns. Plant the outside foot hard and change direction off it.',
+ prog:'Time it with your phone and chase your own best.',
+ reg:'Reduce to 75% effort, focus on the mechanics of the turn.',
+ subs:'Lateral Shuffle · Spider Drill'},
+
+{id:'sp04',name:'Lateral Shuffle',cat:'speed',muscles:'Adductors, glute medius, lateral movement',equip:'RUN',sets:4,reps:'6 × 8 m',rpe:'RPE 7',rest:'45s',tempo:'Quick',
+ how:'Athletic stance, shuffle sideways without the feet crossing, then push back the other way.',
+ cue:'Stay low the whole time — no bobbing up and down. Push off the trailing leg.',
+ prog:'Speed → distance → add a band around the thighs.',
+ reg:'Slower, shorter distance.',
+ subs:'5-10-5 Pro Agility'},
+
+{id:'sp05',name:'Spider / Star Drill',cat:'speed',muscles:'COD, tennis court coverage',equip:'RUN',sets:3,reps:'1 full circuit',rpe:'RPE 8',rest:'2 min',tempo:'Max',
+ how:'Five markers arranged like a tennis court coverage pattern. Sprint from the centre to each marker, touch, and recover to the centre each time.',
+ cue:'Always recover facing forward with a split step at the centre.',
+ prog:'Time the circuit → add more markers → add a racquet.',
+ reg:'Jog the recovery, sprint only the outward legs.',
+ subs:'5-10-5 Pro Agility'},
+
+{id:'sp06',name:'Deceleration Drill',cat:'speed',muscles:'Eccentric quads, braking',equip:'RUN',sets:4,reps:'4 reps',rpe:'RPE 7',rest:'60s',tempo:'Accel–brake',
+ how:'Accelerate hard for 10 m, then stop as fast as possible within 3 m and hold an athletic position.',
+ cue:'Drop the hips, shorten the steps, chest over the knees. Do not stop with straight legs.',
+ prog:'Faster approach → shorter braking zone → brake into a direction change.',
+ reg:'Slower approach speed.',
+ subs:'Depth Drop & Stick',
+ notes:'Braking force in tennis exceeds accelerating force. Most players never train it.'},
+
+{id:'sp07',name:'Crossover Step Start',cat:'speed',muscles:'Hips, first step',equip:'RUN',sets:3,reps:'5 / side',rpe:'RPE 7',rest:'60s',tempo:'Explosive',
+ how:'From a ready position, open the hip and cross the far leg over to sprint 5 m laterally — the movement used to chase a wide ball.',
+ cue:'Open the hip first, do not step backwards before going.',
+ prog:'Speed → longer distance → reactive start.',
+ reg:'Walk through the pattern slowly.',
+ subs:'Lateral Shuffle'},
+
+/* ---------------- CORE ---------------- */
+{id:'co01',name:'RKC Plank',cat:'core',muscles:'Anti-extension, deep core',equip:'BW',sets:3,reps:'15–30s',rpe:'RPE 9',rest:'60s',tempo:'Isometric',
+ how:'Forearm plank, but actively squeeze glutes, quads and fists as hard as possible while pulling the elbows towards the toes.',
+ cue:'Maximum full-body tension. If you can hold this over 30 seconds you are not squeezing hard enough.',
+ miss:'Holding the shape without tension. Squeeze the glutes and brace hard.',
+ prog:'Increase the intensity of the contraction, not the duration. Then progress to long-lever.',
+ reg:'Standard plank, knees down.',
+ subs:'Long-Lever Plank · Hollow Body Hold',
+ notes:'Far better than 3-minute planks. Quality of tension beats duration.'},
+
+{id:'co02',name:'Long-Lever Plank',cat:'core',muscles:'Anti-extension',equip:'BW',sets:3,reps:'20–45s',rpe:'RPE 8',rest:'60s',tempo:'Isometric',
+ how:'Plank with the elbows shifted well forward of the shoulders, increasing the lever arm.',
+ cue:'Ribs down, pelvis tucked. Do not let the lower back sag.',
+ miss:'Letting the lower back arch as the arms reach forward.',
+ prog:'Move the elbows further forward → add a DB on the back → lift one foot.',
+ reg:'Standard plank.',
+ subs:'RKC Plank'},
+
+{id:'co03',name:'Side Plank',cat:'core',muscles:'Anti-lateral flexion, obliques, QL',equip:'BW',sets:3,reps:'25–50s / side',rpe:'RPE 8',rest:'45s',tempo:'Isometric',
+ how:'Forearm side plank, body in one straight line, hips stacked and lifted.',
+ cue:'Push the floor away with the bottom shoulder. Do not let the hips drop.',
+ miss:'Letting the hips drift backward. Stack them over each other.',
+ prog:'Time → top leg lifted → add hip dips → hold a DB.',
+ reg:'Bottom knee down.',
+ subs:'Copenhagen Plank · Suitcase Carry'},
+
+{id:'co04',name:'Side Plank Hip Dip',cat:'core',muscles:'Obliques, QL',equip:'BW',sets:3,reps:'10–15 / side',rpe:'RPE 8',rest:'45s',tempo:'2-0-1-1',
+ how:'From a side plank, lower the hip towards the floor under control and drive it back up past neutral.',
+ cue:'Controlled range. Squeeze at the top.',
+ miss:'Rotating the chest toward the floor. Stay square.',
+ prog:'Reps → hold a DB → long lever.',
+ reg:'Static side plank.',
+ subs:'Side Plank'},
+
+{id:'co05',name:'Dead Bug',cat:'core',muscles:'Anti-extension, core–hip coordination',equip:'BW',sets:3,reps:'8–12 / side',rpe:'RPE 7',rest:'45s',tempo:'3-1-3-0',
+ how:'On your back, arms up, knees at 90°. Lower the opposite arm and leg slowly towards the floor while keeping the lower back flat, then return.',
+ cue:'The lower back must stay pressed down the entire time. The moment it lifts, shorten the range.',
+ miss:'Letting the lower back lift off the floor as the limbs extend.',
+ prog:'Slower tempo → straighter leg → hold DBs → add a band for anti-extension.',
+ reg:'Legs only, or arms only.',
+ subs:'Bird Dog · Hollow Body Hold'},
+
+{id:'co06',name:'Bird Dog',cat:'core',muscles:'Anti-rotation, spinal stability, glutes',equip:'BW',sets:3,reps:'8–12 / side',rpe:'RPE 6',rest:'45s',tempo:'2-2-2-0',
+ how:'On hands and knees, extend the opposite arm and leg fully, hold 2 seconds, return with control.',
+ cue:'Hips stay level — imagine balancing a glass of water on your lower back.',
+ miss:'Rotating the hips as the leg lifts. Keep them level.',
+ prog:'Hold time → add a band → bring the elbow to the knee between reps.',
+ reg:'Arm only or leg only.',
+ subs:'Dead Bug'},
+
+{id:'co07',name:'Hollow Body Hold',cat:'core',muscles:'Anterior chain, anti-extension',equip:'BW',sets:3,reps:'20–40s',rpe:'RPE 8',rest:'60s',tempo:'Isometric',
+ how:'On your back, press the lower back into the floor, lift the shoulders and legs, arms overhead. Hold the banana shape.',
+ cue:'Lower back stays glued down. Raise the legs higher if it lifts.',
+ miss:'Letting the lower back gap off the floor. Shorten the lever instead.',
+ prog:'Time → arms overhead → hollow rocks → hold a DB.',
+ reg:'Tuck the knees, hands by the sides.',
+ subs:'Dead Bug · Long-Lever Plank'},
+
+{id:'co08',name:'Bear Hold / Bear Crawl',cat:'core',muscles:'Total-body core stability',equip:'BW',sets:3,reps:'20–40s',rpe:'RPE 7',rest:'45s',tempo:'Isometric/slow',
+ how:'Hands and toes down, knees hovering 3 cm off the floor, back flat. Hold, or crawl forward moving opposite hand and foot.',
+ cue:'Hips stay low and level. Do not rock side to side when crawling.',
+ miss:'Letting the knees touch down or the hips rise. Hover and hold.',
+ prog:'Time → crawling distance → lateral crawls.',
+ reg:'Knees down between reps.',
+ subs:'RKC Plank'},
+
+{id:'co09',name:'Band Pallof Press',cat:'core',muscles:'Anti-rotation — force transfer',equip:'BAND',sets:3,reps:'10–14 / side',rpe:'RPE 7',rest:'45s',tempo:'2-2-2-0',
+ how:'Band anchored at chest height to your side. Hold it at the sternum, press it straight out, hold 2 seconds, return.',
+ cue:'Resist the rotation. The hips and shoulders must not turn at all.',
+ miss:'Letting the torso rotate toward the anchor as the arms extend.',
+ prog:'Band tension → step further from the anchor → hold longer → half-kneeling → split stance.',
+ reg:'Move closer to the anchor.',
+ subs:'Band Anti-Rotation Hold · Suitcase Carry',
+ notes:'The single most tennis-relevant core exercise. Groundstroke force transfer is anti-rotation, not rotation.'},
+
+{id:'co10',name:'Band Anti-Rotation Hold',cat:'core',muscles:'Obliques, deep core',equip:'BAND',sets:3,reps:'20–30s / side',rpe:'RPE 8',rest:'45s',tempo:'Isometric',
+ how:'Same setup as the Pallof Press, but press out and simply hold the position while breathing normally.',
+ cue:'Brace like you are about to be pushed. Keep breathing.',
+ prog:'Time → tension → split stance.',
+ reg:'Reduce tension.',
+ subs:'Band Pallof Press'},
+
+{id:'co11',name:'Half-Kneeling Band Chop',cat:'core',muscles:'Rotational control, obliques',equip:'BAND',sets:3,reps:'10–12 / side',rpe:'RPE 7',rest:'45s',tempo:'2-0-2-0',
+ how:'Half-kneeling, band anchored high on one side. Pull diagonally down and across the body, controlling the return.',
+ cue:'Rotate through the mid-back, not the lower back. Hips stay square and still.',
+ prog:'Tension → slower eccentric → standing → add a step.',
+ reg:'Reduce range and tension.',
+ subs:'Band Rotational Press'},
+
+{id:'co12',name:'Band Rotational Press',cat:'core',muscles:'Rotational power, force transfer',equip:'BAND',sets:3,reps:'8–12 / side',rpe:'RPE 7',rest:'45s',tempo:'Explosive out, slow back',
+ how:'Athletic stance, band anchored behind you. Rotate through the back hip and press explosively across the body.',
+ cue:'Power starts at the back foot — rotate the hip, then the torso, then the arm. Exactly the groundstroke sequence.',
+ prog:'Tension → speed → add a step into it.',
+ reg:'Slower, less tension.',
+ subs:'Half-Kneeling Band Chop',
+ notes:'Trains the kinetic chain sequence that generates racquet head speed.'},
+
+{id:'co13',name:'Suitcase Carry',cat:'core',muscles:'Anti-lateral flexion, grip, traps',equip:'DB',sets:3,reps:'30–45s / side',rpe:'RPE 7',rest:'45s',tempo:'Walk',
+ how:'Hold ONE dumbbell at your side and walk tall, resisting the pull to one side.',
+ cue:'Shoulders level, ribs down. Do not lean away from the weight.',
+ miss:'Leaning away from the weight. Stay tall and square.',
+ prog:'Time → distance → slower march with a knee lift.',
+ reg:'Shorter carries.',
+ subs:'Suitcase March · Side Plank',
+ notes:'With a 5 kg DB, extend the time rather than adding weight.'},
+
+{id:'co14',name:'Suitcase March',cat:'core',muscles:'Anti-lateral flexion, hip flexors',equip:'DB',sets:3,reps:'10–16 / side',rpe:'RPE 7',rest:'45s',tempo:'2-1-2-0',
+ how:'Standing with one DB at your side, march slowly, driving each knee to hip height and pausing 1 second.',
+ cue:'No side bend, no rushing. The torso stays completely still.',
+ prog:'Pause length → reps → both DBs overhead.',
+ reg:'No pause, lower knee lift.',
+ subs:'Suitcase Carry'},
+
+{id:'co15',name:'Mountain Climbers',cat:'core',muscles:'Core, hip flexors, conditioning',equip:'BW',sets:3,reps:'20–40 total',rpe:'RPE 7',rest:'45s',tempo:'Fast',
+ how:'Plank position, drive the knees alternately towards the chest quickly without the hips rising.',
+ cue:'Hips stay low and level. Speed comes from the legs, not from bouncing.',
+ miss:'Letting the hips bounce. The shoulders stay over the hands.',
+ prog:'Reps → speed → cross-body variation.',
+ reg:'Slower, or hands elevated.',
+ subs:'Bear Crawl'},
+
+{id:'co16',name:'Reverse Crunch',cat:'core',muscles:'Lower abs, posterior pelvic tilt',equip:'BW',sets:3,reps:'12–18',rpe:'RPE 7',rest:'45s',tempo:'2-0-3-0',
+ how:'On your back, knees bent, curl the pelvis up off the floor towards the ribs, then lower over 3 seconds.',
+ cue:'Lift with the abs by curling the pelvis — do not swing the legs.',
+ prog:'Slower eccentric → straighter legs → hips elevated.',
+ reg:'Smaller range.',
+ subs:'Hollow Body Hold'},
+
+{id:'co17',name:'Hollow Rock',cat:'core',muscles:'Anterior chain',equip:'BW',sets:3,reps:'12–20',rpe:'RPE 8',rest:'45s',tempo:'Rhythmic',
+ how:'Hold a hollow body shape and rock back and forth from the shoulders to the hips, keeping the shape rigid.',
+ cue:'The body shape never changes — only the contact point moves.',
+ prog:'Reps → longer lever with arms overhead.',
+ reg:'Hollow body hold instead.',
+ subs:'Hollow Body Hold'},
+
+/* ---------------- UPPER PUSH ---------------- */
+{id:'up01',name:'Push-Up',cat:'push',muscles:'Chest, front delts, triceps, core',equip:'BW',sets:4,reps:'8–20',rpe:'RPE 8 (2 RIR)',rest:'75s',tempo:'3-1-1-0',
+ how:'Hands slightly wider than the shoulders, body in a straight line. Lower the chest to just above the floor over 3 seconds, pause, press up.',
+ cue:'Elbows at about 45° from the body, not flared to 90°. Squeeze the glutes to keep the body rigid.',
+ miss:'Letting the hips sag or pike. The body moves as one piece.',
+ prog:'Reps → 4s eccentric → 2s pause at the bottom → feet elevated → archer push-up.',
+ reg:'Hands on a raised surface (incline push-up) — the higher the easier.',
+ subs:'Incline Push-Up · DB Floor Press',
+ notes:'Your primary chest builder. Progress the leverage, not the load.'},
+
+{id:'up02',name:'Feet-Elevated Push-Up',cat:'push',muscles:'Upper chest, front delts, triceps',equip:'CHAIR',sets:4,reps:'6–15',rpe:'RPE 8',rest:'75s',tempo:'3-1-1-0',
+ how:'Push-up with the feet on a chair, shifting more load to the upper chest and shoulders.',
+ cue:'Do not let the hips sag. Full range — chest to the floor.',
+ miss:'Dropping the head instead of the chest. The chest leads.',
+ prog:'Reps → higher elevation → pause reps → archer.',
+ reg:'Standard push-up.',
+ subs:'Push-Up · Pike Push-Up'},
+
+{id:'up03',name:'Archer Push-Up',cat:'push',muscles:'Chest, triceps — unilateral emphasis',equip:'BW',sets:3,reps:'4–8 / side',rpe:'RPE 8',rest:'75s',tempo:'3-0-1-0',
+ how:'Wide hand position. Lower towards one hand while the other arm stays nearly straight, then press back up.',
+ cue:'The straight arm assists only. Keep the hips square.',
+ miss:'Bending the straight arm. It stays long and light on the floor.',
+ prog:'Reps → deeper range → less assistance from the straight arm → one-arm progression.',
+ reg:'Standard push-up.',
+ subs:'Push-Up',
+ notes:'The main path to genuine strength gains once standard push-ups exceed 20 reps.'},
+
+{id:'up04',name:'Diamond Push-Up',cat:'push',muscles:'Triceps, inner chest',equip:'BW',sets:3,reps:'6–15',rpe:'RPE 8',rest:'60s',tempo:'3-1-1-0',
+ how:'Hands together forming a diamond under the chest. Lower the chest to the hands, elbows tucked tight.',
+ cue:'Elbows stay close to the ribs throughout.',
+ miss:'Flaring the elbows. They stay close to the ribs.',
+ prog:'Reps → feet elevated → slower eccentric.',
+ reg:'Close-grip push-up on the knees or on an incline.',
+ subs:'Push-Up · Band Triceps Pushdown'},
+
+{id:'up05',name:'Pike Push-Up',cat:'push',muscles:'Front & side delts, triceps',equip:'BW',sets:3,reps:'6–14',rpe:'RPE 8',rest:'75s',tempo:'3-1-1-0',
+ how:'Downward-dog position, hips high. Lower the crown of the head towards the floor between the hands, then press back up.',
+ cue:'Keep the hips stacked high over the shoulders — that is what makes it a shoulder exercise.',
+ miss:'Lowering to the chest instead of to the crown of the head.',
+ prog:'Reps → feet elevated on a chair → deficit with hands raised → toward handstand push-up.',
+ reg:'Hands elevated, hips lower.',
+ subs:'DB Overhead Press · Band Overhead Press',
+ notes:'Your best available vertical pressing movement for deltoid mass and broader shoulders.'},
+
+{id:'up06',name:'Elevated Pike Push-Up',cat:'push',muscles:'Delts, upper traps, triceps',equip:'CHAIR',sets:3,reps:'5–12',rpe:'RPE 8',rest:'75s',tempo:'3-1-1-0',
+ how:'Pike push-up with the feet on a chair, bringing the torso closer to vertical.',
+ cue:'Nearly vertical torso. Head travels down between the hands.',
+ prog:'Reps → higher elevation → hands on books for a deficit.',
+ reg:'Floor pike push-up.',
+ subs:'Pike Push-Up'},
+
+{id:'up07',name:'DB Floor Press',cat:'push',muscles:'Chest, triceps, front delts',equip:'DB',sets:3,reps:'12–20',rpe:'RPE 8',rest:'60s',tempo:'3-1-1-0',
+ how:'Lying on the floor, press both DBs from the chest to lockout. The upper arms stop when the elbows touch the floor.',
+ cue:'Slow eccentric, hard squeeze at the top. With 5 kg, chase the burn not the weight.',
+ miss:'Bouncing the elbows off the floor. Pause, then press.',
+ prog:'Reps → 4s eccentric → 2s pause on the floor → single arm.',
+ reg:'Reduce reps.',
+ subs:'Push-Up',
+ notes:'Useful on days when wrist loading from push-ups is uncomfortable.'},
+
+{id:'up08',name:'DB Overhead Press',cat:'push',muscles:'Delts, triceps, upper chest',equip:'DB',sets:3,reps:'12–20',rpe:'RPE 8',rest:'60s',tempo:'3-0-1-1',
+ how:'Standing or half-kneeling, press both DBs from the shoulders to full lockout overhead.',
+ cue:'Ribs down — do not arch the lower back. Biceps end beside the ears.',
+ miss:'Arching the lower back to get the weight up. Ribs stay down.',
+ prog:'Reps → slow eccentric → single arm → half-kneeling for more core demand.',
+ reg:'Seated, fewer reps.',
+ subs:'Pike Push-Up · Band Overhead Press'},
+
+{id:'up09',name:'DB Arnold Press',cat:'push',muscles:'All three deltoid heads',equip:'DB',sets:3,reps:'12–18',rpe:'RPE 8',rest:'60s',tempo:'3-0-2-0',
+ how:'Start with the palms facing you at shoulder height. Rotate the palms outward as you press overhead, reverse on the way down.',
+ cue:'Smooth continuous rotation. Control the whole path.',
+ miss:'Rushing the rotation. Turn as you press, not before.',
+ prog:'Reps → slower tempo → pause at the top.',
+ reg:'Standard overhead press.',
+ subs:'DB Overhead Press'},
+
+{id:'up10',name:'DB Lateral Raise',cat:'push',muscles:'Side deltoids — shoulder width',equip:'DB',sets:4,reps:'15–25',rpe:'RPE 9 (near failure)',rest:'45s',tempo:'2-1-3-0',
+ how:'Slight forward lean, DBs at the sides. Raise out to shoulder height leading with the elbows, pause, lower over 3 seconds.',
+ cue:'Lead with the elbows, not the hands. No swinging — if you need momentum, slow down instead.',
+ miss:'Swinging with the hips. If it needs momentum the weight is too heavy.',
+ prog:'Reps → 4s eccentric → 2s pause at the top → partial burnout reps after failure → lean-away single arm.',
+ reg:'Fewer reps, or bend the elbows more to shorten the lever.',
+ subs:'Band Lateral Raise',
+ notes:'5 kg is actually a GOOD lateral raise weight. This is your #1 exercise for visible shoulder width and V-taper.'},
+
+{id:'up11',name:'Band Lateral Raise',cat:'push',muscles:'Side delts',equip:'BAND',sets:3,reps:'15–25',rpe:'RPE 9',rest:'45s',tempo:'2-1-2-0',
+ how:'Stand on the band, raise the arms out to the sides against increasing tension.',
+ cue:'The band gets harder at the top — that is exactly where the side delt works hardest. Do not cheat the top.',
+ miss:'Letting the band pull the arms down fast. Control the return.',
+ prog:'Shorten the band → more reps → slower eccentric.',
+ reg:'Longer band.',
+ subs:'DB Lateral Raise',
+ notes:'Excellent paired immediately after DB lateral raises as a drop set.'},
+
+{id:'up12',name:'DB Front Raise',cat:'push',muscles:'Front delts',equip:'DB',sets:3,reps:'12–20',rpe:'RPE 8',rest:'45s',tempo:'2-1-3-0',
+ how:'Raise the DBs straight forward to shoulder height, pause, lower slowly.',
+ cue:'No body swing. Stop at shoulder height.',
+ miss:'Going above shoulder height, which hands the work to the traps.',
+ prog:'Reps → slower eccentric → pause.',
+ reg:'Alternate arms.',
+ subs:'Band Front Raise',
+ notes:'Low priority — your front delts already get plenty from pressing and serving.'},
+
+{id:'up13',name:'Band Overhead Press',cat:'push',muscles:'Delts, triceps',equip:'BAND',sets:3,reps:'12–20',rpe:'RPE 8',rest:'60s',tempo:'2-0-2-0',
+ how:'Stand on the band, press the handles overhead to lockout.',
+ cue:'Tension increases at the top — keep pressing all the way.',
+ miss:'Letting the elbows flare forward. Keep them under the wrists.',
+ prog:'Shorten the band → reps → single arm.',
+ reg:'Longer band.',
+ subs:'DB Overhead Press'},
+
+{id:'up14',name:'Band Triceps Pushdown',cat:'push',muscles:'Triceps',equip:'BAND',sets:3,reps:'15–25',rpe:'RPE 9',rest:'45s',tempo:'2-1-2-0',
+ how:'Band anchored high. Elbows pinned to the sides, extend the forearms down and squeeze hard at the bottom.',
+ cue:'Only the forearms move. Elbows do not drift forward.',
+ miss:'Letting the elbows drift forward. They stay pinned to the ribs.',
+ prog:'Tension → reps → 2s squeeze at lockout.',
+ reg:'Less tension.',
+ subs:'DB Overhead Triceps Extension'},
+
+{id:'up15',name:'DB Overhead Triceps Extension',cat:'push',muscles:'Triceps (long head)',equip:'DB',sets:3,reps:'12–20',rpe:'RPE 8',rest:'45s',tempo:'3-1-1-0',
+ how:'Hold one DB with both hands overhead. Lower it behind the head with a deep stretch, then extend.',
+ cue:'Elbows stay narrow and pointing forward. Big stretch at the bottom is where the growth is.',
+ miss:'Flaring the elbows out. Keep them pointing forward.',
+ prog:'Reps → slower eccentric → pause in the stretch → single arm.',
+ reg:'Reduce range.',
+ subs:'Band Triceps Pushdown · Diamond Push-Up'},
+
+/* ---------------- UPPER PULL ---------------- */
+{id:'ul01',name:'Band Row',cat:'pull',muscles:'Lats, rhomboids, rear delts, biceps',equip:'BAND',sets:4,reps:'12–20',rpe:'RPE 8',rest:'60s',tempo:'2-1-2-0',
+ how:'Band anchored at chest height. Row the handles to the ribs, driving the elbows back and squeezing the shoulder blades.',
+ cue:'Pull with the elbows, not the hands. Squeeze for a full second at the back.',
+ miss:'Shrugging at the top. The shoulders stay down as the elbows travel back.',
+ prog:'Step further from the anchor → shorten the band → slower eccentric → single arm.',
+ reg:'Step closer to the anchor.',
+ subs:'DB Bent-Over Row · Inverted Row',
+ notes:'Without a pull-up bar, band and DB rows are your entire back. Do not skip them — they drive both posture and V-taper.'},
+
+{id:'ul02',name:'Band Single-Arm Row',cat:'pull',muscles:'Lats, mid-back, core anti-rotation',equip:'BAND',sets:3,reps:'12–18 / side',rpe:'RPE 8',rest:'45s',tempo:'2-1-2-0',
+ how:'One handle, staggered stance. Row to the hip while resisting torso rotation.',
+ cue:'Let the shoulder blade travel forward at the stretch, then pull it back and down.',
+ miss:'Rotating the torso for more range. Keep the chest square to the floor.',
+ prog:'Tension → reps → slower eccentric.',
+ reg:'Less tension.',
+ subs:'DB Bent-Over Row'},
+
+{id:'ul03',name:'DB Bent-Over Row',cat:'pull',muscles:'Lats, rhomboids, rear delts',equip:'DB',sets:4,reps:'15–25',rpe:'RPE 8–9',rest:'60s',tempo:'2-1-3-0',
+ how:'Hinge forward to about 45°, flat back. Row both DBs to the lower ribs, pause, lower slowly.',
+ cue:'With light weight, the pause and slow eccentric are the whole exercise. Squeeze the blades together hard.',
+ miss:'Rounding the lower back. Hinge at the hip and keep the spine long.',
+ prog:'Reps → 3–4s eccentric → 2s squeeze → single-arm.',
+ reg:'Support the chest on a chair.',
+ subs:'Band Row'},
+
+{id:'ul04',name:'DB Single-Arm Row',cat:'pull',muscles:'Lats, mid-back',equip:'DB+CHAIR',sets:3,reps:'15–25 / side',rpe:'RPE 8',rest:'45s',tempo:'2-1-3-0',
+ how:'One hand and knee on a chair, other arm rowing the DB from a full stretch to the hip.',
+ cue:'Full stretch at the bottom, elbow past the ribs at the top.',
+ miss:'Yanking with the arm. Start the pull from the shoulder blade.',
+ prog:'Reps → slower eccentric → 2s pause.',
+ reg:'Standing, hand on the thigh.',
+ subs:'Band Single-Arm Row'},
+
+{id:'ul05',name:'Inverted Row',cat:'pull',muscles:'Lats, mid-back, biceps',equip:'CHAIR',sets:3,reps:'6–15',rpe:'RPE 8',rest:'75s',tempo:'2-1-2-0',
+ how:'Lie under a sturdy table or between two stable chairs with a broom handle. Body straight, pull the chest to the edge.',
+ cue:'Body rigid like a plank. Chest touches, not the chin.',
+ miss:'Letting the hips drop. Stay in one line from heel to head.',
+ prog:'Lower the body angle → feet elevated → slower eccentric.',
+ reg:'Bend the knees, raise the body angle.',
+ subs:'Band Row',
+ notes:'ONLY with a confirmed stable surface that will take your full bodyweight. Test it carefully first.'},
+
+{id:'ul06',name:'Band Lat Pulldown',cat:'pull',muscles:'Lats — V-taper width',equip:'BAND',sets:3,reps:'15–25',rpe:'RPE 8',rest:'60s',tempo:'2-1-2-0',
+ how:'Anchor the band high (door top or a branch). Kneel and pull the handles down to the chest, elbows driving down and back.',
+ cue:'Think of pulling the elbows into your back pockets. Feel the lats, not the arms.',
+ miss:'Leaning back to finish the rep. The torso stays still.',
+ prog:'Tension → kneel further back → slower eccentric → single arm.',
+ reg:'Less tension.',
+ subs:'Band Straight-Arm Pulldown',
+ notes:'Your only true vertical pull. Prioritise it for lat width and the V-taper.'},
+
+{id:'ul07',name:'Band Straight-Arm Pulldown',cat:'pull',muscles:'Lats (isolated)',equip:'BAND',sets:3,reps:'15–20',rpe:'RPE 8',rest:'45s',tempo:'2-1-2-0',
+ how:'Band anchored high, arms straight. Pull down in an arc to the thighs, keeping the elbows locked.',
+ cue:'Pure lat isolation — you should feel it directly under the armpits.',
+ miss:'Bending the elbows, which turns it into a triceps movement.',
+ prog:'Tension → pause at the bottom → reps.',
+ reg:'Less tension.',
+ subs:'Band Lat Pulldown'},
+
+{id:'ul08',name:'Band Pull-Apart',cat:'pull',muscles:'Rear delts, rhomboids, posture',equip:'BAND',sets:3,reps:'20–30',rpe:'RPE 7',rest:'40s',tempo:'2-1-2-0',
+ how:'Hold the band at shoulder height with straight arms, pull it apart until it touches the chest, squeeze, return slowly.',
+ cue:'Squeeze the shoulder blades. Do not shrug.',
+ miss:'Shrugging. Keep the shoulders down and squeeze between the blades.',
+ prog:'Reps → shorten the band → 2s hold at the end range.',
+ reg:'Wider grip.',
+ subs:'Band Face Pull · Prone Y-T-W',
+ notes:'Do these almost daily. They directly counter the forward-shoulder posture that serving creates.'},
+
+{id:'ul09',name:'Band Face Pull',cat:'pull',muscles:'Rear delts, external rotators, traps',equip:'BAND',sets:3,reps:'15–25',rpe:'RPE 7',rest:'45s',tempo:'2-1-2-0',
+ how:'Band anchored at face height. Pull the handles towards the forehead, rotating the hands so the knuckles finish pointing behind you.',
+ cue:'Finish in a double-biceps pose. External rotation is the whole point.',
+ miss:'Pulling to the chest instead of to the face.',
+ prog:'Tension → reps → 2s hold at the end.',
+ reg:'Less tension.',
+ subs:'Band Pull-Apart',
+ notes:'The single best shoulder-health exercise for a serving athlete. Non-negotiable.'},
+
+{id:'ul10',name:'Prone Y-T-W',cat:'pull',muscles:'Lower traps, rear delts, scapular control',equip:'BW',sets:3,reps:'8 each letter',rpe:'RPE 7',rest:'45s',tempo:'2-2-2-0',
+ how:'Lie face down. Lift the arms off the floor in a Y shape, then a T, then a W, holding each for 2 seconds.',
+ cue:'Thumbs up. Lift from the shoulder blades, not the hands. Keep the neck neutral.',
+ miss:'Lifting with the neck. The head stays down and neutral.',
+ prog:'Hold time → hold the DBs → more reps.',
+ reg:'Fewer reps, no hold.',
+ subs:'Band Pull-Apart · Superman'},
+
+{id:'ul11',name:'Band Reverse Fly',cat:'pull',muscles:'Rear delts',equip:'BAND',sets:3,reps:'15–25',rpe:'RPE 8',rest:'45s',tempo:'2-1-2-0',
+ how:'Band anchored at chest height, arms crossed and straight. Pull the arms apart and back in a wide arc.',
+ cue:'Rear delts, not traps. Keep the shoulders down away from the ears.',
+ miss:'Bending the elbows through the rep. Hold one soft angle throughout.',
+ prog:'Tension → reps → 2s hold.',
+ reg:'Less tension.',
+ subs:'Band Face Pull'},
+
+{id:'ul12',name:'DB Bicep Curl',cat:'pull',muscles:'Biceps',equip:'DB',sets:3,reps:'15–25',rpe:'RPE 9',rest:'45s',tempo:'2-1-3-1',
+ how:'Curl both DBs with the elbows pinned to the sides, squeeze at the top, lower over 3 seconds.',
+ cue:'No swinging. With 5 kg the eccentric and the squeeze are everything.',
+ miss:'Swinging the elbows forward. They stay by the ribs.',
+ prog:'Reps → 4s eccentric → 2s peak squeeze → 1.5 reps → drop into band curls.',
+ reg:'Fewer reps.',
+ subs:'Band Curl · Hammer Curl'},
+
+{id:'ul13',name:'DB Hammer Curl',cat:'pull',muscles:'Brachialis, brachioradialis, forearms',equip:'DB',sets:3,reps:'15–25',rpe:'RPE 9',rest:'45s',tempo:'2-1-3-0',
+ how:'Neutral grip (palms facing each other) throughout the curl.',
+ cue:'Brachialis growth is what pushes the biceps up and makes the arm look thicker from the side.',
+ miss:'Rotating the wrist. The palms stay facing each other the whole way.',
+ prog:'Reps → slower eccentric → cross-body variation.',
+ reg:'Fewer reps.',
+ subs:'DB Bicep Curl'},
+
+{id:'ul14',name:'Band Curl',cat:'pull',muscles:'Biceps',equip:'BAND',sets:3,reps:'20–30',rpe:'RPE 9',rest:'40s',tempo:'2-1-2-0',
+ how:'Stand on the band and curl the handles with constant tension.',
+ cue:'Peak tension at the top. Never let the band go slack.',
+ miss:'Letting the band snap the arm back down. Resist the return.',
+ prog:'Shorten the band → reps.',
+ reg:'Longer band.',
+ subs:'DB Bicep Curl',
+ notes:'Best used as an immediate drop set straight after DB curls.'},
+
+{id:'ul15',name:'Superman',cat:'pull',muscles:'Spinal erectors, glutes, posture',equip:'BW',sets:3,reps:'10–15',rpe:'RPE 6',rest:'40s',tempo:'2-2-2-0',
+ how:'Lie face down and lift the chest, arms and legs off the floor. Hold 2 seconds.',
+ cue:'Lengthen rather than crunch. Keep the neck neutral and look at the floor.',
+ miss:'Craning the neck up. Look at the floor.',
+ prog:'Hold time → reps → alternating swimmer variation.',
+ reg:'Arms only or legs only.',
+ subs:'Prone Y-T-W'},
+
+/* ---------------- MOBILITY ---------------- */
+{id:'mo01',name:'90/90 Hip Switch',cat:'mobility',muscles:'Hip internal & external rotation',equip:'FLOOR',sets:2,reps:'8–10 / side',rpe:'Easy',rest:'—',tempo:'Slow',
+ how:'Seated with both knees bent at 90°, one leg in front and one to the side. Rotate the knees to switch sides under control.',
+ cue:'Chest tall. Do not use the hands unless you need them.',
+ miss:'Forcing the knees down with the hands. Let the hips do it.',
+ prog:'Hands off the floor → pause and lift the front knee at the end range.',
+ reg:'Use the hands for support, smaller range.',
+ subs:'Hip Flexor Stretch',
+ notes:'Hip internal rotation is the most limited and most important joint range for open-stance hitting.'},
+
+{id:'mo02',name:"World's Greatest Stretch",cat:'mobility',muscles:'Hips, hamstrings, T-spine, adductors',equip:'FLOOR',sets:2,reps:'5 / side',rpe:'Easy',rest:'—',tempo:'Slow',
+ how:'Deep lunge, opposite hand down. Drop the back knee, drive the elbow towards the instep, then rotate the top arm open to the sky.',
+ cue:'Reach the fingertips as far as possible on the rotation and follow with your eyes.',
+ miss:'Rushing through it. Hold each position and breathe.',
+ prog:'Add a 3s hold at each end range.',
+ reg:'Back knee down throughout.',
+ subs:'Thoracic Rotation'},
+
+{id:'mo03',name:'Couch Stretch',cat:'mobility',muscles:'Hip flexors, quads',equip:'WALL',sets:2,reps:'45–60s / side',rpe:'Easy',rest:'—',tempo:'Hold',
+ how:'Rear foot up against a wall or sofa, front foot forward in a lunge. Squeeze the rear glute and bring the torso upright.',
+ cue:'Tuck the pelvis first — that is what makes it work. Breathe.',
+ miss:'Arching the lower back to get deeper. Tuck the pelvis first.',
+ prog:'Longer holds, more upright torso.',
+ reg:'Rear foot on the floor.',
+ subs:'Hip Flexor Stretch',
+ notes:'Directly opposes the hip flexor tightness that comes from cycling and sitting.'},
+
+{id:'mo04',name:'Ankle Dorsiflexion Rock',cat:'mobility',muscles:'Ankle, calf',equip:'WALL',sets:2,reps:'10–12 / side',rpe:'Easy',rest:'—',tempo:'Slow',
+ how:'Half-kneeling, front foot ~10 cm from a wall. Drive the knee forward over the toes towards the wall without lifting the heel.',
+ cue:'Heel STAYS down. Move the foot further back as it improves.',
+ miss:'Letting the heel lift. It stays down throughout.',
+ prog:'Increase the distance from the wall.',
+ reg:'Move closer.',
+ subs:'Calf Stretch',
+ notes:'Ankle range limits how low you can get into a split step and a wide-ball lunge.'},
+
+{id:'mo05',name:'Thoracic Rotation (Open Book)',cat:'mobility',muscles:'Mid-back rotation',equip:'FLOOR',sets:2,reps:'8–10 / side',rpe:'Easy',rest:'—',tempo:'Slow',
+ how:'Side-lying, knees bent at 90° stacked, arms straight out in front. Open the top arm across the body, following it with your eyes.',
+ cue:'The knees stay stacked and still — the rotation comes from the mid-back only.',
+ miss:'Rotating from the lower back instead of the ribcage.',
+ prog:'Add a 3s hold at the end range.',
+ reg:'Smaller range.',
+ subs:"World's Greatest Stretch",
+ notes:'Serve and groundstroke rotation should come from here, not the lower back.'},
+
+{id:'mo06',name:'Cat-Cow',cat:'mobility',muscles:'Spine',equip:'FLOOR',sets:2,reps:'10',rpe:'Easy',rest:'—',tempo:'Slow',
+ how:'On hands and knees, alternate between arching and rounding the spine, moving segment by segment.',
+ cue:'Move slowly with the breath — inhale into the arch, exhale into the round.',
+ miss:'Moving fast. Match the movement to the breath.',
+ prog:'More segmental control.',
+ reg:'Smaller range.',
+ subs:'Thoracic Rotation'},
+
+{id:'mo07',name:'Wall Slides',cat:'mobility',muscles:'Shoulders, scapular upward rotation',equip:'WALL',sets:2,reps:'10–12',rpe:'Easy',rest:'—',tempo:'Slow',
+ how:'Back against the wall, forearms on the wall. Slide the arms overhead while keeping the wrists, elbows and lower back in contact.',
+ cue:'Ribs down. If the lower back arches, reduce the range.',
+ miss:'Letting the lower back or the wrists come away from the wall.',
+ prog:'Full overhead range with contact maintained.',
+ reg:'Smaller range.',
+ subs:'Shoulder CARs',
+ notes:'Prepares the shoulder for overhead serving load.'},
+
+{id:'mo08',name:'Shoulder CARs',cat:'mobility',muscles:'Full shoulder joint range',equip:'BW',sets:2,reps:'3–5 / side',rpe:'Easy',rest:'—',tempo:'Very slow',
+ how:'Slowly trace the largest possible circle with one arm, keeping the rest of the body completely still.',
+ cue:'Take 20 seconds per circle. Control every degree.',
+ miss:'Going fast and small. Go slow, and as big as control allows.',
+ prog:'Slower, larger circles.',
+ reg:'Smaller circles.',
+ subs:'Wall Slides'},
+
+{id:'mo09',name:'Adductor Rock',cat:'mobility',muscles:'Adductors, groin',equip:'FLOOR',sets:2,reps:'10–12',rpe:'Easy',rest:'—',tempo:'Slow',
+ how:'On hands and knees, extend one leg out to the side with the foot flat. Rock the hips back and forth.',
+ cue:'Keep the back flat. Feel the stretch in the inner thigh.',
+ prog:'Wider position, deeper rock.',
+ reg:'Narrower position.',
+ subs:'Cossack Squat'},
+
+{id:'mo10',name:'Pigeon Stretch',cat:'mobility',muscles:'Glutes, hip external rotation',equip:'FLOOR',sets:2,reps:'45–60s / side',rpe:'Easy',rest:'—',tempo:'Hold',
+ how:'Front shin across the body, back leg extended straight behind. Fold forward over the front leg.',
+ cue:'Keep the hips square. Breathe into the stretch rather than forcing it.',
+ prog:'Deeper fold, longer hold.',
+ reg:'Lying figure-4 stretch instead.',
+ subs:'90/90 Hip Switch'},
+
+{id:'mo11',name:'Calf Stretch',cat:'mobility',muscles:'Gastrocnemius, soleus',equip:'WALL',sets:2,reps:'40s / side',rpe:'Easy',rest:'—',tempo:'Hold',
+ how:'Hands on a wall, one leg back with the heel flat on the floor. Version one: keep that back knee straight, which stretches the gastrocnemius. Version two: bend the back knee about 20 degrees while the heel stays down, which moves the stretch into the soleus underneath it.',
+ cue:'Heel stays down. The knee angle decides which muscle you are stretching.',
+ /* §8 · TWO VERSIONS, NAMED.
+    The cue used to read "Do both versions - they stretch different muscles",
+    which told the user there were two and not what they were. Declared here
+    so the timer walks them and the screen says which one is running. */
+ vers:[{n:'Straight knee', t:'Gastrocnemius'},
+       {n:'Bent knee',     t:'Soleus'}],
+ miss:'Letting the back heel lift or the foot turn out.',
+ prog:'Longer holds.',
+ reg:'Shorter holds.',
+ subs:'Ankle Dorsiflexion Rock'},
+
+{id:'mo12',name:'Hamstring Flow',cat:'mobility',muscles:'Hamstrings, posterior chain',equip:'FLOOR',sets:2,reps:'8–10 / side',rpe:'Easy',rest:'—',tempo:'Slow',
+ how:'From a standing hinge, alternate between a straight-leg reach and a bent-knee position, moving smoothly through the range.',
+ cue:'Move through the range rather than holding — dynamic before training, static after.',
+ prog:'Greater range.',
+ reg:'Bend the knees more.',
+ subs:'Single-Leg RDL (unloaded)'},
+
+{id:'mo13',name:'Band Shoulder Dislocates',cat:'mobility',muscles:'Shoulders, chest, thoracic',equip:'BAND',sets:2,reps:'8–12',rpe:'Easy',rest:'—',tempo:'Slow',
+ how:'Wide grip on the band, take the arms from in front of the thighs over the head and behind the back, then reverse.',
+ cue:'Start very wide and narrow the grip only as the range improves. Never force it.',
+ prog:'Narrower grip.',
+ reg:'Wider grip.',
+ subs:'Wall Slides'},
+
+/* ---------------- CARDIO ---------------- */
+{id:'cd01',name:'Zone 2 Run',cat:'cardio',muscles:'Aerobic base',equip:'RUN',sets:1,reps:'25–45 min',rpe:'RPE 4–5',rest:'—',tempo:'Conversational',
+ how:'Steady easy running where you could hold a full conversation. Roughly 65–75% of max HR (about 128–148 bpm for you).',
+ cue:'If you cannot speak a full sentence, you are going too fast. Most people run their easy days too hard.',
+ prog:'Add 5 minutes per week, up to about 45 minutes.',
+ reg:'Run/walk intervals, or switch to the bike.',
+ subs:'Zone 2 Bike',
+ notes:'Builds the aerobic base that lets you recover between points and hold quality into a third set.'},
+
+{id:'cd02',name:'Zone 2 Bike',cat:'cardio',muscles:'Aerobic base (low impact)',equip:'BIKE',sets:1,reps:'30–60 min',rpe:'RPE 4–5',rest:'—',tempo:'Conversational',
+ how:'Steady easy cycling at a conversational effort.',
+ cue:'Keep the cadence above 80 rpm and the effort genuinely easy.',
+ prog:'Add 5–10 minutes per week.',
+ reg:'Shorter duration.',
+ subs:'Zone 2 Run',
+ notes:'Your default aerobic option when the legs are sore or recovery is low — almost no impact cost.'},
+
+{id:'cd03',name:'Tennis Interval Run',cat:'cardio',muscles:'Repeat-sprint ability',equip:'RUN',sets:8,reps:'20s hard / 40s easy',rpe:'RPE 8',rest:'Built in',tempo:'Intervals',
+ how:'8–12 rounds of 20 seconds hard running followed by 40 seconds walking or easy jogging.',
+ cue:'The 20:40 work-to-rest ratio mirrors real tennis point and changeover structure.',
+ prog:'Add rounds (max 12) → extend the work to 25s → shorten the rest to 35s.',
+ reg:'Fewer rounds, longer rest.',
+ subs:'Hill Sprints · Bike Intervals',
+ notes:'The most tennis-specific conditioning you can do off court.'},
+
+{id:'cd04',name:'Hill Sprints',cat:'cardio',muscles:'Power endurance, glutes, calves',equip:'RUN',sets:6,reps:'10–15s uphill',rpe:'RPE 9',rest:'90s walk down',tempo:'Max',
+ how:'Find a moderate hill. Sprint hard for 10–15 seconds, walk back down fully before repeating.',
+ cue:'Powerful drive, tall posture. Stop the session when speed drops noticeably.',
+ prog:'Add 1 rep per week, up to 10.',
+ reg:'Fewer reps, shallower hill.',
+ subs:'Acceleration Sprints',
+ notes:'Lower impact stress than flat sprinting, with a high power stimulus.'},
+
+{id:'cd05',name:'Recovery Spin',cat:'cardio',muscles:'Blood flow, active recovery',equip:'BIKE',sets:1,reps:'20–35 min',rpe:'RPE 2–3',rest:'—',tempo:'Very easy',
+ how:'Very light cycling on flat ground with a high cadence and almost no resistance.',
+ cue:'This should feel almost too easy. If you are breathing hard, slow down.',
+ prog:'Do not progress this — it is meant to stay easy.',
+ reg:'Shorter.',
+ subs:'Easy Walk',
+ notes:'Your primary RED and ORANGE day option. Promotes recovery without adding meaningful load.'},
+
+{id:'cd06',name:'Easy Walk',cat:'cardio',muscles:'Active recovery',equip:'RUN',sets:1,reps:'20–40 min',rpe:'RPE 2',rest:'—',tempo:'Easy',
+ how:'Relaxed walking, ideally outdoors and in daylight.',
+ cue:'Morning daylight also helps anchor your body clock — a direct win for your sleep consistency.',
+ prog:'—',
+ reg:'—',
+ subs:'Recovery Spin',
+ notes:'Walking carries almost no recovery cost — it is the safest thing to add on a low day.'},
+
+{id:'cd08',name:'Tempo Run',cat:'cardio',muscles:'Aerobic power, running economy',equip:'RUN',sets:1,reps:'15–25 min at tempo',rpe:'RPE 6–7',rest:'—',tempo:'Comfortably hard',
+ how:'Warm up 10 min easy, then run 15–25 minutes at a pace you could hold for about an hour — breathing is controlled but conversation is limited to short phrases. Cool down 5–10 min easy.',
+ cue:'This should feel "comfortably hard", never a race. If you are gasping, you have gone too fast and turned it into an interval session.',
+ prog:'Add 3–5 minutes per week up to 25 min, then increase the pace slightly rather than the duration.',
+ reg:'Break it into 2 × 10 min with 3 min easy between.',
+ subs:'Zone 2 Run · Bike Intervals',
+ notes:'Raises the ceiling on your aerobic base without the neural cost of sprint work. Use sparingly — tennis already supplies plenty of high-intensity running.'},
+
+{id:'cd07',name:'Bike Intervals',cat:'cardio',muscles:'Aerobic power (low impact)',equip:'BIKE',sets:6,reps:'1 min hard / 2 min easy',rpe:'RPE 8',rest:'Built in',tempo:'Intervals',
+ how:'6–10 rounds of 1 minute of hard cycling followed by 2 minutes easy.',
+ cue:'Hard but repeatable — the last round should look like the first.',
+ prog:'Add rounds → extend the work interval.',
+ reg:'Fewer rounds.',
+ subs:'Tennis Interval Run',
+ notes:'Use instead of running intervals when the legs are beaten up from tennis.'}
+];}

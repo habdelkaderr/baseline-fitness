@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Baseline — Getting Started</title>
+<style>
+  @page { size: A4; margin: 17mm 16mm 16mm; }
+
+  :root{
+    --ink:#16181A; --ink-2:#3C434C; --ink-3:#6B7280;
+    --line:#E3E3DE; --line-soft:#EFEFEB;
+    --accent:#1B7A4B; --wash:#F4F7F5; --paper:#FBFBF9;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink); background:#fff;
+    font-size:10.6pt; line-height:1.55; -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3{ margin:0; letter-spacing:-.4px; }
+  p{ margin:0 0 9px; color:var(--ink-2); }
+  b,strong{ color:var(--ink); font-weight:650; }
+  ol,ul{ margin:0 0 10px; padding-left:19px; color:var(--ink-2); }
+  li{ margin-bottom:5px; }
+  li::marker{ color:var(--accent); font-weight:700; }
+
+  .page{ page-break-after:always; }
+  .page:last-child{ page-break-after:auto; }
+  .avoid{ page-break-inside:avoid; }
+
+  /* ---------- cover ---------- */
+  /* Centred on the page, horizontally and vertically. The height is a little
+     under the printable box (A4 less the @page margins) so a rounding error
+     cannot push the cover onto a second sheet. */
+  .cover{
+    height:250mm;
+    display:flex; flex-direction:column;
+    justify-content:center; align-items:center; text-align:center;
+  }
+  /* the real app icon, so the cover matches what lands on their home screen */
+  .mark{
+    width:78px;height:78px;border-radius:19px;overflow:hidden;
+    margin-bottom:24px; box-shadow:0 1px 3px rgba(0,0,0,.18);
+  }
+  .mark img{ width:100%;height:100%;display:block; }
+  /* the same icon, small, beside the install steps */
+  .icon-inline{
+    width:44px;height:44px;border-radius:11px;overflow:hidden;flex:0 0 44px;
+    box-shadow:0 1px 2px rgba(0,0,0,.16);
+  }
+  .icon-inline img{ width:100%;height:100%;display:block; }
+  .icon-row{ display:flex; align-items:center; gap:13px; }
+  .cover h1{ font-size:34pt; font-weight:850; line-height:1.05; }
+  .cover .sub{ font-size:14pt; color:var(--ink-3); margin-top:10px; font-weight:500; }
+  .cover .lede{
+    font-size:11.5pt; margin:26px auto 0; max-width:112mm; color:var(--ink-2);
+  }
+  .cover .foot{ margin-top:26mm; font-size:9pt; color:var(--ink-3); }
+
+  /* ---------- structure ---------- */
+  .kicker{
+    font-size:8pt; font-weight:800; letter-spacing:1.4px; text-transform:uppercase;
+    color:var(--accent); margin-bottom:6px;
+  }
+  h2{ font-size:19pt; font-weight:800; margin-bottom:12px; }
+  h3{ font-size:11.5pt; font-weight:700; margin:16px 0 6px; }
+  .rule{ height:1px; background:var(--line); margin:16px 0; }
+
+  .card{
+    border:1px solid var(--line); border-radius:9px; padding:13px 15px;
+    margin:11px 0; background:var(--paper);
+  }
+  .card.green{ border-color:#CFE0D6; background:var(--wash); }
+  .card h3{ margin-top:0; }
+  .card p:last-child, .card ul:last-child, .card ol:last-child{ margin-bottom:0; }
+
+  .two{ display:flex; gap:11px; }
+  .two > *{ flex:1; }
+
+  /* numbered steps */
+  .steps{ list-style:none; padding:0; margin:0; counter-reset:s; }
+  .steps > li{
+    counter-increment:s; position:relative; padding-left:30px; margin-bottom:11px;
+  }
+  .steps > li::before{
+    content:counter(s); position:absolute; left:0; top:0;
+    width:21px;height:21px;border-radius:50%;background:var(--accent);color:#fff;
+    font-size:8.5pt;font-weight:800;display:flex;align-items:center;justify-content:center;
+  }
+  .steps b{ display:block; }
+
+  /* the phone mock */
+  .phone{
+    border:1px solid var(--line); border-radius:12px; padding:0; overflow:hidden;
+    background:#fff; font-size:9pt; max-width:74mm;
+  }
+  .phone .bar{ padding:9px 12px; border-bottom:1px solid var(--line-soft); }
+  .phone .bar b{ font-size:11pt; }
+  .phone .bar span{ display:block; color:var(--ink-3); font-size:8pt; }
+  .phone .body{ padding:11px 12px; }
+  .ph-row{
+    border:1px solid var(--line); border-radius:7px; padding:8px 10px;
+    margin-bottom:7px; display:flex; align-items:center; gap:9px;
+  }
+  .ph-row .n{ font-size:15pt; font-weight:800; color:var(--accent); }
+  .ph-row .t{ font-weight:650; }
+  .ph-row .s{ color:var(--ink-3); font-size:8pt; }
+  .ph-rec{
+    border:1px solid var(--line); border-radius:9px; padding:11px;
+    margin-bottom:8px;
+  }
+  .ph-rec .k{ font-size:7pt; font-weight:800; letter-spacing:1px; color:var(--ink-3); }
+  .ph-rec .t{ font-size:14pt; font-weight:800; margin-top:3px; }
+  .ph-rec .m{ color:var(--ink-3); font-size:8.5pt; margin-top:3px; }
+  .ph-btn{
+    background:var(--accent); color:#fff; border-radius:7px; text-align:center;
+    padding:9px; font-weight:700; margin-bottom:7px;
+  }
+  .ph-ghost{
+    border:1px solid var(--line); border-radius:7px; text-align:center;
+    padding:8px; color:var(--ink-2); font-weight:600; margin-bottom:6px;
+  }
+  .ph-nav{
+    border-top:1px solid var(--line-soft); display:flex; text-align:center;
+    font-size:7.5pt; color:var(--ink-3); font-weight:700;
+  }
+  .ph-nav div{ flex:1; padding:8px 0; }
+  .ph-nav .on{ color:var(--accent); }
+
+  table{ border-collapse:collapse; width:100%; margin:10px 0; font-size:10pt; }
+  th,td{ text-align:left; padding:7px 9px; border-bottom:1px solid var(--line-soft); vertical-align:top; }
+  th{ font-size:8pt; text-transform:uppercase; letter-spacing:.8px; color:var(--ink-3); font-weight:800; }
+  td:first-child{ font-weight:650; color:var(--ink); white-space:nowrap; }
+
+  .note{
+    border-left:3px solid var(--accent); background:var(--wash);
+    padding:10px 13px; border-radius:0 7px 7px 0; margin:12px 0; font-size:10pt;
+  }
+  .warn{ border-left-color:#B35A0C; background:#FCF7F1; }
+
+  .tag{
+    display:inline-block; font-size:7.5pt; font-weight:800; letter-spacing:.6px;
+    text-transform:uppercase; color:var(--accent); border:1px solid #CFE0D6;
+    border-radius:20px; padding:2px 8px; background:var(--wash);
+  }
+  .tiny{ font-size:8.5pt; color:var(--ink-3); }
+  .pagenum{ position:running(pn); }
+</style>
+</head>
+<body>
+
+<!-- ======================================================= COVER -->
+<section class="page cover">
+  <div class="mark"><img src="baseline-web/icons/icon-512.png" alt="Baseline"></div>
+  <h1>Baseline</h1>
+  <div class="sub">Getting started</div>
+  <p class="lede">
+    Baseline decides what you should train <b>today</b> — from how recovered you
+    are and what you have actually been doing. Not a plan written weeks ago.
+    A decision made this morning.
+  </p>
+  <p class="lede" style="margin-top:14px">
+    This guide takes about five minutes to read. You only need it once.
+  </p>
+  <div class="foot">
+    Everything in the app stays on your own phone.<br>
+    No account, no sign-up, nothing uploaded anywhere.
+  </div>
+</section>
+
+<!-- ======================================================= WHAT IT IS -->
+<section class="page">
+  <div class="kicker">What it is</div>
+  <h2>One session a day, and the reason for it</h2>
+
+  <p>
+    Most training apps hand you a calendar decided in advance: legs on Tuesday,
+    whether or not you slept badly, played a match on Monday, or feel like you
+    have been hit by a bus.
+  </p>
+  <p>
+    Baseline asks you a few questions each morning, then gives you
+    <b>one session</b> — and tells you why it chose that one and what it ruled
+    out. If you disagree, you change it, and it adapts around what you actually
+    did.
+  </p>
+
+  <div class="two" style="margin-top:16px">
+    <div class="card green">
+      <h3>What it needs from you</h3>
+      <ul style="margin-bottom:0">
+        <li>About a minute each morning</li>
+        <li>A tap when you finish a session</li>
+        <li>Anything else you do, logged in three taps</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>What it does not need</h3>
+      <ul style="margin-bottom:0">
+        <li>An account or a password</li>
+        <li>A gym, or any equipment at all</li>
+        <li>A watch or fitness tracker</li>
+        <li>An internet connection, after the first load</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>A day in the app</h3>
+  <ol class="steps">
+    <li><b>Open it and check in.</b> How long you slept, four sliders for how
+      you feel, whether anything hurts, and how long you have. The sliders
+      start where you left them, so most days are a nudge or two.</li>
+    <li><b>Read today's session.</b> A name, a duration, an intensity. Nothing
+      else competes with it on the screen.</li>
+    <li><b>Tap “Why this?” if you want the reasoning</b> — what counted, and what
+      it decided against.</li>
+    <li><b>Start it.</b> The screen becomes the workout: one exercise at a time,
+      what you lifted last time, and plus/minus buttons instead of a keyboard.</li>
+    <li><b>Tell it how that felt</b> — one tap at the end. This is the single
+      thing that most changes what you get next time.</li>
+    <li><b>Log anything else.</b> A match, a walk, helping a friend move house.
+      Unplanned activity is not a missed workout.</li>
+  </ol>
+
+  <div class="note">
+    <b>Nothing is assumed about you.</b> No sport, no equipment, no goal, no
+    tracker, no injuries — every one of those starts empty, and empty is a
+    perfectly good answer. Tick nothing at all and you still get a complete
+    bodyweight programme.
+  </div>
+</section>
+
+<!-- ======================================================= INSTALL: iOS -->
+<section class="page">
+  <div class="kicker">Step 1 of 2</div>
+  <h2>Put it on your Home Screen — iPhone &amp; iPad</h2>
+
+  <p>
+    Baseline is a website that behaves like an app. Adding it to your Home
+    Screen gives it its own icon, makes it open full-screen without the browser
+    bars, and — importantly — tells iPhone to keep your data.
+  </p>
+
+  <div class="card warn">
+    <h3 style="margin-top:0">You must use Safari for this</h3>
+    <p style="margin-bottom:0">
+      Chrome and other browsers on iPhone cannot add a working app to the Home
+      Screen. If you opened the link somewhere else, copy it into Safari first.
+    </p>
+  </div>
+
+  <ol class="steps" style="margin-top:16px">
+    <li><b>Open the link in Safari.</b> Tap the link you were sent. Wait for it
+      to finish loading.</li>
+    <li><b>Tap the Share button.</b> It is the square with an arrow pointing up,
+      at the bottom of the screen (or the top right on an iPad).</li>
+    <li><b>Scroll down and tap “Add to Home Screen”.</b> It is a fair way down
+      the list, past the sharing options.</li>
+    <li><b>Tap “Add”</b> at the top right. The icon appears on your Home Screen.</li>
+    <li><b>Open it from that icon from now on</b> — not from Safari.</li>
+  </ol>
+
+  <div class="card icon-row">
+    <div class="icon-inline"><img src="baseline-web/icons/icon-512.png" alt=""></div>
+    <div>
+      <b>This is the icon you are looking for.</b>
+      <div class="tiny">It will be named <b>Baseline</b>. You can rename it while
+        adding it if you would rather call it something else.</div>
+    </div>
+  </div>
+
+  <div class="note warn">
+    <b>This matters more than it looks.</b> Left as an ordinary Safari tab,
+    iPhone may delete the app's saved data after about a week of you not opening
+    it. Added to the Home Screen, it is treated as a real app and kept.
+  </div>
+
+  <div class="rule"></div>
+
+  <div class="kicker">Step 1 of 2</div>
+  <h2 style="font-size:16pt">…and on Android</h2>
+
+  <ol class="steps" style="margin-top:12px">
+    <li><b>Open the link in Chrome.</b></li>
+    <li><b>Tap the three-dot menu</b> at the top right.</li>
+    <li><b>Tap “Install app”</b>, or “Add to Home screen” if that is what yours
+      says.</li>
+    <li><b>Confirm with “Install”</b> or “Add”.</li>
+  </ol>
+
+  <p class="tiny">
+    On a laptop it works too: in Chrome or Edge there is a small install icon at
+    the right-hand end of the address bar. On a Mac, Safari has
+    <b>File → Add to Dock</b>.
+  </p>
+
+  <div class="card">
+    <h3>Does the installed version share my data with the browser tab?</h3>
+    <p style="margin-bottom:0">
+      Yes, as long as the web address is identical. They are the same app. It is
+      still worth using the icon, for the reason above.
+    </p>
+  </div>
+</section>
+
+<!-- ======================================================= SETUP -->
+<section class="page">
+  <div class="kicker">Step 2 of 2</div>
+  <h2>The first two minutes</h2>
+
+  <p>
+    The first time you open it, Baseline asks seven short questions. Every one of
+    them can be skipped or left empty — the button says <b>Skip</b> when there is
+    nothing to save, so you are never guessing whether an answer is required.
+  </p>
+
+  <table>
+    <tr><th>It asks</th><th>Why</th></tr>
+    <tr><td>Your name</td><td>So it can say good morning. Nothing else.</td></tr>
+    <tr><td>What you are training for</td><td>Shifts the balance between strength, conditioning and physique work.</td></tr>
+    <tr><td>Your sport</td><td>Shapes your warm-ups and priorities. It is never scheduled — you log it when you play. Leave it empty if you do not play one.</td></tr>
+    <tr><td>Where you train</td><td><b>At a gym</b> and everything is assumed available — you only say what yours is missing. <b>At home</b> and nothing is assumed — you tick what you have. You are only ever shown exercises you can actually do.</td></tr>
+    <tr><td>How much you can train</td><td>Days a week, and how long a session usually is.</td></tr>
+    <tr><td>A tracker <span class="tag">optional</span></td><td>WHOOP, Garmin, Oura, Fitbit, Apple Watch and others. The app works completely without one.</td></tr>
+    <tr><td>Age, height, weight <span class="tag">optional</span></td><td>Context only. It does not change your programme.</td></tr>
+  </table>
+
+  <div class="note">
+    <b>Close it half way through and nothing is lost.</b> It reopens exactly
+    where you left off, with what you had already entered.
+  </div>
+
+  <h3>Then you land on Today</h3>
+  <p>
+    A short walkthrough appears once, explaining how the app works. You can skip
+    it, and reopen it any time from <b>Settings → About → How Baseline works</b>.
+  </p>
+</section>
+
+<!-- ======================================================= TODAY -->
+<section class="page">
+  <div class="kicker">The main screen</div>
+  <h2>Today</h2>
+
+  <div class="two">
+    <div>
+      <p>
+        This is the screen you will use nearly every time you open the app.
+        It answers four questions in order: how am I doing, what should I do,
+        why, and what do I do next.
+      </p>
+      <h3>Three scores</h3>
+      <p class="tiny">
+        Drawn as open arcs, the shape of the app's own mark. <b>Readiness</b>
+        leads — out of 100, with its band in words. <b>Strain</b> (out of 21)
+        and <b>Sleep</b> sit below it, because they are the context for it
+        rather than its equals. Each one opens the screen that explains it.
+        An arc with nothing behind it shows a dash rather than a zero.
+      </p>
+      <h3>Today's session</h3>
+      <p class="tiny">
+        The name, roughly how long, and how hard. One <b>Start session</b>
+        button, deliberately the most prominent thing on the screen.
+      </p>
+      <h3>Why this?</h3>
+      <p class="tiny">
+        Tap to expand. Lists what counted towards the decision, and what it
+        ruled out and why — “Intervals: tennis yesterday already loaded the
+        legs.”
+      </p>
+      <h3>Change today's plan</h3>
+      <p class="tiny">
+        Always available. Shows every option ranked by today's data. Overriding
+        is recorded and adapted to, never held against you.
+      </p>
+      <h3>This week</h3>
+      <p class="tiny">
+        Seven days with what you did on each, the small number being your
+        <b>readiness</b> that day. Arrows move between weeks — there is no
+        forward arrow on the current week, because there is nothing there yet.
+      </p>
+      <h3>Today's activities</h3>
+      <p class="tiny">
+        The day drawn down a spine: each effort with the strain it came to and
+        a bar as long as it ran, against the longest thing you did. Two
+        buttons at the foot — <b>Add activity</b> and <b>Start activity</b>.
+      </p>
+    </div>
+
+    <div class="phone">
+      <div class="bar"><b>Good morning, Sam</b><span>Friday 18 September</span></div>
+      <div class="body">
+        <div class="ph-row"><span class="n">74</span>
+          <span><span class="t">Readiness</span><br><span class="s">Ready · out of 100</span></span></div>
+        <div class="s" style="display:flex;gap:6px;margin:0 0 9px">
+          <span style="flex:1;border:1px solid #E5E7EB;border-radius:7px;padding:5px 7px;font-size:7.5pt">
+            <b style="font-size:9pt">8.2</b><br><span style="color:#6B7280">Strain</span></span>
+          <span style="flex:1;border:1px solid #E5E7EB;border-radius:7px;padding:5px 7px;font-size:7.5pt">
+            <b style="font-size:9pt">7.4h</b><br><span style="color:#6B7280">Sleep</span></span>
+        </div>
+        <div class="ph-rec">
+          <div class="k">Today</div>
+          <div class="t">Lower A</div>
+          <div class="m">~50 min · Moderate</div>
+        </div>
+        <div class="ph-btn">Start session</div>
+        <div class="ph-ghost">Why this?</div>
+        <div class="s" style="margin:9px 0 5px;color:#6B7280;font-size:7.5pt;font-weight:800;letter-spacing:.8px">THIS WEEK</div>
+        <div class="s" style="font-size:8pt;color:#6B7280">‹&nbsp; M T W T F S S</div>
+        <div class="s" style="margin:9px 0 4px;color:#6B7280;font-size:7.5pt;font-weight:800;letter-spacing:.8px">TODAY'S ACTIVITIES</div>
+        <div class="s" style="font-size:7.5pt;color:#6B7280">07:00 ● Cycling &nbsp;40m &nbsp;4.4</div>
+        <div class="s" style="font-size:7.5pt;color:#6B7280">18:00 ● Tennis &nbsp;1h 30m &nbsp;8.2</div>
+        <div class="s" style="display:flex;gap:6px;margin-top:8px">
+          <span class="ph-ghost" style="flex:1;margin:0">+ Add</span>
+          <span class="ph-ghost" style="flex:1;margin:0">Start</span></div>
+      </div>
+      <div class="ph-nav">
+        <div class="on">Today</div><div>Train</div><div>Progress</div><div>Settings</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <h3>The check-in</h3>
+  <p>
+    Tap <b>Check in</b> and answer: how long you slept (one slider), four more
+    for <b>energy, soreness, stress and motivation</b>, whether anything
+    <b>hurts</b>, and <b>how long you have</b> today. The sliders start where
+    you left them, so an unchanged day is a nudge or two.
+  </p>
+  <table>
+    <tr><th>Answer</th><th>What it does</th></tr>
+    <tr><td>Sleep</td><td>Adjustable to the minute. Pre-filled from your tracker where your import covers the date.</td></tr>
+    <tr><td>Four sliders</td><td>Weighted into your readiness score alongside everything else.</td></tr>
+    <tr><td>Pain</td><td>The one answer that is not a weighting. Anything beyond mild <b>caps</b> what the app will suggest, whatever the rest of the numbers say.</td></tr>
+    <tr><td>Time to train</td><td>Trims the session to fit rather than handing you something you cannot finish.</td></tr>
+  </table>
+  <p class="tiny">
+    <b>If you wear a tracker</b> and your imported export covers today, its
+    recovery, HRV and resting heart rate are filled in for you and shown as
+    read-only. If you have not imported anything covering today, it asks you
+    for those numbers instead — and you can leave them blank.
+  </p>
+  <p class="tiny">
+    Leave anything blank and the app simply weighs it out. It will never invent
+    a number you did not give it.
+  </p>
+</section>
+
+<!-- ======================================================= WORKOUT -->
+<section class="page">
+  <div class="kicker">While you train</div>
+  <h2>The workout screen</h2>
+
+  <p>
+    Tap <b>Start session</b> and the app changes: the navigation disappears and
+    you get <b>one set at a time</b> in a single large card, with the sets you
+    have not reached yet not drawn at all — they are not decisions you are
+    making now.
+  </p>
+
+  <table>
+    <tr><th>On screen</th><th>What it does</th></tr>
+    <tr><td>Set 2 of 4</td><td>And what comes next, by name: <i>“Next: Bench Press · set 1 of 3”</i>. You always know how close the end is.</td></tr>
+    <tr><td>The plan, in words</td><td><i>“hard, with about 3 reps left in you · about a minute between sets”</i> rather than RPE and tempo notation. The exact figures are under More.</td></tr>
+    <tr><td>One line of how</td><td>What the exercise actually is, with the full instructions a tap away.</td></tr>
+    <tr><td>Last time</td><td>What you did the last time — the number you are trying to beat — and why today's target is what it is.</td></tr>
+    <tr><td>Reps and kg</td><td>Plus and minus — no keyboard. Steps match your equipment. No kg field on an exercise that cannot carry any.</td></tr>
+    <tr><td>Log set</td><td>One button. Rest counts down inside the card you just finished, not in a bar at the bottom of the screen.</td></tr>
+    <tr><td>A hold</td><td>A plank or a carry gets a countdown, not a rep count — and it logs itself when the hold finishes.</td></tr>
+    <tr><td>Logged</td><td>Finished sets shrink to a row of chips. Tap one to take it back.</td></tr>
+    <tr><td>More</td><td>How to do it · Why this exercise · Replace it · <b>This hurt</b> · Add a note · Skip it</td></tr>
+  </table>
+
+  <div class="note">
+    <b>Finishing an exercise moves you on by itself</b> — after four seconds,
+    counted on screen, and cancelled the moment you touch anything. Reaching
+    for the undo chip is itself a reason not to move on.
+  </div>
+
+  <div class="card green">
+    <h3>“This hurt”</h3>
+    <p style="margin-bottom:0">
+      One tap. That exercise is left out of your sessions for three weeks and
+      something covering the same movement is swapped in immediately, so you can
+      carry on. Sharp or lasting pain is worth a word with a physio or doctor
+      rather than only an app setting.
+    </p>
+  </div>
+
+  <h3>At the end</h3>
+  <p>
+    A summary, and one question: <b>Too easy · About right · Too hard</b>.
+    It is a single tap and it is the most useful thing you can tell the app —
+    after three sessions rated the same way, it starts adjusting how much work
+    it gives you.
+  </p>
+
+  <div class="note">
+    <b>Stop half way through and nothing is lost.</b> The exit button always
+    asks, and <b>Pause</b> keeps everything exactly as it is — Today offers the
+    session back when you return.
+  </div>
+</section>
+
+<!-- ======================================================= OTHER TABS -->
+<section class="page">
+  <div class="kicker">The rest of the app</div>
+  <h2>Three more sections</h2>
+
+  <div class="card">
+    <h3>Train</h3>
+    <p>Opens with this week's targets and where you are in the eight-week
+      progression. Underneath: your workouts, the exercise library filtered to
+      your equipment, warm-ups, and every session you have finished.</p>
+    <p class="tiny" style="margin-bottom:0">
+      Progression is <b>earned, not scheduled</b>. Miss a fortnight and the plan
+      waits for you rather than marching on to a peak week you have not worked
+      for.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>Progress</h3>
+    <p style="margin-bottom:0">Opens with how your week actually went. Then, one
+      tap each: whether individual lifts are moving, fitness test results, body
+      measurements, and patterns the app has noticed in your own data — always
+      described as a correlation, never a cause.</p>
+  </div>
+
+  <div class="card">
+    <h3>Progress</h3>
+    <p style="margin-bottom:0">Opens with how your week actually went. Then, one
+      tap each: whether individual lifts are moving, fitness test results, body
+      measurements, and patterns the app has noticed in your own data — always
+      described as a correlation, never a cause.</p>
+  </div>
+
+  <div class="card">
+    <h3>Logging anything else</h3>
+    <p>
+      Two ways, and they ask different questions because they know different
+      things.
+    </p>
+    <p class="tiny" style="margin-bottom:6px">
+      <b>Start activity</b> — pick what you are doing from a searchable list
+      and the clock runs. Time and strain both count from the moment you press
+      start until you press stop, with laps if you want them. How hard it was
+      is asked <i>at the end</i>, because before you start it is a guess.
+    </p>
+    <p class="tiny" style="margin-bottom:0">
+      <b>Add activity</b> — for something already finished. It asks when it
+      started, when it ended, and what strain it came to. The length works
+      itself out from the two times, and the strain is filled in with the
+      app's own estimate which you can type over if your watch gave you a
+      number.
+    </p>
+  </div>
+
+  <div class="note">
+    <b>Forgot to log Saturday?</b> Move back a week with the arrow on the
+    calendar, tap the day, and add it there. The card follows the day you
+    selected, so <b>Add activity</b> means that day — and <b>Back to today</b>
+    returns you.
+  </div>
+
+  <div class="rule"></div>
+
+  <h3>Settings — the fourth tab, bottom right</h3>
+  <table>
+    <tr><td>Profile</td><td>Name, age, height, weight</td></tr>
+    <tr><td>Training</td><td>Equipment, sport, goals, schedule, injuries, and <b>Pause training</b> for a holiday</td></tr>
+    <tr><td>Sound &amp; alerts</td><td>The rest timer, its tones, and being told when it ends while the screen is off</td></tr>
+    <tr><td>Cycle</td><td>Optional menstrual cycle tracking — off unless you turn it on</td></tr>
+    <tr><td>Wearables</td><td>Your device, and importing its data</td></tr>
+    <tr><td>Data</td><td>Backup, restore, <b>delete imported data</b>, and erase everything</td></tr>
+    <tr><td>Appearance</td><td>Light, dark, or follow your phone</td></tr>
+    <tr><td>About</td><td>Version number, the walkthrough, and a diagnostics button for bug reports</td></tr>
+  </table>
+</section>
+
+<!-- ======================================================= DATA -->
+<section class="page">
+  <div class="kicker">Important</div>
+  <h2>Your data, and the one thing to remember</h2>
+
+  <p>
+    Everything you enter lives in your browser, on your phone. There is no
+    account, no server and nothing to sign into — and no way for anyone else,
+    including me, to see any of it. If two people open the same link they each
+    get an empty app, not each other's data.
+  </p>
+
+  <h3>If you import a wearable export</h3>
+  <p>
+    You export your own data from WHOOP, Garmin, Oura or similar and pick the
+    files yourself. Baseline is <b>not connected to any of those services</b>
+    — no account, no password, no integration. It reads the file you chose,
+    in your browser.
+  </p>
+  <table>
+    <tr><td>What it keeps</td><td>The daily figures: recovery, HRV, resting
+      heart rate, sleep, strain, and your workouts</td></tr>
+    <tr><td>What it never keeps</td><td>The file itself, and the free-text
+      notes in a journal export</td></tr>
+    <tr><td>Where it goes</td><td>Your browser's storage, on that device</td></tr>
+    <tr><td>What is uploaded</td><td>Nothing</td></tr>
+    <tr><td>How to remove it</td><td><b>Settings → Data → Delete imported
+      data</b>, which tells you exactly what it removed</td></tr>
+  </table>
+  <p class="tiny">
+    <b>Settings → Data → Erase all data</b> removes everything on the device
+    instead, and starts the app over. One thing worth knowing: Baseline has no
+    passcode of its own, so anyone who can unlock your phone can open it.
+  </p>
+
+  <div class="note warn">
+    <b>That also means a backup is the only copy that exists.</b>
+    If you clear your browser data, lose the phone, or delete the app, it is
+    gone. There is nowhere to restore it from.
+  </div>
+
+  <h3>So: back it up</h3>
+  <p>
+    <b>Settings → Data → Backup</b> saves one file with everything in it.
+    <b>Restore</b> reads it back, including onto a new phone. It takes five
+    seconds. Worth doing every few weeks and before changing phones.
+  </p>
+
+  <div class="rule"></div>
+
+  <h3>If something looks wrong</h3>
+  <ol class="steps">
+    <li><b>Close the app completely and reopen it.</b> Not minimise — close it,
+      then open it again. Twice, if a new version has just been released.</li>
+    <li><b>Check the version.</b> It is at the bottom of the Settings screen.</li>
+    <li><b>Send me the diagnostics.</b> <b>Settings → About → Copy diagnostics</b>
+      puts device, browser and storage details on your clipboard, plus counts of
+      how much you have logged. It never includes anything you typed. Paste it
+      into a message along with what you were doing.</li>
+  </ol>
+
+  <div class="card">
+    <h3>Common things</h3>
+    <p><b>“It says storage is not working.”</b> Add it to your Home Screen (page 3)
+      and open it from there. Private browsing windows also block storage.</p>
+    <p style="margin-bottom:0"><b>“My data disappeared.”</b> Almost always
+      because it was used as a browser tab on an iPhone and iOS cleared it. Home
+      Screen plus a backup prevents this.</p>
+  </div>
+
+  <div class="rule"></div>
+
+  <p class="tiny">
+    Baseline is not a medical device. It does not diagnose anything. Persistent
+    pain, unusual symptoms or readings that worry you belong with a qualified
+    healthcare professional, separately from any training decision.
+  </p>
+</section>
+
+</body>
+</html>

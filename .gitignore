@@ -1,0 +1,64 @@
+# =============================================================================
+#  Keep personal health data out of version control.
+# =============================================================================
+#  A WHOOP export is recovery scores, heart-rate variability, resting heart
+#  rate, sleep timings and a journal of answers about alcohol, caffeine,
+#  illness and stress, day by day. `git add .` without these rules commits all
+#  of it, and a commit that has been pushed is difficult to retract.
+#
+#  Nothing here is needed to build or run Baseline: the app reads an export
+#  the user chooses at runtime, in their own browser.
+# -----------------------------------------------------------------------------
+
+# Anything personal lives here and never leaves the machine.
+private/
+
+# The same data under the names it arrives in, wherever it is dropped.
+Whoop Data/
+whoop-data/
+*_whoop_data.zip
+my_whoop_data*/
+physiological_cycles.csv
+sleeps.csv
+workouts.csv
+journal_entries.csv
+*export*.csv
+*personal*.csv
+*.whoop
+
+# Baseline's own backup files contain the full local dataset.
+baseline-backup*.json
+baseline-*.json
+
+# -----------------------------------------------------------------------------
+#  Generated. `site/` is built from `src/` by tools/make_web.py and IS
+#  published, so it is committed; everything under build/ is scratch.
+# -----------------------------------------------------------------------------
+build/
+
+# -----------------------------------------------------------------------------
+#  OS and editor noise.
+# -----------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# =============================================================================
+#  Build and deploy tooling (added with the Cloudflare/Supabase setup)
+# =============================================================================
+#  Credentials. .env.example is committed; anything with real values is not.
+.env
+.env.local
+.env.*.local
+
+#  Node and Wrangler working state.
+node_modules/
+.wrangler/
+*.log
+
+#  The local verification harness writes here. `site/` is NOT ignored: it is
+#  the deploy artifact, and it holds the generated icon set that the Node
+#  build cannot regenerate (make_web.py needs Pillow for that).
+build/

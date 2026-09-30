@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Must match the Worker's name in the Cloudflare dashboard
+  // (Workers & Pages -> your Worker).
+  "name": "baseline",
+  "compatibility_date": "2026-09-01",
+  // Static-assets-only Worker: serves the build output (npm run build -> ./site).
+  // There is no server-side code. Nothing is executed on Cloudflare's side and
+  // no request body is ever read by a Worker - the app runs in the browser.
+  "assets": {
+    "directory": "./site",
+    // Baseline keeps all of its navigation in memory and never changes the
+    // URL (history.pushState is called with no url argument), so there are no
+    // deep routes to fall back for. This is here so a hand-typed or bookmarked
+    // path loads the app instead of returning 404.
+    "not_found_handling": "single-page-application"
+  }
+}
