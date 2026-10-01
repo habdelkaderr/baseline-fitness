@@ -2484,8 +2484,8 @@ function drawSetup(){
               value="${esc(d.name||'')}" placeholder="First name">
      </div>
      <div class="note acc">Everything stays on this device. No account, no
-       server, nothing uploaded. If you ever want a backup you can reach from
-       another phone, Settings has one that encrypts your data here first.</div>`;
+       server, nothing uploaded. That also means a backup is the only copy
+       there is: Settings &rarr; Data &rarr; Backup saves a file you keep.</div>`;
   }
 
   /* ---------------- 2 · what for ---------------- */
