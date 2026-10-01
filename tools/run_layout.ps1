@@ -22,8 +22,23 @@ foreach($s in $slugs){
       $r=$matches[1] -replace '&lt;','<' -replace '&gt;','>' -replace '&amp;','&'
       if($r -notmatch 'never booted'){
         $got=$true
-        (($r -split "`n" | Where-Object { $_ -match '^ISSUE|===|TOTAL ISSUES' }) -join "  ")
+        (($r -split "`n" | Where-Object { $_ -match '^ISSUE|===|TOTAL ISSUES|AUDIT THREW' }) -join "  ")
+        # A THROWN AUDIT MEASURES NOTHING, AND USED TO SAY NOTHING.
+        # The filter above dropped "AUDIT THREW" because it does not start with
+        # ISSUE, and a throw also means no "TOTAL ISSUES" line to add up - so a
+        # run in which every viewport died printed a confident
+        # "TOTAL RESPONSIVE ISSUES: 0". Count the throws, and refuse to treat a
+        # missing total as a pass.
+        $thrown = ([regex]::Matches($r,'AUDIT THREW')).Count
+        if($thrown -gt 0){
+          "  $s : AUDIT THREW x$thrown - measured nothing"
+          $tot += $thrown
+        }
         if($r -match 'TOTAL ISSUES: (\d+)'){ $tot += [int]$matches[1] }
+        elseif($thrown -eq 0){
+          "  $s : NO TOTAL LINE - measured nothing"
+          $tot += 1
+        }
         break
       }
     }

@@ -5,7 +5,17 @@ PROJECT = _os.path.dirname(_HERE)
 
 SP=_os.path.join(PROJECT,"build","httest")
 D=_os.path.join(PROJECT,"private","whoop-data")
-html=io.open(_os.path.join(PROJECT,"build","baseline.html"),encoding="utf-8").read()
+# Assembled from src/ directly, in the same order as tools/cycle.ps1 and
+# tools/build.mjs. This used to read build/baseline.html, which only cycle.ps1
+# regenerates - so running the audit on its own measured the PREVIOUS build and
+# happily reported zero issues for layout changes it had never seen.
+_PARTS=["p01","p02","p03","p03b","p04","p04b","p05","p06","p07","p08","p09","p10"]
+html=""
+for _n in _PARTS:
+    _p=_os.path.join(PROJECT,"src",_n+".part")
+    if not os.path.isfile(_p):
+        raise SystemExit("missing source part: "+_p)
+    html+=io.open(_p,encoding="utf-8",newline="").read()
 def _csv(f):
     """Optional, for the same reason as in build_test.py: the audit must not
     need anybody's private export to measure a layout."""
@@ -214,9 +224,85 @@ function flowIssues(root){
   return issues;
 }
 
+/* ---------------------------------------------------------------------------
+   DESKTOP LAYOUT. Everything else in this file asks "is anything clipped,
+   overlapping or unreadable", and on a wide window the answer was no while
+   the layout was plainly wrong: content pinned to the sidebar with 492px of
+   dead space beside it, section headings taking one grid cell so their own
+   content landed in the next column, and a 19px heading stretched to 205px
+   because grid items default to stretching. All three passed every check
+   above. These are the questions that would have caught them.
+   ------------------------------------------------------------------------ */
+function isHeading(c){
+  var k=' '+String(c.className||'')+' ';
+  return k.indexOf(' sec-t ')>=0 || k.indexOf(' sec-hd ')>=0;
+}
+function deskIssues(){
+  var issues=[];
+  if(WIDTH < 900 || HEIGHT < 600) return issues;   // sidebar layout only
+  var app=document.getElementById('app'), v=document.getElementById('view');
+  if(!app||!v) return issues;
+  var nav=document.querySelector('.nav');
+  var navW=nav? nav.getBoundingClientRect().width : 0;
+  var ar=app.getBoundingClientRect();
+
+  /* 1. centred in the space beside the sidebar, not shoved against it */
+  var gapL=ar.left-navW, gapR=WIDTH-ar.right;
+  if(gapL+gapR > 24 && Math.abs(gapL-gapR) > 48)
+    issues.push('CONTENT NOT CENTRED: '+Math.round(gapL)+'px free left of it, '
+                +Math.round(gapR)+'px right');
+
+  var cols=getComputedStyle(v).gridTemplateColumns.split(' ').length;
+  var kids=Array.prototype.slice.call(v.children).filter(function(c){
+    var r=c.getBoundingClientRect(); return r.width>0 && r.height>0;
+  });
+  /* The content width, not the border box: .view carries side gutters, so a
+     heading that spans 1/-1 measures ~36px narrower than #view and the span
+     check below reported three false failures on Home. */
+  var vcs=getComputedStyle(v);
+  var vw=v.clientWidth - parseFloat(vcs.paddingLeft) - parseFloat(vcs.paddingRight);
+
+  /* 2. a section heading must span, or its content is pushed sideways out
+        from under it and reads as belonging to whatever sits beside it */
+  kids.forEach(function(c){
+    if(!isHeading(c)) return;
+    var r=c.getBoundingClientRect();
+    if(cols>1 && r.width < vw-24)
+      issues.push('SECTION HEADING DOES NOT SPAN: "'
+        +String(c.textContent||'').trim().slice(0,24)+'" is '+Math.round(r.width)
+        +'px of '+Math.round(vw)+'px');
+  });
+
+  /* 3. nothing stretched well past the height of what is in it */
+  kids.forEach(function(c){
+    var r=c.getBoundingClientRect();
+    if(!isHeading(c)) return;
+    if(r.height > 72)
+      issues.push('HEADING STRETCHED: "'
+        +String(c.textContent||'').trim().slice(0,24)+'" is '+Math.round(r.height)+'px tall');
+  });
+
+  /* 4. a multi-column grid with a column nobody uses is not a two-column
+        layout, it is a one-column layout with a hole beside it */
+  if(cols>1){
+    var mid=v.getBoundingClientRect().left+vw/2, right=0, placed=0;
+    kids.forEach(function(c){
+      var r=c.getBoundingClientRect();
+      if(r.width > vw-24) return;            // spanning items prove nothing
+      placed++;
+      if(r.left >= mid-8) right++;
+    });
+    if(placed>=2 && right===0)
+      issues.push('EMPTY SECOND COLUMN: '+placed+' column-width items, none of '
+                  +'them in the right-hand column');
+  }
+  return issues;
+}
+
 function auditView(label){
   var issues=[];
   issues=issues.concat(flowIssues(document.getElementById('view')));
+  issues=issues.concat(deskIssues());
   // horizontal overflow of the page
   var de=document.documentElement;
   if(de.scrollWidth > WIDTH+1) issues.push('PAGE OVERFLOW: scrollWidth '+de.scrollWidth+' > '+WIDTH);
@@ -369,12 +455,23 @@ resetStack(); TAB='today'; renderNav(); render();
 
 resetStack(); openSettings();
 bad+=auditView('settings');
-SET_PANES.forEach(function(g,i){
+/* Driven by the rows that EXIST, not by SET_PANES. Profile is a card at the
+   top rather than a row, and Cycle only appears when it is switched on, so
+   SET_PANES has more entries than #setRows has buttons - index 9 of 9 was
+   undefined and .click() threw, which killed the whole audit for both themes.
+   The pane id comes from SETTAB after the click, so the label stays honest
+   however the rows are grouped. */
+(function(){
   resetStack(); openSettings();
-  var b=document.getElementById('setRows').querySelectorAll('button')[i];
-  b.click();
-  bad+=auditView('settings > '+g.id);
-});
+  var n=document.getElementById('setRows').querySelectorAll('button').length;
+  for(var i=0;i<n;i++){
+    resetStack(); openSettings();
+    var b=document.getElementById('setRows').querySelectorAll('button')[i];
+    if(!b) continue;
+    b.click();
+    bad+=auditView('settings > '+(SETTAB||('row'+i)));
+  }
+})();
 /* the profile editor is a pushed page, not a sheet - auditing it as a sheet
    inspects an empty closed panel, which is what the "examined nothing" guard
    caught the last time I made this mistake */
@@ -506,7 +603,7 @@ function SETUP_AT(id){
   bad+=issues.length; sh.style.transition=''; closeSheet();
 })();
 
-// bottom bar: four fixed tabs that always fill the width
+// bottom bar: the fixed tabs always fill the width
 (function(){
   var issues=[];
   var keepSrc=DB.profile.source, keepW=DB.whoop, keepTab=TAB;
@@ -518,7 +615,13 @@ function SETUP_AT(id){
     var btns=Array.prototype.slice.call(nav.querySelectorAll('button'));
     var n=btns.length;
     if(!n){ issues.push(pair[0]+': no tabs rendered'); return; }
-    if(n!==4) issues.push(pair[0]+': '+n+' buttons, expected 4');
+    /* FIVE destinations, not four. Log became its own tab when the "log an
+       activity" card was taken off Home, so this assertion had been failing on
+       every viewport since - invisibly, because the audit itself was throwing
+       before it got here. tabs() is the app's own list, so this follows the
+       design instead of restating a number that can go stale again. */
+    var want=tabs().length;
+    if(n!==want) issues.push(pair[0]+': '+n+' buttons, expected '+want);
     var side=getComputedStyle(document.querySelector('.nav')).borderRightWidth;
     if(side && parseFloat(side)>0) return;          // sidebar layout, not the bar
     var r0=btns[0].getBoundingClientRect(), rN=btns[n-1].getBoundingClientRect();
@@ -537,7 +640,7 @@ function SETUP_AT(id){
     });
   });
   DB.profile.source=keepSrc; DB.whoop=keepW; TAB=keepTab; resetStack(); renderNav();
-  REPORT.push((issues.length?'ISSUE':'OK   ')+' | bottom bar: four fixed tabs'
+  REPORT.push((issues.length?'ISSUE':'OK   ')+' | bottom bar: fixed tabs'
     +(issues.length?'\\n        '+issues.join('\\n        '):''));
   bad+=issues.length;
 })();
@@ -577,8 +680,15 @@ function SETUP_AT(id){
     else if(!row){ issues.push('no ring row on Today'); }
     else {
       if(row.scrollWidth>WIDTH+1) issues.push('rings overflow '+row.scrollWidth);
-      var n=row.querySelectorAll('.score').length;
-      if(n!==3) issues.push('expected 3 scores, got '+n);
+      /* The row is one LEAD score - readiness, with the ring - and a pair of
+         smaller .mtile metrics beside it (strain, sleep, or the week). It was
+         three equal .score elements when this was written, so counting .score
+         has been reporting 1-of-3 on every viewport ever since. Assert the
+         shape the screen actually has: one lead, at least two tiles. */
+      var lead=row.querySelectorAll('.score.lead').length;
+      var tiles=row.querySelectorAll('.mtile').length;
+      if(lead!==1) issues.push('expected one lead readiness score, got '+lead);
+      if(tiles<2) issues.push('expected two metric tiles beside it, got '+tiles);
       /* readiness leads: it is not one of three equals */
       if(!row.querySelector('.score.lead')) issues.push('no leading score');
       Array.prototype.forEach.call(row.querySelectorAll('.score'), function(b){
@@ -866,8 +976,14 @@ exitWM(true);
   if(sidebar){
     if(Math.abs(nr.top)>1.5) issues.push('sidebar not flush to top');
     if(Math.abs(nr.bottom-window.innerHeight)>1.5) issues.push('sidebar not full height');
-    var ml=parseFloat(getComputedStyle(app).marginLeft);
-    if(ml < nr.width-1) issues.push('#app margin-left ('+ml+') does not clear the sidebar ('+Math.round(nr.width)+'px)');
+    /* Does the content actually clear the sidebar - not "is it cleared by a
+       margin". The gap is now made with padding on body so the content can
+       also be centred, and asserting the mechanism rather than the result
+       failed a layout that is correct. */
+    var appL=app.getBoundingClientRect().left;
+    if(appL < nr.right-1)
+      issues.push('#app starts at '+Math.round(appL)+' and the sidebar ends at '
+                  +Math.round(nr.right)+' - content is under the sidebar');
     if(document.querySelector('.nav-brand') && getComputedStyle(document.querySelector('.nav-brand')).display==='none')
       issues.push('sidebar brand hidden in sidebar layout');
     /* desktop must actually use the horizontal space */

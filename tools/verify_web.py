@@ -3,16 +3,18 @@ import os as _os
 _HERE = _os.path.dirname(_os.path.abspath(__file__))
 PROJECT = _os.path.dirname(_HERE)
 
-W=_os.path.join(PROJECT,"site")
+# The repository root IS the deployed site: GitHub Pages serves main from its
+# root, which is the URL every existing install's IndexedDB is keyed to.
+W=PROJECT
 idx=os.path.join(W,"index.html")
 t=io.open(idx,encoding="utf-8").read()
 
 print("="*64)
-print("BASELINE — deployment verification (Cloudflare Workers static assets)")
+print("BASELINE — deployment verification (GitHub Pages, served from the repo root)")
 print("="*64)
 
 print("\n-- FILES --")
-need=["index.html","manifest.webmanifest","sw.js",".nojekyll","README.md","_headers",
+need=["index.html","manifest.webmanifest","sw.js",".nojekyll","README.md",
       "icons/icon-180.png","icons/icon-192.png","icons/icon-512.png","icons/icon-512-maskable.png"]
 allok=True
 for f in need:
@@ -20,12 +22,13 @@ for f in need:
     e=os.path.exists(p)
     allok &= e
     print("  %-30s %s  %s" % (f, "OK " if e else "MISSING", ("%.1f KB"%(os.path.getsize(p)/1024)) if e else ""))
-extra=[]
-for root,d,fs in os.walk(W):
-    for f in fs:
-        rel=os.path.relpath(os.path.join(root,f),W).replace("\\","/")
-        if rel not in need: extra.append(rel)
-print("  unexpected extra files:", extra or "none")
+# Only icons/ is checked for strays. This used to walk the whole output
+# folder, which at the repository root means src/, tools/, .git and every
+# document - all of which belong here and none of which are deployed assets.
+_ico=os.path.join(W,"icons")
+extra=[f for f in (sorted(os.listdir(_ico)) if os.path.isdir(_ico) else [])
+       if ("icons/"+f) not in need]
+print("  unexpected files in icons/:", extra or "none")
 
 # ---------------------------------------------------------------------------
 # FRESHNESS. Everything below reads site/index.html, so a stale file means the
@@ -51,7 +54,7 @@ _built = io.open(idx, encoding="utf-8", newline="").read().replace(chr(13)+chr(1
 stale = (_cat != _built)
 print("  parts concatenated          : %d" % len(_PARTS))
 print("  source chars / built chars  : %d / %d" % (len(_cat), len(_built)))
-print("  site/index.html matches src : %s" % ("no" if stale else "yes"))
+print("  index.html matches src      : %s" % ("no" if stale else "yes"))
 if stale:
     _i = 0
     while _i < min(len(_cat), len(_built)) and _cat[_i] == _built[_i]:
@@ -209,8 +212,10 @@ allowed={"http://www.w3.org","https://www.w3.org"}
 bad=[o for o in origins if o not in allowed]
 print("  external origins referenced :", bad or "none")
 
-hdr_p=os.path.join(W,"_headers")
-hdr=io.open(hdr_p,encoding="utf-8").read() if os.path.exists(hdr_p) else ""
+# The policy ships as a meta element: GitHub Pages cannot set response
+# headers, so the document is the only place it can live on this host.
+_m=re.search(r'http-equiv="Content-Security-Policy"[^>]*content="([^"]*)"', t)
+csp=_m.group(1) if _m else ""
 
 priv=[
  # No outbound call of any kind survives in the shipped file.
@@ -226,9 +231,10 @@ priv=[
  ("no session token store",    "baseline.session" not in t),
  # The browser is told to refuse an outbound connection as well, so a mistake
  # in the app cannot quietly become a network call.
- ("connect-src is self only",  "connect-src 'self';" in hdr),
- ("CSP forbids form posts",    "form-action 'none'" in hdr),
- ("CSP blocks framing",        "frame-ancestors 'none'" in hdr),
+ ("CSP is present in the page",bool(csp)),
+ ("connect-src is self only",  "connect-src 'self'" in csp),
+ ("no outside script source",  "script-src 'self' 'unsafe-inline'" in csp),
+ ("CSP forbids form posts",    "form-action 'none'" in csp),
  # Health data must not be written where it is casually readable.
  ("health data not in localStorage",
     not re.search("setItem[(][^)]*(hrv|recovery|whoop)", t, re.I)),

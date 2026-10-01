@@ -353,6 +353,11 @@ function render(){
      screen with nothing highlighted in the nav, so the guard lives here and
      re-checks on every render rather than only at boot. */
   if(!tabs().some(x=>x.id===TAB)){ TAB='today'; renderNav(); }
+  /* Which screen this is, so the desktop stylesheet can lay it out as what it
+     actually is. A dashboard has pairs of cards to put side by side; a list of
+     sections does not, and in a multi-column grid every section left the
+     column beside it empty. Set before build() so first paint is correct. */
+  v.dataset.tab = STACK.length ? 'page' : TAB;
   /* a pushed page owns the view; the tab underneath stays lit in the bar */
   if(STACK.length){
     const pg=STACK[STACK.length-1];

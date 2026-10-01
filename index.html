@@ -2,6 +2,26 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<!-- CONTENT SECURITY POLICY, IN THE DOCUMENT.
+     GitHub Pages cannot set response headers, so this is the only place the
+     policy can live on this host. connect-src is the line that matters: 'self'
+     and nothing else, so the browser itself refuses any attempt by this page
+     to contact an outside origin. Baseline has no backend, so that is the
+     whole truth rather than a restriction.
+
+     'unsafe-inline' is required because the entire application IS an inline
+     script - that is the point of a single-file app - and the same policy
+     forbids loading script from anywhere else, which is the risk that matters.
+
+     frame-ancestors is deliberately absent: it is ignored in a meta element
+     and only works as a header, so it cannot be enforced here.
+
+     blob: is allowed because the JSON backup is handed to you as a blob URL on
+     an <a download>. That backup is the ONLY copy of your data that exists, so
+     a policy that silently broke it would be far worse than the hair it
+     splits: a blob URL is same-origin and lives in memory, and grants no way
+     to reach the network. connect-src stays 'self' either way. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'self'; form-action 'none'">
 <!-- No maximum-scale / user-scalable=no: blocking pinch-zoom breaks accessibility.
      Accidental zoom is prevented the correct way instead — every input is >=16px
      (so iOS never zooms on focus) and touch-action:manipulation kills double-tap zoom.
@@ -1471,11 +1491,16 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .wk-d.sel .wk-ic{color:var(--accent)}
 
 /* a section heading with a way through to the whole of it */
-.sec-hd{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+.sec-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;
   margin:var(--sp-2) 0 9px}
+/* The tappable area is 44px tall even though the label is 20px: it was 63x20,
+   which the layout audit flags on every screen that has one, and which is the
+   difference between hitting "View all" and hitting the card under it. The
+   padding is vertical and the negative margin takes the extra height back out
+   of the layout, so the heading row looks exactly as it did. */
 .sec-more{display:inline-flex;align-items:center;gap:3px;background:none;border:0;
   font-family:inherit;font-size:12.5px;font-weight:750;color:var(--accent);
-  cursor:pointer;padding:2px 0}
+  cursor:pointer;padding:12px 0;margin:-12px 0;min-height:44px}
 .sec-more svg{width:14px;height:14px}
 
 /* ---------- Exercise illustrations ----------
@@ -1853,8 +1878,13 @@ button.cue:active{background:var(--accent-line)}
 @media (min-width:900px) and (min-height:600px){
   .nav-foot{display:block}
   :root{--nav-w:236px}
-  body{padding-bottom:0}
-  #app{margin-left:var(--nav-w);max-width:1240px;margin-right:auto}
+  /* The sidebar is position:fixed, so its width is reserved with padding and
+     #app keeps the `margin:0 auto` it already has at every other size. This
+     used to be margin-left:var(--nav-w) with margin-right:auto, which pinned
+     the content against the sidebar and left the rest of a wide window empty
+     - 492px of dead space at a 1968px viewport, measured. */
+  body{padding-bottom:0;padding-left:var(--nav-w)}
+  #app{max-width:1160px}
 
   /* bottom bar -> left sidebar */
   .nav{
@@ -1883,6 +1913,18 @@ button.cue:active{background:var(--accent-line)}
     padding:0 13px;min-height:44px;border-radius:11px;
   }
   .nav button svg{width:19px;height:19px;flex:0 0 19px}
+  /* The circular action disc belongs to the bottom bar, where the middle of
+     the row is an action rather than a destination. In a vertical sidebar it
+     sat as a green bubble half-overlapping its own label, beside five plain
+     rows. Here Log is simply another row. */
+  .nav button.mid{gap:12px}
+  .nav button.mid .nav-fab{
+    width:auto;height:auto;margin-top:0;border-radius:0;
+    background:none;color:inherit;box-shadow:none;flex:0 0 19px;
+  }
+  .nav button.mid .nav-fab svg{width:19px;height:19px;stroke-width:1.9}
+  .nav button.mid.on .nav-fab{color:var(--accent)}
+  .nav button.mid.on .nav-fab svg{stroke-width:2.3}
   .nav button:hover{background:var(--surface-2);color:var(--text-2)}
   .nav button.on{background:var(--accent-wash);color:var(--accent)}
   .nav-foot{
@@ -1894,10 +1936,46 @@ button.cue:active{background:var(--accent-line)}
   .appbar .ttl{font-size:30px}
   .view{padding-bottom:48px}
 
-  /* two-column dashboard; full-width elements opt out */
-  #view{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 18px;align-content:start}
+  /* ONE COLUMN BY DEFAULT, two only where a screen has pairs of cards to put
+     side by side.
+
+     This was a blanket multi-column grid for every screen, and the screens
+     that are a list of sections - Settings, Training, Log - have exactly one
+     card per section. Auto-flow then put that card in one column and left its
+     neighbour empty, section after section, which is what made the desktop
+     layout look broken rather than merely roomy. */
+  #view{
+    display:grid;grid-template-columns:minmax(0,1fr);gap:0 18px;
+    align-content:start;
+    /* Without this, every item stretches to its row's height: a 19px section
+       header became a 205px block and the Settings profile card became a
+       tall empty slab. */
+    align-items:start;
+  }
+  /* Home only. It is the one screen with a cluster of genuinely paired cards
+     at the top: readiness beside the recommendation, "why this" beside
+     "change the plan". Progress looked like it wanted two columns too, but
+     every one of its sections is a single card, so the right half of the
+     screen stayed blank from the segment bar to the bottom. */
+  #view[data-tab="today"]{grid-template-columns:repeat(2,minmax(0,1fr))}
+  /* ...and only for that cluster. From the first section heading down, Home is
+     also one card per section, so those span the full measure instead of
+     stacking in the left column against an empty right one. */
+  #view[data-tab="today"]>.sec-t~*{grid-column:1/-1}
+
+  /* A list of sections reads badly at full width - a row's title and its
+     chevron end up a thousand pixels apart - so every other screen gets a
+     narrower measure. Set on #app so the app bar's title stays aligned with
+     the cards under it. Declared after the 1160px default to win on order. */
+  #app:has(#view:not([data-tab="today"])){max-width:880px}
+
   #view>.sec-t,#view>.hero,#view>.btn,#view>.seg,#view>.note,
   #view>.swipe,#view>.empty,#view>.divider,#view>input{grid-column:1/-1}
+  /* .sec-hd is a section heading with a trailing action ("Recent activity /
+     View all"). It wraps a .sec-t, so the rule above missed it: the heading
+     took a single cell and its content was pushed into the next column, where
+     it read as belonging to the heading beside it instead of above it. */
+  #view>.sec-hd{grid-column:1/-1}
   #view>.card.wide,#view>.stats.wide{grid-column:1/-1}
 
   .hero{padding:24px}
@@ -1930,8 +2008,10 @@ button.cue:active{background:var(--accent-line)}
   .icon-btn:hover{background:var(--surface-3)}
 }
 @media (min-width:1280px) and (min-height:600px){
-  #view{grid-template-columns:repeat(3,minmax(0,1fr))}
-  #view>.hero{grid-column:span 2}
+  /* Wider columns, not more of them. This used to go to three columns, which
+     at a 1240px measure made each card 390px - narrower than the same card on
+     a phone in landscape - while the window still had space to spare. */
+  #app:has(#view[data-tab="today"]){max-width:1240px}
   .stats{grid-template-columns:repeat(3,1fr)}
 }
 /* pointer devices only — never let hover styles affect touch */
@@ -2368,7 +2448,7 @@ const SCHEMA_VERSION=3;             // bump to transform stored records
 /* A date, plus a letter when more than one build ships in a day. Without the
    letter there was no way to tell a second same-day deploy from the cached
    copy of the first, which is exactly the question "did my upload work?". */
-const APP_BUILD='2026-09-30b';
+const APP_BUILD='2026-10-01a';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */
@@ -10557,6 +10637,11 @@ function render(){
      screen with nothing highlighted in the nav, so the guard lives here and
      re-checks on every render rather than only at boot. */
   if(!tabs().some(x=>x.id===TAB)){ TAB='today'; renderNav(); }
+  /* Which screen this is, so the desktop stylesheet can lay it out as what it
+     actually is. A dashboard has pairs of cards to put side by side; a list of
+     sections does not, and in a multi-column grid every section left the
+     column beside it empty. Set before build() so first paint is correct. */
+  v.dataset.tab = STACK.length ? 'page' : TAB;
   /* a pushed page owns the view; the tab underneath stays lit in the bar */
   if(STACK.length){
     const pg=STACK[STACK.length-1];

@@ -13,9 +13,21 @@ PROJECT = _os.path.dirname(_HERE)
 SRC_PARTS = ["p01","p02","p03","p03b","p04","p04b",
              "p05","p06","p07","p08","p09","p10"]
 SRC_DIR = _os.path.join(PROJECT,"src")
-OUT = _os.path.join(PROJECT,"site")
+# THE REPOSITORY ROOT IS THE DEPLOYED SITE.
+# GitHub Pages serves a branch from either the root or /docs - never from an
+# arbitrary folder - and the live site has always been served from the root of
+# main. Building anywhere else would change the URL, and the URL is what every
+# existing install's IndexedDB is keyed to: move it and everyone opens an empty
+# app with their training history still sitting under the old address.
+#
+# NOTE the absence of shutil.rmtree. The previous version cleared its output
+# folder first, which is safe for site/ and would delete the entire repository
+# here. Each generated file is written individually instead; GENERATED lists
+# exactly what this script owns.
+OUT = PROJECT
 ICO = os.path.join(OUT, "icons")
-if os.path.isdir(OUT): shutil.rmtree(OUT)
+GENERATED = ["index.html", "sw.js", "manifest.webmanifest", ".nojekyll",
+             "README.md"]
 os.makedirs(ICO, exist_ok=True)
 
 SRC_ICON = _os.path.join(PROJECT,"brand","icon-source.png")
@@ -132,7 +144,7 @@ SW = r"""/* Baseline service worker — offline support for the app shell.
    No user data passes through here. WHOOP files are parsed in the page and
    training data lives in IndexedDB, neither of which the Cache API can see.
    Nothing is ever sent anywhere: there is no server to send it to. */
-const CACHE = 'baseline-v24';
+const CACHE = 'baseline-v25';
 const SHELL = [
   './',
   './index.html',
@@ -234,26 +246,10 @@ print("  index.html  (%.1f KB)" % (len(html.encode('utf-8')) / 1024))
 # cannot quietly become a network call.
 #
 # tools/build.mjs writes this same file on Cloudflare. Keep the two in step.
-io.open(os.path.join(OUT, "_headers"), "w", encoding="utf-8").write(
-"""/*
-  X-Content-Type-Options: nosniff
-  X-Frame-Options: DENY
-  Referrer-Policy: strict-origin-when-cross-origin
-  Permissions-Policy: geolocation=(), microphone=(), camera=()
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'
-
-/index.html
-  Cache-Control: no-cache
-
-/sw.js
-  Cache-Control: no-cache
-
-/icons/*
-  Cache-Control: public, max-age=31536000, immutable
-""")
-print("  _headers")
-
-# GitHub Pages: skip Jekyll processing entirely
+# No _headers file: that is a Cloudflare feature and GitHub Pages cannot set
+# response headers at all. The Content-Security-Policy therefore ships as a
+# meta element in the document itself - see the head in src/p01.part - which
+# is the only mechanism this host offers.
 io.open(os.path.join(OUT, ".nojekyll"), "w", encoding="utf-8").write("")
 print("  .nojekyll")
 
@@ -536,8 +532,9 @@ professional, separately from any training decision.
 io.open(os.path.join(OUT, "README.md"), "w", encoding="utf-8").write(README)
 print("  README.md")
 
-print("\nDeploy folder:", OUT)
-for root, dirs, files in os.walk(OUT):
+print("\nDeployed from the repository root:", OUT)
+for root, dirs, files in [(OUT, [], GENERATED),
+                         (ICO, [], sorted(os.listdir(ICO)))]:
     for f in sorted(files):
         p = os.path.join(root, f)
         rel = os.path.relpath(p, OUT).replace("\\", "/")

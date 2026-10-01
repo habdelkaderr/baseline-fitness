@@ -17,8 +17,8 @@ PARTS = ["p01.part", "p02.part", "p03.part", "p03b.part", "p04.part", "p04b.part
          "p05.part", "p06.part", "p07.part", "p08.part", "p09.part", "p10.part"]
 SRC = {f: io.open(os.path.join(PROJECT, "src", f), encoding="utf-8").read() for f in PARTS}
 BUILT = io.open(os.path.join(PROJ, "build", "baseline.html"), encoding="utf-8").read()
-SHIPPED = io.open(os.path.join(PROJ, "site", "index.html"), encoding="utf-8").read()
-SW = io.open(os.path.join(PROJ, "site", "sw.js"), encoding="utf-8").read()
+SHIPPED = io.open(os.path.join(PROJ, "index.html"), encoding="utf-8").read()
+SW = io.open(os.path.join(PROJ, "sw.js"), encoding="utf-8").read()
 
 
 def hits(label, pattern, text=None, flags=re.I):
