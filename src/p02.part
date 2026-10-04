@@ -1465,7 +1465,12 @@ const POSES={
 
    Ordered, first match wins, specific before general - "Sliding Leg Curl" has
    to be caught by the hamstring rule before the bicep-curl rule sees "curl".
-   Anything genuinely irregular goes in EX_ILLUS_OVERRIDE below. */
+
+   NOTHING BELOW IS LIVE. This table and the EX_ILLUS_OVERRIDE that used to
+   follow it were both replaced by EX_ILLUS, which names a pose per exercise
+   id. It is kept only as a record of which names were ambiguous enough to
+   need a rule; the sentence that used to end this paragraph sent the reader
+   to a table that no longer exists. */
 const POSE_RULES=[
   /* hamstrings first: these contain "curl" and are not arm work */
   [/nordic|leg curl/,                      'nordic'],
