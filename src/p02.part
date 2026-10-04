@@ -385,7 +385,7 @@ const SCHEMA_VERSION=3;             // bump to transform stored records
 /* A date, plus a letter when more than one build ships in a day. Without the
    letter there was no way to tell a second same-day deploy from the cached
    copy of the first, which is exactly the question "did my upload work?". */
-const APP_BUILD='2026-10-01b';
+const APP_BUILD='2026-10-04a';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */
@@ -1349,10 +1349,17 @@ const POSES={
     props:[{t:'arr',a:[76,38],b:[76,54]},{t:'wall',x:98}]},
 
   /* ---- named by the validator: prescribed by a workout, needs only home kit ---- */
-  'hamstring-flow':{head:[24,70],sh:[36,70],hip:[64,70],
-    arm:[[46,62],[58,56]], arm2:[[42,72],[30,76]],
-    leg:[[76,56],[86,40]], leg2:[[84,72],[100,74]],
-    props:[{t:'arr',a:[98,52],b:[98,40]}]},
+  /* A STANDING hinge, because that is what the exercise says it is: "from a
+     standing hinge, alternate between a straight-leg reach and a bent-knee
+     position", regressed by bending the knees and substituted by an unloaded
+     single-leg RDL. This was drawn lying on the floor with a leg in the air -
+     a supine hamstring stretch, a different movement from the one described
+     directly beneath it on the screen. Built from the sl-hinge proportions,
+     with the reach shown and an arrow for the flow. */
+  'hamstring-flow':{head:[30,36],sh:[42,40],hip:[64,44],
+    arm:[[44,46],[38,62]], arm2:[[44,42],[52,32]],
+    leg:[[64,58],[62,78]], leg2:[[82,42],[98,38]],
+    props:[{t:'arr',a:[26,58],b:[26,44]}]},
   'wall-iso-raise':{head:[52,16],sh:[52,30],hip:[52,50],
     arm:[[66,30],[80,30]], arm2:[[46,40],[44,52]],
     leg:[[48,62],[46,76]], leg2:[[56,62],[58,76]],
@@ -1548,14 +1555,13 @@ const POSE_RULES=[
   [/\bbounds?\b/,                          'jump']
 ];
 
-/* RETIRED with POSE_RULES. Every one of these is now a line in EX_ILLUS,
-   which is where an exception and a rule look the same - because to the
-   reader of a table they are the same. */
-const EX_ILLUS_OVERRIDE={
-  mo12:'legs-up-wall',     /* "Hamstring Flow" is a supine flow, not a hinge */
-  sp01:'decel',            /* "Split-Step Reaction Drill" is a braking step */
-  sp07:'lateral-bound'     /* "Crossover Step Start" moves sideways first */
-};
+/* EX_ILLUS_OVERRIDE is gone. It was retired when POSE_RULES was - every entry
+   already had a line in EX_ILLUS - but it was left here as dead code, and one
+   of its comments asserted that Hamstring Flow is "a supine flow, not a
+   hinge". The exercise says the opposite, in the text printed under the
+   drawing. A second table that nothing reads and that disagrees with the one
+   that is read is worse than no table: it tells the next reader the live
+   mapping is wrong. */
 
 /* WARM-UP MOVEMENTS, BY NAME.
    A warm-up item is a line of text inside a workout - "Pogo hops", "12 reps"

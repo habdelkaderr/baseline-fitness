@@ -508,7 +508,20 @@ ok('exercise screen rendered', /wm-ex/.test(document.getElementById('wmBody').in
 tryRun('complete all sets', function(){
   W.entries.forEach(function(en){ en.sets.forEach(function(s){ s.reps='10'; s.weight='5'; s.rpe='8'; s.done=true; }); });
 });
+/* The stretches now sit between the last set and the summary, offered the
+   same way the warm-up is. They are optional, so every path that drives a
+   session to its end has to choose - and the suite chooses Skip, except where
+   it is testing the cool-down itself. */
+function passCooldown(){
+  var sk=document.getElementById('cdSkip');
+  if(sk){ sk.click(); return true; }
+  return false;
+}
 tryRun('render finish screen', function(){ W.phase='main'; W.step=W.entries.length; drawWM(); });
+ok('the stretches are offered before the summary',
+   !!document.getElementById('cdGo') && !!document.getElementById('cdSkip'));
+ok('and they are optional, not a gate', passCooldown());
+ok('skipping is recorded rather than silent', W.coolSkipped===true);
 ok('finish screen rendered', /Workout complete/.test(document.getElementById('wmBody').innerHTML));
 tryRun('save session', function(){ document.getElementById('fSave').click(); });
 ok('session persisted', DB.sessions.length===1, 'n='+DB.sessions.length);
@@ -4521,10 +4534,34 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
 
   var badRef=[];
   POSE_RULES.forEach(function(r){ if(!POSES[r[1]]) badRef.push(String(r[0])+' -> '+r[1]); });
-  Object.keys(EX_ILLUS_OVERRIDE).forEach(function(id){
-    if(!POSES[EX_ILLUS_OVERRIDE[id]]) badRef.push(id+' -> '+EX_ILLUS_OVERRIDE[id]); });
   Object.keys(WU_ILLUS).forEach(function(n){ if(!POSES[WU_ILLUS[n]]) badRef.push(n+' -> '+WU_ILLUS[n]); });
+  /* EX_ILLUS IS THE TABLE THAT ACTUALLY DRAWS EVERY EXERCISE, and it was the
+     one table not checked here. The two that were - POSE_RULES and the since
+     deleted EX_ILLUS_OVERRIDE - are both dead: nothing has read either of them
+     for some time. So a mistyped key in the live table drew nothing at all and
+     no test minded. */
+  Object.keys(EX_ILLUS).forEach(function(id){
+    /* null is a DECISION, not a gap: a leg press is a machine and machines are
+       not drawn. Several of those nulls replaced drawings that were simply
+       wrong - a seated leg curl shown as a Nordic curl, a lat pulldown as a
+       band - so no picture is the deliberate answer and must not be reported
+       as a broken reference. */
+    if(EX_ILLUS[id]===null) return;
+    if(!POSES[EX_ILLUS[id]]) badRef.push(id+' -> '+EX_ILLUS[id]); });
   ok('every illustration reference resolves to a real pose', badRef.length===0, badRef.join(' | '));
+
+  var ghost=Object.keys(EX_ILLUS).filter(function(id){
+    return !(DB.exercises||[]).some(function(e){ return e.id===id; }); });
+  ok('and every illustration belongs to an exercise that exists',
+     ghost.length===0, ghost.join(', '));
+  /* The invariant is coverage, not a picture each: every exercise must appear
+     in the table so that "no drawing" is something somebody chose and wrote
+     down, rather than something nobody noticed. */
+  var unlisted=(DB.exercises||[]).filter(function(e){
+    return !Object.prototype.hasOwnProperty.call(EX_ILLUS, e.id); });
+  ok('and every exercise has an explicit entry, even if it is "no drawing"',
+     unlisted.length===0,
+     unlisted.map(function(e){ return e.id+' '+e.name; }).slice(0,6).join(' | '));
 
   /* THE CHECK THAT WAS MISSING.
      The first validator asked only whether a reference resolved, so a mapping
@@ -5412,6 +5449,7 @@ ok('first run asks for a mode', freshDB().profile.mode===null && freshDB().profi
     W.entries.forEach(function(en){
       (en.sets||[]).forEach(function(s){ s.done=true; s.reps=s.reps||'10'; }); });
     W.step=W.entries.length; drawWM();
+    passCooldown();
 
     ok('the finish screen is shown', !!document.getElementById('fSave'));
     var ff=document.getElementById('fFeel');
@@ -8005,6 +8043,10 @@ ok('a stopped timer stays stopped', !restActive());
      seen.length===total, seen.length+' of '+total+': '+seen.join(', '));
   ok('it ends on the finish screen by itself',
      W.step>=W.entries.length, W.step+'/'+W.entries.length);
+  /* the stretches come first now, and this path reaches them by advancing on
+     its own - so the offer has to appear without anyone asking for it */
+  ok('the stretches are reached automatically', W.phase==='cool', 'phase='+W.phase);
+  passCooldown();
   ok('and the finish screen is the one that saves',
      !!document.getElementById('fSave'),
      document.getElementById('wmBody').textContent.slice(0,100));

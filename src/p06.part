@@ -354,9 +354,11 @@ function editWorkout(wid){
   draw();
 }
 
-function pickExercise(cb){
+function pickExercise(cb,title){
   const cats=[...new Set(DB.exercises.map(e=>e.cat))];
-  openSheet('Add exercise',`
+  /* Reused by "Replace exercise", where "Add exercise" is the wrong word for
+     what is about to happen. */
+  openSheet(title||'Add exercise',`
    <input class="inp" id="pxQ" placeholder="Search exercises…" style="margin-bottom:12px">
    <div class="swipe" id="pxCats" style="margin-bottom:10px">
      <button class="chip a" data-c="">All</button>

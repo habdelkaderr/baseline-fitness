@@ -346,6 +346,38 @@ function go(tab){
   renderNav(); render();
   window.scrollTo(0,0);
 }
+/* SETTINGS CHANGED - MAKE TODAY REFLECT IT.
+
+   The engine already reads equipment, goals, days and limitations live, so the
+   recommendation it WOULD give changed the moment the setting did. What did
+   not change was anything already on screen, and in one case that is more than
+   cosmetic: a session opened but not yet begun was built from the old answers
+   and keeps listing kit the user has just told us they do not have. Rebuilding
+   it there saves closing and reopening the session to get an honest list.
+
+   A session with any set logged is never touched. That is a record of work
+   done, not a prediction waiting to be refreshed. */
+function planDirty(){
+  try{
+    if(W && W.phase==='preview'){
+      const logged=sum((W.entries||[]).map(e=>e.sets.filter(s=>s.done).length));
+      if(!logged){
+        const wid=W.workoutId, v=W.variant, d=W.date;
+        const keep={id:W.recId, addCore:W.addCore, overridden:W.overridden};
+        const acc=W.accOpen, wu=W.wuStarted;
+        startWorkout(wid, v, d, keep);
+        if(W){ W.accOpen=acc; W.wuStarted=wu; drawWM(); }
+        return;
+      }
+    }
+  }catch(e){}
+  /* Deliberately NOT re-rendering the current screen. persist() runs on every
+     keystroke in Settings, and a render() from there tears out the very
+     controls being edited - it removed #sAuto from under a test that was
+     dispatching a change at it, which is exactly what it would do to a user
+     mid-type. Every screen that shows the plan recomputes when it is next
+     drawn, and leaving Settings draws it, so there is nothing to force. */
+}
 function render(){
   const v=$('#view');
   /* The tab set is not fixed: Metrics disappears for anyone with no wearable.

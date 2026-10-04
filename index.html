@@ -2448,7 +2448,7 @@ const SCHEMA_VERSION=3;             // bump to transform stored records
 /* A date, plus a letter when more than one build ships in a day. Without the
    letter there was no way to tell a second same-day deploy from the cached
    copy of the first, which is exactly the question "did my upload work?". */
-const APP_BUILD='2026-10-01b';
+const APP_BUILD='2026-10-04a';
 /* The last few errors, kept in memory only, so a bug report can carry
    something better than "it stopped working". Never written to disk, never
    sent anywhere — it is read only by the diagnostics button. */
@@ -3412,10 +3412,17 @@ const POSES={
     props:[{t:'arr',a:[76,38],b:[76,54]},{t:'wall',x:98}]},
 
   /* ---- named by the validator: prescribed by a workout, needs only home kit ---- */
-  'hamstring-flow':{head:[24,70],sh:[36,70],hip:[64,70],
-    arm:[[46,62],[58,56]], arm2:[[42,72],[30,76]],
-    leg:[[76,56],[86,40]], leg2:[[84,72],[100,74]],
-    props:[{t:'arr',a:[98,52],b:[98,40]}]},
+  /* A STANDING hinge, because that is what the exercise says it is: "from a
+     standing hinge, alternate between a straight-leg reach and a bent-knee
+     position", regressed by bending the knees and substituted by an unloaded
+     single-leg RDL. This was drawn lying on the floor with a leg in the air -
+     a supine hamstring stretch, a different movement from the one described
+     directly beneath it on the screen. Built from the sl-hinge proportions,
+     with the reach shown and an arrow for the flow. */
+  'hamstring-flow':{head:[30,36],sh:[42,40],hip:[64,44],
+    arm:[[44,46],[38,62]], arm2:[[44,42],[52,32]],
+    leg:[[64,58],[62,78]], leg2:[[82,42],[98,38]],
+    props:[{t:'arr',a:[26,58],b:[26,44]}]},
   'wall-iso-raise':{head:[52,16],sh:[52,30],hip:[52,50],
     arm:[[66,30],[80,30]], arm2:[[46,40],[44,52]],
     leg:[[48,62],[46,76]], leg2:[[56,62],[58,76]],
@@ -3611,14 +3618,13 @@ const POSE_RULES=[
   [/\bbounds?\b/,                          'jump']
 ];
 
-/* RETIRED with POSE_RULES. Every one of these is now a line in EX_ILLUS,
-   which is where an exception and a rule look the same - because to the
-   reader of a table they are the same. */
-const EX_ILLUS_OVERRIDE={
-  mo12:'legs-up-wall',     /* "Hamstring Flow" is a supine flow, not a hinge */
-  sp01:'decel',            /* "Split-Step Reaction Drill" is a braking step */
-  sp07:'lateral-bound'     /* "Crossover Step Start" moves sideways first */
-};
+/* EX_ILLUS_OVERRIDE is gone. It was retired when POSE_RULES was - every entry
+   already had a line in EX_ILLUS - but it was left here as dead code, and one
+   of its comments asserted that Hamstring Flow is "a supine flow, not a
+   hinge". The exercise says the opposite, in the text printed under the
+   drawing. A second table that nothing reads and that disagrees with the one
+   that is read is worse than no table: it tells the next reader the live
+   mapping is wrong. */
 
 /* WARM-UP MOVEMENTS, BY NAME.
    A warm-up item is a line of text inside a workout - "Pogo hops", "12 reps"
@@ -7377,6 +7383,69 @@ function fallbackFor(e){
       || null;
 }
 /* the strongest doable exercise for this pattern, when it beats the default */
+/* =========================================================================
+   WHAT ELSE WOULD DO THE SAME JOB
+
+   "Replace exercise" used to open the whole library, unfiltered and sorted by
+   nothing, which asks the user to know which of 174 movements trains the same
+   thing with the kit they own. The engine already knows: it answers that
+   question for itself every time it builds a session. This exposes the same
+   reasoning, ranked, with the reason attached so the choice is informed
+   rather than merely offered.
+
+   Ordering, highest first:
+     same movement pattern          - a squat for a squat
+     a neighbouring pattern         - PAT_NEIGHBOURS, the engine's own map
+     shared target muscles          - counted from the muscles field
+     same training category         - the broad area of the session
+   and tier breaks ties, so the better version of an equally good match wins.
+
+   Anything the user cannot do with their equipment, has told us hurt, or that
+   an active limitation rules out is not a suggestion at all - the same three
+   constraints resolveOne() applies. Nor is anything already in this session:
+   replacing one exercise with another one you are also about to do is not a
+   replacement.
+   ====================================================================== */
+function muscleSet(e){
+  const raw=String((e&&e.muscles)||'').toLowerCase().split(';').join(',');
+  const out={};
+  raw.split(',').forEach(s=>{ const k=s.trim(); if(k) out[k]=1; });
+  return out;
+}
+function swapCandidates(exId, takenIds, limit){
+  const e=exOf(exId); if(!e) return [];
+  const taken={};
+  (takenIds||[]).forEach(id=>{ if(id && id!==exId) taken[id]=1; });
+  const lim=(typeof limitPatterns==='function') ? (limitPatterns()||{avoid:[]}) : {avoid:[]};
+  const avoidPat=lim.avoid||[];
+  const neigh=PAT_NEIGHBOURS[e.pat]||[];
+  const mine=muscleSet(e);
+  const mineN=Object.keys(mine).length;
+  const scored=[];
+  DB.exercises.forEach(x=>{
+    if(x.id===e.id || taken[x.id]) return;
+    if(!canDo(x)) return;
+    if(isAvoided(x.id)) return;
+    if(avoidPat.indexOf(x.pat)>=0) return;
+    let s=0; const why=[];
+    if(x.pat===e.pat){ s+=100; why.push('Same movement'); }
+    else if(neigh.indexOf(x.pat)>=0){ s+=55; why.push('Similar movement'); }
+    const theirs=muscleSet(x);
+    let ov=0; Object.keys(theirs).forEach(k=>{ if(mine[k]) ov++; });
+    if(ov){ s+=ov*14; if(mineN && ov>=mineN) why.push('Same targets');
+            else why.push('Shares a target'); }
+    if(x.cat===e.cat){ s+=20; if(!why.length) why.push('Same area'); }
+    if(!s) return;
+    s+=(x.tier||0)*2;
+    /* a swap that needs nothing is worth a nudge: it is the one that always
+       works, wherever the user happens to be training */
+    if(!(x.needs||[]).length) s+=4;
+    scored.push({ex:x, score:s, why:why.slice(0,2).join(' · ')});
+  });
+  scored.sort((a,b)=> b.score-a.score || (b.ex.tier||0)-(a.ex.tier||0)
+                      || a.ex.name.localeCompare(b.ex.name));
+  return scored.slice(0, limit||6);
+}
 function bestForPattern(pat, current){
   /* an exercise the user said hurt is off the menu until its date passes */
   if(!pat||pat==='mob'||pat==='cardio') return null;
@@ -7432,6 +7501,14 @@ function warmupMinus(wu, mainNames){
      better answer than no preparation at all. */
   if(!items.length) return WARMUPS.easy;
   return Object.assign({}, wu, {items});
+}
+/* The cool-down the workout asks for. COOLDOWNS has existed since the
+   workout editor did - it is picked per workout and shown in the library -
+   but nothing in the session ever offered it, so the stretches were only
+   ever something the user read about. */
+function cooldownFor(w){
+  if(!w) return COOLDOWNS.easy;
+  return COOLDOWNS[w.cool]||COOLDOWNS.easy;
 }
 function warmupFor(w){
   if(!w) return WARMUPS.easy;
@@ -10630,6 +10707,38 @@ function go(tab){
   renderNav(); render();
   window.scrollTo(0,0);
 }
+/* SETTINGS CHANGED - MAKE TODAY REFLECT IT.
+
+   The engine already reads equipment, goals, days and limitations live, so the
+   recommendation it WOULD give changed the moment the setting did. What did
+   not change was anything already on screen, and in one case that is more than
+   cosmetic: a session opened but not yet begun was built from the old answers
+   and keeps listing kit the user has just told us they do not have. Rebuilding
+   it there saves closing and reopening the session to get an honest list.
+
+   A session with any set logged is never touched. That is a record of work
+   done, not a prediction waiting to be refreshed. */
+function planDirty(){
+  try{
+    if(W && W.phase==='preview'){
+      const logged=sum((W.entries||[]).map(e=>e.sets.filter(s=>s.done).length));
+      if(!logged){
+        const wid=W.workoutId, v=W.variant, d=W.date;
+        const keep={id:W.recId, addCore:W.addCore, overridden:W.overridden};
+        const acc=W.accOpen, wu=W.wuStarted;
+        startWorkout(wid, v, d, keep);
+        if(W){ W.accOpen=acc; W.wuStarted=wu; drawWM(); }
+        return;
+      }
+    }
+  }catch(e){}
+  /* Deliberately NOT re-rendering the current screen. persist() runs on every
+     keystroke in Settings, and a render() from there tears out the very
+     controls being edited - it removed #sAuto from under a test that was
+     dispatching a change at it, which is exactly what it would do to a user
+     mid-type. Every screen that shows the plan recomputes when it is next
+     drawn, and leaving Settings draws it, so there is nothing to force. */
+}
 function render(){
   const v=$('#view');
   /* The tab set is not fixed: Metrics disappears for anyone with no wearable.
@@ -12404,9 +12513,11 @@ function editWorkout(wid){
   draw();
 }
 
-function pickExercise(cb){
+function pickExercise(cb,title){
   const cats=[...new Set(DB.exercises.map(e=>e.cat))];
-  openSheet('Add exercise',`
+  /* Reused by "Replace exercise", where "Add exercise" is the wrong word for
+     what is about to happen. */
+  openSheet(title||'Add exercise',`
    <input class="inp" id="pxQ" placeholder="Search exercises…" style="margin-bottom:12px">
    <div class="swipe" id="pxCats" style="margin-bottom:10px">
      <button class="chip a" data-c="">All</button>
@@ -15328,6 +15439,14 @@ function settingsBody(v){
     S.notify=ck('sNotify',false) && notifyState()==='granted';
     if(reDerive) applyGoalTargets(); else pruneTargets();
     save();
+    /* WHAT YOU JUST CHANGED APPLIES TO TODAY, NOW.
+       The engine reads equipment, goals, days and limitations live, so the
+       recommendation it would give has already changed by this line - but
+       nothing had asked it again, so the screen underneath still showed the
+       session built from the old answers until something else happened to
+       redraw. Tick a dumbbell you just bought and today's session should be
+       using it before you leave Settings. */
+    planDirty();
   };
   $$('#view input, #view textarea, #view select').forEach(i=>{
     i.addEventListener('change',persist); i.addEventListener('input',persist); });
@@ -15441,6 +15560,13 @@ function startWorkout(wid,variant,date,rec){
       const wu=warmupMinus(warmupFor(wk), blocks.map(b=>(exOf(b.ex)||{}).name).filter(Boolean));
       return {name:wu.name, dur:wu.dur, items:wu.items.slice()};
     })(),
+    /* The stretches, offered on the same terms as the warm-up: start them or
+       skip them, and either way the session knows which you did. */
+    cool:(function(){
+      const cd=cooldownFor(wk)||{items:[]};
+      return {name:cd.name||'Cool-down', dur:cd.dur||0, items:(cd.items||[]).slice()};
+    })(),
+    coolStarted:false, coolSkipped:false, coolDone:false,
     entries: blocks.map(b=>{ const e=exOf(b.ex)||{name:'(missing)',sets:3,reps:'10'};
       const n=b.sets||e.sets||3;
       return { exerciseId:b.ex, name:e.name, plannedSets:n,
@@ -15470,6 +15596,15 @@ function startWorkout(wid,variant,date,rec){
      drawn. Shown muted until confirmed, so nothing is recorded that the user
      has not ticked - but the common case, repeating last week, is one tap. */
   W.entries.forEach(primeSets);
+  /* NOTHING FROM THE LAST SESSION IS STILL RUNNING.
+     exitWM() clears these, but it is not the only way a session ends - a
+     reload, a resumed session, or finishing one all leave this function as the
+     next thing that runs. A rest timer that outlives its session goes on
+     firing into this one, and paintRest() redraws the screen when it expires,
+     so a stale one repaints a session the user has only just opened. Measured:
+     the interval is still ticking after a new startWorkout(). */
+  cancelAuto(); stopRest(); clearHold();
+  clearInterval(cardTimer); cardTimer=null;
   /* a gesture the browser will accept: without this the first rest tone of
      the session is silently dropped */
   audioCtx();
@@ -15673,6 +15808,9 @@ function wmNormalise(){
   /* the stepped warm-up runner is gone: the warm-up is one screen, so anything
      saved mid-warm-up resumes on that screen */
   if(W.phase==='warmup') W.phase='preview';
+  /* a session saved before the cool-down existed has no list to offer */
+  if(!W.cool || !Array.isArray(W.cool.items)) W.cool={name:'Cool-down',dur:0,items:[]};
+  if(W.phase==='cool' && !W.cool.items.length) W.phase='main';
   if(W.step<0) W.step=0;
   if(W.kind==='activity') W.phase='main';
   /* §7 · a session saved before parts existed has neither `seq` nor `p`.
@@ -15811,7 +15949,16 @@ function drawWM(){
   const pt=$('#wmPauseTop'); if(pt) pt.onclick=()=>pauseWM();
 
   if(W.phase==='preview') return drawOverview();
-  if(i>=total) return W.saveAs==='activity' ? drawActivityFinish() : drawFinish();
+  if(W.phase==='cool') return drawCooldown();
+  if(i>=total){
+    /* The stretches are offered here, on the same terms as the warm-up, and
+       only for a workout - an activity is a clock, and it has no list. */
+    if(W.kind!=='activity' && W.saveAs!=='activity'
+       && W.cool.items.length && !W.coolDone){
+      W.phase='cool'; saveLive(); return drawCooldown();
+    }
+    return W.saveAs==='activity' ? drawActivityFinish() : drawFinish();
+  }
   drawExercise(W.entries[i],i,total);
   if(_body && _keep) _body.scrollTop=_keep;
 }
@@ -16571,13 +16718,56 @@ function drawExercise(en,i,total){
       `<button class="btn primary big block" id="enS">Save note</button>`);
     $('#enS').onclick=()=>{ en.note=$('#enN').value.trim(); saveLive(); closeSheet(); drawWM(); };
   };
-  const wmSwap=()=>pickExercise(id=>{
-    const ne=exOf(id);
+  /* REPLACE: SUGGEST FIRST, THEN GET OUT OF THE WAY.
+     This opened the whole library, unsorted - 174 movements, and the user has
+     to know which of them trains the same thing with the kit they own. The
+     engine answers that question every time it builds a session, so it answers
+     it here too, with the reason attached. The free choice stays one tap
+     below, because the person who already has something in mind should not
+     have to argue with a list. */
+  const applySwap=id=>{
+    const ne=exOf(id); if(!ne) return;
+    const from=en.name;
     en.exerciseId=id; en.name=ne.name; en.cue=ne.cue||''; en.subs=ne.subs||'';
     en.plannedReps=ne.reps; en.plannedRpe=ne.rpe; en.plannedRest=ne.rest; en.tempo=ne.tempo||'';
-    en.note=(en.note?en.note+' · ':'')+'substituted during session';
+    /* the prescription belongs to the movement, so the parts and the clock
+       have to be rebuilt from the new one rather than inherited */
+    en.timed=setSecs(ne.reps);
+    en.seq=partSeq(ne, ne.reps);
+    const parts=Math.max(1, en.seq.length);
+    en.sets.forEach(s=>{ if(!Array.isArray(s.p) || s.p.length!==parts)
+      s.p=Array.from({length:parts},()=>!!s.done); });
+    en.note=(en.note?en.note+' · ':'')+'swapped from '+from;
     saveLive(); drawWM();
-  });
+    toast(ne.name, 'ok');
+  };
+  const wmSwap=()=>{
+    const taken=(W.entries||[]).map(x=>x.exerciseId);
+    const cands=swapCandidates(en.exerciseId, taken, 6);
+    const cur=exOf(en.exerciseId)||{};
+    const rows=cands.map((c,i)=>`
+      <button class="row tap" data-sw="${esc(c.ex.id)}" style="display:flex;width:100%;
+              text-align:left;background:var(--surface);border-radius:11px;margin-bottom:6px;
+              border:1px solid var(--border-soft)">
+        <div class="rt">
+          <div class="rn" style="font-size:14px">${esc(c.ex.name)}${
+            i===0?' <span class="tag g">BEST MATCH</span>':''}</div>
+          <div class="rs">${esc(c.why)} · ${esc(c.ex.sets)}×${esc(c.ex.reps)}</div>
+        </div><span class="chev">${svg('chev')}</span></button>`).join('');
+    openSheet('Replace '+cur.name,
+      (cands.length
+        ? `<div class="hint" style="margin:-2px 0 10px">Same target, and doable with your
+             equipment. Ordered by how closely each one matches.</div>${rows}`
+        : `<div class="empty"><p>Nothing in your library trains the same thing with
+             the equipment you have. Choose any exercise below.</p></div>`)
+      + `<button class="btn ghost block" id="swAny" style="margin-top:10px">${svg('search')}
+           Choose any exercise</button>`);
+    $$('[data-sw]').forEach(b=>b.onclick=()=>{
+      closeSheet(); const id=b.dataset.sw; setTimeout(()=>applySwap(id),240); });
+    const any=$('#swAny');
+    if(any) any.onclick=()=>{ closeSheet();
+      setTimeout(()=>pickExercise(applySwap,'Choose an exercise'),240); };
+  };
   const hl=$('#wmHowLine'); if(hl) hl.onclick=()=>{ cancelAuto(); wmHow(); };
   const il=$('#wmIllus');   if(il) il.onclick=()=>{ cancelAuto(); wmHow(); };
   /* Back and Next exercise are gone from the footer: forward movement is
@@ -16620,6 +16810,46 @@ function parseRest(s){
   let v=+m[1];
   if(/min|^m$/i.test(m[2]||''))v*=60;
   return v>0&&v<=600?v:null;
+}
+/* THE STRETCHES, OFFERED THE SAME WAY THE WARM-UP IS.
+
+   Symmetry with the warm-up is the whole point: "Start" leaves you on the
+   list to work down, "Skip" records that you did not, and the session knows
+   which happened either way. Nothing here is logged as training - a cool-down
+   is not a set - so this screen never blocks the summary, it only precedes it.
+   ====================================================================== */
+function drawCooldown(){
+  const cd=W.cool, has=cd.items.length>0;
+  $('#wmBody').innerHTML=`
+    <div class="wuh">${esc(cd.name||'Cool-down')}${
+      cd.dur?` · ~${cd.dur} min`:''}</div>
+    <div class="ov-s" style="margin-bottom:12px">The work is done. These are
+      optional — they help you come down, they are not part of the session.</div>
+    <div class="wacc">${cd.items.map((it,n)=>`
+      <div class="wacc-i">
+        <div class="wacc-h" style="cursor:default">
+          <span class="wacc-n">${n+1}</span>
+          <span class="wacc-x"><span class="wacc-t">${esc(it.n)}</span>
+            ${it.d?`<span class="wacc-m">${esc(it.d)}</span>`:''}</span>
+        </div>
+      </div>`).join('')}</div>`;
+
+  $('#wmFoot').innerHTML = W.coolStarted
+    ? `<button class="btn primary big block" id="cdDone">Finish workout</button>
+       <div class="hint" style="text-align:center;margin:9px 0 0">Stretching — work down the list.</div>`
+    : `<button class="btn primary big block" id="cdGo">Start cool-down</button>
+       <button class="tert block" id="cdSkip">Skip stretches</button>`;
+
+  const go=$('#cdGo');
+  if(go) go.onclick=()=>{
+    haptic(); W.coolStarted=true; W.coolSkipped=false; saveLive(); drawCooldown(); };
+  const sk=$('#cdSkip');
+  if(sk) sk.onclick=()=>{
+    haptic(); W.coolSkipped=true; W.coolDone=true; W.phase='main';
+    saveLive(); drawWM(); };
+  const dn=$('#cdDone');
+  if(dn) dn.onclick=()=>{
+    haptic(); W.coolDone=true; W.phase='main'; saveLive(); drawWM(); };
 }
 function drawFinish(){
   stopRest();

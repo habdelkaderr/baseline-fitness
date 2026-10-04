@@ -1922,6 +1922,69 @@ function fallbackFor(e){
       || null;
 }
 /* the strongest doable exercise for this pattern, when it beats the default */
+/* =========================================================================
+   WHAT ELSE WOULD DO THE SAME JOB
+
+   "Replace exercise" used to open the whole library, unfiltered and sorted by
+   nothing, which asks the user to know which of 174 movements trains the same
+   thing with the kit they own. The engine already knows: it answers that
+   question for itself every time it builds a session. This exposes the same
+   reasoning, ranked, with the reason attached so the choice is informed
+   rather than merely offered.
+
+   Ordering, highest first:
+     same movement pattern          - a squat for a squat
+     a neighbouring pattern         - PAT_NEIGHBOURS, the engine's own map
+     shared target muscles          - counted from the muscles field
+     same training category         - the broad area of the session
+   and tier breaks ties, so the better version of an equally good match wins.
+
+   Anything the user cannot do with their equipment, has told us hurt, or that
+   an active limitation rules out is not a suggestion at all - the same three
+   constraints resolveOne() applies. Nor is anything already in this session:
+   replacing one exercise with another one you are also about to do is not a
+   replacement.
+   ====================================================================== */
+function muscleSet(e){
+  const raw=String((e&&e.muscles)||'').toLowerCase().split(';').join(',');
+  const out={};
+  raw.split(',').forEach(s=>{ const k=s.trim(); if(k) out[k]=1; });
+  return out;
+}
+function swapCandidates(exId, takenIds, limit){
+  const e=exOf(exId); if(!e) return [];
+  const taken={};
+  (takenIds||[]).forEach(id=>{ if(id && id!==exId) taken[id]=1; });
+  const lim=(typeof limitPatterns==='function') ? (limitPatterns()||{avoid:[]}) : {avoid:[]};
+  const avoidPat=lim.avoid||[];
+  const neigh=PAT_NEIGHBOURS[e.pat]||[];
+  const mine=muscleSet(e);
+  const mineN=Object.keys(mine).length;
+  const scored=[];
+  DB.exercises.forEach(x=>{
+    if(x.id===e.id || taken[x.id]) return;
+    if(!canDo(x)) return;
+    if(isAvoided(x.id)) return;
+    if(avoidPat.indexOf(x.pat)>=0) return;
+    let s=0; const why=[];
+    if(x.pat===e.pat){ s+=100; why.push('Same movement'); }
+    else if(neigh.indexOf(x.pat)>=0){ s+=55; why.push('Similar movement'); }
+    const theirs=muscleSet(x);
+    let ov=0; Object.keys(theirs).forEach(k=>{ if(mine[k]) ov++; });
+    if(ov){ s+=ov*14; if(mineN && ov>=mineN) why.push('Same targets');
+            else why.push('Shares a target'); }
+    if(x.cat===e.cat){ s+=20; if(!why.length) why.push('Same area'); }
+    if(!s) return;
+    s+=(x.tier||0)*2;
+    /* a swap that needs nothing is worth a nudge: it is the one that always
+       works, wherever the user happens to be training */
+    if(!(x.needs||[]).length) s+=4;
+    scored.push({ex:x, score:s, why:why.slice(0,2).join(' · ')});
+  });
+  scored.sort((a,b)=> b.score-a.score || (b.ex.tier||0)-(a.ex.tier||0)
+                      || a.ex.name.localeCompare(b.ex.name));
+  return scored.slice(0, limit||6);
+}
 function bestForPattern(pat, current){
   /* an exercise the user said hurt is off the menu until its date passes */
   if(!pat||pat==='mob'||pat==='cardio') return null;
@@ -1977,6 +2040,14 @@ function warmupMinus(wu, mainNames){
      better answer than no preparation at all. */
   if(!items.length) return WARMUPS.easy;
   return Object.assign({}, wu, {items});
+}
+/* The cool-down the workout asks for. COOLDOWNS has existed since the
+   workout editor did - it is picked per workout and shown in the library -
+   but nothing in the session ever offered it, so the stretches were only
+   ever something the user read about. */
+function cooldownFor(w){
+  if(!w) return COOLDOWNS.easy;
+  return COOLDOWNS[w.cool]||COOLDOWNS.easy;
 }
 function warmupFor(w){
   if(!w) return WARMUPS.easy;

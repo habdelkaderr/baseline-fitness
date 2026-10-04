@@ -38,6 +38,13 @@ function startWorkout(wid,variant,date,rec){
       const wu=warmupMinus(warmupFor(wk), blocks.map(b=>(exOf(b.ex)||{}).name).filter(Boolean));
       return {name:wu.name, dur:wu.dur, items:wu.items.slice()};
     })(),
+    /* The stretches, offered on the same terms as the warm-up: start them or
+       skip them, and either way the session knows which you did. */
+    cool:(function(){
+      const cd=cooldownFor(wk)||{items:[]};
+      return {name:cd.name||'Cool-down', dur:cd.dur||0, items:(cd.items||[]).slice()};
+    })(),
+    coolStarted:false, coolSkipped:false, coolDone:false,
     entries: blocks.map(b=>{ const e=exOf(b.ex)||{name:'(missing)',sets:3,reps:'10'};
       const n=b.sets||e.sets||3;
       return { exerciseId:b.ex, name:e.name, plannedSets:n,
@@ -67,6 +74,15 @@ function startWorkout(wid,variant,date,rec){
      drawn. Shown muted until confirmed, so nothing is recorded that the user
      has not ticked - but the common case, repeating last week, is one tap. */
   W.entries.forEach(primeSets);
+  /* NOTHING FROM THE LAST SESSION IS STILL RUNNING.
+     exitWM() clears these, but it is not the only way a session ends - a
+     reload, a resumed session, or finishing one all leave this function as the
+     next thing that runs. A rest timer that outlives its session goes on
+     firing into this one, and paintRest() redraws the screen when it expires,
+     so a stale one repaints a session the user has only just opened. Measured:
+     the interval is still ticking after a new startWorkout(). */
+  cancelAuto(); stopRest(); clearHold();
+  clearInterval(cardTimer); cardTimer=null;
   /* a gesture the browser will accept: without this the first rest tone of
      the session is silently dropped */
   audioCtx();
@@ -270,6 +286,9 @@ function wmNormalise(){
   /* the stepped warm-up runner is gone: the warm-up is one screen, so anything
      saved mid-warm-up resumes on that screen */
   if(W.phase==='warmup') W.phase='preview';
+  /* a session saved before the cool-down existed has no list to offer */
+  if(!W.cool || !Array.isArray(W.cool.items)) W.cool={name:'Cool-down',dur:0,items:[]};
+  if(W.phase==='cool' && !W.cool.items.length) W.phase='main';
   if(W.step<0) W.step=0;
   if(W.kind==='activity') W.phase='main';
   /* §7 · a session saved before parts existed has neither `seq` nor `p`.
@@ -408,7 +427,16 @@ function drawWM(){
   const pt=$('#wmPauseTop'); if(pt) pt.onclick=()=>pauseWM();
 
   if(W.phase==='preview') return drawOverview();
-  if(i>=total) return W.saveAs==='activity' ? drawActivityFinish() : drawFinish();
+  if(W.phase==='cool') return drawCooldown();
+  if(i>=total){
+    /* The stretches are offered here, on the same terms as the warm-up, and
+       only for a workout - an activity is a clock, and it has no list. */
+    if(W.kind!=='activity' && W.saveAs!=='activity'
+       && W.cool.items.length && !W.coolDone){
+      W.phase='cool'; saveLive(); return drawCooldown();
+    }
+    return W.saveAs==='activity' ? drawActivityFinish() : drawFinish();
+  }
   drawExercise(W.entries[i],i,total);
   if(_body && _keep) _body.scrollTop=_keep;
 }
@@ -1168,13 +1196,56 @@ function drawExercise(en,i,total){
       `<button class="btn primary big block" id="enS">Save note</button>`);
     $('#enS').onclick=()=>{ en.note=$('#enN').value.trim(); saveLive(); closeSheet(); drawWM(); };
   };
-  const wmSwap=()=>pickExercise(id=>{
-    const ne=exOf(id);
+  /* REPLACE: SUGGEST FIRST, THEN GET OUT OF THE WAY.
+     This opened the whole library, unsorted - 174 movements, and the user has
+     to know which of them trains the same thing with the kit they own. The
+     engine answers that question every time it builds a session, so it answers
+     it here too, with the reason attached. The free choice stays one tap
+     below, because the person who already has something in mind should not
+     have to argue with a list. */
+  const applySwap=id=>{
+    const ne=exOf(id); if(!ne) return;
+    const from=en.name;
     en.exerciseId=id; en.name=ne.name; en.cue=ne.cue||''; en.subs=ne.subs||'';
     en.plannedReps=ne.reps; en.plannedRpe=ne.rpe; en.plannedRest=ne.rest; en.tempo=ne.tempo||'';
-    en.note=(en.note?en.note+' · ':'')+'substituted during session';
+    /* the prescription belongs to the movement, so the parts and the clock
+       have to be rebuilt from the new one rather than inherited */
+    en.timed=setSecs(ne.reps);
+    en.seq=partSeq(ne, ne.reps);
+    const parts=Math.max(1, en.seq.length);
+    en.sets.forEach(s=>{ if(!Array.isArray(s.p) || s.p.length!==parts)
+      s.p=Array.from({length:parts},()=>!!s.done); });
+    en.note=(en.note?en.note+' · ':'')+'swapped from '+from;
     saveLive(); drawWM();
-  });
+    toast(ne.name, 'ok');
+  };
+  const wmSwap=()=>{
+    const taken=(W.entries||[]).map(x=>x.exerciseId);
+    const cands=swapCandidates(en.exerciseId, taken, 6);
+    const cur=exOf(en.exerciseId)||{};
+    const rows=cands.map((c,i)=>`
+      <button class="row tap" data-sw="${esc(c.ex.id)}" style="display:flex;width:100%;
+              text-align:left;background:var(--surface);border-radius:11px;margin-bottom:6px;
+              border:1px solid var(--border-soft)">
+        <div class="rt">
+          <div class="rn" style="font-size:14px">${esc(c.ex.name)}${
+            i===0?' <span class="tag g">BEST MATCH</span>':''}</div>
+          <div class="rs">${esc(c.why)} · ${esc(c.ex.sets)}×${esc(c.ex.reps)}</div>
+        </div><span class="chev">${svg('chev')}</span></button>`).join('');
+    openSheet('Replace '+cur.name,
+      (cands.length
+        ? `<div class="hint" style="margin:-2px 0 10px">Same target, and doable with your
+             equipment. Ordered by how closely each one matches.</div>${rows}`
+        : `<div class="empty"><p>Nothing in your library trains the same thing with
+             the equipment you have. Choose any exercise below.</p></div>`)
+      + `<button class="btn ghost block" id="swAny" style="margin-top:10px">${svg('search')}
+           Choose any exercise</button>`);
+    $$('[data-sw]').forEach(b=>b.onclick=()=>{
+      closeSheet(); const id=b.dataset.sw; setTimeout(()=>applySwap(id),240); });
+    const any=$('#swAny');
+    if(any) any.onclick=()=>{ closeSheet();
+      setTimeout(()=>pickExercise(applySwap,'Choose an exercise'),240); };
+  };
   const hl=$('#wmHowLine'); if(hl) hl.onclick=()=>{ cancelAuto(); wmHow(); };
   const il=$('#wmIllus');   if(il) il.onclick=()=>{ cancelAuto(); wmHow(); };
   /* Back and Next exercise are gone from the footer: forward movement is
@@ -1217,6 +1288,46 @@ function parseRest(s){
   let v=+m[1];
   if(/min|^m$/i.test(m[2]||''))v*=60;
   return v>0&&v<=600?v:null;
+}
+/* THE STRETCHES, OFFERED THE SAME WAY THE WARM-UP IS.
+
+   Symmetry with the warm-up is the whole point: "Start" leaves you on the
+   list to work down, "Skip" records that you did not, and the session knows
+   which happened either way. Nothing here is logged as training - a cool-down
+   is not a set - so this screen never blocks the summary, it only precedes it.
+   ====================================================================== */
+function drawCooldown(){
+  const cd=W.cool, has=cd.items.length>0;
+  $('#wmBody').innerHTML=`
+    <div class="wuh">${esc(cd.name||'Cool-down')}${
+      cd.dur?` · ~${cd.dur} min`:''}</div>
+    <div class="ov-s" style="margin-bottom:12px">The work is done. These are
+      optional — they help you come down, they are not part of the session.</div>
+    <div class="wacc">${cd.items.map((it,n)=>`
+      <div class="wacc-i">
+        <div class="wacc-h" style="cursor:default">
+          <span class="wacc-n">${n+1}</span>
+          <span class="wacc-x"><span class="wacc-t">${esc(it.n)}</span>
+            ${it.d?`<span class="wacc-m">${esc(it.d)}</span>`:''}</span>
+        </div>
+      </div>`).join('')}</div>`;
+
+  $('#wmFoot').innerHTML = W.coolStarted
+    ? `<button class="btn primary big block" id="cdDone">Finish workout</button>
+       <div class="hint" style="text-align:center;margin:9px 0 0">Stretching — work down the list.</div>`
+    : `<button class="btn primary big block" id="cdGo">Start cool-down</button>
+       <button class="tert block" id="cdSkip">Skip stretches</button>`;
+
+  const go=$('#cdGo');
+  if(go) go.onclick=()=>{
+    haptic(); W.coolStarted=true; W.coolSkipped=false; saveLive(); drawCooldown(); };
+  const sk=$('#cdSkip');
+  if(sk) sk.onclick=()=>{
+    haptic(); W.coolSkipped=true; W.coolDone=true; W.phase='main';
+    saveLive(); drawWM(); };
+  const dn=$('#cdDone');
+  if(dn) dn.onclick=()=>{
+    haptic(); W.coolDone=true; W.phase='main'; saveLive(); drawWM(); };
 }
 function drawFinish(){
   stopRest();

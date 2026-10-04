@@ -1295,6 +1295,14 @@ function settingsBody(v){
     S.notify=ck('sNotify',false) && notifyState()==='granted';
     if(reDerive) applyGoalTargets(); else pruneTargets();
     save();
+    /* WHAT YOU JUST CHANGED APPLIES TO TODAY, NOW.
+       The engine reads equipment, goals, days and limitations live, so the
+       recommendation it would give has already changed by this line - but
+       nothing had asked it again, so the screen underneath still showed the
+       session built from the old answers until something else happened to
+       redraw. Tick a dumbbell you just bought and today's session should be
+       using it before you leave Settings. */
+    planDirty();
   };
   $$('#view input, #view textarea, #view select').forEach(i=>{
     i.addEventListener('change',persist); i.addEventListener('input',persist); });
